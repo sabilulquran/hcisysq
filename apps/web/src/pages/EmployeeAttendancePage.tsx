@@ -1,7 +1,8 @@
-import { AlertTriangle, CalendarDays, CalendarRange, CheckCircle2, ClipboardCheck, Clock3, Loader2, LogIn, LogOut, Plus, TimerReset } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, CalendarRange, CheckCircle2, ClipboardCheck, Clock3, Loader2, LogIn, LogOut, Plus, RefreshCw, TimerReset } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ClarificationForm } from "@/components/attendance/ClarificationForm";
+import { MyTransactionList } from "@/components/attendance/MyTransactionList";
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { DialogMessages } from "@/components/DetailDialogParts";
 import { AppShell } from "@/layouts/AppShell";
@@ -14,11 +15,14 @@ import {
   respondToOvertimeOrder,
   cancelMyAttendanceClarification,
   getMyAttendanceScheduleRange,
+  getMyAttendanceTransactions,
   getMyWorkforceAttendance,
   listMyAttendanceClarifications,
   submitAttendanceOvertime,
   type OvertimeWarning,
   type MyAttendanceClarification,
+  type MyTransactionDay,
+  type MyTransactions,
   type PendingScans,
   type WorkforceResult,
   type WorkforceSnapshot,
@@ -45,21 +49,35 @@ export interface HistoryRow {
 }
 
 /**
- * ATT-014 §6.5b (DRAFT): kehadiran tidak dihitung otomatis (keputusan owner 2026-10-24), jadi
- * tanggal yang belum dikalkulasi tidak punya hasil. Scan yang sudah diterima tetap ditampilkan apa
- * adanya, bukan "—", supaya pegawai tahu scannya sampai. Menit kerja, telat dan lembur tetap
- * "—": angka itu hanya sah dari Kalkulasi, bukan 0 yang terbaca sebagai fakta.
+ * ATT-014 §6.5c (DRAFT): Transaksi dan hasil kehadiran dipisah tegas.
+ *
+ * - Masuk / Keluar dibaca dari transaksi mentah (scan pertama dan terakhir tanggal itu), real-time
+ *   dan tidak menunggu Kalkulasi. `day` null berarti tidak ada scan; `undefined` berarti transaksi
+ *   belum termuat, lalu baris memakai sumber lama (hasil, atau `pendingScans` §6.5b).
+ * - Status, Kerja, Telat, Lembur hanya dari hasil kalkulasi. Tanpa hasil: "—", bukan 0 (keputusan
+ *   owner 2026-10-24, kehadiran tidak dihitung otomatis). Ada scan yang masuk setelah hasil dibuat:
+ *   angka resmi tetap tampil, diberi penanda "Ada scan baru sejak dihitung".
  */
-export function historyCells(item: HistoryRow) {
-  const pending = item.pendingScans;
+export function historyCells(item: HistoryRow, day?: MyTransactionDay | null) {
+  const result = item.result;
+  const live = day !== undefined;
+  const firstScan = live ? day?.firstScanAt ?? null : result ? result.firstCheckInAt : item.pendingScans?.firstScanAt ?? null;
+  const lastScan = live ? day?.lastScanAt ?? null : result ? result.lastCheckOutAt : item.pendingScans?.lastScanAt ?? null;
+  const hasScan = live ? Boolean(day) : item.pendingScans !== null;
+  const pending = !result && hasScan;
+  const stale = Boolean(result && day?.newSinceCalculation);
+  const minutes = (value: number | null | undefined) => result ? `${value ?? 0} mnt` : "—";
   return {
-    pending: pending !== null,
-    status: pending ? "Belum dihitung" : statusLabel(item.result?.status ?? item.schedule.state),
-    checkIn: formatTime(pending ? pending.firstScanAt : item.result?.firstCheckInAt),
-    checkOut: formatTime(pending ? pending.lastScanAt : item.result?.lastCheckOutAt),
-    worked: pending ? "—" : `${item.result?.workedMinutes ?? 0} mnt`,
-    late: pending ? "—" : `${item.result?.lateMinutes ?? 0} mnt`,
-    overtime: pending ? "—" : `${item.result?.overtimeMinutes ?? 0} mnt`,
+    pending,
+    stale,
+    marker: pending ? "Belum dihitung" : stale ? "Ada scan baru sejak dihitung" : null,
+    status: result ? statusLabel(result.status) : pending ? "Belum dihitung" : statusLabel(item.schedule.state),
+    checkIn: formatTime(firstScan),
+    checkOut: formatTime(lastScan),
+    scanCount: live ? day?.scanCount ?? 0 : item.pendingScans?.scanCount ?? null,
+    worked: minutes(result?.workedMinutes),
+    late: minutes(result?.lateMinutes),
+    overtime: minutes(result?.overtimeMinutes),
   };
 }
 
@@ -115,6 +133,19 @@ export function OvertimeRequestCard({ item, busy, cancelling, onCancel, onRespon
   );
 }
 
+/** The calculated side of one date, beside its raw punches, so the two are never confused. */
+function TransactionResultNote({ row, day }: { row: HistoryRow | null; day: MyTransactionDay | null | undefined }) {
+  if (!row) return null;
+  const result = row.result;
+  return <div className="mt-4 rounded-xl bg-surface p-3 text-xs text-muted-foreground">
+    <p className="font-bold text-brand-heading">Hasil kehadiran (kalkulasi)</p>
+    {result ? <>
+      <p className="mt-1">{statusLabel(result.status)} · Masuk {formatTime(result.firstCheckInAt)} · Keluar {formatTime(result.lastCheckOutAt)} · Kerja {result.workedMinutes} mnt · Telat {result.lateMinutes} mnt</p>
+      {day?.newSinceCalculation ? <p className="mt-1 font-bold text-warning-ink">Ada scan baru sejak dihitung; angka ini bisa berubah setelah Human Capital mengkalkulasi ulang.</p> : null}
+    </> : <p className="mt-1">Belum dihitung. Menit kerja, telat dan lembur keluar setelah Human Capital menjalankan Kalkulasi.</p>}
+  </div>;
+}
+
 export function EmployeeAttendancePage() {
   const today = jakartaToday();
   const [snapshot,setSnapshot]=useState<WorkforceSnapshot|null>(null);
@@ -130,6 +161,11 @@ export function EmployeeAttendancePage() {
   // "Ajukan klarifikasi" opens the form for one day as a pop-up named in the URL (?klarifikasi=<tanggal>).
   const [clarifyDate,showClarification,closeClarification]=useDialogParam("klarifikasi");
   const [cancellingClarificationId,setCancellingClarificationId]=useState<string|null>(null);
+  // ATT-014 §6.5c: raw punches for the 30-day history, read live and refreshed every minute.
+  const [transactions,setTransactions]=useState<MyTransactions|null>(null);
+  const [transactionsError,setTransactionsError]=useState<string|null>(null);
+  const [refreshingTransactions,setRefreshingTransactions]=useState(false);
+  const [transactionDate,showTransactions,closeTransactions]=useDialogParam("transaksi");
   // This week and next week (§8 "Jadwal saya"), 14 days within the 31-day range limit.
   const weekStart=mondayOf(today);
 
@@ -143,6 +179,36 @@ export function EmployeeAttendancePage() {
     setSnapshot(current); setHistory([...range.items].reverse()); setUpcoming(weeks.items); setClarifications(mine.items); setError(null);
   };
   const load = async () => { apply(await fetchAll()); };
+  const historyFrom=shiftDate(today,-29);
+  // Only the latest request may write state: the timer, the tab coming back and Segarkan can overlap.
+  const transactionsRequest=useRef(0);
+  const loadTransactions=useCallback(async()=>{
+    const ticket=++transactionsRequest.current;
+    setRefreshingTransactions(true);
+    try{
+      const next=await getMyAttendanceTransactions(historyFrom,today);
+      if(ticket===transactionsRequest.current){ setTransactions(next); setTransactionsError(null); }
+    }
+    catch(cause){ if(ticket===transactionsRequest.current) setTransactionsError(cause instanceof Error?cause.message:"Transaksi tidak dapat dimuat."); }
+    finally{ if(ticket===transactionsRequest.current) setRefreshingTransactions(false); }
+  },[historyFrom,today]);
+  useEffect(()=>{
+    void loadTransactions();
+    const onVisible=()=>{ if(document.visibilityState==="visible") void loadTransactions(); };
+    const timer=window.setInterval(onVisible,60_000);
+    document.addEventListener("visibilitychange",onVisible);
+    return ()=>{ transactionsRequest.current+=1; window.clearInterval(timer); document.removeEventListener("visibilitychange",onVisible); };
+  },[loadTransactions]);
+  const dayByDate=useMemo(()=>new Map((transactions?.days??[]).map(day=>[day.workDate,day])),[transactions]);
+  /**
+   * undefined while the transactions are not loaded, or for a date dropped by the row ceiling
+   * (`truncated`): the row then falls back to the stored sources instead of claiming "no scan".
+   */
+  const dayFor=(workDate:string):MyTransactionDay|null|undefined=>{
+    if(!transactions) return undefined;
+    const day=dayByDate.get(workDate);
+    return day ?? (transactions.truncated ? undefined : null);
+  };
   useEffect(()=>{
     void fetchAll().then(apply)
       .catch(cause=>setError(cause instanceof Error?cause.message:"Kehadiran tidak dapat dimuat.")).finally(()=>setLoading(false));
@@ -221,7 +287,7 @@ export function EmployeeAttendancePage() {
         <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)]">
           <div className="flex justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{formatDate(snapshot.workDate)}</p><h2 className="mt-1 text-xl font-bold text-brand-heading">{statusLabel(currentStatus)}</h2></div><Clock3 className="h-6 w-6 text-brand-primary-deep"/></div>
           <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-surface p-4"><p className="text-xs text-muted-foreground">Jadwal</p><p className="mt-1 font-bold">{formatTime(snapshot.schedule.scheduledStartAt)} – {formatTime(snapshot.schedule.scheduledEndAt)}</p></div><div className="rounded-2xl bg-surface p-4"><p className="text-xs text-muted-foreground">Lokasi</p><p className="mt-1 font-bold">{snapshot.schedule.workLocation?.name??"Tidak ditetapkan"}</p></div></div>
-          <div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-2xl border p-4"><p className="flex items-center gap-2 text-xs text-muted-foreground"><LogIn className="h-4 w-4"/>Masuk aktual</p><p className="mt-1 text-xl font-bold">{formatTime(snapshot.result?.firstCheckInAt)}</p></div><div className="rounded-2xl border p-4"><p className="flex items-center gap-2 text-xs text-muted-foreground"><LogOut className="h-4 w-4"/>Keluar aktual</p><p className="mt-1 text-xl font-bold">{formatTime(snapshot.result?.lastCheckOutAt)}</p></div></div>
+          <div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-2xl border p-4"><p className="flex items-center gap-2 text-xs text-muted-foreground"><LogIn className="h-4 w-4"/>Masuk aktual</p><p className="mt-1 text-xl font-bold">{formatTime(dayFor(snapshot.workDate)===undefined?snapshot.result?.firstCheckInAt:dayFor(snapshot.workDate)?.firstScanAt)}</p></div><div className="rounded-2xl border p-4"><p className="flex items-center gap-2 text-xs text-muted-foreground"><LogOut className="h-4 w-4"/>Keluar aktual</p><p className="mt-1 text-xl font-bold">{formatTime(dayFor(snapshot.workDate)===undefined?snapshot.result?.lastCheckOutAt:dayFor(snapshot.workDate)?.lastScanAt)}</p></div></div>
           <div className="mt-3"><ResultFacts result={snapshot.result}/></div>
           {snapshot.result?.sessions?.length ? <div className="mt-4 rounded-2xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">Sesi kerja</p><div className="mt-2 space-y-1 text-xs text-muted-foreground">{snapshot.result.sessions.map(s=><p key={s.sequence}>Sesi {s.sequence}: {formatTime(s.checkInAt)} – {formatTime(s.checkOutAt)} · {s.workedMinutes??0} mnt{s.complete?"":" · belum lengkap"}</p>)}</div></div>:null}
         </article>
@@ -256,14 +322,21 @@ export function EmployeeAttendancePage() {
         </div>
       </section>
       <section className="mt-5 overflow-hidden rounded-[2rem] border border-border/80 bg-surface-raised shadow-[var(--shadow-soft)]">
-        <header className="flex items-center gap-2 border-b px-5 py-4"><CalendarDays className="h-5 w-5"/><div><h2 className="font-bold text-brand-heading">Riwayat 30 hari</h2><p className="text-xs text-muted-foreground">Hasil kehadiran dan jadwal yang berlaku pada tanggalnya.</p></div></header>
-        <div className="hidden overflow-x-auto md:block"><table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Tanggal</th><th className="p-3">Status</th><th className="p-3">Jadwal</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Kerja</th><th className="p-3">Telat</th><th className="p-3">Lembur</th><th className="p-3"/></tr></thead><tbody className="divide-y">{history.map(item=>{const cells=historyCells(item);return <tr key={item.workDate}><td className="p-3 font-semibold">{formatDate(item.workDate)}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.status}</td><td className="p-3">{formatTime(item.schedule.scheduledStartAt)}–{formatTime(item.schedule.scheduledEndAt)}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.checkIn}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.checkOut}</td><td className="p-3">{cells.worked}</td><td className="p-3">{cells.late}</td><td className="p-3">{cells.overtime}</td><td className="p-3">{canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="rounded-lg border px-2.5 py-1.5 text-[11px] font-bold">Ajukan klarifikasi</button>:null}</td></tr>;})}</tbody></table></div>
-        <ul className="divide-y md:hidden">{history.map(item=><li key={item.workDate} className="p-4 text-sm">
-          <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{formatDate(item.workDate)}</p><p className="text-xs text-muted-foreground">{historyCells(item).checkIn} → {historyCells(item).checkOut}</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{historyCells(item).status}</span></div>
-          {canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="mt-2 min-h-10 rounded-lg border px-3 text-xs font-bold">Ajukan klarifikasi</button>:null}
-        </li>)}</ul>
-        {history.some(item=>item.pendingScans)?<p className="border-t px-5 py-3 text-xs text-muted-foreground">Baris <b>Belum dihitung</b> berarti scan Anda sudah diterima tetapi tanggalnya belum dikalkulasi oleh Human Capital, sehingga menit kerja, telat dan lembur belum keluar.</p>:null}
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"><div className="flex items-center gap-2"><CalendarDays className="h-5 w-5"/><div><h2 className="font-bold text-brand-heading">Riwayat 30 hari</h2><p className="text-xs text-muted-foreground">Masuk dan Keluar dari scan yang diterima (real-time). Status dan menit dari hasil kalkulasi Human Capital.</p></div></div><button type="button" onClick={()=>void loadTransactions()} disabled={refreshingTransactions} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-50">{refreshingTransactions?<Loader2 aria-hidden="true" className="h-4 w-4 animate-spin"/>:<RefreshCw aria-hidden="true" className="h-4 w-4"/>}Segarkan scan</button></header>
+        {transactionsError?<p role="alert" className="border-b bg-danger-soft px-5 py-3 text-xs text-danger-ink">Scan terbaru tidak dapat dimuat: {transactionsError}</p>:null}
+        {transactions?.truncated?<p className="border-b bg-warning-soft px-5 py-3 text-xs text-warning-ink">Scan pada rentang ini terlalu banyak untuk ditampilkan semuanya; hubungi Human Capital.</p>:null}
+        <div className="hidden overflow-x-auto md:block"><table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Tanggal</th><th className="p-3">Status</th><th className="p-3">Jadwal</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Kerja</th><th className="p-3">Telat</th><th className="p-3">Lembur</th><th className="p-3"/></tr></thead><tbody className="divide-y">{history.map(item=>{const cells=historyCells(item,dayFor(item.workDate));return <tr key={item.workDate}><td className="p-3 font-semibold">{formatDate(item.workDate)}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.status}{cells.stale?<span className="mt-1 block w-fit rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning-ink">Ada scan baru sejak dihitung</span>:null}</td><td className="p-3">{formatTime(item.schedule.scheduledStartAt)}–{formatTime(item.schedule.scheduledEndAt)}</td><td className="p-3">{cells.checkIn}</td><td className="p-3">{cells.checkOut}</td><td className="p-3">{cells.worked}</td><td className="p-3">{cells.late}</td><td className="p-3">{cells.overtime}</td><td className="p-3"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={()=>showTransactions(item.workDate)} className="rounded-lg border px-2.5 py-1.5 text-[11px] font-bold">Transaksi{cells.scanCount?` (${cells.scanCount})`:""}</button>{canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="rounded-lg border px-2.5 py-1.5 text-[11px] font-bold">Ajukan klarifikasi</button>:null}</div></td></tr>;})}</tbody></table></div>
+        <ul className="divide-y md:hidden">{history.map(item=>{const cells=historyCells(item,dayFor(item.workDate));return <li key={item.workDate} className="p-4 text-sm">
+          <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{formatDate(item.workDate)}</p><p className="text-xs text-muted-foreground">{cells.checkIn} → {cells.checkOut}</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{cells.status}</span></div>
+          {cells.stale?<p className="mt-1 text-[11px] font-bold text-warning-ink">Ada scan baru sejak dihitung</p>:null}
+          <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={()=>showTransactions(item.workDate)} className="min-h-10 rounded-lg border px-3 text-xs font-bold">Transaksi{cells.scanCount?` (${cells.scanCount})`:""}</button>{canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="min-h-10 rounded-lg border px-3 text-xs font-bold">Ajukan klarifikasi</button>:null}</div>
+        </li>;})}</ul>
+        {history.some(item=>historyCells(item,dayFor(item.workDate)).marker)?<p className="border-t px-5 py-3 text-xs text-muted-foreground"><b>Belum dihitung</b>: scan Anda sudah diterima tetapi tanggalnya belum dikalkulasi Human Capital, jadi menit kerja, telat dan lembur belum keluar. <b>Ada scan baru sejak dihitung</b>: angka di baris itu berasal dari kalkulasi sebelum scan terbaru masuk dan bisa berubah saat dikalkulasi ulang.</p>:null}
       </section>
+      {transactionDate?<DetailDialog title={`Transaksi ${formatDate(transactionDate)}`} description="Setiap scan yang diterima, apa adanya. Ini bukan hasil kehadiran." onClose={closeTransactions}>
+        <MyTransactionList items={(transactions?.items??[]).filter(entry=>entry.workDate===transactionDate)} refreshing={refreshingTransactions} generatedAt={transactions?.generatedAt??null} error={transactionsError} onRefresh={()=>void loadTransactions()}/>
+        <TransactionResultNote row={history.find(entry=>entry.workDate===transactionDate)??null} day={dayFor(transactionDate)}/>
+      </DetailDialog>:null}
       {clarifyDate?<DetailDialog title={clarifyRow?`Klarifikasi untuk ${formatDate(clarifyRow.workDate)}`:"Klarifikasi kehadiran"} onClose={closeClarification}>
         <DialogMessages error={error}/>
         {clarifyRow&&clarifiable?<ClarificationForm key={clarifyRow.workDate} workDate={clarifyRow.workDate} defaultKind={kindFor(clarifyRow.result?.status)}

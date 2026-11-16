@@ -755,15 +755,17 @@ export async function registerPerformanceRoutes(
         throw new PerformanceError(409, "PERFORMANCE_CYCLE_LOCKED", "Peserta hanya dapat ditambahkan pada siklus draf atau terbuka.");
       }
       let candidates: string[];
+      // FOR SHARE: a candidate cannot be deleted while its review rows are written, so the insert
+      // below never meets a vanished employee (an FK 500, seen when suites run in parallel).
       if ("allActive" in body.data) {
         const active = await client.query<{ id: string }>(
-          `SELECT id FROM employees WHERE status = 'active' AND removed_at IS NULL ORDER BY full_name ASC, id ASC`,
+          `SELECT id FROM employees WHERE status = 'active' AND removed_at IS NULL ORDER BY full_name ASC, id ASC FOR SHARE`,
         );
         candidates = active.rows.map((row) => row.id);
       } else {
         const ids = [...new Set(body.data.employeeIds)];
         const found = await client.query<{ id: string }>(
-          `SELECT id FROM employees WHERE id = ANY($1::uuid[]) AND status = 'active' AND removed_at IS NULL`,
+          `SELECT id FROM employees WHERE id = ANY($1::uuid[]) AND status = 'active' AND removed_at IS NULL FOR SHARE`,
           [ids],
         );
         if (found.rows.length !== ids.length) {

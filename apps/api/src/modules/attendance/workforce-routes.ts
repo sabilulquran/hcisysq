@@ -54,6 +54,7 @@ import { registerScheduleChangeRoutes } from "./schedule-change-routes.js";
 import { attendanceTodayReadModel } from "./today.js";
 import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import { attendanceTransactions } from "./transactions.js";
+import { myAttendanceTransactions } from "./my-transactions.js";
 import { unattributedPins, unscheduledEmployees } from "./unscheduled.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -839,6 +840,30 @@ export async function registerAttendanceWorkforceRoutes(
       }));
       reply.header("Cache-Control", "no-store");
       return reply.send({ items });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // ATT-014 §6.5c (DRAFT): Transaksi saya — raw punches read live, separate from calculated results.
+  // Own record only (the employee comes from the session, never from the query), one query per range.
+  app.get("/attendance/me/transactions", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    try {
+      const query = scheduleRangeSchema.safeParse(request.query);
+      const realDate = (value: string) => {
+        const parsed = new Date(`${value}T00:00:00Z`);
+        return value >= "1900-01-01" && !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      };
+      if (!query.success || !realDate(query.data.from) || !realDate(query.data.to)) {
+        throw new WorkforceAttendanceError(400, "INVALID_DATE_RANGE", "Rentang tanggal tidak valid.");
+      }
+      datesBetween(query.data.from, query.data.to, 31);
+      const employee = await employeeForAccount(pool, principal.id);
+      const body = await myAttendanceTransactions(pool, employee.id, query.data.from, query.data.to);
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ ...body, generatedAt: new Date().toISOString() });
     } catch (error) {
       return sendError(reply, error);
     }

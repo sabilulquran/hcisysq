@@ -431,6 +431,11 @@
       "list": "paged"
     },
     {
+      "url": "/admin/documents/issued/:id",
+      "list": "single",
+      "reason": "DOC-001 D-25: satu surat keterangan terbit dibaca HC; surat keterangan penghasilan butuh documents.manage."
+    },
+    {
       "url": "/admin/documents/register",
       "list": "paged"
     },
@@ -814,6 +819,11 @@
       "url": "/attendance/me/schedule",
       "list": "range",
       "reason": "Jadwal saya, rentang maks 31 hari."
+    },
+    {
+      "url": "/attendance/me/transactions",
+      "list": "range",
+      "reason": "ATT-014 §6.5c Transaksi saya: scan milik pegawai sendiri, rentang maks 31 hari, plafon 2000 baris dengan penanda truncated (bukan pemotongan diam-diam)."
     },
     {
       "url": "/attendance/me/workforce",

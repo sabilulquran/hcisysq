@@ -2847,6 +2847,8 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1workforce'
   /attendance/me/schedule:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1schedule'
+  /attendance/me/transactions:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1transactions'
   /attendance/mobile/clock:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1mobile~1clock'
   /attendance/mobile/evidence/{evidenceId}/photo:
@@ -3316,7 +3318,11 @@ paths:
                       name: { type: [string, 'null'] }
                   contentSnapshot:
                     type: object
-                    description: employeeNumber, fullName, positionTitle, unitName, startedOn, endedOn, purpose, documentLabel
+                    description: >
+                      employeeNumber, fullName, positionTitle, unitName, startedOn, endedOn, purpose, documentLabel.
+                      A KETERANGAN_PENGHASILAN letter also carries `income` (DOC-001 D-24): months[{period, gross, net}],
+                      monthCount, averageGross, averageNet, windowFrom, windowTo, source; amounts are rupiah decimal
+                      strings frozen from the official published payslips at issue. Served with Cache-Control no-store.
                     additionalProperties: true
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: 'FORBIDDEN or EMPLOYEE_LINK_REQUIRED: not an active employee session' }
@@ -3371,6 +3377,49 @@ paths:
         '400': { description: 'INVALID_DOCUMENT_FILTER: an unknown kind or status, or a page parameter out of range' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.read' }
+  /admin/documents/issued/{id}:
+    get:
+      tags: [HR Documents]
+      operationId: getIssuedDocumentLetter
+      summary: HC reads one issued certificate (DOC-001 D-25)
+      description: >
+        Needs documents.read. A KETERANGAN_PENGHASILAN letter carries pay figures and additionally needs
+        documents.manage (403 DOCUMENT_FORBIDDEN otherwise, without the content): the register shows that it
+        exists, and document_corrector may still revoke it, but its content goes only to documents.manage and to
+        the employee through /documents/me/issued/{id}. Only CERTIFICATE letters are served; a warning letter,
+        surat tugas or SK panitia answers 404. A revoked certificate is served with status REVOKED so HC can verify
+        it. Every successful read writes doc.opened with the document code, number and surface "admin";
+        Cache-Control no-store.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The letter as issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, documentCode, documentNumber, status, issuedAt, revokedAt, signer, contentSnapshot]
+                properties:
+                  id: { type: string, format: uuid }
+                  documentCode: { type: string }
+                  documentNumber: { type: string }
+                  status: { type: string, enum: [ISSUED, REVOKED] }
+                  issuedAt: { type: string, format: date-time }
+                  revokedAt: { type: [string, 'null'], format: date-time }
+                  signer:
+                    type: object
+                    required: [title, name]
+                    properties:
+                      title: { type: string }
+                      name: { type: [string, 'null'] }
+                  contentSnapshot:
+                    type: object
+                    description: As /documents/me/issued/{id}, including `income` for an income letter.
+                    additionalProperties: true
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.read, or documents.manage for an income letter' }
+        '404': { description: 'DOCUMENT_NOT_FOUND: no such certificate (malformed id included)' }
   /admin/documents/issued/{id}/revoke:
     post:
       tags: [HR Documents]

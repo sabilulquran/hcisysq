@@ -272,7 +272,7 @@ Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding per
 
 Kontrak: `docs/domain/performance-review.md` §11. Implementasi: `apps/api/src/modules/payroll/performance-link.ts` (fungsi murni pemetaan) dan `calculation.ts` (pemilihan penilaian). PAY-001/PAY-002 tetap jalur slip resmi; sambungan ini hanya mengubah hasil PAY-003.
 
-**Sakelar = kebijakan berversi.** Kebijakan opsional `PERFORMANCE_PERCENT` berbentuk `{ enabled: boolean, byPredicate: { <kode predikat>: <persen 0..2, ≤ 4 desimal> } }`. Sambungan **mati** bila tidak ada versi yang berlaku pada tanggal gajian (keadaan setelah migrasi 0151 — migrasi itu hanya membuka kunci kebijakan, tidak menulis versi) atau versinya `enabled: false`. Selama mati, tidak satu pun penilaian dibaca, `input_snapshot` dan `policy_version_ids` sama persis dengan sebelum sambungan ada, sehingga hasil tidak berubah sedikit pun. Karena berupa versi kebijakan, menyalakannya berlaku-efektif per tanggal gajian, dicatat audit `payroll.policy.*`, dan dilindungi aturan berlaku-mundur §3. Payload yang tidak sesuai bentuk menggagalkan perhitungan (`PAYROLL_POLICY_MISSING`, kode `INVALID`), bukan diam-diam kembali ke profil.
+**Sakelar = kebijakan berversi.** Kebijakan opsional `PERFORMANCE_PERCENT` berbentuk `{ enabled: boolean, byPredicate: { <kode predikat>: <persen 0..2, ≤ 4 desimal> } }`. Sambungan **mati** bila tidak ada versi yang berlaku pada tanggal gajian (keadaan setelah migrasi 0152 — migrasi itu hanya membuka kunci kebijakan, tidak menulis versi) atau versinya `enabled: false`. Selama mati, tidak satu pun penilaian dibaca, `input_snapshot` dan `policy_version_ids` sama persis dengan sebelum sambungan ada, sehingga hasil tidak berubah sedikit pun. Karena berupa versi kebijakan, menyalakannya berlaku-efektif per tanggal gajian, dicatat audit `payroll.policy.*`, dan dilindungi aturan berlaku-mundur §3. Payload yang tidak sesuai bentuk menggagalkan perhitungan (`PAYROLL_POLICY_MISSING`, kode `INVALID`), bukan diam-diam kembali ke profil.
 
 **Sumber (hanya saat menyala).**
 
@@ -299,7 +299,7 @@ Siklus dihitung "sudah ditutup" bila berstatus `CLOSED` dan tanggal tutupnya (As
 | K4 | Siklus ditutup setelah perhitungan | Tidak membuat periode basi otomatis; HC menghitung ulang setelah menutup siklus. Penilaian yang dipakai terlihat di `performance_link`. |
 | K5 | Kapan dinyalakan | Setelah owner menjadikan PAY-003 jalur slip resmi dan menyetujui K1 (PERF-001 §11 butir 6). Menyalakannya adalah perubahan kebijakan production yang dilaporkan. |
 
-Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `{ "enabled": false }`; `byPredicate` boleh dihilangkan selama mati) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0151.
+Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `{ "enabled": false }`; `byPredicate` boleh dihilangkan selama mati) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0152.
 
 ## 6. Lifecycle periode
 

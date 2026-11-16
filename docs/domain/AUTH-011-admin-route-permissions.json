@@ -2020,6 +2020,16 @@
   },
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/me/transactions",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/attendance/mobile/clock",
     "access": "self-service",

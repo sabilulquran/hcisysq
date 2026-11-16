@@ -923,6 +923,47 @@ export interface PendingScans {
   scanCount: number;
 }
 
+/** ATT-014 §6.5c (DRAFT): one raw punch of the signed-in employee, read live (never calculated). */
+export interface MyTransaction {
+  occurredAt: string;
+  workDate: string;
+  source: "adms" | "mobile" | "manual";
+  kind: "check_in" | "check_out" | null;
+  deviceName: string | null;
+  reviewState: "accepted" | "needs_review" | null;
+  afterCalculation: boolean;
+}
+
+/** First and last punch of one WIB date, and whether a punch arrived after its latest calculation. */
+export interface MyTransactionDay {
+  workDate: string;
+  firstScanAt: string;
+  lastScanAt: string | null;
+  scanCount: number;
+  calculatedAt: string | null;
+  newSinceCalculation: boolean;
+}
+
+export interface MyTransactions {
+  from: string;
+  to: string;
+  generatedAt: string;
+  truncated: boolean;
+  items: MyTransaction[];
+  days: MyTransactionDay[];
+}
+
+export async function getMyAttendanceTransactions(from: string, to: string) {
+  const params = new URLSearchParams({ from, to });
+  return readJson<MyTransactions>(
+    await fetch(`/api/attendance/me/transactions?${params.toString()}`, {
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
 export async function getMyAttendanceScheduleRange(from: string, to: string) {
   const params = new URLSearchParams({ from, to });
   return readJson<{ items: Array<{ workDate: string; schedule: ResolvedSchedule; result: WorkforceResult | null; pendingScans: PendingScans | null }> }>(

@@ -816,6 +816,11 @@
       "reason": "Jadwal saya, rentang maks 31 hari."
     },
     {
+      "url": "/attendance/me/transactions",
+      "list": "range",
+      "reason": "ATT-014 §6.5c Transaksi saya: scan milik pegawai sendiri, rentang maks 31 hari, plafon 2000 baris dengan penanda truncated (bukan pemotongan diam-diam)."
+    },
+    {
       "url": "/attendance/me/workforce",
       "list": "single"
     },

@@ -244,7 +244,7 @@ Kontrak lengkap: `docs/api/attendance-work-arrangements.openapi.yaml`, tag `Work
 
 - Pegawai: `/app/attendance/arrangements` ("Tugas Luar & WFH") di Layanan Pegawai — formulir tiga jenis dengan pratinjau penyetuju dan peringatan rapat, daftar berhalaman, detail berisi tahap approval dan riwayat, tombol batal sesuai state.
 - Approver: bagian "Tugas Luar, WFH & Ubah Jadwal" di halaman Persetujuan.
-- HC: `/admin/attendance/arrangements` — register berhalaman dengan filter status, jenis, dan pencarian pegawai; detail; Terapkan (ubah jadwal); Batalkan.
+- HC: `/admin/attendance/arrangements` — register berhalaman dengan filter status, jenis, dan pencarian pegawai; detail sebagai pop-up (`?pengajuan=<id>`) (aturan app-shell "Detail views open as a pop-up", 2026-11-13); Terapkan (ubah jadwal); Batalkan.
 - Laporan kehadiran: status dan simbol baru (§7.2), baris di tab Pengecualian.
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga layar.

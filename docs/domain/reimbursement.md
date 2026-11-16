@@ -224,7 +224,7 @@ Kontrak lengkap: `docs/api/reimbursements.openapi.yaml`. Daftar mengikuti ENG-LI
 
 - Pegawai: `/app/reimbursements` di Keuangan Saya — daftar berhalaman; formulir draf (judul, perjalanan opsional, baris biaya dengan kategori dan batasnya, input rupiah tanpa pecahan); unggah bukti dari kamera/berkas; pratinjau penyetuju; kirim; detail dengan tahap, verifikasi, pembayaran, riwayat; buang draf dan batalkan.
 - Approver: bagian "Reimbursement" di halaman Persetujuan, menampilkan total, baris, dan tautan bukti.
-- Keuangan/HC: `/admin/reimbursements` — register berhalaman dengan filter status, kategori, typeahead pengaju, dan rentang tanggal; ringkasan per kategori; unduh CSV; detail dengan bukti (tanda bukti ganda), formulir verifikasi per baris, tolak, catat pembayaran. Pemegang `reimbursements.read` saja tidak melihat tombol tindakan.
+- Keuangan/HC: `/admin/reimbursements` — register berhalaman dengan filter status, kategori, typeahead pengaju, dan rentang tanggal; ringkasan per kategori; unduh CSV; detail sebagai pop-up lebar (`?klaim=<id>`, di samping parameter halaman dan filter) (aturan app-shell "Detail views open as a pop-up", 2026-11-13) dengan bukti (tanda bukti ganda), formulir verifikasi per baris, tolak, catat pembayaran. Pemegang `reimbursements.read` saja tidak melihat tombol tindakan.
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga layar.
 

@@ -1,6 +1,7 @@
 import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { EmployeeDocumentsPanel } from "@/components/employee-documents/EmployeeDocumentsPanel";
 import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
 import { FamilyAddressPanel } from "@/components/employment/FamilyAddressPanel";
@@ -150,9 +151,18 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // EMP-011: the document worklist links straight to ?tab=dokumen.
-  const [tab, setTab] = useState<EmployeeDetailTab>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "dokumen" ? "dokumen" : "ringkasan");
+  // EMP-011: the document worklist links straight to ?tab=dokumen. The open tab stays in the URL so a
+  // link to a pop-up inside a tab (for example `?tab=pendidikan&pendidikan=<id>`) opens that tab too.
+  const [tab, setTab] = useState<EmployeeDetailTab>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return TABS.find((entry) => entry.key === requested)?.key ?? "ringkasan";
+  });
+  const selectTab = (next: EmployeeDetailTab) => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState(window.history.state, "", url);
+  };
   const [canReadEmployment, setCanReadEmployment] = useState(false);
   const [canManageEmployment, setCanManageEmployment] = useState(false);
   const [canReadProfile, setCanReadProfile] = useState(false);
@@ -163,7 +173,11 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
   const [timelineView, setTimelineView] = useState<EmploymentView<EmploymentTimelineItem[]>>({ kind: "loading" });
-  const [linkingAction, setLinkingAction] = useState<EmploymentTimelineItem | null>(null);
+  // "Tautkan dokumen" opens as a pop-up kept in the URL (`?tautkan=<actionId>`).
+  const [linkingActionId, openLinking, closeLinking] = useDialogParam("tautkan");
+  const linkingAction = linkingActionId && timelineView.kind === "ready"
+    ? timelineView.data.find((item) => item.id === linkingActionId) ?? null
+    : null;
 
   useEffect(() => {
     let mounted = true;
@@ -382,7 +396,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         canReadEmployment={canReadEmployment}
         canReadProfile={canReadProfile}
         canReadDocuments={canReadDocuments}
-        onSelect={setTab}
+        onSelect={selectTab}
       />
 
       {tab === "dokumen" ? (
@@ -438,29 +452,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           timeline={timelineView}
           onLinkDocument={
             canManageEmployment && !outsideHcis && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
-              ? setLinkingAction
+              ? (item) => openLinking(item.id)
               : undefined
-          }
-          linkForm={
-            linkingAction
-              ? {
-                  actionId: linkingAction.id,
-                  node: (
-                    <LinkDocumentForm
-                      employeeId={employeeId}
-                      actionId={linkingAction.id}
-                      actionLabel={ACTION_LABEL[linkingAction.actionType] ?? linkingAction.actionType}
-                      onClose={() => setLinkingAction(null)}
-                      onLinked={(message) => {
-                        setLinkingAction(null);
-                        setNotice(message);
-                        setTimelineView({ kind: "loading" });
-                        setEmploymentView(null);
-                      }}
-                    />
-                  ),
-                }
-              : null
           }
           onEndAdditional={
             canManageEmployment && !outsideHcis && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
@@ -483,6 +476,28 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             ) : null
           }
         />
+      ) : null}
+      {/* "Tautkan dokumen" opens over the timeline; the row and its button stay where they are. */}
+      {tab === "penempatan" && linkingAction && canManageEmployment && !outsideHcis
+        && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE" ? (
+        <DetailDialog
+          title="Tautkan dokumen dasar"
+          description={ACTION_LABEL[linkingAction.actionType] ?? linkingAction.actionType}
+          onClose={closeLinking}
+        >
+          <LinkDocumentForm
+            employeeId={employeeId}
+            actionId={linkingAction.id}
+            actionLabel={ACTION_LABEL[linkingAction.actionType] ?? linkingAction.actionType}
+            onClose={closeLinking}
+            onLinked={(message) => {
+              closeLinking();
+              setNotice(message);
+              setTimelineView({ kind: "loading" });
+              setEmploymentView(null);
+            }}
+          />
+        </DetailDialog>
       ) : null}
 
       {tab === "ringkasan" ? (<>

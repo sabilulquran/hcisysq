@@ -2,10 +2,11 @@
 // validation, rater assignment, and per-employee history. Spec: docs/domain/performance-review.md.
 // The API authorizes every call and computes every score and predicate.
 
-import { Loader2, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { ReviewDetailPanel } from "@/components/performance/ReviewDetailPanel";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -66,7 +67,10 @@ export function AdminPerformancePage() {
   const [cyclePage, setCyclePage] = useState(1);
   const [cycleStatus, setCycleStatus] = useState<CycleStatus | "">("");
   const [cycle, setCycle] = useState<CycleDetail | null>(null);
-  const [creating, setCreating] = useState(false);
+  // "Siklus baru" and one review open as pop-ups (`?siklus=baru`, `?penilaian=<id>`); the chosen
+  // cycle stays the page's workspace.
+  const [creatingParam, openCreating, closeCreating] = useDialogParam("siklus");
+  const [reviewId, openReview, closeReview] = useDialogParam("penilaian");
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -75,6 +79,7 @@ export function AdminPerformancePage() {
   const canManage = hasPermission(session, "performance.manage");
   // The employee picker reads the employee register, which performance.* alone does not open.
   const canSearchEmployees = hasPermission(session, "employees.manage");
+  const creating = creatingParam === "baru" && canManage;
 
   const loadCycles = async () => {
     setLoading(true);
@@ -94,11 +99,19 @@ export function AdminPerformancePage() {
   const openCycleDetail = async (id: string) => {
     try {
       setCycle(await getCycle(id));
-      setCreating(false);
     } catch (cause) {
       setError(message(cause, "Siklus tidak dapat dibuka."));
     }
   };
+
+  // A link to one review opens its cycle as the workspace first, so the pop-up has its context.
+  useEffect(() => {
+    if (!reviewId || cycle) return;
+    void getAdminReview(reviewId).then((found) => openCycleDetail(found.cycleId)).catch((cause: unknown) => {
+      setError(message(cause, "Penilaian tidak dapat dibuka."));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewId]);
 
   useEffect(() => {
     void loadCycles();
@@ -127,6 +140,14 @@ export function AdminPerformancePage() {
     }
   };
 
+  // Shown inside an open pop-up too, so the result of an action there is not hidden behind it.
+  const banners = (
+    <>
+      {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+    </>
+  );
+
   return (
     <AdminShell active="services" title="Penilaian Kinerja" description="Siklus penilaian, rubrik, pengesahan hasil, dan rekap predikat.">
       {error ? <div className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
@@ -144,7 +165,7 @@ export function AdminPerformancePage() {
                 </select>
               </label>
               {canManage ? (
-                <button type="button" className={`${secondary} inline-flex w-full items-center justify-center gap-2`} onClick={() => { setCreating(true); setCycle(null); }}>
+                <button type="button" className={`${secondary} inline-flex w-full items-center justify-center gap-2`} onClick={() => { setNotice(null); openCreating("baru"); }}>
                   <Plus className="h-4 w-4" aria-hidden="true" /> Siklus baru
                 </button>
               ) : null}
@@ -175,35 +196,37 @@ export function AdminPerformancePage() {
           </section>
 
           <div className="min-w-0 space-y-6">
-            {creating && canManage ? (
-              <CycleForm busy={busy} onCancel={() => setCreating(false)} onSubmit={(input) => void run(async () => {
-                const created = await createCycle(input);
-                setCreating(false);
-                await openCycleDetail(created.id);
-                return "Siklus draf dibuat. Atur rubrik dan tambahkan peserta sebelum membuka siklus.";
-              })} />
-            ) : cycle ? (
-              <CycleWorkspace key={cycle.id} cycle={cycle} canManage={canManage} canSearchEmployees={canSearchEmployees} busy={busy} run={run} />
+            {cycle ? (
+              <CycleWorkspace key={cycle.id} cycle={cycle} canManage={canManage} canSearchEmployees={canSearchEmployees} busy={busy} run={run}
+                reviewId={reviewId} onOpenReview={(id) => { setNotice(null); openReview(id); }} onCloseReview={closeReview} banners={banners} />
             ) : (
               <p className={`${card} p-5 text-sm text-muted-foreground`}>Pilih siklus untuk melihat rekap dan penilaiannya.</p>
             )}
           </div>
         </div>
       )}
+
+      {creating && !forbidden ? (
+        <DetailDialog title="Siklus penilaian baru" onClose={closeCreating}>
+          {banners}
+          <CycleForm busy={busy} onSubmit={(input) => void run(async () => {
+            const created = await createCycle(input);
+            closeCreating();
+            await openCycleDetail(created.id);
+            return "Siklus draf dibuat. Atur rubrik dan tambahkan peserta sebelum membuka siklus.";
+          })} />
+        </DetailDialog>
+      ) : null}
     </AdminShell>
   );
 }
 
-function CycleForm({ busy, onSubmit, onCancel }: { busy: boolean; onSubmit: (input: CycleInput) => void; onCancel: () => void }) {
+function CycleForm({ busy, onSubmit }: { busy: boolean; onSubmit: (input: CycleInput) => void }) {
   const [form, setForm] = useState<CycleInput>(monthlyDefaults);
   const update = (patch: Partial<CycleInput>) => setForm((current) => ({ ...current, ...patch }));
   return (
-    <form className={`${card} p-5`} onSubmit={(event) => { event.preventDefault(); onSubmit({ ...form, name: form.name.trim() }); }}>
-      <div className="flex items-start justify-between">
-        <h2 className="text-sm font-bold text-brand-heading">Siklus penilaian baru</h2>
-        <button type="button" aria-label="Tutup" onClick={onCancel} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
+    <form onSubmit={(event) => { event.preventDefault(); onSubmit({ ...form, name: form.name.trim() }); }}>
+      <p className="text-xs text-muted-foreground">
         Bulanan memakai satu bulan kalender penuh; tahunan memakai satu tahun ajaran (1 Juli–30 Juni). Rubrik bawaan dipakai dan dapat diubah selama draf.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -233,12 +256,18 @@ function CycleForm({ busy, onSubmit, onCancel }: { busy: boolean; onSubmit: (inp
   );
 }
 
-function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run }: {
+function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run, reviewId, onOpenReview, onCloseReview, banners }: {
   cycle: CycleDetail;
   canManage: boolean;
   canSearchEmployees: boolean;
   busy: boolean;
   run: (action: () => Promise<string>) => Promise<void>;
+  /** The review open in the pop-up (`?penilaian=<id>`). */
+  reviewId: string | null;
+  onOpenReview: (id: string) => void;
+  onCloseReview: () => void;
+  /** The page's error and notice, repeated inside the pop-up. */
+  banners: ReactNode;
 }) {
   const [items, setItems] = useState<ReviewSummary[]>([]);
   const [paging, setPaging] = useState<Pagination | null>(null);
@@ -250,6 +279,7 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run }: {
   const [debounced, setDebounced] = useState("");
   const [participant, setParticipant] = useState<PickedEmployee | null>(null);
   const [review, setReview] = useState<ReviewDetail | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const editable = cycle.status === "DRAFT" || cycle.status === "OPEN";
@@ -281,10 +311,17 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run }: {
   const openReview = async (id: string) => {
     try {
       setReview(await getAdminReview(id));
+      setReviewError(null);
     } catch (cause) {
-      setListError(message(cause, "Penilaian tidak dapat dibuka."));
+      setReviewError(message(cause, "Penilaian tidak dapat dibuka."));
     }
   };
+
+  useEffect(() => {
+    setReview(null);
+    setReviewError(null);
+    if (reviewId) void openReview(reviewId);
+  }, [reviewId]);
 
   /** Review actions reload the review itself as well as the cycle. */
   const act = (action: () => Promise<string>) => void run(async () => {
@@ -413,10 +450,10 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run }: {
               </thead>
               <tbody className="divide-y divide-border/70">
                 {items.map((item) => (
-                  <tr key={item.id} onClick={() => void openReview(item.id)}
-                    className={`cursor-pointer hover:bg-muted/50 ${review?.id === item.id ? "bg-muted/60" : ""}`}>
+                  <tr key={item.id} onClick={() => onOpenReview(item.id)}
+                    className={`cursor-pointer hover:bg-muted/50 ${reviewId === item.id ? "bg-muted/60" : ""}`}>
                     <td className="px-5 py-2">
-                      <button type="button" className="text-left font-semibold text-brand-heading" onClick={(event) => { event.stopPropagation(); void openReview(item.id); }}>
+                      <button type="button" className="text-left font-semibold text-brand-heading" onClick={(event) => { event.stopPropagation(); onOpenReview(item.id); }}>
                         {item.employeeName}
                       </button>
                       <span className="block text-xs text-muted-foreground">{item.employeeNumber}{item.unitName ? ` · ${item.unitName}` : ""}</span>
@@ -438,46 +475,52 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run }: {
         ) : null}
       </section>
 
-      {review ? (
-        <section className={`${card} p-5`}>
-          <div className="flex justify-end">
-            <button type="button" aria-label="Tutup detail" onClick={() => setReview(null)} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-          </div>
-          <ReviewDetailPanel
-            review={review}
-            form={canManage && review.allowedActions.includes("assign-rater") && canSearchEmployees ? (
-              <RaterPicker key={review.id} busy={busy} onAssign={(rater, reason) => act(async () => {
-                await assignRater(review.id, rater.id, reason);
-                return `${rater.fullName} ditunjuk sebagai penilai.`;
-              })} />
-            ) : null}
-            actions={canManage ? (
-              <>
-                {review.allowedActions.includes("finalize") ? (
-                  <button type="button" disabled={busy} className={primary} onClick={() => act(async () => {
-                    await finalizeReview(review.id);
-                    return `Penilaian ${review.employeeName} disahkan.`;
-                  })}>Sahkan</button>
+      {reviewId ? (
+        <DetailDialog wide title="Detail penilaian" description={review ? `${review.employeeName} · ${review.cycleName}` : undefined} onClose={onCloseReview}>
+          {banners}
+          {reviewError ? (
+            <p className="text-sm text-danger-ink">{reviewError}</p>
+          ) : review?.id === reviewId ? (
+            <>
+              <ReviewDetailPanel
+                review={review}
+                form={canManage && review.allowedActions.includes("assign-rater") && canSearchEmployees ? (
+                  <RaterPicker key={review.id} busy={busy} onAssign={(rater, reason) => act(async () => {
+                    await assignRater(review.id, rater.id, reason);
+                    return `${rater.fullName} ditunjuk sebagai penilai.`;
+                  })} />
                 ) : null}
-                {review.allowedActions.includes("return") ? (
-                  <button type="button" disabled={busy} className={secondary} onClick={() => {
-                    const reason = window.prompt("Alasan mengembalikan ke penilai (minimal 10 karakter)");
-                    if (!reason || reason.trim().length < 10) return;
-                    act(async () => { await returnReview(review.id, reason.trim()); return "Penilaian dikembalikan ke penilai."; });
-                  }}>Kembalikan ke penilai</button>
+                actions={canManage ? (
+                  <>
+                    {review.allowedActions.includes("finalize") ? (
+                      <button type="button" disabled={busy} className={primary} onClick={() => act(async () => {
+                        await finalizeReview(review.id);
+                        return `Penilaian ${review.employeeName} disahkan.`;
+                      })}>Sahkan</button>
+                    ) : null}
+                    {review.allowedActions.includes("return") ? (
+                      <button type="button" disabled={busy} className={secondary} onClick={() => {
+                        const reason = window.prompt("Alasan mengembalikan ke penilai (minimal 10 karakter)");
+                        if (!reason || reason.trim().length < 10) return;
+                        act(async () => { await returnReview(review.id, reason.trim()); return "Penilaian dikembalikan ke penilai."; });
+                      }}>Kembalikan ke penilai</button>
+                    ) : null}
+                    {review.allowedActions.includes("remove") ? (
+                      <button type="button" disabled={busy} className={`${danger} inline-flex items-center gap-1`} onClick={() => {
+                        const reason = window.prompt("Alasan mengeluarkan pegawai dari siklus (minimal 5 karakter)");
+                        if (!reason || reason.trim().length < 5) return;
+                        act(async () => { await removeReview(review.id, reason.trim()); return "Pegawai dikeluarkan dari siklus."; });
+                      }}><Trash2 className="h-4 w-4" aria-hidden="true" />Keluarkan</button>
+                    ) : null}
+                  </>
                 ) : null}
-                {review.allowedActions.includes("remove") ? (
-                  <button type="button" disabled={busy} className={`${danger} inline-flex items-center gap-1`} onClick={() => {
-                    const reason = window.prompt("Alasan mengeluarkan pegawai dari siklus (minimal 5 karakter)");
-                    if (!reason || reason.trim().length < 5) return;
-                    act(async () => { await removeReview(review.id, reason.trim()); return "Pegawai dikeluarkan dari siklus."; });
-                  }}><Trash2 className="h-4 w-4" aria-hidden="true" />Keluarkan</button>
-                ) : null}
-              </>
-            ) : null}
-          />
-          <EmployeeHistory key={review.employeeId} employeeId={review.employeeId} />
-        </section>
+              />
+              <EmployeeHistory key={review.employeeId} employeeId={review.employeeId} />
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat penilaian...</div>
+          )}
+        </DetailDialog>
       ) : null}
     </>
   );

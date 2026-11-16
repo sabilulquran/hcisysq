@@ -5,6 +5,8 @@
 import { Download, FileSignature, Lock, Paperclip, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { replaceDialogParam } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
 import { EmploymentStateNotice } from "@/components/employment/EmploymentPanels";
 import {
@@ -76,7 +78,10 @@ export function DecisionDocumentRegister({
   const [year, setYear] = useState("");
   const [type, setType] = useState("");
   const [page, setPage] = useState(1);
+  // The open document, or the "Catat" form, is a pop-up kept in the URL: `?dokumen=<id>` or `?dokumen=baru`.
+  const [documentParam, openDocument, closeDocument] = useDialogParam("dokumen");
   const [selected, setSelected] = useState<DecisionDocumentDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [form, setForm] = useState<{ mode: "create" | "edit" | "correction"; draft: Draft } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -108,8 +113,6 @@ export function DecisionDocumentRegister({
 
   function switchKind(next: DecisionDocumentKind) {
     if (next === kind) return;
-    setSelected(null);
-    setForm(null);
     setType("");
     setPage(1);
     onKindChange(next);
@@ -117,14 +120,41 @@ export function DecisionDocumentRegister({
 
   async function openDetail(documentId: string) {
     setForm(null);
-    setNotice(null);
+    setDetailError(null);
     try {
       setSelected(await getDecisionDocument(documentId));
     } catch (cause) {
       const failed = viewFromError(cause);
-      setNotice(failed.kind === "error" ? failed.message : "Detail dokumen tidak dapat dimuat.");
+      setDetailError(failed.kind === "error" ? failed.message : "Detail dokumen tidak dapat dimuat.");
     }
   }
+
+  // The pop-up follows the URL: a document id loads its detail, `baru` starts the "Catat" form.
+  useEffect(() => {
+    setFormError(null);
+    setDetailError(null);
+    if (!documentParam) {
+      setSelected(null);
+      setForm(null);
+      return;
+    }
+    if (documentParam === "baru") {
+      setSelected(null);
+      setForm({ mode: "create", draft: emptyDraft(kind) });
+      return;
+    }
+    let active = true;
+    setForm(null);
+    setSelected((current) => (current?.id === documentParam ? current : null));
+    getDecisionDocument(documentParam)
+      .then((document) => { if (active) setSelected(document); })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        const failed = viewFromError(cause);
+        setDetailError(failed.kind === "error" ? failed.message : "Detail dokumen tidak dapat dimuat.");
+      });
+    return () => { active = false; };
+  }, [documentParam, kind]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -136,7 +166,7 @@ export function DecisionDocumentRegister({
       if (form.mode === "create") {
         const created = await createDecisionDocument(payload);
         setNotice(`Dokumen ${created.documentNumber} tercatat.`);
-        await openDetail(created.id);
+        replaceDialogParam("dokumen", created.id);
       } else if (form.mode === "edit" && selected) {
         await updateDecisionDocument(selected.id, { ...payload, expectedUpdatedAt: selected.updatedAt });
         setNotice("Dokumen diperbarui.");
@@ -239,10 +269,8 @@ export function DecisionDocumentRegister({
               type="button"
               className={quietButton}
               onClick={() => {
-                setSelected(null);
-                setFormError(null);
                 setNotice(null);
-                setForm({ mode: "create", draft: emptyDraft(kind) });
+                openDocument("baru");
               }}
             >
               <Plus className="mr-1 inline h-4 w-4" aria-hidden="true" />
@@ -251,18 +279,6 @@ export function DecisionDocumentRegister({
           ) : null}
         </form>
       </section>
-
-      {form ? (
-        <DocumentForm
-          mode={form.mode}
-          draft={form.draft}
-          busy={busy}
-          error={formError}
-          onChange={(draft) => setForm({ mode: form.mode, draft })}
-          onCancel={() => setForm(null)}
-          onSubmit={submit}
-        />
-      ) : null}
 
       <EmploymentStateNotice view={view} subject="daftar dokumen" />
 
@@ -305,7 +321,7 @@ export function DecisionDocumentRegister({
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(row.signedOn)}</td>
                     <td className="px-4 py-3 text-right">
-                      <button type="button" className="text-sm font-semibold text-brand-primary" onClick={() => void openDetail(row.id)}>
+                      <button type="button" className="text-sm font-semibold text-brand-primary" onClick={() => { setNotice(null); openDocument(row.id); }}>
                         Detail
                       </button>
                     </td>
@@ -320,22 +336,55 @@ export function DecisionDocumentRegister({
         )
       ) : null}
 
-      {selected ? (
-        <DocumentDetail
-          document={selected}
-          canManage={canManage}
-          canCorrect={canCorrect}
-          employeeHref={employeeHref}
-          onClose={() => setSelected(null)}
-          onFileChanged={() => void openDetail(selected.id)}
-          onEdit={() => {
-            setFormError(null);
-            setForm({ mode: selected.locked ? "correction" : "edit", draft: draftFrom(selected) });
-          }}
-        />
+      {documentParam ? (
+        <DetailDialog
+          title={form ? documentFormTitle(form.mode, form.draft) : selected ? `Dokumen ${selected.documentNumber}` : "Detail dokumen"}
+          onClose={closeDocument}
+          wide
+        >
+          {notice && !form ? (
+            <p role="status" className="mb-4 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{notice}</p>
+          ) : null}
+          {form && (form.mode === "create" ? canManage : selected) ? (
+            <DocumentForm
+              bare
+              mode={form.mode}
+              draft={form.draft}
+              busy={busy}
+              error={formError}
+              onChange={(draft) => setForm({ mode: form.mode, draft })}
+              onCancel={() => (form.mode === "create" ? closeDocument() : setForm(null))}
+              onSubmit={submit}
+            />
+          ) : selected ? (
+            <DocumentDetail
+              bare
+              document={selected}
+              canManage={canManage}
+              canCorrect={canCorrect}
+              employeeHref={employeeHref}
+              onFileChanged={() => void openDetail(selected.id)}
+              onEdit={() => {
+                setFormError(null);
+                setForm({ mode: selected.locked ? "correction" : "edit", draft: draftFrom(selected) });
+              }}
+            />
+          ) : detailError ? (
+            <p role="alert" className="rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{detailError}</p>
+          ) : documentParam === "baru" ? (
+            <p className="text-sm text-muted-foreground">Mencatat dokumen membutuhkan izin mengelola kepegawaian.</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Memuat dokumen...</p>
+          )}
+        </DetailDialog>
       ) : null}
     </div>
   );
+}
+
+function documentFormTitle(mode: "create" | "edit" | "correction", draft: Draft) {
+  if (mode === "create") return draft.documentKind === "PERJANJIAN_KERJA" ? "Catat Perjanjian Kerja" : "Catat Surat Keputusan";
+  return mode === "edit" ? "Ubah dokumen" : "Koreksi dokumen terkunci";
 }
 
 export function DocumentForm({
@@ -346,7 +395,10 @@ export function DocumentForm({
   onChange,
   onCancel,
   onSubmit,
+  bare = false,
 }: {
+  /** Inside a pop-up: no card, and the pop-up carries the heading. */
+  bare?: boolean;
   mode: "create" | "edit" | "correction";
   draft: Draft;
   busy: boolean;
@@ -357,18 +409,12 @@ export function DocumentForm({
 }) {
   const isPk = draft.documentKind === "PERJANJIAN_KERJA";
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
-  const title =
-    mode === "create"
-      ? isPk ? "Catat Perjanjian Kerja" : "Catat Surat Keputusan"
-      : mode === "edit"
-        ? "Ubah dokumen"
-        : "Koreksi dokumen terkunci";
 
   return (
-    <form onSubmit={onSubmit} className={card}>
-      <h2 className="text-base font-bold text-brand-heading">{title}</h2>
+    <form onSubmit={onSubmit} className={bare ? undefined : card}>
+      {bare ? null : <h2 className="text-base font-bold text-brand-heading">{documentFormTitle(mode, draft)}</h2>}
       {mode === "correction" ? (
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={`${bare ? "" : "mt-1 "}text-sm text-muted-foreground`}>
           Dokumen sudah dipakai pada tindakan kepegawaian. Nilai sebelumnya disimpan bersama alasan koreksi.
         </p>
       ) : null}
@@ -476,19 +522,23 @@ export function DocumentDetail({
   onClose,
   onEdit,
   onFileChanged,
+  bare = false,
 }: {
   document: DecisionDocumentDetail;
   canManage: boolean;
   canCorrect: boolean;
   employeeHref: (employeeId: string) => string;
-  onClose: () => void;
+  /** Shows a "Tutup" button; a pop-up has its own close button instead. */
+  onClose?: () => void;
+  /** Inside a pop-up: no card around the detail. */
+  bare?: boolean;
   onEdit: () => void;
   onFileChanged: () => void;
 }) {
   const isPk = document.documentKind === "PERJANJIAN_KERJA";
   const mayWrite = document.locked ? canCorrect : canManage;
   return (
-    <section className={card} aria-label={`Detail dokumen ${document.documentNumber}`}>
+    <section className={bare ? undefined : card} aria-label={`Detail dokumen ${document.documentNumber}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-brand-heading">
@@ -507,7 +557,7 @@ export function DocumentDetail({
               {document.locked ? "Koreksi" : "Ubah"}
             </button>
           ) : null}
-          <button type="button" className={quietButton} onClick={onClose}>Tutup</button>
+          {onClose ? <button type="button" className={quietButton} onClick={onClose}>Tutup</button> : null}
         </div>
       </div>
 

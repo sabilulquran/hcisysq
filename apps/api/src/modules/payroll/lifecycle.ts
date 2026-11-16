@@ -47,6 +47,7 @@ export const PERIOD_READ_PERMISSIONS = [
   "payroll.reopen.approve",
   "payroll.payments.confirm",
   "payroll.reports.read.organization",
+  "payroll.results.read.organization",
 ] as const;
 
 export function mayReadPeriods(actor: TransitionActor): boolean {

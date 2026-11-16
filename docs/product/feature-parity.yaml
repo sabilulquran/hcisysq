@@ -754,7 +754,9 @@ features:
       inputs incl. attendance-derived inputs, the pure engine, the period lifecycle with
       director approval, reopen and revision, reports (payroll report, variance, transfer list
       CSV as the payment handoff to Finance, PPh21 TER report #323), publication of period
-      payslips through payslips.publish, and the initial-load CLI. Out of v1 by the spec (§1.2):
+      payslips through payslips.publish, and the initial-load CLI. Per-person figures (results,
+      inputs, variance, PPh21) have their own read permission payroll.results.read.organization
+      since 2026-11-17 (spec §7.3, migration 0151), so payroll.periods.manage alone opens none. Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.

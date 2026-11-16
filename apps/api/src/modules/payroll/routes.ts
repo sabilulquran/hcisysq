@@ -150,21 +150,37 @@ const NON_NEGATIVE_INPUTS: readonly string[] = [
 /** Report readers see a period's figures only from this state onwards (section 6). */
 const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
 
-/** Who may read the PPh21 report (specification section 7.2, AUTH-011 manifest). */
-const PPH21_READER_PERMISSIONS: readonly string[] = [
+/**
+ * The two permissions whose holders build a period's per-person figures while it is still being
+ * worked on, so they see them before approval. Not payroll.periods.manage: the module
+ * administrator role holds it to run the lifecycle, and running a period is no licence to read
+ * each person's pay (specification section 7.3).
+ */
+const FIGURE_BUILDER_PERMISSIONS: readonly string[] = ["payroll.calculate", "payroll.inputs.manage"];
+
+/**
+ * Who may read per-person figures: results, period inputs, the period comparison and the PPh21
+ * report (specification section 7.3, AUTH-011 manifest). payroll.reports.read.organization alone
+ * opens the aggregate report only.
+ */
+const PER_PERSON_READER_PERMISSIONS: readonly string[] = [
+  "payroll.results.read.organization",
+  ...FIGURE_BUILDER_PERMISSIONS,
+];
+
+/** Who may read the aggregate period report (section 7). */
+const REPORT_READER_PERMISSIONS: readonly string[] = [
   "payroll.reports.read.organization",
-  "payroll.calculate",
-  "payroll.inputs.manage",
+  ...PER_PERSON_READER_PERMISSIONS,
 ];
 
-const RUNNER_PERMISSIONS: readonly string[] = [
-  "payroll.periods.manage",
-  "payroll.calculate",
-  "payroll.inputs.manage",
-];
+function holdsAny(actor: TransitionActor, permissions: readonly string[]): boolean {
+  return permissions.some((permission) => actor.organizationPermissions.includes(permission));
+}
 
-function runsPeriods(actor: TransitionActor): boolean {
-  return RUNNER_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
+/** Whether the actor sees a period's figures before it is approved (section 6). */
+function buildsFigures(actor: TransitionActor): boolean {
+  return holdsAny(actor, FIGURE_BUILDER_PERMISSIONS);
 }
 
 const REASON_REQUIRED: readonly string[] = REASON_REQUIRED_INPUT_KEYS;
@@ -345,6 +361,13 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       // reason: a screen must not re-derive either from a state of its own.
       availableOperations: availableOperations(snapshot, actor),
       reasonRequiredActions: reasonRequiredActions(),
+      // Which figure panels this actor may open at all. The state gate still applies per request;
+      // this only lets a screen hide a panel that would always answer 403 (section 7.3).
+      readAccess: {
+        report: holdsAny(actor, REPORT_READER_PERMISSIONS),
+        perPerson: holdsAny(actor, PER_PERSON_READER_PERMISSIONS),
+        transfers: actor.organizationPermissions.includes("payroll.transfers.read.organization"),
+      },
       // Which period inputs are typed by hand, and which of those the server
       // will refuse without a reason or a decision reference. A screen must not
       // keep its own copy of a payroll rule.
@@ -455,7 +478,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/inputs", async (request, reply) => {
-    const actor = await requireReader(request, reply);
+    // One input row is one person's rapel or penyesuaian: a per-person figure (section 7.3).
+    const actor = await requireAnyPermission(request, reply, PER_PERSON_READER_PERMISSIONS);
     if (!actor) return;
     const params = periodParams.safeParse(request.params);
     if (!params.success) {
@@ -469,7 +493,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // it is as sensitive as the result it feeds. Same gate as the results list
     // (section 6): before approval only the people running the period see the
     // figures they are still working on.
-    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+    if (!APPROVED_ONWARDS.includes(period.state) && !buildsFigures(actor)) {
       return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Input periode baru dapat dibaca setelah periode disahkan.",
@@ -640,7 +664,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/results", async (request, reply) => {
-    const actor = await requireReader(request, reply);
+    // Per-person pay. Reading or deciding on a period does not open it (section 7.3).
+    const actor = await requireAnyPermission(request, reply, PER_PERSON_READER_PERMISSIONS);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -655,7 +680,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // Section 6: the payroll report becomes visible to report readers only once
     // the period is approved. Before that, only the people running the period
     // see the figures they are still working on.
-    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+    if (!APPROVED_ONWARDS.includes(period.state) && !buildsFigures(actor)) {
       return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Hasil periode baru dapat dibaca setelah periode disahkan.",
@@ -683,11 +708,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   app.get("/payroll/periods/:periodId/report", async (request, reply) => {
     // Section 7 names payroll.reports.read.organization for this report. Holding
     // payroll.approve or payroll.payments.confirm is a decision, not a licence to
-    // read the figures; the people running the period see it throughout.
-    const actor = await requireAnyPermission(request, reply, [
-      "payroll.reports.read.organization",
-      ...RUNNER_PERMISSIONS,
-    ]);
+    // read the figures, and neither is payroll.periods.manage alone (section 7.3);
+    // the people building the figures see it throughout.
+    const actor = await requireAnyPermission(request, reply, REPORT_READER_PERMISSIONS);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -698,7 +721,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
-    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+    if (!APPROVED_ONWARDS.includes(period.state) && !buildsFigures(actor)) {
       return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Laporan periode baru dapat dibaca setelah periode disahkan.",
@@ -753,11 +776,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/pph21", async (request, reply) => {
-    // Report readers, and the two runner permissions whose holders already see
-    // per-person figures while calculating. payroll.periods.manage alone is not
-    // enough: the module administrator role holds it to run the lifecycle, and
-    // that is no licence to read each person's gross and tax (section 7.2).
-    const actor = await requireAnyPermission(request, reply, PPH21_READER_PERMISSIONS);
+    // Per-person readers only (section 7.3): each row is one person's gross and
+    // tax. payroll.periods.manage alone is not enough, and since migration 0151
+    // neither is the aggregate payroll.reports.read.organization.
+    const actor = await requireAnyPermission(request, reply, PER_PERSON_READER_PERMISSIONS);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -828,10 +850,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/variance", async (request, reply) => {
-    const actor = await requireAnyPermission(request, reply, [
-      "payroll.reports.read.organization",
-      ...RUNNER_PERMISSIONS,
-    ]);
+    // Names a person and the amounts that moved for them: a per-person figure (section 7.3).
+    const actor = await requireAnyPermission(request, reply, PER_PERSON_READER_PERMISSIONS);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -842,7 +862,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
-    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+    if (!APPROVED_ONWARDS.includes(period.state) && !buildsFigures(actor)) {
       return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Perbandingan periode baru dapat dibaca setelah periode disahkan.",

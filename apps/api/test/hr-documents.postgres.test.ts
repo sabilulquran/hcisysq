@@ -7,7 +7,9 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { ApiConfig } from "../src/config/env.js";
+import { incomeWindow } from "../src/modules/documents/income.js";
 import { registerDocumentRoutes } from "../src/modules/documents/routes.js";
+import { jakartaDate } from "../src/modules/documents/service.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -291,7 +293,7 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(response.json().code).toBe("DOCUMENT_EMPLOYMENT_STATE");
   });
 
-  it("DOC-001-H/I: the snapshot carries no salary facts and Package 2 types cannot be requested", async () => {
+  it("DOC-001-H: a work certificate's snapshot carries no salary facts", async () => {
     await addSigner();
     const issued = await approveAndIssue(await submitRequest());
     const snapshot = issued.json() as { id: string };
@@ -302,13 +304,284 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(keys).not.toContain("salary");
     expect(keys).not.toContain("bankAccount");
     expect(keys).not.toContain("address");
+    expect(keys).not.toContain("income");
+  });
 
-    const unavailable = await app.inject({
+  // ------------------------------------------------- Package 2: KETERANGAN_PENGHASILAN
+
+  /** Synthetic published slips through an import batch, as PAY-001/PAY-002 writes them. */
+  async function insertSlip(
+    owner: string,
+    period: string,
+    lines: Array<{ label: string; value: string; section?: string }>,
+    options: { published?: boolean; supersededBy?: string; id?: string } = {},
+  ) {
+    const batchId = randomUUID();
+    await client.query(
+      `INSERT INTO payslip_import_batches(id, source_filename, checksum_sha256, status, created_by_account_id)
+       VALUES ($1,'sintetis.csv',$2,'published',$3)`,
+      [batchId, batchId.replace(/-/g, "").padEnd(64, "0"), accountId],
+    );
+    const id = options.id ?? randomUUID();
+    await client.query(
+      `INSERT INTO payslips(id, employee_id, period, lines, source_batch_id, published_at, superseded_by_id)
+       VALUES ($1,$2,$3::date,$4::jsonb,$5,$6,$7)`,
+      [id, owner, `${period}-01`, JSON.stringify(lines), batchId,
+        options.published === false ? null : new Date(), options.supersededBy ?? null],
+    );
+    return id;
+  }
+
+  function slipLines(gross: string, net: string) {
+    return [
+      { label: "Gaji Pokok", value: "1000000", section: "income" },
+      { label: "Total Bruto Gaji", value: gross, section: "summary" },
+      { label: "Gaji Neto", value: net, section: "summary" },
+    ];
+  }
+
+  /** The three months before this Jakarta month, oldest first (D-22), and the month of issue. */
+  function windowMonths() {
+    const today = jakartaDate(new Date());
+    return { months: incomeWindow(today), current: today.slice(0, 7) };
+  }
+
+  /** Three official slips: (5.000.000 + 5.250.000 + 5.100.000) / 3 = 5.116.666,67 -> 5.116.667. */
+  async function seedOfficialSlips() {
+    const { months, current } = windowMonths();
+    const ids = [
+      await insertSlip(employeeId, months[0]!, slipLines("5.000.000", "4.500.000")),
+      // A PAY-003 slip names its lines differently and formats with Rp.
+      await insertSlip(employeeId, months[1]!, [
+        { label: "Total pendapatan", value: "Rp5.250.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp4.700.000", section: "summary" },
+        { label: "Nominal dibayar", value: "Rp2.350.000", section: "summary" },
+      ]),
+    ];
+    // Month three: an earlier slip superseded by its revision; only the revision counts.
+    const revisionId = randomUUID();
+    await insertSlip(employeeId, months[2]!, slipLines("9.999.999", "9.999.999"), { supersededBy: revisionId });
+    ids.push(await insertSlip(employeeId, months[2]!, slipLines("5100000", "4600001"), { id: revisionId }));
+    // Ignored: a draft, a slip of the month of issue, an older month, and another employee's slip.
+    await insertSlip(employeeId, current, slipLines("8888888", "8888888"));
+    await insertSlip(employeeId, incomeWindow(`${months[0]}-01`)[2]!, slipLines("7777777", "7777777"));
+    await insertSlip(otherEmployeeId, months[1]!, slipLines("6666666", "6666666"));
+    return { months, ids };
+  }
+
+  async function requestIncome() {
+    const response = await app.inject({
       method: "POST",
       url: "/documents/me/requests",
-      payload: { documentCode: "KETERANGAN_PENGHASILAN", purpose: "Keperluan pengajuan kredit" },
+      payload: { documentCode: "KETERANGAN_PENGHASILAN", purpose: "Pengajuan kredit rumah" },
     });
-    expect(unavailable.statusCode, unavailable.body).toBe(409);
+    expect(response.statusCode, response.body).toBe(201);
+    return response.json().id as string;
+  }
+
+  const AMOUNTS = ["5000000", "5250000", "5100000", "4500000", "4700000", "4600001", "5116667", "4600000",
+    "5.000.000", "5.250.000", "4.500.000"];
+
+  it("DOC-001-I: the income letter can be requested and freezes the official slip figures at issue", async () => {
+    await addSigner();
+    const types = await app.inject({ method: "GET", url: "/documents/me/types" });
+    expect(types.json().items).toContainEqual({ code: "KETERANGAN_PENGHASILAN", label: "Surat Keterangan Penghasilan" });
+
+    const { months, ids } = await seedOfficialSlips();
+    const issued = await approveAndIssue(await requestIncome());
+    expect(issued.statusCode, issued.body).toBe(201);
+    expect(issued.json().documentNumber).toMatch(/^\d{3}\/SKP\/YSQ\//);
+    expect(issued.body).not.toContain("5116667");
+    const id = issued.json().id as string;
+
+    const letter = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
+    expect(letter.statusCode, letter.body).toBe(200);
+    expect(letter.headers["cache-control"]).toBe("no-store");
+    expect(letter.json().contentSnapshot.income).toEqual({
+      months: [
+        { period: months[0], gross: "5000000", net: "4500000" },
+        { period: months[1], gross: "5250000", net: "4700000" },
+        { period: months[2], gross: "5100000", net: "4600001" },
+      ],
+      monthCount: 3,
+      averageGross: "5116667",
+      averageNet: "4600000",
+      windowFrom: months[0],
+      windowTo: months[2],
+      source: "PAYSLIP_PUBLISHED",
+    });
+    // D-15 still holds for everything else in the letter.
+    const keys = Object.keys(letter.json().contentSnapshot as Record<string, unknown>);
+    for (const forbidden of ["nik", "npwp", "bankAccount", "accountNumber", "address", "salary"]) expect(keys).not.toContain(forbidden);
+
+    // The audit trail and the notification carry ids, codes and periods, never an amount.
+    const audit = await client.query<{ eventType: string; reason: string | null; metadata: Record<string, unknown> }>(
+      `SELECT event_type AS "eventType", reason, metadata FROM hr_document_audit_events WHERE employee_id = $1`,
+      [employeeId],
+    );
+    const issuedEvent = audit.rows.find((row) => row.eventType === "doc.issued")!;
+    expect(issuedEvent.metadata).toEqual({
+      documentCode: "KETERANGAN_PENGHASILAN", documentNumber: issued.json().documentNumber,
+      payslipIds: ids, incomePeriods: months,
+    });
+    const notifications = await client.query<{ title: string; body: string; safeMetadata: unknown }>(
+      `SELECT title, body, safe_metadata AS "safeMetadata" FROM in_app_notifications WHERE recipient_account_id = $1`,
+      [accountId],
+    );
+    expect(notifications.rows.length).toBeGreaterThan(0);
+    const trail = JSON.stringify([audit.rows, notifications.rows]);
+    for (const amount of AMOUNTS) expect(trail, amount).not.toContain(amount);
+
+    // The list names the letter only (D-20).
+    const list = await app.inject({ method: "GET", url: "/documents/me/issued" });
+    for (const amount of AMOUNTS) expect(list.body, amount).not.toContain(amount);
+
+    // DOC-001-E: a later revision of a slip does not change the letter.
+    const revision = randomUUID();
+    await client.query(`UPDATE payslips SET superseded_by_id = $2 WHERE id = $1`, [ids[0], revision]);
+    await insertSlip(employeeId, months[0]!, slipLines("1000000", "900000"), { id: revision });
+    const again = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
+    expect(again.json().contentSnapshot.income.months[0]).toEqual({ period: months[0], gross: "5000000", net: "4500000" });
+  });
+
+  it("DOC-001-L: no official slip in the window refuses issue with 409, keeps APPROVED and uses no number", async () => {
+    await addSigner();
+    const { months, current } = windowMonths();
+    // Only slips that do not count: a draft inside the window and one for the month of issue.
+    await insertSlip(employeeId, months[1]!, slipLines("5000000", "4500000"), { published: false });
+    await insertSlip(employeeId, current, slipLines("5000000", "4500000"));
+    const requestId = await requestIncome();
+    const issued = await approveAndIssue(requestId);
+    expect(issued.statusCode, issued.body).toBe(409);
+    expect(issued.json().code).toBe("DOCUMENT_INCOME_UNAVAILABLE");
+    expect(issued.json().message).toContain(months[0]);
+    const row = await client.query<{ status: string }>(`SELECT status FROM hr_document_requests WHERE id = $1`, [requestId]);
+    expect(row.rows[0]?.status).toBe("APPROVED");
+    expect(await counterFor("SKP")).toBe(0);
+
+    // A slip whose figures cannot be read is refused too, naming the period, not an amount.
+    await insertSlip(employeeId, months[2]!, [{ label: "Total Bruto Gaji", value: "5000000" }]);
+    const unreadable = await app.inject({ method: "POST", url: `/admin/documents/requests/${requestId}/issue`, payload: {} });
+    expect(unreadable.statusCode, unreadable.body).toBe(409);
+    expect(unreadable.json().code).toBe("DOCUMENT_INCOME_UNREADABLE");
+    expect(unreadable.body).toContain(months[2]);
+    expect(unreadable.body).not.toContain("5000000");
+  });
+
+  it("DOC-001-L: HC issues an income letter directly only for an active employee", async () => {
+    await addSigner();
+    const { months } = windowMonths();
+    await insertSlip(otherEmployeeId, months[2]!, slipLines("3000000", "2800000"));
+    await client.query(`UPDATE employees SET status = 'resigned' WHERE id = $1`, [otherEmployeeId]);
+    const refused = await app.inject({
+      method: "POST",
+      url: "/admin/documents/issue",
+      payload: { employeeId: otherEmployeeId, documentCode: "KETERANGAN_PENGHASILAN", purpose: "Pengajuan kredit" },
+    });
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json().code).toBe("DOCUMENT_EMPLOYMENT_STATE");
+
+    await client.query(`UPDATE employees SET status = 'active' WHERE id = $1`, [otherEmployeeId]);
+    const direct = await app.inject({
+      method: "POST",
+      url: "/admin/documents/issue",
+      payload: { employeeId: otherEmployeeId, documentCode: "KETERANGAN_PENGHASILAN", purpose: "Pengajuan kredit" },
+    });
+    expect(direct.statusCode, direct.body).toBe(201);
+    const snapshot = await client.query<{ income: Record<string, unknown> }>(
+      `SELECT content_snapshot->'income' AS income FROM hr_issued_documents WHERE id = $1`, [direct.json().id],
+    );
+    expect(snapshot.rows[0]?.income).toMatchObject({ monthCount: 1, averageGross: "3000000", averageNet: "2800000" });
+  });
+
+  it("DOC-001-M: HC reads an issued letter by permission; income content needs documents.manage", async () => {
+    await addSigner();
+    await seedOfficialSlips();
+    const income = await approveAndIssue(await requestIncome());
+    expect(income.statusCode, income.body).toBe(201);
+    const work = await approveAndIssue(await submitRequest());
+    expect(work.statusCode, work.body).toBe(201);
+    const incomeId = income.json().id as string;
+    const workId = work.json().id as string;
+
+    // The employee themself reads their own income letter by ownership, with no permission (D-20).
+    permissions = [];
+    expect((await app.inject({ method: "GET", url: `/documents/me/issued/${incomeId}` })).statusCode).toBe(200);
+
+    // HC is another employee account; what it may read depends only on its permissions.
+    const hcAccount = randomUUID();
+    await client.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1,$2,$3,'EMPLOYEE','active')`,
+      [hcAccount, otherEmployeeId, `doc-hc-${hcAccount}@example.invalid`],
+    );
+    principal = { id: hcAccount, email: "hc@example.invalid", principalType: "EMPLOYEE" };
+    // Another employee's self route never serves the letter.
+    expect((await app.inject({ method: "GET", url: `/documents/me/issued/${incomeId}` })).statusCode).toBe(404);
+
+    // documents.read + documents.manage (human_capital_admin): the full letter, audited, no-store.
+    permissions = ["documents.read", "documents.manage"];
+    const full = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
+    expect(full.statusCode, full.body).toBe(200);
+    expect(full.headers["cache-control"]).toBe("no-store");
+    expect(full.json()).toMatchObject({ id: incomeId, documentCode: "KETERANGAN_PENGHASILAN", status: "ISSUED" });
+    expect(full.json().contentSnapshot.income.averageGross).toBe("5116667");
+    expect(full.json()).not.toHaveProperty("employeeId");
+    const opened = await client.query<{ actorAccountId: string; metadata: Record<string, unknown> }>(
+      `SELECT actor_account_id AS "actorAccountId", metadata FROM hr_document_audit_events
+        WHERE event_type = 'doc.opened' AND issued_document_id = $1 AND actor_account_id = $2`,
+      [incomeId, hcAccount],
+    );
+    expect(opened.rows).toEqual([{
+      actorAccountId: hcAccount,
+      metadata: { documentCode: "KETERANGAN_PENGHASILAN", documentNumber: income.json().documentNumber, surface: "admin" },
+    }]);
+
+    // documents.read alone (document_corrector): the register row, a work certificate, not the income letter.
+    permissions = ["documents.read", "documents.correct"];
+    const denied = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
+    expect(denied.statusCode, denied.body).toBe(403);
+    expect(denied.json().code).toBe("DOCUMENT_FORBIDDEN");
+    for (const amount of AMOUNTS) expect(denied.body).not.toContain(amount);
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${workId}` })).statusCode).toBe(200);
+    const register = await app.inject({ method: "GET", url: "/admin/documents/register?kind=CERTIFICATE" });
+    expect(register.statusCode, register.body).toBe(200);
+    expect(register.json().items.map((item: { id: string }) => item.id)).toContain(incomeId);
+    for (const amount of AMOUNTS) expect(register.body, amount).not.toContain(amount);
+    // ...and may still revoke it: revocation acts on the register, not the content (D-16).
+    const revoked = await app.inject({
+      method: "POST", url: `/admin/documents/issued/${incomeId}/revoke`, payload: { reason: "Uji pembatalan surat penghasilan" },
+    });
+    expect(revoked.statusCode, revoked.body).toBe(200);
+    // The refused read left no doc.opened; only the permitted one did.
+    const openings = await client.query(
+      `SELECT 1 FROM hr_document_audit_events WHERE event_type = 'doc.opened' AND actor_account_id = $1 AND issued_document_id = $2`,
+      [hcAccount, incomeId],
+    );
+    expect(openings.rowCount).toBe(1);
+
+    // documents.manage without documents.read does not open the route at all; nothing at all is 403.
+    permissions = ["documents.manage"];
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` })).statusCode).toBe(403);
+    permissions = [];
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${workId}` })).statusCode).toBe(403);
+
+    // A warning letter, a missing id and a malformed id all answer 404 to HC (D-13).
+    permissions = ["documents.read", "documents.manage", "documents.discipline.manage"];
+    const warning = await app.inject({
+      method: "POST",
+      url: "/admin/documents/disciplinary",
+      payload: {
+        employeeId, level: "SP1", subject: "Keterlambatan berulang",
+        narrative: "Uraian pelanggaran sintetis untuk pengujian.", effectiveDate: "2026-10-01",
+      },
+    });
+    expect(warning.statusCode, warning.body).toBe(201);
+    const warningDocument = await client.query<{ id: string }>(
+      `SELECT id FROM hr_issued_documents WHERE employee_id = $1 AND document_kind = 'DISCIPLINARY'`, [employeeId],
+    );
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${warningDocument.rows[0]!.id}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${randomUUID()}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/admin/documents/issued/not-a-uuid" })).statusCode).toBe(404);
   });
 
   it("DOC-002-A/H: reading or issuing a warning letter needs documents.discipline.manage", async () => {

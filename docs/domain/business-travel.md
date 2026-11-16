@@ -232,10 +232,10 @@ Aturan:
 - `business_trip_requests` unik pada `(employee_id, idempotency_key)`; `CHECK (end_on >= start_on)` dan `CHECK (end_on - start_on <= 29)`;
 - `business_trip_approval_steps` unik pada `(request_id, step_order)`, satu `pending` per pengajuan (indeks unik parsial);
 - `hr_issued_documents.document_kind` menerima `ASSIGNMENT`;
-- Paket 2 (migrasi `0151`): status hasil kehadiran menerima `business_trip`; kolom `source_business_trip_id` (FK ke `business_trip_requests`, indeks parsial);
+- Paket 2 (migrasi `0152`): status hasil kehadiran menerima `business_trip`; kolom `source_business_trip_id` (FK ke `business_trip_requests`, indeks parsial);
 - tidak ada endpoint hapus.
 
-Rollback migrasi ditulis sebagai komentar `-- Down:` di berkas migrasi. Untuk `0151`, mengembalikan CHECK status hasil hanya aman bila belum ada versi hasil berstatus `business_trip`; bila sudah ada, rollback kode cukup (build lama tidak menulis status baru dan membaca status asing sebagai "·").
+Rollback migrasi ditulis sebagai komentar `-- Down:` di berkas migrasi. Untuk `0152`, mengembalikan CHECK status hasil hanya aman bila belum ada versi hasil berstatus `business_trip`; bila sudah ada, rollback kode cukup (build lama tidak menulis status baru dan membaca status asing sebagai "·").
 
 ## 11. API
 

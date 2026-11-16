@@ -13,6 +13,8 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { JobClassificationPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
+  CLASSIFICATION_CODE_PATTERN,
+  GRADE_CODE_PATTERN,
   JOB_FAMILIES,
   JobClassificationError,
   amendClassification,
@@ -39,8 +41,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat
 
 // Codes are permanent (spec §2.6), so the shape is enforced here as well as in the schema:
 // a typo accepted today becomes a key stored verbatim in versioned payroll policy.
-const gradeCode = z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,31}$/, "Kode golongan harus huruf besar, angka, atau garis bawah.");
-const classificationCode = z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/, "Kode klasifikasi harus huruf besar, angka, atau garis bawah.");
+const gradeCode = z.string().trim().regex(GRADE_CODE_PATTERN, "Kode golongan harus huruf besar, angka, atau garis bawah.");
+const classificationCode = z.string().trim().regex(CLASSIFICATION_CODE_PATTERN, "Kode klasifikasi harus huruf besar, angka, atau garis bawah.");
 
 // z.coerce.boolean() is Boolean(string), so "false" would come through as true. The flag is
 // read from a query string, so it is parsed from the two words a caller can actually send.
@@ -90,7 +92,8 @@ const importBody = z.object({
   kind: z.enum(["CLASSIFICATION", "GRADE"]),
   csv: z.string().min(1).max(1_000_000),
   dryRun: z.boolean(),
-  fileName: z.string().trim().max(200).nullable().default(null),
+  // Audit metadata only: an over-long name is shortened, never a reason to refuse the file.
+  fileName: z.string().trim().transform((value) => value.slice(0, 200)).nullable().default(null),
 });
 const auditQuery = pageQuerySchema.extend({
   entityType: z.enum(["JOB_GRADE", "JOB_CLASSIFICATION"]).optional(),

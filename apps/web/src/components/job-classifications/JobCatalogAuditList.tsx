@@ -38,6 +38,12 @@ export function JobCatalogAuditList() {
   const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
   const [code, setCode] = useState("");
+  // The filter is typed one letter at a time; ask the server once the operator pauses.
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFilter(code.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [code]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const ticket = useRef(0);
@@ -46,7 +52,7 @@ export function JobCatalogAuditList() {
     const current = ++ticket.current;
     setLoading(true);
     setError(null);
-    listJobCatalogAuditEvents({ page, pageSize, entityCode: code.trim() || undefined })
+    listJobCatalogAuditEvents({ page, pageSize, entityCode: filter || undefined })
       .then((result) => {
         if (current !== ticket.current) return;
         setEvents(result.events);
@@ -57,7 +63,7 @@ export function JobCatalogAuditList() {
         setError(cause instanceof AdminApiError ? cause.message : "Riwayat perubahan gagal dimuat.");
       })
       .finally(() => { if (current === ticket.current) setLoading(false); });
-  }, [page, pageSize, code]);
+  }, [page, pageSize, filter]);
 
   return (
     <div className="space-y-3">

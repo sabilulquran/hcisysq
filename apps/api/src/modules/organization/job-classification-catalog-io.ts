@@ -11,6 +11,8 @@ import type { Pool, PoolClient } from "pg";
 import { quoteCsvCell } from "../../lib/csv.js";
 import { bindingsOn, resolveJobClassifications, type ResolvedJobClassifications } from "./job-classification-resolver.js";
 import {
+  CLASSIFICATION_CODE_PATTERN,
+  GRADE_CODE_PATTERN,
   JOB_FAMILIES,
   JobClassificationError,
   amendClassificationIn,
@@ -33,8 +35,8 @@ export const EXPORT_ROW_LIMIT = 10_000;
 export const IMPORT_ROW_LIMIT = 1_000;
 
 const CODE_PATTERN: Record<CatalogKind, RegExp> = {
-  CLASSIFICATION: /^[A-Z][A-Z0-9_]{0,47}$/,
-  GRADE: /^[A-Z][A-Z0-9_]{0,31}$/,
+  CLASSIFICATION: CLASSIFICATION_CODE_PATTERN,
+  GRADE: GRADE_CODE_PATTERN,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -205,7 +207,9 @@ const REQUIRED_COLUMNS: Record<CatalogKind, readonly string[]> = {
 };
 
 function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  // From 1900: an employment catalog has no earlier meaning, and year 0000 is a JS date that
+  // PostgreSQL refuses, which would otherwise surface as a database error mid-import.
+  if (!/^(19|[2-9]\d)\d{2}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
@@ -352,11 +356,21 @@ export async function importCatalog(
           rows.push({ line: record.line, code, outcome: "ERROR", errorCode: error.code, message: error.message });
           continue;
         }
+        const sqlState = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
         // 23P01 is the (code, range) exclusion constraint: same meaning as the service's conflict.
-        if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23P01") {
+        if (sqlState === "23P01") {
           rows.push({
             line: record.line, code, outcome: "ERROR", errorCode: "CATALOG_VERSION_CONFLICT",
             message: "Rentang berlaku bertabrakan dengan versi lain kode ini.",
+          });
+          continue;
+        }
+        // Any other data or constraint error (classes 22, 23) is about this row's values; the row
+        // savepoint already undid it, so report the line instead of failing the whole file.
+        if (typeof sqlState === "string" && (sqlState.startsWith("22") || sqlState.startsWith("23"))) {
+          rows.push({
+            line: record.line, code, outcome: "ERROR", errorCode: "IMPORT_ROW_REJECTED",
+            message: "Nilai baris ini ditolak basis data. Periksa tanggal dan isian lain.",
           });
           continue;
         }

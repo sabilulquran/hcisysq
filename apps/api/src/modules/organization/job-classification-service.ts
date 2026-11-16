@@ -10,6 +10,10 @@ import type { Pool, PoolClient } from "pg";
 type QueryTarget = Pool | PoolClient;
 
 export const JOB_FAMILIES = ["FUNCTIONAL", "STRUCTURAL", "SUPPORT"] as const;
+
+/** The code shapes the schema enforces; shared by the routes and the CSV import. */
+export const CLASSIFICATION_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,47}$/;
+export const GRADE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,31}$/;
 export type JobFamily = (typeof JOB_FAMILIES)[number];
 
 export class JobClassificationError extends Error {
@@ -398,6 +402,14 @@ export async function amendClassificationIn(
     );
   }
   await assertNoLaterVersion(client, "job_classifications", code, input.effectiveFrom);
+  // A closed code stays closed: amending inside its last range would insert an open-ended
+  // version and bring the code back after its end date (codes are never resurrected, §2.6).
+  if (!current.active) {
+    throw new JobClassificationError(
+      409, "CLASSIFICATION_DEACTIVATED",
+      `Klasifikasi ${code} sudah ditutup per ${current.effectiveTo}. Pakai kode baru.`,
+    );
+  }
   const next = {
     name: input.name ?? current.name,
     family: input.family ?? current.family,
@@ -449,6 +461,12 @@ export async function amendGradeIn(
     );
   }
   await assertNoLaterVersion(client, "job_grades", code, input.effectiveFrom);
+  if (!current.active) {
+    throw new JobClassificationError(
+      409, "GRADE_DEACTIVATED",
+      `Golongan ${code} sudah ditutup per ${current.effectiveTo}. Pakai kode baru.`,
+    );
+  }
   const next = {
     name: input.name ?? current.name,
     rankOrder: input.rankOrder ?? current.rankOrder,

@@ -2,7 +2,7 @@
 // The server owns every rule; this panel only sends the file twice (check, then apply) and shows
 // the report. Nothing is written until the operator applies a file whose check had no errors.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
@@ -36,14 +36,23 @@ export function JobCatalogImportPanel({ kind, onApplied }: { kind: CatalogKind; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noun = kind === "CLASSIFICATION" ? "klasifikasi" : "golongan";
+  // A later pick wins even when an earlier file finishes reading last, so the audited file name
+  // always belongs to the text that is sent.
+  const pick = useRef(0);
 
-  async function choose(file: File | undefined) {
+  async function choose(input: HTMLInputElement) {
+    const file = input.files?.[0];
+    const ticket = ++pick.current;
     setChecked(null);
     setReport(null);
     setError(null);
     if (!file) { setCsv(null); setFileName(null); return; }
+    const text = await file.text();
+    // Cleared so choosing the same file again after fixing it on disk fires a new change event.
+    input.value = "";
+    if (ticket !== pick.current) return;
     setFileName(file.name);
-    setCsv(await file.text());
+    setCsv(text);
   }
 
   async function send(dryRun: boolean) {
@@ -54,10 +63,10 @@ export function JobCatalogImportPanel({ kind, onApplied }: { kind: CatalogKind; 
       const result = await importJobCatalog({ kind, csv, dryRun, fileName });
       setReport(result);
       if (dryRun) setChecked({ csv, report: result });
-      if (!dryRun && result.applied) {
-        setChecked(null);
-        onApplied();
-      }
+      // After any real attempt the earlier check no longer stands: a refused file must be checked
+      // again (the catalog may have moved), and an applied one must not be sent twice.
+      if (!dryRun) setChecked(null);
+      if (!dryRun && result.applied) onApplied();
     } catch (cause) {
       setError(cause instanceof AdminApiError ? cause.message : "Impor gagal diproses.");
     } finally {
@@ -74,11 +83,12 @@ export function JobCatalogImportPanel({ kind, onApplied }: { kind: CatalogKind; 
         seluruh berkas, dan setiap perubahan tercatat di riwayat.{" "}
         <a href={templateHref(kind)} download={`templat-${noun}.csv`} className="font-bold text-brand-primary">Unduh templat</a>
       </p>
+      {fileName ? <p className="text-xs text-muted-foreground">Berkas: {fileName}</p> : null}
       <input
         type="file"
         accept=".csv,text/csv"
         aria-label={`Berkas CSV ${noun}`}
-        onChange={(event) => void choose(event.target.files?.[0])}
+        onChange={(event) => void choose(event.target)}
         className="block text-sm"
       />
       <div className="flex flex-wrap gap-2">

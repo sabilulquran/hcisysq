@@ -112,7 +112,8 @@ Aturan versi, supaya satu kode tidak pernah berarti dua hal:
 
 - kode **tidak pernah dibuat ulang**. Membuat kode yang pernah ada ditolak, termasuk setelah dinonaktifkan, karena kebijakan payroll berversi masih menyimpan kode itu apa adanya;
 - menulis **di belakang versi yang sudah berlaku lebih awal** ditolak (`CLASSIFICATION_HAS_LATER_VERSION` / `GRADE_HAS_LATER_VERSION`). Tanpa ini, amend akan menimpa rentang versi berikutnya, dan deaktivasi akan menutup versi berjalan sementara versi berikutnya menghidupkan kembali kode itu setelah jeda;
-- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama.
+- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama;
+- kode yang sudah ditutup tidak dapat diubah lagi (`CLASSIFICATION_DEACTIVATED` / `GRADE_DEACTIVATED`, Package 4). Tanpa ini, perubahan di dalam rentang versi terakhir yang ditutup akan menyisipkan versi tanpa tanggal akhir dan menghidupkan kembali kode itu.
 
 Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
 

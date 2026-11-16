@@ -152,6 +152,7 @@ describe.skipIf(!allowed)("ORG-011 Package 4 catalog I/O", () => {
       `func_lower_${suffix},Kode huruf kecil,FUNCTIONAL,,2026-01-01`,
       `${code("FUNC")},Duplikat,FUNCTIONAL,,2026-01-01`,
       `${code("DATE")},Tanggal salah,FUNCTIONAL,,2026-02-30`,
+      `${code("ZERO")},Tahun nol,FUNCTIONAL,,0000-01-01`,
       `${code("GRADE")},Golongan tidak ada,FUNCTIONAL,NOPE_${suffix},2026-01-01`,
     ].join("\n");
     const response = await importCsv("CLASSIFICATION", csv, false);
@@ -163,6 +164,7 @@ describe.skipIf(!allowed)("ORG-011 Package 4 catalog I/O", () => {
       "IMPORT_INVALID_FAMILY",
       "IMPORT_INVALID_CODE",
       "IMPORT_DUPLICATE_CODE",
+      "IMPORT_INVALID_DATE",
       "IMPORT_INVALID_DATE",
       "GRADE_NOT_EFFECTIVE",
     ]);
@@ -195,6 +197,15 @@ describe.skipIf(!allowed)("ORG-011 Package 4 catalog I/O", () => {
     );
     expect(revived.statusCode).toBe(422);
     expect(revived.json().report.rows[0].errorCode).toBe("CLASSIFICATION_CODE_IN_USE");
+
+    // Nor by amending inside the closed version's own range, which would reopen it forever.
+    const reopened = await importCsv(
+      "CLASSIFICATION", `code,name,family,grade_code,effective_from\n${code("FUNC")},Guru Baru,FUNCTIONAL,,2026-09-01\n`, false,
+    );
+    expect(reopened.statusCode).toBe(422);
+    expect(reopened.json().report.rows[0].errorCode).toBe("CLASSIFICATION_DEACTIVATED");
+    const open = await client.query("SELECT 1 FROM job_classifications WHERE code = $1 AND effective_to IS NULL", [code("FUNC")]);
+    expect(open.rowCount).toBe(0);
   });
 
   it("ORG-011-IO5: refuses a file without the required columns or with too many rows", async () => {
@@ -207,6 +218,12 @@ describe.skipIf(!allowed)("ORG-011 Package 4 catalog I/O", () => {
     const tooMany = await importCsv("GRADE", rows.join("\n"), true);
     expect(tooMany.statusCode).toBe(400);
     expect(tooMany.json().code).toBe("IMPORT_TOO_MANY_ROWS");
+
+    const longName = await app.inject({
+      method: "POST", url: "/admin/job-classification-imports",
+      payload: { kind: "GRADE", csv: `code,name,rank_order,effective_from\nG_${suffix},Golongan,1,2026-01-01\n`, dryRun: true, fileName: "x".repeat(300) },
+    });
+    expect(longName.statusCode, longName.body).toBe(200);
 
     const unclosed = await importCsv("GRADE", 'code,name,rank_order,effective_from\n"G,x,1,2026-01-01\n', true);
     expect(unclosed.json().code).toBe("IMPORT_CSV_MALFORMED");

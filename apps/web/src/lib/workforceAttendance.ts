@@ -913,9 +913,19 @@ export async function createCanonicalManualCorrection(input: {
 }
 
 
+/**
+ * ATT-014 §6.5b (DRAFT): scan yang sudah diterima untuk tanggal yang belum dikalkulasi. Tanpa ini
+ * riwayat pegawai menampilkan "—" seolah pegawai tidak scan.
+ */
+export interface PendingScans {
+  firstScanAt: string;
+  lastScanAt: string | null;
+  scanCount: number;
+}
+
 export async function getMyAttendanceScheduleRange(from: string, to: string) {
   const params = new URLSearchParams({ from, to });
-  return readJson<{ items: Array<{ workDate: string; schedule: ResolvedSchedule; result: WorkforceResult | null }> }>(
+  return readJson<{ items: Array<{ workDate: string; schedule: ResolvedSchedule; result: WorkforceResult | null; pendingScans: PendingScans | null }> }>(
     await fetch(`/api/attendance/me/schedule?${params.toString()}`, {
       credentials: "include",
       headers: { Accept: "application/json" },

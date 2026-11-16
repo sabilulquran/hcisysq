@@ -28,7 +28,7 @@ export interface ResolvedJobClassifications {
   structural: ResolvedClassification | null;
 }
 
-interface BindingRow {
+export interface BindingRow {
   code: string;
   source: "PLACEMENT" | "POSITION";
 }
@@ -42,7 +42,7 @@ interface BindingRow {
  *
  * Voided placements are excluded: a correction that voided a placement must not keep paying.
  */
-async function bindingsOn(
+export async function bindingsOn(
   target: QueryTarget, employmentId: string, onDate: string,
 ): Promise<BindingRow[]> {
   const result = await target.query<BindingRow>(

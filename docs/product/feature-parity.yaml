@@ -185,6 +185,26 @@ features:
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
 
+  - id: ORG-011
+    module: organization
+    name: Job classification and grade catalog
+    legacy_evidence: legacy matched functional and positional allowances by free-text position labels; roadmap C asked for a stable class-of-work key separate from ORG-004 seats
+    target_status: implemented
+    priority: post-mvp-payroll-foundation
+    risk: high
+    planning_note: >-
+      Packages 1-4 implemented: effective-dated classification and optional grade catalogs (no money, no
+      authority), seat and placement binding, two-slot resolver for PAY-003, HC screen with CSV export and
+      audited CSV import, change history, and read views in the employee profile and the designer. The
+      production catalog is left empty for HC to fill. Payroll does not read classifications yet: PAY-003
+      has no connection point, so the contract (default-OFF switch, parallel run first) is documented in
+      spec §4.1 and payroll results are unchanged. Open decisions in spec §8 are DRAFT pending the owner.
+    docs:
+      - docs/domain/job-classification-grade.md
+      - docs/architecture/adr/0004-job-classification-separate-from-structure.md
+      - docs/api/job-classifications.openapi.yaml
+      - docs/domain/payroll-calculation-v1.md
+
   - id: ORG-008
     module: organization
     name: Organization structure designer UX simplification

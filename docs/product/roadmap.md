@@ -92,7 +92,9 @@ Area ini menjadi dependency discovery EMP-006/PAY-003, bukan alasan membuat tabe
 
 ORG-011 menetapkan katalog klasifikasi dan golongan yang effective-dated dan hidup di luar change set ORG-004, tanpa nilai uang dan tanpa authority. Skala gaji pokok tetap milik PAY-003 (pendidikan terakhir x MKG); klasifikasi hanya menjadi kunci stabil tabel tunjangan, menggantikan pencocokan label teks.
 
-Detail ada di `docs/domain/job-classification-grade.md` (DRAFT) dan ADR-0004 (PROPOSED).
+Status 2026-11-17: ORG-011 terimplementasi (Package 1-4): katalog berversi, pengikatan pada kursi dan penempatan, resolver dua slot untuk PAY-003, layar HC dengan ekspor CSV dan impor CSV beraudit, riwayat perubahan, serta tampilan baca di profil pegawai dan designer. Katalog production dibiarkan kosong untuk diisi HC. Payroll belum membaca klasifikasi: PAY-003 belum punya titik sambung, jadi kontraknya dicatat (spec §4.1) dan hasil payroll tidak berubah.
+
+Detail ada di `docs/domain/job-classification-grade.md` (ACCEPTED; butir §8 DRAFT menunggu owner) dan ADR-0004 (ACCEPTED).
 
 ### D. Payroll discovery and staged delivery
 

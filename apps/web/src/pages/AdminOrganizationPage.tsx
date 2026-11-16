@@ -387,6 +387,11 @@ function EmployeePicker({
   );
 }
 
+/** ORG-011: the seat's default classification as one read-only line for the designer. */
+export function seatClassificationLabel(code: string | null): string {
+  return code ? `Klasifikasi jabatan: ${code} (acuan tunjangan, bukan kewenangan)` : "Klasifikasi jabatan: belum ditetapkan";
+}
+
 export interface ClassificationOption {
   code: string;
   label: string;
@@ -1192,6 +1197,8 @@ export function OrganizationDesignerWorkspace({
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p>
             <p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p>
+            {/* ORG-011 read view: the seat's default classification, payroll-only, never authority. */}
+            {!selectedNode && selectedPosition ? <p className="mt-0.5 text-[11px] text-muted-foreground">{seatClassificationLabel(selectedPosition.jobClassificationCode ?? null)}</p> : null}
             {selectedSeat?.reason ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">{selectedSeat.reason}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">

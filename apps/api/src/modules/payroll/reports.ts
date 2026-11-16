@@ -22,7 +22,14 @@ import type { Pool } from "pg";
 
 import { quoteCsvCell } from "../../lib/csv.js";
 import type { Pph21Report, Pph21Row, Pph21SourceRow } from "./pph21.js";
-import { parsePph21TerPolicy, type Pph21TerPolicy } from "./policy.js";
+import {
+  DEFAULT_PPH21_SETTINGS,
+  parsePph21Settings,
+  parsePph21TerPolicy,
+  PPH21_NON_PERMANENT_OBJECT_CODE,
+  type Pph21Settings,
+  type Pph21TerPolicy,
+} from "./policy.js";
 import { LATEST_RESULTS_OF_PERIOD } from "./store.js";
 
 /**
@@ -69,7 +76,23 @@ export type PeriodReport = {
   };
   byUnit: Array<{ unitRef: string | null; employeeCount: number; payable: string }>;
   byComponent: Array<{ componentCode: string; category: string; employeeCount: number; amount: string }>;
+  /**
+   * What the yayasan pays on top of net pay (section 7, "ringkasan biaya yayasan"):
+   * the BPJS Kesehatan contribution it funds through BPJS_KES_ALLOW, and PPh21 it
+   * bears (PPH21_EMPLOYER, only when PPH21_SETTINGS.employerBorne is on, section 7.5).
+   */
+  employerCostSummary: { bpjsKesehatan: string; pph21: string; total: string };
 };
+
+/** The yayasan's costs beyond net pay, from the component totals of the period. */
+export function employerCostSummary(
+  byComponent: ReadonlyArray<{ componentCode: string; amount: string }>,
+): PeriodReport["employerCostSummary"] {
+  const amount = (code: string) => BigInt(byComponent.find((row) => row.componentCode === code)?.amount ?? "0");
+  const bpjsKesehatan = amount("BPJS_KES_ALLOW");
+  const pph21 = amount("PPH21_EMPLOYER");
+  return { bpjsKesehatan: String(bpjsKesehatan), pph21: String(pph21), total: String(bpjsKesehatan + pph21) };
+}
 
 export async function buildPeriodReport(pool: Pool, periodId: string): Promise<PeriodReport> {
   const totals = await pool.query<PeriodReport["totals"]>(
@@ -123,6 +146,7 @@ export async function buildPeriodReport(pool: Pool, periodId: string): Promise<P
     },
     byUnit: byUnit.rows,
     byComponent: byComponent.rows,
+    employerCostSummary: employerCostSummary(byComponent.rows),
   };
 }
 
@@ -356,7 +380,7 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
  * with the same employer past the period (so ending one of two is not a final
  * masa pajak).
  */
-export async function loadPph21SourceRows(pool: Pool, periodId: string, employeeId?: string): Promise<Pph21SourceRow[]> {
+export async function loadPph21SourceRows(pool: Pick<Pool, "query">, periodId: string, employeeId?: string): Promise<Pph21SourceRow[]> {
   const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings" | "deductions"> & {
     payFactor: string;
     earnings: Array<{ code: string; amount: string | number }>;
@@ -397,7 +421,10 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string, employee
               SELECT jsonb_agg(jsonb_build_object('code', l.component_code, 'amount', l.amount::text))
               FROM payroll_result_lines l
               WHERE l.result_id = latest.id AND l.category = 'DEDUCTION'
-            ), '[]'::jsonb) AS deductions
+            ), '[]'::jsonb) AS deductions,
+            -- The attendance the calculation itself used (its input snapshot), so
+            -- daily TER divides by the days that were paid, not today's inputs.
+            (latest.input_snapshot -> 'inputs' ->> 'contractAttendanceDays')::numeric::float8 AS "attendanceDays"
      FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      JOIN employments e ON e.id = latest.employment_id
      JOIN employees emp ON emp.id = e.employee_id
@@ -415,12 +442,44 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string, employee
   }));
 }
 
+export type Pph21SettingsLookup =
+  | { ok: true; versionId: string | null; settings: Pph21Settings }
+  | { ok: false; code: "PPH21_SETTINGS_POLICY_INVALID"; message: string };
+
+/**
+ * PPH21_SETTINGS in force on a date. No row means both switches off, which is
+ * the v1 behaviour (section 7.5); a row that does not parse is refused rather
+ * than silently treated as off.
+ */
+export async function findPph21Settings(pool: Pick<Pool, "query">, date: string): Promise<Pph21SettingsLookup> {
+  const { rows } = await pool.query<{ id: string; payload: unknown }>(
+    `SELECT id, payload FROM payroll_policy_versions
+     WHERE policy_key = 'PPH21_SETTINGS'
+       AND effective_from <= $1::date
+       AND (effective_to IS NULL OR effective_to >= $1::date)
+     ORDER BY effective_from DESC
+     LIMIT 1`,
+    [date],
+  );
+  const row = rows[0];
+  if (!row) return { ok: true, versionId: null, settings: DEFAULT_PPH21_SETTINGS };
+  const parsed = parsePph21Settings(row.payload);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      code: "PPH21_SETTINGS_POLICY_INVALID",
+      message: `Isi kebijakan PPH21_SETTINGS yang berlaku tidak sesuai bentuk yang dibutuhkan: ${parsed.message}.`,
+    };
+  }
+  return { ok: true, versionId: row.id, settings: parsed.settings };
+}
+
 export type Pph21PolicyLookup =
   | { ok: true; versionId: string; effectiveFrom: string; policy: Pph21TerPolicy }
   | { ok: false; code: "PPH21_TER_POLICY_MISSING" | "PPH21_TER_POLICY_INVALID"; message: string };
 
 /** The PPH21_TER version in force on the pay date, checked against its schema. */
-export async function findPph21Policy(pool: Pool, payDate: string): Promise<Pph21PolicyLookup> {
+export async function findPph21Policy(pool: Pick<Pool, "query">, payDate: string): Promise<Pph21PolicyLookup> {
   const { rows } = await pool.query<{ id: string; effectiveFrom: string; payload: unknown }>(
     `SELECT id, to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom", payload
      FROM payroll_policy_versions
@@ -485,7 +544,17 @@ export function pph21RowNote(row: Pph21Row): string {
     notes.push("Masa pajak terakhir: PPh21 final memakai perhitungan tahunan Pasal 17 (rekap PPh21 tahunan dan bukti potong 1721-A1); angka TER ini bukan angka final");
   }
   if (row.flags.includes("NON_PERMANENT_TERMS")) {
-    notes.push("Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap");
+    notes.push(
+      row.objectCode === PPH21_NON_PERMANENT_OBJECT_CODE
+        ? `Pegawai tidak tetap: TER harian 21-100-03 atas rata-rata bruto per hari hadir (${row.attendanceDays ?? 0} hari)`
+        : "Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT; TER harian 21-100-03 di balik kebijakan PPH21_SETTINGS yang mati)",
+    );
+  }
+  if (row.flags.includes("DAILY_DAYS_MISSING")) {
+    notes.push("TER harian aktif tetapi jumlah hari hadir periode ini kosong; PPh21 belum dapat dihitung");
+  }
+  if (row.flags.includes("DAILY_ABOVE_CEILING")) {
+    notes.push("Rata-rata bruto harian di atas batas TER harian; aturan Pasal 17 atas 50% bruto belum dihitung HCIS");
   }
   if (row.employmentIds.length > 1) {
     notes.push(`Bruto gabungan ${row.employmentIds.length} employment`);
@@ -511,7 +580,7 @@ export function pph21ReportToCsv(report: Pph21Report): string {
         String(row.gross),
         row.rate === null ? "" : formatTerRate(row.rate),
         row.tax === null ? "" : String(row.tax),
-        report.objectCode,
+        row.objectCode,
         row.flags.includes("EXCLUDED") ? "N" : "Y",
         pph21RowNote(row),
       ]

@@ -6,7 +6,7 @@
 import type { Pool } from "pg";
 
 import { quoteCsvCell } from "../../lib/csv.js";
-import { buildPph21Report } from "./pph21.js";
+import { buildPph21Report, NON_PERMANENT_TERM_CATEGORIES, type Pph21SourceRow } from "./pph21.js";
 import {
   annualMonthsOfPeriod,
   buildAnnualSegments,
@@ -14,8 +14,14 @@ import {
   type AnnualMonth,
   type AnnualSegment,
 } from "./pph21-annual.js";
-import { A1_LINE_KEYS, parsePph21AnnualPolicy, type Pph21AnnualPolicy } from "./policy.js";
-import { findPph21Policy, loadPph21SourceRows, UTF8_BOM } from "./reports.js";
+import {
+  A1_LINE_KEYS,
+  DEFAULT_PPH21_SETTINGS,
+  parsePph21AnnualPolicy,
+  type Pph21AnnualPolicy,
+  type Pph21Settings,
+} from "./policy.js";
+import { findPph21Policy, findPph21Settings, loadPph21SourceRows, UTF8_BOM } from "./reports.js";
 import { maskTaxNumber, openTaxIdentity } from "./tax-identity.js";
 
 /** States whose results are final: the monthly report reads the same ones (section 7.2 P3). */
@@ -26,7 +32,7 @@ export type AnnualPolicyLookup =
   | { ok: false; code: "PPH21_ANNUAL_POLICY_MISSING" | "PPH21_ANNUAL_POLICY_INVALID"; message: string };
 
 /** The PPH21_ANNUAL version in force on the last day of the tax year (DRAFT). */
-export async function findPph21AnnualPolicy(pool: Pool, year: number): Promise<AnnualPolicyLookup> {
+export async function findPph21AnnualPolicy(pool: Pick<Pool, "query">, year: number): Promise<AnnualPolicyLookup> {
   const date = `${year}-12-31`;
   const { rows } = await pool.query<{ id: string; effectiveFrom: string; payload: unknown }>(
     `SELECT id, to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom", payload
@@ -77,6 +83,36 @@ export async function loadAnnualYear(
   policy: Pph21AnnualPolicy,
   employeeId?: string,
 ): Promise<AnnualYear> {
+  const { months, pendingPeriods, periodsWithoutTer } = await loadAnnualMonths(pool, year, policy, { employeeId });
+  const segments = flagPendingPeriods(
+    buildAnnualSegments(policy, months),
+    pendingPeriods.map((period) => period.periodMonth),
+  );
+  return { year, segments, pendingPeriods, periodsWithoutTer };
+}
+
+/** Who is taxed with daily TER under 21-100-03 in this period (section 7.5). */
+export function dailyTaxedEmployees(rows: readonly Pph21SourceRow[], settings: Pph21Settings): Set<string> {
+  if (!settings.nonPermanentDailyTer || settings.daily === null) return new Set();
+  return new Set(
+    rows
+      .filter((row) => row.blockerCount === 0 && row.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(row.termCategory))
+      .map((row) => row.employeeId),
+  );
+}
+
+/**
+ * The AnnualMonth rows of the final periods of a year. `beforeMonth` (YYYY-MM)
+ * keeps only earlier months: the calculation of a final masa pajak reads the
+ * months before it and supplies its own month from memory.
+ */
+export async function loadAnnualMonths(
+  pool: Pick<Pool, "query">,
+  year: number,
+  policy: Pph21AnnualPolicy,
+  options: { employeeId?: string | undefined; beforeMonth?: string | undefined } = {},
+): Promise<{ months: AnnualMonth[]; pendingPeriods: AnnualYear["pendingPeriods"]; periodsWithoutTer: string[] }> {
+  const employeeId = options.employeeId;
   const periods = await pool.query<{
     id: string;
     periodMonth: string;
@@ -101,6 +137,7 @@ export async function loadAnnualYear(
   const pendingPeriods: AnnualYear["pendingPeriods"] = [];
   const periodsWithoutTer: string[] = [];
   for (const period of periods.rows) {
+    if (options.beforeMonth !== undefined && period.periodMonth.slice(0, 7) >= options.beforeMonth) continue;
     if (!FINAL_STATES.includes(period.state)) {
       pendingPeriods.push({ periodMonth: period.periodMonth.slice(0, 7), state: period.state });
       continue;
@@ -108,21 +145,28 @@ export async function loadAnnualYear(
     // Filtered in SQL: a self read never loads the whole organisation's rows.
     const rows = await loadPph21SourceRows(pool, period.id, employeeId);
     if (rows.length === 0) continue;
+    const settings = await findPph21Settings(pool, period.payDate);
+    // An unreadable settings row is treated as off here; the monthly report refuses it loudly.
+    const effective = settings.ok ? settings.settings : DEFAULT_PPH21_SETTINGS;
     const ter = await findPph21Policy(pool, period.payDate);
     let terTaxByEmployee: Map<string, number | null> | null = null;
     if (ter.ok) {
-      const report = buildPph21Report({ period, policy: ter.policy, rows });
+      const report = buildPph21Report({ period, policy: ter.policy, rows, settings: effective });
       terTaxByEmployee = new Map(report.rows.map((row) => [row.employeeId, row.tax]));
     } else {
       periodsWithoutTer.push(period.periodMonth.slice(0, 7));
     }
-    months.push(...annualMonthsOfPeriod({ period, rows, terTaxByEmployee, policy }));
+    months.push(
+      ...annualMonthsOfPeriod({
+        period,
+        rows,
+        terTaxByEmployee,
+        dailyEmployeeIds: dailyTaxedEmployees(rows, effective),
+        policy,
+      }),
+    );
   }
-  const segments = flagPendingPeriods(
-    buildAnnualSegments(policy, months),
-    pendingPeriods.map((period) => period.periodMonth),
-  );
-  return { year, segments, pendingPeriods, periodsWithoutTer };
+  return { months, pendingPeriods, periodsWithoutTer };
 }
 
 export type TaxIdentityRow = {

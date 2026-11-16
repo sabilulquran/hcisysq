@@ -511,6 +511,8 @@ export async function registerTripAdvanceRoutes(
     decidedOn: string | null;
     settledOn: string | null;
     settlementKey: string | null;
+    perDiemDays: number | null;
+    settlementFinanceNote: string | null;
     settlementBalance: string | null;
   }
 
@@ -519,7 +521,8 @@ export async function registerTripAdvanceRoutes(
       `SELECT employee_id AS "employeeId", business_trip_id AS "businessTripId", status, zone, amount::text AS amount,
               to_char(final_decided_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "decidedOn",
               to_char(settled_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "settledOn",
-              settlement_key AS "settlementKey", settlement_balance::text AS "settlementBalance"
+              settlement_key AS "settlementKey", settlement_balance::text AS "settlementBalance",
+              per_diem_days AS "perDiemDays", settlement_finance_note AS "settlementFinanceNote"
          FROM trip_advances
         WHERE id = $1 AND ($2::uuid IS NULL OR employee_id = $2)
         FOR UPDATE`,
@@ -670,11 +673,20 @@ export async function registerTripAdvanceRoutes(
     return transact(reply, async (client) => {
       // Locking the employee row serializes this employee's requests (idempotency, one per trip).
       const employee = await loadEmployeeContext(client, principal.id, true);
-      const replay = await client.query<{ id: string; status: AdvanceStatus }>(
-        `SELECT id, status FROM trip_advances WHERE employee_id = $1 AND idempotency_key = $2`,
+      const replay = await client.query<{ id: string; status: AdvanceStatus; tripId: string; zone: string; amount: string; purpose: string }>(
+        `SELECT id, status, business_trip_id AS "tripId", zone, amount::text AS amount, purpose
+           FROM trip_advances WHERE employee_id = $1 AND idempotency_key = $2`,
         [employee.id, body.data.idempotencyKey],
       );
-      if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
+      const previous = replay.rows[0];
+      if (previous) {
+        // A retry replays only with the same terms; a reused key with other terms is refused.
+        if (previous.tripId !== body.data.businessTripId || previous.zone !== body.data.zone
+          || toRupiah(previous.amount) !== toRupiah(body.data.amount) || previous.purpose !== body.data.purpose) {
+          throw new TripAdvanceError(409, "IDEMPOTENCY_KEY_REUSED", "Pengajuan ini sudah terkirim dengan isian lain. Muat ulang halaman.");
+        }
+        return [200, { id: previous.id, status: previous.status, idempotentReplay: true }];
+      }
       const trip = await eligibleTrip(client, body.data.businessTripId, employee.id, "FOR SHARE");
       const live = await client.query(
         `SELECT 1 FROM trip_advances WHERE business_trip_id = $1 AND status NOT IN ('REJECTED', 'CANCELLED')`,
@@ -1182,6 +1194,9 @@ export async function registerTripAdvanceRoutes(
       const advance = await lockAdvance(client, params.data.id, null);
       await assertNotOwn(client, principal.id, advance.employeeId);
       if (advance.settlementKey !== null && advance.settlementKey === body.data.idempotencyKey) {
+        if (advance.perDiemDays !== body.data.perDiemDays || advance.settlementFinanceNote !== (body.data.note?.trim() || null)) {
+          throw new TripAdvanceError(409, "IDEMPOTENCY_KEY_REUSED", "Penyelesaian ini sudah tercatat dengan isian lain. Muat ulang halaman.");
+        }
         return [200, { id: params.data.id, status: advance.status, settlementBalance: optionalAmount(advance.settlementBalance), idempotentReplay: true }];
       }
       if (advance.status !== "SETTLEMENT_SUBMITTED") {
@@ -1196,6 +1211,18 @@ export async function registerTripAdvanceRoutes(
           FOR UPDATE`,
         [advance.employeeId, trip.id],
       );
+      // D-16 / REIMB-001 D-13: whoever sits in a counted claim's chain does not turn it into money.
+      const claimApprover = await client.query(
+        `SELECT 1 FROM reimbursement_approval_steps step
+          WHERE step.claim_id = ANY($1::uuid[])
+            AND (step.acted_by_account_id = $2
+              OR step.approver_employee_id = (SELECT employee_id FROM accounts WHERE id = $2))
+          LIMIT 1`,
+        [claims.rows.map((claim) => claim.id), principal.id],
+      );
+      if (claimApprover.rows[0]) {
+        throw new TripAdvanceError(403, "TRIP_ADVANCE_APPROVER_CANNOT_PROCESS", "Penyetuju salah satu klaim perjalanan ini tidak boleh sekaligus menyelesaikannya.");
+      }
       if (claims.rows.some((claim) => claim.status !== "VERIFIED")) {
         throw new TripAdvanceError(409, "TRIP_ADVANCE_CLAIMS_PENDING", "Masih ada klaim perjalanan ini yang belum selesai disetujui atau diverifikasi.");
       }
@@ -1391,6 +1418,14 @@ export async function registerTripAdvanceRoutes(
       return send(reply, 400, { code: "INVALID_TRIP_PER_DIEM_RATE", message: "Zona, tanggal berlaku, dan nominal per hari (bilangan bulat Rp0–Rp5.000.000) wajib diisi." });
     }
     return transact(reply, async (client) => {
+      // D-02: a version may start in the past only as the first rate of its zone (the initial fill);
+      // afterwards a back-dated row could change the per diem of advances already submitted.
+      if (body.data.effectiveFrom < today()) {
+        const existing = await client.query(`SELECT 1 FROM trip_per_diem_rates WHERE zone = $1 LIMIT 1`, [body.data.zone]);
+        if (existing.rows[0]) {
+          throw new TripAdvanceError(409, "TRIP_PER_DIEM_RATE_BACKDATED", "Versi tarif baru berlaku paling cepat hari ini. Hanya tarif pertama suatu zona yang boleh berlaku mundur.");
+        }
+      }
       const id = randomUUID();
       await client.query(
         `INSERT INTO trip_per_diem_rates (id, zone, effective_from, daily_amount, note, created_by_account_id)

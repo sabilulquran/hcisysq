@@ -427,10 +427,10 @@ export function AdminTripAdvancesPage() {
                       <div className="mt-2 grid gap-3 sm:grid-cols-2">
                         <label className="text-xs font-semibold text-muted-foreground">Hari uang harian
                           <input type="number" min={0} max={selected.settlementPreview.maxPerDiemDays} value={perDiemDays} className={field}
-                            onChange={(event) => setPerDiemDays(event.target.value)} />
+                            onChange={(event) => { setPerDiemDays(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
                         </label>
                         <label className="text-xs font-semibold text-muted-foreground">Catatan (wajib bila hari dikurangi)
-                          <input maxLength={500} value={settleNote} className={field} onChange={(event) => setSettleNote(event.target.value)} />
+                          <input maxLength={500} value={settleNote} className={field} onChange={(event) => { setSettleNote(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
                         </label>
                       </div>
                       <button type="button" disabled={busy} onClick={() => settle(selected)} className={primary}>Selesaikan</button>

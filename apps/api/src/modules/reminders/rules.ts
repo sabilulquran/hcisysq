@@ -1,4 +1,4 @@
-// NOTIF-003 rule catalog (docs/domain/reminders.md Â§4). Each rule reads the state it is about and
+// NOTIF-003 rule catalog (docs/domain/reminders.md §4). Each rule reads the state it is about and
 // returns candidates; the engine makes them idempotent, writes in-app notifications and queues
 // WhatsApp. Thresholds and hours are DRAFT defaults.
 
@@ -220,7 +220,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
     fireHour: 7,
     weekdays: MONDAY_TO_SATURDAY,
     async generate(db, { today }) {
-      // REIMB-001 Â§8: counts only, never a name or an amount (D-07, REIMB-001 D-14).
+      // REIMB-001 §8: counts only, never a name or an amount (D-07, REIMB-001 D-14).
       const count = await db.query<{ toVerify: number; toPay: number }>(
         `SELECT count(*) FILTER (WHERE status = 'APPROVED')::int AS "toVerify",
                 count(*) FILTER (WHERE status = 'VERIFIED')::int AS "toPay"
@@ -246,7 +246,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
     fireHour: 7,
     weekdays: MONDAY_TO_SATURDAY,
     async generate(db, { today }) {
-      // TRIP-002 Â§8: counts only, never a name or an amount (D-17).
+      // TRIP-002 §8: counts only, never a name or an amount (D-17).
       const count = await db.query<{ toDisburse: number; toSettle: number; toTopUp: number; toRefund: number; overdue: number }>(
         `SELECT count(*) FILTER (WHERE advance.status = 'APPROVED' AND advance.amount > 0)::int AS "toDisburse",
                 count(*) FILTER (WHERE advance.status = 'SETTLEMENT_SUBMITTED')::int AS "toSettle",
@@ -308,7 +308,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
     fireHour: 7,
     async generate(db, { today }) {
       if ((await getRolloutMode(db)).mode === "OFF") return [];
-      // The current term per employee, as the "Kontrak akan berakhir" worklist (EMP-005 Â§13.4) reads it.
+      // The current term per employee, as the "Kontrak akan berakhir" worklist (EMP-005 §13.4) reads it.
       const terms = await db.query<{ termId: string; employeeId: string; fullName: string; category: string; endsOn: string }>(
         `SELECT DISTINCT ON (employment.employee_id)
                 term.id AS "termId", employment.employee_id AS "employeeId", employee.full_name AS "fullName",
@@ -342,7 +342,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
   {
     key: "employee.document_expiring",
     label: "Dokumen pribadi Anda akan berakhir",
-    description: "Pengingat H-30 dan H-7 sebelum dokumen di Data Saya â†’ Dokumen Pribadi (SIM, paspor, SKCK, surat sehat, dan lainnya) berakhir.",
+    description: "Pengingat H-30 dan H-7 sebelum dokumen di Data Saya → Dokumen Pribadi (SIM, paspor, SKCK, surat sehat, dan lainnya) berakhir.",
     defaultWhatsApp: true,
     fireHour: 7,
     async generate(db, { today }) {
@@ -371,7 +371,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
           accountId: row.accountId,
           employeeId: row.employeeId,
           title: `${label}${row.title ? ` ${row.title}` : ""} berakhir ${dueLabel(daysLeft)}`,
-          body: `Masa berlaku berakhir ${formatJakartaDate(row.expiresOn)}. Perpanjang lalu unggah dokumen barunya lewat Data Saya â†’ Dokumen Pribadi.`,
+          body: `Masa berlaku berakhir ${formatJakartaDate(row.expiresOn)}. Perpanjang lalu unggah dokumen barunya lewat Data Saya → Dokumen Pribadi.`,
           href: "/app/my-data",
           // D-07: the document kind stays in the in-app reminder only.
           whatsappText: `HCIS: salah satu dokumen pribadi Anda berakhir ${dueLabel(daysLeft)}. Rinciannya di Notifikasi HCIS.`,

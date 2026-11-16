@@ -248,7 +248,10 @@ BEGIN
          count(*) FILTER (WHERE claim.employee_id <> advance.employee_id
                              OR claim.business_trip_id IS DISTINCT FROM advance.business_trip_id
                              OR claim.status <> 'PAID'
-                             OR claim.verified_total IS DISTINCT FROM settled.verified_total)
+                             OR claim.verified_total IS DISTINCT FROM settled.verified_total
+                             OR NOT EXISTS (SELECT 1 FROM reimbursement_payments payment
+                                             WHERE payment.claim_id = claim.id AND payment.method = 'ADVANCE'
+                                               AND payment.amount = settled.verified_total))
     INTO claim_count, claim_sum, foreign_claims
     FROM trip_advance_settlement_claims settled
     JOIN reimbursement_claims claim ON claim.id = settled.claim_id

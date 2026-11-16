@@ -235,6 +235,7 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     const created = await request(tripId, 2_000_000, { idempotencyKey: key });
     expect(created.statusCode, created.body).toBe(201);
     expect((await request(tripId, 2_000_000, { idempotencyKey: key })).json()).toMatchObject({ id: created.json().id, idempotentReplay: true });
+    expect((await request(tripId, 1_000_000, { idempotencyKey: key })).json().code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect((await request(tripId, 500_000)).json().code).toBe("TRIP_ADVANCE_EXISTS");
 
     const othersTrip = await insertTrip("APPROVED", today, today, "other");
@@ -267,9 +268,11 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
 
   it("TRIP-002-D..H: disburse, settle against verified claims, then collect the refund in parts", async () => {
     const tripId = await insertTrip("APPROVED", daysBefore(today, 3), daysBefore(today, 1));
-    await addRate("NATIONAL", daysBefore(today, 30), 100_000);
-    // A same-day correction is a newer row and wins (D-02).
     await addRate("NATIONAL", daysBefore(today, 30), 150_000);
+    // D-02: only the first rate of a zone may start in the past.
+    actAs("hc", HC);
+    expect((await app.inject({ method: "POST", url: "/admin/trip-per-diem-rates", payload: { zone: "NATIONAL", effectiveFrom: daysBefore(today, 2), dailyAmount: 1 } })).json().code)
+      .toBe("TRIP_PER_DIEM_RATE_BACKDATED");
     const id = await approvedAdvance(tripId, 2_000_000);
 
     // D-16: the requester and the advance's approvers do not pay it out.
@@ -316,6 +319,8 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     expect(settled.json()).toMatchObject({ status: "AWAITING_REFUND", perDiemAmount: 450_000, claimsTotal: 325_000, settlementBalance: -1_225_000 });
     expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 3, idempotencyKey: settleKey })).json())
       .toMatchObject({ idempotentReplay: true, settlementBalance: -1_225_000 });
+    expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 2, note: "Pulang sehari lebih awal", idempotencyKey: settleKey })).json().code)
+      .toBe("IDEMPOTENCY_KEY_REUSED");
 
     const settledClaim = await finance("GET", `/admin/reimbursements/${expense.id}`);
     expect(settledClaim.json()).toMatchObject({ status: "PAID", payment: expect.objectContaining({ method: "ADVANCE", amount: 325_000 }) });
@@ -348,11 +353,9 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
       .toBe("TRIP_PER_DIEM_RATE_MISSING");
     expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 2, idempotencyKey: randomUUID() })).json().code)
       .toBe("TRIP_ADVANCE_REDUCTION_NOTE_REQUIRED");
+    await addRate("NATIONAL", daysBefore(today, 10), 200_000);
     // A rate dated after departure does not apply to this trip.
     await addRate("NATIONAL", today, 999_000);
-    expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 3, idempotencyKey: randomUUID() })).json().code)
-      .toBe("TRIP_PER_DIEM_RATE_MISSING");
-    await addRate("NATIONAL", daysBefore(today, 10), 200_000);
     const settled = await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 3, idempotencyKey: randomUUID() });
     expect(settled.json()).toMatchObject({ status: "AWAITING_TOP_UP", settlementBalance: 600_000 });
 

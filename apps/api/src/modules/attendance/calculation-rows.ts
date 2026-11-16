@@ -9,7 +9,7 @@ import { jakartaWorkDate } from "./engine.js";
 
 export type CalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-  | "field_assignment" | "remote_work"
+  | "field_assignment" | "remote_work" | "business_trip"
   | "unscheduled" | "not_captured" | "not_calculated";
 
 type EmployeeRow = { employeeId: string; employeeNumber: string; employeeName: string; unitId: string | null; unitName: string | null };
@@ -65,8 +65,10 @@ export function normalActual(status: CalculationRowStatus, blocks?: { count: num
   if (blocks && blocks.count > 1 && ["present", "late", "incomplete", "absent"].includes(status)) {
     return { normal: 1, actual: blocks.credited === null ? null : Math.round(blocks.credited * 100) / 100 };
   }
-  // ATT-015 D-06: an approved tugas luar or WFH/WFA without a punch is a worked day.
-  if (status === "present" || status === "late" || status === "field_assignment" || status === "remote_work") return { normal: 1, actual: 1 };
+  // ATT-015 D-06: an approved tugas luar or WFH/WFA without a punch is a worked day; so is a day covered by
+  // an issued business trip (TRIP-001 Paket 2, business-travel.md §9.2).
+  if (status === "present" || status === "late" || status === "field_assignment" || status === "remote_work"
+    || status === "business_trip") return { normal: 1, actual: 1 };
   if (status === "absent") return { normal: 1, actual: 0 };
   if (["incomplete", "leave", "scheduled", "pending"].includes(status)) return { normal: 1, actual: null };
   return { normal: null, actual: null };
@@ -106,7 +108,7 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
        checked.early_leave_minutes AS "earlyLeaveMinutes", checked.overtime_minutes AS "overtimeMinutes",
        checked.incomplete_session AS "incompleteSession",
        (checked.source_leave_request_id IS NOT NULL OR checked.source_attendance_resolution_case_id IS NOT NULL
-         OR checked.source_work_arrangement_id IS NOT NULL) AS "hasDisposition",
+         OR checked.source_work_arrangement_id IS NOT NULL OR checked.source_business_trip_id IS NOT NULL) AS "hasDisposition",
        (
          EXISTS (
            SELECT 1 FROM attendance_schedule_assignments assignment

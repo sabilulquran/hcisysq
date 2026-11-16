@@ -185,8 +185,26 @@ export async function leaveDisposition(pool: Pool, employeeId: string, workDate:
   return result.rows[0]?.disposition ?? null;
 }
 
-/** ATT-015 §7.1: the approved tugas luar or WFH/WFA covering the day, read the same way as the engine. */
-export async function workArrangementDisposition(pool: Pick<Pool, "query">, employeeId: string, workDate: string) {
+/**
+ * ATT-015 §7.1 and TRIP-001 Paket 2 (business-travel.md §9.2): what explains a scheduled day without a
+ * leave decision, read the same way as the engine. An ISSUED or COMPLETED business trip comes first,
+ * then an approved tugas luar or WFH/WFA.
+ */
+export async function workArrangementDisposition(
+  pool: Pick<Pool, "query">,
+  employeeId: string,
+  workDate: string,
+): Promise<"business_trip" | "field_assignment" | "remote_work" | null> {
+  const trip = await pool.query(
+    `SELECT 1
+     FROM business_trip_requests
+     WHERE employee_id = $1
+       AND status IN ('ISSUED', 'COMPLETED')
+       AND $2::date BETWEEN start_on AND end_on
+     LIMIT 1`,
+    [employeeId, workDate],
+  );
+  if (trip.rows[0]) return "business_trip";
   const result = await pool.query<{ disposition: "field_assignment" | "remote_work" }>(
     `SELECT CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
      FROM attendance_work_arrangement_requests
@@ -476,7 +494,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
         lateMinutes: 0, earlyLeaveMinutes: 0,
       };
       if (!["off", "configuration_error"].includes(row.status)) item.expectedDays += 1;
-      if (["present", "late", "incomplete", "field_assignment", "remote_work"].includes(row.status)) item.attendanceDays += 1;
+      if (["present", "late", "incomplete", "field_assignment", "remote_work", "business_trip"].includes(row.status)) item.attendanceDays += 1;
       if (row.status === "late") item.lateDays += 1;
       if (row.status === "absent") item.absenceDays += 1;
       if (row.status === "leave") item.leaveDays += 1;
@@ -504,7 +522,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
     };
     item.employeeIds.add(row.employeeId);
     if (!["off", "configuration_error"].includes(row.status)) item.expectedDays += 1;
-    if (["present", "late", "incomplete", "field_assignment", "remote_work"].includes(row.status)) item.attendanceDays += 1;
+    if (["present", "late", "incomplete", "field_assignment", "remote_work", "business_trip"].includes(row.status)) item.attendanceDays += 1;
     if (row.status === "late") item.lateDays += 1;
     if (row.status === "absent") item.absenceDays += 1;
     if (row.status === "leave") item.leaveDays += 1;

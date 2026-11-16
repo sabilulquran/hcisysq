@@ -37,7 +37,7 @@ import { hasPermission } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 
 const STATUS_FILTERS: AttendanceCalculationRowStatus[] = [
-  "present", "late", "incomplete", "absent", "leave", "field_assignment", "remote_work", "off", "unscheduled", "pending",
+  "present", "late", "incomplete", "absent", "leave", "field_assignment", "remote_work", "business_trip", "off", "unscheduled", "pending",
   "configuration_error", "not_calculated", "not_captured",
 ];
 const TABS = [

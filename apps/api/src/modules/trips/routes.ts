@@ -24,6 +24,7 @@ import {
   loadEmployeeFacts,
   writeDocumentAudit,
 } from "../documents/service.js";
+import { materializeAttendanceResult } from "../attendance/engine.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -39,12 +40,16 @@ import {
   OCCUPYING_TRIP_STATUSES,
   TRIP_STATUSES,
   TripPolicyError,
+  tripDatesToRecompute,
   validateTripDates,
   type TripCanceller,
   type TripStatus,
 } from "./domain.js";
 
 type Queryable = Pool | PoolClient;
+
+/** Paket 2 (§9.2): the employee-days whose attendance a transition changed. */
+type Recompute = { employeeId: string; dates: string[] };
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
 const TRIP_WORKFLOW_KEY = "TRIP";
@@ -371,11 +376,28 @@ export async function registerTripRoutes(
     }
   }
 
-  /** Runs `work` in one transaction and answers only after COMMIT succeeded. */
-  async function transact(reply: FastifyReply, work: (client: PoolClient) => Promise<[number, unknown]>) {
+  /**
+   * Runs `work` in one transaction and answers only after COMMIT succeeded. Paket 2 (§9.2): when the
+   * transition started or stopped an issued trip, the dates already begun are recalculated one by one
+   * afterwards, as ATT-015 does; a failed date does not undo the transition, Kalkulasi repairs it.
+   */
+  async function transact(
+    reply: FastifyReply,
+    work: (client: PoolClient) => Promise<[number, Record<string, unknown>, (Recompute | undefined)?]>,
+  ) {
     return handle(reply, async () => {
-      const [status, body] = await inTransaction(work);
-      return send(reply, status, body);
+      const [status, body, recompute] = await inTransaction(work);
+      if (!recompute || recompute.dates.length === 0) return send(reply, status, body);
+      let recalculated = 0;
+      for (const date of recompute.dates) {
+        try {
+          await materializeAttendanceResult(pool, recompute.employeeId, date);
+          recalculated += 1;
+        } catch (error) {
+          reply.log.warn({ err: error, workDate: date }, "TRIP-001 recompute failed; Kalkulasi will repair it");
+        }
+      }
+      return send(reply, status, { ...body, recalculatedDates: recalculated });
     });
   }
 
@@ -389,9 +411,11 @@ export async function registerTripRoutes(
   ) {
     const found = await client.query<{
       employeeId: string; status: TripStatus; documentId: string | null; documentNumber: string | null; destination: string;
+      startOn: string; endOn: string;
     }>(
       `SELECT trip.employee_id AS "employeeId", trip.status, trip.issued_document_id AS "documentId",
-              document.document_number AS "documentNumber", trip.destination
+              document.document_number AS "documentNumber", trip.destination,
+              to_char(trip.start_on, 'YYYY-MM-DD') AS "startOn", to_char(trip.end_on, 'YYYY-MM-DD') AS "endOn"
          FROM business_trip_requests trip
          LEFT JOIN hr_issued_documents document ON document.id = trip.issued_document_id
         WHERE trip.id = $1 AND ($2::uuid IS NULL OR trip.employee_id = $2)
@@ -448,7 +472,11 @@ export async function registerTripRoutes(
         actorAccountId: input.actorAccountId,
       });
     }
-    return { id: input.id, status: "CANCELLED" as const };
+    // Paket 2: an issued trip stops explaining the days it covered.
+    const recompute: Recompute | undefined = trip.status === "ISSUED"
+      ? { employeeId: trip.employeeId, dates: tripDatesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())) }
+      : undefined;
+    return { result: { id: input.id, status: "CANCELLED" as const }, recompute };
   }
 
   // ---------------------------------------------------------------- employee
@@ -580,7 +608,7 @@ export async function registerTripRoutes(
     if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_CANCEL", message: "Alasan pembatalan minimal 5 karakter." });
     return transact(reply, async (client) => {
       const employee = await loadEmployeeContext(client, principal.id);
-      const result = await cancelTrip(client, {
+      const { result } = await cancelTrip(client, {
         id: params.data.id, ownerEmployeeId: employee.id, by: "employee",
         actorAccountId: principal.id, reason: body.data.reason,
       });
@@ -871,6 +899,10 @@ export async function registerTripRoutes(
         documentId: issued.id,
         documentNumber: issued.documentNumber,
         signer: { title: issued.signerTitle, name: issued.signerName },
+      }, {
+        // Paket 2: a letter issued after the trip began decides the days already passed.
+        employeeId: trip.employeeId,
+        dates: tripDatesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())),
       }];
     });
   });
@@ -883,10 +915,10 @@ export async function registerTripRoutes(
     const body = hcCancelBody.safeParse(request.body);
     if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_CANCEL", message: "Alasan pembatalan minimal 10 karakter." });
     return transact(reply, async (client) => {
-      const result = await cancelTrip(client, {
+      const { result, recompute } = await cancelTrip(client, {
         id: params.data.id, ownerEmployeeId: null, by: "hc", actorAccountId: principal.id, reason: body.data.reason,
       });
-      return [200, result];
+      return [200, result, recompute];
     });
   });
 }

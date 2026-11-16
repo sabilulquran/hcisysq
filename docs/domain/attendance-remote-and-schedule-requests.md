@@ -172,6 +172,8 @@ tugas luar/WFH disetujui:
 selain itu -> penilaian punch biasa
 ```
 
+Sejak TRIP-001 Paket 2 (`docs/domain/business-travel.md` §9.2), perjalanan dinas `ISSUED`/`COMPLETED` diputus **sebelum** tugas luar/WFH: hari itu berstatus `business_trip`, dan pengajuan ATT-015 yang kebetulan beririsan tidak dibaca (D-15 `DRAFT`; biasanya tidak terjadi karena keduanya saling menolak tumpang tindih).
+
 Hari multi-blok (ATT-013) mengikuti aturan yang sama: tanpa punch sama sekali → status disposisi; dengan punch → penilaian per blok dengan justifikasi yang sama. Punch yang tidak lengkap tetap `incomplete` (invariant ATT-011 I-3); pegawai mengajukan klarifikasi seperti biasa.
 
 Versi hasil menyimpan `source_work_arrangement_id`; id pengajuan masuk ke `input_hash`, sehingga persetujuan atau pembatalan menghasilkan versi baru dan riwayat versi lama tetap utuh.

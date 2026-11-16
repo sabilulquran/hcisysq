@@ -1262,3 +1262,25 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
 - Batas 50 000 baris berlaku juga untuk model punch (`EXPORT_TOO_LARGE`). Tidak ada migration, route,
   atau permission baru.
 
+
+## 21. Status disposisi tambahan: tugas luar, WFH/WFA, dan Dinas (ATT-015, TRIP-001 Paket 2)
+
+Dua spesifikasi lain menambah status hasil harian yang menjelaskan hari tanpa scan. Engine yang
+menulisnya tetap ATT-007; laporan ini hanya membaca status tersimpan. Urutan keputusan per hari:
+jadwal bermasalah/libur → cuti atau penyelesaian final → perjalanan dinas → tugas luar/WFH → punch.
+
+| Status | Label | Simbol §6.6 | Normal | Riil | Sumber |
+| --- | --- | --- | --- | --- | --- |
+| `field_assignment` | Tugas luar | `DL` | 1 | 1 | ATT-015 §7 (`docs/domain/attendance-remote-and-schedule-requests.md`) |
+| `remote_work` | WFH/WFA | `W` | 1 | 1 | ATT-015 §7 |
+| `business_trip` | Dinas | `PD` | 1 | 1 | TRIP-001 §9.2 (`docs/domain/business-travel.md`), perjalanan `ISSUED`/`COMPLETED` |
+
+- Ketiganya dihitung sebagai hari hadir di laporan periode dan per unit, dan dijumlah di kolom rekap
+  **"Tugas luar/WFH/Dinas"** (matriks: `TL/WFH/PD`).
+- Filter status Detail Harian menerima ketiganya. Antrean tindakan tidak memuatnya (hanya `incomplete`
+  dan `configuration_error`).
+- Hari dinas yang punya punch tetap memakai punch: `absent`/`incomplete` menjadi `business_trip` dengan jam
+  punch tetap tersimpan, `late` dibaca `present`, dan menit telat serta pulang awal disimpan 0
+  (TRIP-001 D-15, `DRAFT`). Tidak ada punch yang dibuat dari jam jadwal.
+- Versi hasil menyimpan sumbernya (`source_work_arrangement_id`, `source_business_trip_id`); keduanya
+  membuat hari tidak lagi dinilai ulang oleh jam baca provisional (§6.5, D-14-4).

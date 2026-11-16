@@ -13,6 +13,19 @@ export const OCCUPYING_TRIP_STATUSES: readonly TripStatus[] = ["IN_REVIEW", "APP
 /** D-11: these trips are shown in the ATT-014 exceptions tab. */
 export const VISIBLE_IN_ATTENDANCE: readonly TripStatus[] = ["APPROVED", "ISSUED", "COMPLETED"];
 
+/**
+ * Paket 2 (§9.2): the dates whose attendance changes now when a trip starts or stops deciding
+ * attendance — those already begun, up to today. Later dates are calculated when they arrive.
+ */
+export function tripDatesToRecompute(startOn: string, endOn: string, today: string): string[] {
+  const dates: string[] = [];
+  const last = endOn < today ? endOn : today;
+  for (let day = epochDay(startOn); day <= epochDay(last); day += 1) {
+    dates.push(new Date(day * DAY_MS).toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 export class TripPolicyError extends Error {
   constructor(
     readonly code: "TRIP_DATE_RANGE" | "TRIP_TOO_LONG" | "TRIP_START_IN_PAST",

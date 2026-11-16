@@ -28,7 +28,7 @@ export const POLICY_KEYS = [
  * absence must not refuse a calculation the way a missing BPJS policy does
  * (specification section 10 item 6).
  */
-export const OPTIONAL_POLICY_KEYS = ["VARIANCE_THRESHOLD"] as const;
+export const OPTIONAL_POLICY_KEYS = ["VARIANCE_THRESHOLD", "PERFORMANCE_PERCENT"] as const;
 
 export const DEFAULT_VARIANCE_THRESHOLD = { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 };
 
@@ -95,6 +95,36 @@ const terTable = z
       }
     });
   });
+
+/**
+ * PERF-001 to PAY-003 (performance-review.md section 11): predicate to
+ * performance percentage. The version is also the switch. With no version
+ * effective on the pay date, or with `enabled: false`, payroll reads the
+ * compensation profile exactly as before; nothing is guessed.
+ */
+const PERFORMANCE_PERCENT_SCHEMA = z
+  .object({
+    enabled: z.boolean(),
+    // Optional while switched off, so HC can close the link with a minimal
+    // `{ enabled: false }` version; required and non-empty while on.
+    byPredicate: z
+      .record(
+        z.string().regex(/^[A-Z][A-Z0-9_]{0,15}$/, "kode predikat tidak valid"),
+        z
+          .number()
+          .min(0)
+          .max(2)
+          // Same precision as the profile column, numeric(5, 4).
+          .refine((value) => Math.abs(value * 10_000 - Math.round(value * 10_000)) < 1e-6, "persentase paling banyak empat desimal"),
+      )
+      .optional(),
+  })
+  .refine((policy) => !policy.enabled || Object.keys(policy.byPredicate ?? {}).length > 0, {
+    path: ["byPredicate"],
+    message: "pemetaan predikat tidak boleh kosong selama sambungan menyala",
+  });
+
+export type PerformancePercentPolicy = z.infer<typeof PERFORMANCE_PERCENT_SCHEMA>;
 
 const PPH21_TER_SCHEMA = z.object({
   // The legal reference the table was copied from, kept inside the payload so
@@ -235,6 +265,7 @@ const PAYLOAD_SCHEMAS = {
   CONTRACT_RATES: z.object({ transportPerAttendance: rupiah, teachingFeePerHour: rupiah }),
   EARLY_SERVICE: z.object({ months: z.number().int().min(0), netRate: rate }),
   VARIANCE_THRESHOLD: z.object({ relative: rate, absolute: rupiah, manualInput: rupiah }),
+  PERFORMANCE_PERCENT: PERFORMANCE_PERCENT_SCHEMA,
   // Not read by the engine: the PPh21 report reads it (reports.ts, pph21.ts).
   PPH21_TER: PPH21_TER_SCHEMA,
   // Read by the annual calculation and the 1721-A1 (pph21-annual.ts).
@@ -262,7 +293,19 @@ export function validatePolicyPayload(
 }
 
 export type PolicyResolution =
-  | { ok: true; policy: PayrollPolicy; versionIds: string[]; variance: { relative: number; absolute: number; manualInput: number } }
+  | {
+      ok: true;
+      policy: PayrollPolicy;
+      versionIds: string[];
+      variance: { relative: number; absolute: number; manualInput: number };
+      /**
+       * The predicate mapping when the link to PERF-001 is switched on for this
+       * pay date, otherwise null. A version with `enabled: false` reads as null
+       * and is not added to versionIds, so a switched-off period stores exactly
+       * what it stored before the link existed.
+       */
+      performancePercent: { versionId: string; byPredicate: Readonly<Record<string, number>> } | null;
+    }
   | { ok: false; problems: PolicyProblem[] };
 
 export type PolicyProblem = {
@@ -339,6 +382,45 @@ export function resolvePolicy(rows: readonly PolicyVersionRow[]): PolicyResoluti
   const variance = varianceParsed?.success ? varianceParsed.data : DEFAULT_VARIANCE_THRESHOLD;
   if (varianceRow && varianceParsed?.success) versionIds.push(varianceRow.id);
 
+  // Unlike the review threshold, a malformed mapping fails closed: falling back
+  // to the profile would quietly pay the old figure while HC believes the link
+  // is on. The write path already refuses such a payload, so this only catches
+  // a row written around it.
+  let performancePercent: Extract<PolicyResolution, { ok: true }>["performancePercent"] = null;
+  const performanceRows = byKey.get("PERFORMANCE_PERCENT") ?? [];
+  if (performanceRows.length > 1) {
+    return {
+      ok: false,
+      problems: [
+        {
+          policyKey: "PERFORMANCE_PERCENT",
+          code: "DUPLICATE",
+          message: "Lebih dari satu versi kebijakan PERFORMANCE_PERCENT berlaku pada tanggal periode ini.",
+        },
+      ],
+    };
+  }
+  const performanceRow = performanceRows[0];
+  if (performanceRow) {
+    const performanceParsed = PERFORMANCE_PERCENT_SCHEMA.safeParse(performanceRow.payload);
+    if (!performanceParsed.success) {
+      return {
+        ok: false,
+        problems: [
+          {
+            policyKey: "PERFORMANCE_PERCENT",
+            code: "INVALID",
+            message: `Isi kebijakan PERFORMANCE_PERCENT tidak sesuai bentuk yang dibutuhkan: ${performanceParsed.error.issues[0]?.message ?? "tidak valid"}.`,
+          },
+        ],
+      };
+    }
+    if (performanceParsed.data.enabled) {
+      performancePercent = { versionId: performanceRow.id, byPredicate: performanceParsed.data.byPredicate ?? {} };
+      versionIds.push(performanceRow.id);
+    }
+  }
+
   const policy: PayrollPolicy = {
     salaryScale: scale.scale as Partial<Record<EducationLevel, readonly number[]>>,
     unitBasicMultipliers: multiplier.units,
@@ -358,5 +440,5 @@ export function resolvePolicy(rows: readonly PolicyVersionRow[]): PolicyResoluti
     earlyService,
   };
 
-  return { ok: true, policy, versionIds, variance };
+  return { ok: true, policy, versionIds, variance, performancePercent };
 }

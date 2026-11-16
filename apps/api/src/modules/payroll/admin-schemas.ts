@@ -16,7 +16,7 @@ export const MIGRATION_MARKER = "[PAY-003-MIG]";
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 
 export const policyBody = z.object({
-  policyKey: z.enum([...POLICY_KEYS, "VARIANCE_THRESHOLD", "PPH21_TER", "PPH21_ANNUAL"] as [string, ...string[]]),
+  policyKey: z.enum([...POLICY_KEYS, "VARIANCE_THRESHOLD", "PPH21_TER", "PERFORMANCE_PERCENT", "PPH21_ANNUAL"] as [string, ...string[]]),
   effectiveFrom: isoDate,
   payload: z.record(z.string(), z.unknown()),
   source: z.string().trim().min(3).max(500),

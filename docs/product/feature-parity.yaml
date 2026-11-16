@@ -185,6 +185,26 @@ features:
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
 
+  - id: ORG-011
+    module: organization
+    name: Job classification and grade catalog
+    legacy_evidence: legacy matched functional and positional allowances by free-text position labels; roadmap C asked for a stable class-of-work key separate from ORG-004 seats
+    target_status: implemented
+    priority: post-mvp-payroll-foundation
+    risk: high
+    planning_note: >-
+      Packages 1-4 implemented: effective-dated classification and optional grade catalogs (no money, no
+      authority), seat and placement binding, two-slot resolver for PAY-003, HC screen with CSV export and
+      audited CSV import, change history, and read views in the employee profile and the designer. The
+      production catalog is left empty for HC to fill. Payroll does not read classifications yet: PAY-003
+      has no connection point, so the contract (default-OFF switch, parallel run first) is documented in
+      spec §4.1 and payroll results are unchanged. Open decisions in spec §8 are DRAFT pending the owner.
+    docs:
+      - docs/domain/job-classification-grade.md
+      - docs/architecture/adr/0004-job-classification-separate-from-structure.md
+      - docs/api/job-classifications.openapi.yaml
+      - docs/domain/payroll-calculation-v1.md
+
   - id: ORG-008
     module: organization
     name: Organization structure designer UX simplification
@@ -765,7 +785,8 @@ features:
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
       Open owner items: load the verified TER table (PPH21_TER) and the PPH21_ANNUAL policy
       (PTKP, biaya jabatan, Pasal 17), enter NIK/NPWP, kasbon balances, and the
-      remaining profiles.
+      remaining profiles. The PERF-001 link (§5.5, PERFORMANCE_PERCENT) is built and switched
+      off by default.
     docs:
       - docs/domain/payroll-engine-discovery.md
       - docs/domain/payroll-legacy-flow-audit.md
@@ -863,9 +884,17 @@ features:
       Package 1 implemented 2026-11-02 (docs/domain/performance-review.md): monthly and annual
       cycles with a per-cycle rubric, self-assessment, rating by the line manager from the
       structure, HC validation or return, A-D predicate, acknowledgement, history and HC recap.
-      The tunjangan kinerja link to PAY-003 is specified as a contract (spec §11) and not built.
+      The tunjangan kinerja link to PAY-003 (spec §11) is built 2026-11-17 behind the versioned
+      payroll policy PERFORMANCE_PERCENT, which is absent (switched off) by default: payroll then
+      reads the compensation profile exactly as before. Switched on, PAY-003 reads only FINALIZED
+      reviews of CLOSED cycles (MONTHLY of month M-1, last ANNUAL closed by the pay date), maps the
+      predicate through the policy (DRAFT A 100 %, B 90 %, C 75 %, D 50 %), falls back to the
+      profile without a review, and stores review, cycle and predicate in the result snapshot
+      (payroll-calculation-v1.md §5.5). Switching it on is an owner decision after PAY-003 becomes
+      the official slip path.
     docs:
       - docs/domain/performance-review.md
+      - docs/domain/payroll-calculation-v1.md
 
   - id: TRAIN-001
     module: training
@@ -898,7 +927,13 @@ features:
     risk: high
     notes: >-
       Package 1 implemented 2026-10-27 (docs/domain/hr-documents.md): request,
-      HC decision, numbered issuance, register. Income certificate waits for PAY-003.
+      HC decision, numbered issuance, register. Package 2 implemented 2026-11-17: the income
+      certificate (KETERANGAN_PENGHASILAN, number code SKP) states per-month gross and net and
+      their average from the official published payslips of the three full months before issue
+      (DRAFT D-21..D-24), frozen in the snapshot, never recalculated; 409 when no slip was
+      published in the window. HC reads an issued certificate through the audited
+      GET /admin/documents/issued/:id; an income letter's content needs documents.manage (D-25).
+      Migration 0154 activates the type.
 
   - id: DOC-002
     module: documents

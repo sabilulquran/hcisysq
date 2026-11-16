@@ -112,6 +112,7 @@ Komponen awal v1 (kode final saat implementasi):
 | PKWT | Transport Rp15.000/kehadiran; honor Rp15.400/jam. |
 | Masa kerja awal | Netto dibayar 80% bila masa kerja < 2 bulan pada tanggal gajian (D8). |
 | PPh21 TER | Tabel TER A/B/C dengan pemetaan status PTKP; kode objek 21-100-01. |
+| `PERFORMANCE_PERCENT` (opsional, sakelar) | Predikat penilaian kinerja PERF-001 → persentase kinerja, sekaligus sakelar sambungan PERF-001 (§5.5). Tidak ada versi = mati. Usulan `DRAFT`: A 100%, B 90%, C 75%, D 50%. |
 
 ### 3.3 Profil kompensasi pegawai
 
@@ -121,7 +122,7 @@ Per employment, berlaku-efektif:
 - jumlah pasangan dan anak tertanggung;
 - pola kerja (penuh / Half Day / Half Day II);
 - jam mengajar per pekan (kosong = tidak terkena aturan jam);
-- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3);
+- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3). Bila sambungan PERF-001 menyala (§5.5), penilaian final menggantikan nilai profil untuk periode itu; profil tetap menjadi cadangan;
 - target kualifikasi khusus (opsional);
 - kepesertaan BPJS Kesehatan: segmen (`PPU_YAYASAN`, `PBI`, `MANDIRI`, `BELUM_TERDAFTAR`), tanggal aktif, jumlah anggota keluarga tambahan, referensi SK (D2). Anggota tambahan **diturunkan**, tidak diketik: `anggota_tambahan = max(0, tanggungan_terdaftar − (pasangan + min(anak, 3)))`, sesuai batas penanggungan pasangan + 3 anak pada iuran 5%. Nilai manual hanya boleh sebagai override dengan alasan dan selisihnya ditampilkan saat review;
 - status PTKP, dan **pengecualian pelaporan PPh21** (`pph21_report_excluded` + alasan wajib, migration 0147; §5.3);
@@ -146,7 +147,7 @@ Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (te
 | Rapel | Input HC dengan alasan | |
 | Penyesuaian gaji | Input HC dengan alasan dan referensi keputusan | Wajib untuk kasus yang dulu memakai kualifikasi khusus negatif (D1). |
 | Prorata | Penyesuaian berwenang dengan alasan | |
-| Override kinerja/jam | Input HC untuk periode itu | Mengalahkan profil hanya pada periode tersebut. |
+| Override kinerja/jam | Input HC untuk periode itu | Mengalahkan profil — dan penilaian PERF-001 bila sambungan §5.5 menyala — hanya pada periode tersebut. |
 
 Setiap input mencatat aktor, waktu, alasan bila diwajibkan, dan audit event.
 
@@ -244,6 +245,8 @@ Status implementasi dan keputusan `DRAFT` laporan ini: §7.2.
 
 ### 5.4 Blocker (fail closed)
 
+- predikat penilaian kinerja yang tidak ada di kebijakan `PERFORMANCE_PERCENT` saat sambungan §5.5 menyala (`PERFORMANCE_PREDICATE_UNMAPPED`);
+
 Periode tidak dapat diajukan bila ada blocker:
 
 - MKG di luar tabel skala (D7);
@@ -264,6 +267,39 @@ Periode tidak dapat diajukan bila ada blocker:
 Tiga blocker terakhir bersifat **tingkat periode**, bukan per pegawai, sehingga diperiksa pada lapisan periode saat perhitungan dijalankan, bukan di fungsi perhitungan per pegawai: satu rekening dipakai lebih dari satu pegawai, kebijakan statutori tidak tersedia untuk tanggal periode, dan input berubah setelah perhitungan terakhir (dibandingkan lewat `input_snapshot` hasil terakhir).
 
 Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang §10 butir 6, pegawai baru/keluar, input manual bernilai besar.
+
+### 5.5 Sambungan penilaian kinerja PERF-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/performance-review.md` §11. Implementasi: `apps/api/src/modules/payroll/performance-link.ts` (fungsi murni pemetaan) dan `calculation.ts` (pemilihan penilaian). PAY-001/PAY-002 tetap jalur slip resmi; sambungan ini hanya mengubah hasil PAY-003.
+
+**Sakelar = kebijakan berversi.** Kebijakan opsional `PERFORMANCE_PERCENT` berbentuk `{ enabled: boolean, byPredicate: { <kode predikat>: <persen 0..2, ≤ 4 desimal> } }`. Sambungan **mati** bila tidak ada versi yang berlaku pada tanggal gajian (keadaan setelah migrasi 0153 — migrasi itu hanya membuka kunci kebijakan, tidak menulis versi) atau versinya `enabled: false`. Selama mati, tidak satu pun penilaian dibaca, `input_snapshot` dan `policy_version_ids` sama persis dengan sebelum sambungan ada, sehingga hasil tidak berubah sedikit pun. Karena berupa versi kebijakan, menyalakannya berlaku-efektif per tanggal gajian, dicatat audit `payroll.policy.*`, dan dilindungi aturan berlaku-mundur §3. Payload yang tidak sesuai bentuk menggagalkan perhitungan (`PAYROLL_POLICY_MISSING`, kode `INVALID`), bukan diam-diam kembali ke profil.
+
+**Sumber (hanya saat menyala).**
+
+| Persentase | Dibaca dari |
+|---|---|
+| `%bulanan` periode bulan *M* | penilaian `FINALIZED` pegawai itu pada siklus `MONTHLY` yang periodenya mulai tanggal 1 bulan *M−1* |
+| `%tahunan` | penilaian `FINALIZED` pegawai itu pada **satu** siklus `ANNUAL` dengan awal periode terbaru di antara siklus yang sudah ditutup |
+
+Siklus dihitung "sudah ditutup" bila berstatus `CLOSED` dan tanggal tutupnya (Asia/Jakarta) tidak setelah tanggal gajian, sehingga menghitung ulang periode lama setelah siklus berikutnya ditutup tidak membaca ke depan. `UNRATED`, `REMOVED`, penilaian yang belum final, dan siklus yang belum ditutup tidak pernah dibaca. Penilaian dimiliki pegawai (`employee_id`), sehingga dua employment orang yang sama memakai penilaian yang sama.
+
+**Urutan.** `override HC periode itu` > `penilaian final` > `profil kompensasi` (> default masa kerja < 1 tahun §10 butir 3 bila keduanya kosong). Pegawai tanpa penilaian final memakai profil seperti hari ini; tidak ada nilai yang ditebak. Bila hanya `%bulanan` yang berasal dari penilaian dan `%tahunan` profil kosong, `%tahunan` = 0 (bukan `PERFORMANCE.unratedBelowOneYear.annualRate`), sama seperti profil yang hanya mengisi satu persen hari ini; default masa kerja < 1 tahun hanya dipakai bila kedua persen kosong. Pegawai honorer (`KONTRAK_HONORER`, `LEPAS`) tidak mendapat `PERF` (§5.2), sehingga penilaiannya tidak dibaca dan tidak memblokir.
+
+**Predikat tanpa pemetaan.** Siklus boleh memakai kode predikat sendiri (PERF-001 D-06). Kode yang tidak ada di `byPredicate` menjadi blocker per pegawai `PERFORMANCE_PREDICATE_UNMAPPED`; HC menambah kodenya lewat versi kebijakan baru lalu menghitung ulang.
+
+**Jejak.** Setiap baris hasil menyimpan `input_snapshot.performance_link = { policy_version_id, monthly, annual }`, masing-masing `{ review_id, cycle_id, cycle_kind, cycle_period_start, predicate, rate }` atau `null`. Audit `payroll.period.calculated` hanya menambah `performance_link_enabled` dan `performance_linked_count` (jumlah employment yang memakai sedikitnya satu penilaian) — tanpa predikat, persen, atau nominal per orang (§8).
+
+**Keputusan `DRAFT` (default agent 2026-11-17, menunggu konfirmasi owner):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| K1 | Pemetaan predikat | A 100%, B 90%, C 75%, D 50% (usulan PERF-001 §11 butir 2); disimpan sebagai payload yang diisi HC, **bukan** di kode atau seed. |
+| K2 | Bentuk sakelar | Versi kebijakan `PERFORMANCE_PERCENT` (bukan variabel lingkungan), agar berlaku-efektif dan teraudit seperti kebijakan lain. |
+| K3 | Siklus tahunan tanpa penilaian final pegawai | Kembali ke profil, tidak mencari siklus tahunan yang lebih lama. |
+| K4 | Siklus ditutup setelah perhitungan | Tidak membuat periode basi otomatis; HC menghitung ulang setelah menutup siklus. Penilaian yang dipakai terlihat di `performance_link`. |
+| K5 | Kapan dinyalakan | Setelah owner menjadikan PAY-003 jalur slip resmi dan menyetujui K1 (PERF-001 §11 butir 6). Menyalakannya adalah perubahan kebijakan production yang dilaporkan. |
+
+Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `{ "enabled": false }`; `byPredicate` boleh dihilangkan selama mati) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0153.
 
 ## 6. Lifecycle periode
 
@@ -495,6 +531,7 @@ Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payrol
 
 ### 9.3 Test minimum
 
+- Sambungan PERF-001 (§5.5): sakelar mati menghasilkan baris dan snapshot identik; pemetaan A–D tepat ke rupiah; urutan override > penilaian > profil; siklus terbuka, `UNRATED`, dan siklus ditutup setelah tanggal gajian tidak dibaca; predikat tanpa pemetaan memblokir (`test/payroll-performance-link.test.ts`, `test/payroll-calculation.integration.test.ts`).
 - Unit test fungsi perhitungan per komponen dengan kasus batas: MKG 0/27/28, jam 0/96/lebih/kurang, BPJS di bawah UMK dan di atas Rp12 juta, segmen PBI, anggota tambahan, masa kerja 1/2/3 bulan, kualifikasi khusus negatif, kasbon melebihi sisa.
 - Golden test dari data sintetis yang meniru struktur spreadsheet (bukan data produksi).
 - Test otorisasi untuk setiap permission di §2, termasuk larangan self-approval dan read-only Pengurus.

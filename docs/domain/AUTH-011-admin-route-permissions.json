@@ -2845,6 +2845,14 @@
   },
   {
     "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/issued/:id",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
     "method": "POST",
     "url": "/admin/documents/issued/:id/revoke",
     "permissions": [
@@ -3542,6 +3550,46 @@
     "url": "/admin/job-classifications/:code/deactivation",
     "permissions": [
       "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classifications/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-grades/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classification-imports",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classification-audit-events",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/job-classifications",
+    "permissions": [
+      "job_classifications.read"
     ]
   },
   {

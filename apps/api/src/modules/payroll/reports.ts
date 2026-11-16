@@ -487,11 +487,11 @@ export async function loadPph21MonthSources(
   periodId: string,
 ): Promise<{
   rows: Pph21SourceRow[];
-  periods: Array<{ id: string; kind: "REGULAR" | "THR"; state: string }>;
+  periods: Array<{ id: string; kind: "REGULAR" | "THR"; state: string; payDate: string }>;
   pendingPeriodCount: number;
 }> {
-  const { rows: periods } = await pool.query<{ id: string; kind: "REGULAR" | "THR"; state: string }>(
-    `SELECT other.id, other.period_kind AS kind, other.state
+  const { rows: periods } = await pool.query<{ id: string; kind: "REGULAR" | "THR"; state: string; payDate: string }>(
+    `SELECT other.id, other.period_kind AS kind, other.state, to_char(other.pay_date, 'YYYY-MM-DD') AS "payDate"
      FROM payroll_periods current_period
      JOIN payroll_periods other
        ON other.period_month = current_period.period_month

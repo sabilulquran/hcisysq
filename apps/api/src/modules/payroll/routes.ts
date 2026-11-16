@@ -68,6 +68,8 @@ import {
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 const firstOfMonth = isoDate.refine((value) => value.endsWith("-01"), "Periode harus tanggal 1 bulan tersebut");
 
+import { parseThrPolicy } from "./policy.js";
+
 const createBody = z.object({
   periodMonth: firstOfMonth,
   payDate: isoDate.optional(),
@@ -420,6 +422,29 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         return send(reply, 400, {
           code: "PAYROLL_INVALID_PERIOD",
           message: "Tanggal bayar THR harus sebelum hari raya.",
+        });
+      }
+      // A period's pay date cannot be changed afterwards, so a date the THR policy would refuse at
+      // calculation is refused here, before it takes the month's THR slot. The calculation checks
+      // again, against whatever policy is in force then.
+      const policyRows = await pool.query<{ id: string; policyKey: string; payload: unknown }>(
+        `SELECT id, policy_key AS "policyKey", payload FROM payroll_policy_versions
+         WHERE policy_key = 'THR' AND effective_from <= $1::date
+           AND (effective_to IS NULL OR effective_to >= $1::date)`,
+        [payDate],
+      );
+      const thrPolicy = parseThrPolicy(policyRows.rows);
+      if (!thrPolicy.ok) {
+        return send(reply, 409, { code: "PAYROLL_POLICY_MISSING", message: thrPolicy.problem.message });
+      }
+      const latest = new Date(`${holidayDate}T00:00:00Z`);
+      latest.setUTCDate(latest.getUTCDate() - thrPolicy.policy.paymentDeadlineDaysBeforeHoliday);
+      const latestPayDate = latest.toISOString().slice(0, 10);
+      if (payDate > latestPayDate) {
+        return send(reply, 409, {
+          code: "PAYROLL_THR_PAY_DATE_LATE",
+          message: `THR harus dibayar paling lambat ${latestPayDate} menurut kebijakan THR.`,
+          latestPayDate,
         });
       }
     } else if (holidayDate || holidayName) {
@@ -856,30 +881,34 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       });
     }
 
-    const lookup = await findPph21Policy(pool, period.payDate);
+    // PAY-003-THR T10: the masa pajak is the month, salary and THR together. The TER policy is
+    // read on the latest pay date among the included periods, so the same masa pajak gives the
+    // same tax whichever of its periods the report is opened from.
+    const month = await loadPph21MonthSources(pool, period.id);
+    const taxDate = month.periods.reduce((latest, entry) => (entry.payDate > latest ? entry.payDate : latest), period.payDate);
+    const lookup = await findPph21Policy(pool, taxDate);
     if (!lookup.ok) {
       return send(reply, 409, { code: lookup.code, message: lookup.message });
     }
-
-    // PAY-003-THR T10: the masa pajak is the month, salary and THR together.
-    const month = await loadPph21MonthSources(pool, period.id);
-    const settings = await findPph21Settings(pool, period.payDate);
+    const settings = await findPph21Settings(pool, taxDate);
     if (!settings.ok) {
       return send(reply, 409, { code: settings.code, message: settings.message });
     }
-
     const report = buildPph21Report({
       period: { periodMonth: period.periodMonth, periodStart: period.periodStart, periodEnd: period.periodEnd },
       policy: lookup.policy,
       rows: month.rows,
       settings: settings.settings,
     });
-    await recordSensitiveRead(
-      actor.accountId,
-      period.id,
-      query.data.format === "csv" ? "pph21_report_csv" : "pph21_report",
-      report.rows.length,
-    );
+    // Every period whose per-person figures the report carries is recorded as read.
+    for (const entry of month.periods.length > 0 ? month.periods : [{ id: period.id }]) {
+      await recordSensitiveRead(
+        actor.accountId,
+        entry.id,
+        query.data.format === "csv" ? "pph21_report_csv" : "pph21_report",
+        report.rows.length,
+      );
+    }
 
     if (query.data.format === "csv") {
       reply.header("Cache-Control", "no-store");

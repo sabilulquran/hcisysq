@@ -41,6 +41,7 @@ type ResultRow = {
 type LineRow = {
   resultId: string;
   componentCode: string;
+  basis?: string | null;
   displayName: string;
   category: string;
   amount: string;
@@ -60,6 +61,9 @@ export function buildPayslipLines(
 ): PayslipLine[] {
   const thr = period.kind === "THR";
   const earnings = lines.filter((line) => line.category === "EARNING");
+  const serviceMonths = thr
+    ? /masa kerja (\d+) bulan/.exec(lines.find((line) => line.componentCode === "THR")?.basis ?? "")?.[1]
+    : undefined;
   const deductions = lines.filter((line) => line.category === "DEDUCTION");
 
   const payslip: PayslipLine[] = [
@@ -73,6 +77,7 @@ export function buildPayslipLines(
       ? [
           { label: "Jenis", value: `THR ${period.holidayName ?? ""}`.trim(), section: "identity" as const },
           { label: "Hari raya", value: period.holidayDate ?? "", section: "identity" as const },
+          ...(serviceMonths ? [{ label: "Masa kerja", value: `${serviceMonths} bulan`, section: "identity" as const }] : []),
         ]
       : []),
     { label: "Periode", value: period.periodMonth.slice(0, 7), section: "identity" },
@@ -89,7 +94,7 @@ export function buildPayslipLines(
   payslip.push(
     { label: "Total pendapatan", value: formatRupiah(result.gross), section: "summary" },
     { label: "Total potongan", value: formatRupiah(result.deductions), section: "summary" },
-    { label: "Gaji bersih", value: formatRupiah(result.net), section: "summary" },
+    { label: thr ? "THR bersih" : "Gaji bersih", value: formatRupiah(result.net), section: "summary" },
   );
 
   // The factor only appears when it actually changed the amount, so an ordinary
@@ -432,6 +437,7 @@ async function loadLines(client: PoolClient, periodId: string): Promise<LineRow[
             c.display_name AS "displayName",
             l.category,
             l.amount::text AS amount,
+            l.basis,
             l.display_order AS "displayOrder"
      FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      JOIN payroll_result_lines l ON l.result_id = latest.id

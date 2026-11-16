@@ -182,8 +182,10 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
     }
     if (text.includes("FROM payroll_periods current_period")) {
       const periods = [
-        { id: PERIOD_ID, kind: "REGULAR", state: options.state ?? "APPROVED" },
-        ...(options.withThr ? [{ id: THR_PERIOD_ID, kind: "THR", state: "PAYMENT_CONFIRMED" }] : []),
+        { id: PERIOD_ID, kind: "REGULAR", state: options.state ?? "APPROVED", payDate: "2026-09-25" },
+        ...(options.withThr
+          ? [{ id: THR_PERIOD_ID, kind: "THR", state: "PAYMENT_CONFIRMED", payDate: "2026-09-10" }]
+          : []),
       ];
       return { rows: periods, rowCount: periods.length };
     }

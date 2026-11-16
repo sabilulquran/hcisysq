@@ -1352,6 +1352,8 @@ export async function registerPayslipRoutes(
              JOIN payslips payslip
                ON payslip.employee_id = imported.employee_id
               AND payslip.period = imported.period
+              -- PAY-003-THR T13: a THR slip of the same month is no conflict.
+              AND payslip.kind = 'REGULAR'
             WHERE imported.batch_id = $1
               AND imported.resolution_status = 'pending'
               AND jsonb_array_length(imported.validation_errors) = 0

@@ -144,10 +144,11 @@ export function calculateEmployeeThr(input: ThrInput): ThrResult {
       code: "THR",
       category: "EARNING",
       amount,
+      // Always ends with "masa kerja N bulan": the THR slip prints it (payroll-thr.md T13).
       basis:
         serviceMonths >= thrPolicy.fullServiceMonths
           ? `upah ${monthlyWage}, masa kerja ${serviceMonths} bulan`
-          : `upah ${monthlyWage} x ${serviceMonths}/${thrPolicy.fullServiceMonths}`,
+          : `upah ${monthlyWage} x ${serviceMonths}/${thrPolicy.fullServiceMonths}, masa kerja ${serviceMonths} bulan`,
     });
   }
   if (adjustment > 0) lines.push({ code: "ADJUST_EARN", category: "EARNING", amount: adjustment });

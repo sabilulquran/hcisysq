@@ -38,6 +38,11 @@ const POLICY_PAYLOADS: Record<string, unknown> = {
   CONTRACT_RATES: { transportPerAttendance: 15_000, teachingFeePerHour: 15_400 },
   EARLY_SERVICE: { months: 2, netRate: 0.8 },
   VARIANCE_THRESHOLD: { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 },
+  // PAY-003-THR: read only by a THR period; a monthly calculation ignores it.
+  THR: {
+    fullServiceMonths: 12, minimumServiceMonths: 1, paymentDeadlineDaysBeforeHoliday: 7,
+    terminationGraceDays: 30, terminationGraceTermCategories: ["TETAP"], eligibleTermCategories: ["TETAP"],
+  },
 };
 
 const POLICY_ROWS = Object.entries(POLICY_PAYLOADS).map(([policyKey, payload], index) => ({
@@ -584,6 +589,16 @@ describe("PAY-003-THR period (payroll-thr.md)", () => {
       expect(response.statusCode, JSON.stringify(payload)).toBe(400);
     }
   }, 20_000);
+
+  it("refuses at creation a pay date later than the THR policy allows", async () => {
+    const { response } = await call("hc", "POST", "/payroll/periods", {
+      payload: {
+        periodMonth: "2026-09-01", kind: "THR", payDate: "2026-09-25", holidayDate: "2026-09-30", holidayName: "Uji",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "PAYROLL_THR_PAY_DATE_LATE", latestPayDate: "2026-09-23" });
+  });
 
   it("offers only the adjustment as a typed input, and no attendance resolve", async () => {
     const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {

@@ -95,6 +95,8 @@ export const SYMBOL_LEGEND = [
   // ATT-015 §7.2: an approved arrangement explains a day without a punch.
   { symbol: "DL", label: "Tugas luar" },
   { symbol: "W", label: "WFH/WFA" },
+  // TRIP-001 Paket 2: a day covered by an issued business trip (DRAFT symbol, business-travel.md D-16).
+  { symbol: "PD", label: "Dinas" },
   { symbol: "L", label: "Libur" },
   { symbol: "!", label: "Jadwal bermasalah" },
   { symbol: "·", label: "Tanpa jadwal / tidak tercatat / belum ditarik / hari berjalan" },
@@ -109,6 +111,7 @@ export function daySymbol(row: Pick<ReportSourceRow, "status" | "earlyLeaveMinut
     case "leave": return "C";
     case "field_assignment": return "DL";
     case "remote_work": return "W";
+    case "business_trip": return "PD";
     case "off": return "L";
     case "configuration_error": return "!";
     default: return "·";
@@ -124,6 +127,7 @@ const STATUS_WORDS: Record<CalculationRowStatus, string> = {
   leave: "Cuti/Izin",
   field_assignment: "Tugas luar",
   remote_work: "WFH/WFA",
+  business_trip: "Dinas",
   absent: "Tidak hadir",
   off: "Libur",
   configuration_error: "Jadwal bermasalah",
@@ -176,7 +180,7 @@ function addRow(totals: Totals, row: ReportSourceRow) {
   if (row.status === "incomplete") totals.incomplete += 1;
   if (row.status === "absent") totals.absent += 1;
   if (row.status === "leave") totals.leave += 1;
-  if (row.status === "field_assignment" || row.status === "remote_work") totals.arranged += 1;
+  if (row.status === "field_assignment" || row.status === "remote_work" || row.status === "business_trip") totals.arranged += 1;
   if (row.status === "not_captured") totals.notCaptured += 1;
   if (row.status === "not_calculated") totals.notCalculated += 1;
   totals.overtimeMinutes += row.overtimeMinutes ?? 0;
@@ -211,7 +215,7 @@ const SUMMARY_COLUMNS: ReportColumn[] = [
   { key: "lateMinutes", label: "Menit telat", align: "center" },
   { key: "incomplete", label: "Tidak lengkap", align: "center" },
   { key: "leave", label: "Cuti/Izin", align: "center" },
-  { key: "arranged", label: "Tugas luar/WFH", align: "center" },
+  { key: "arranged", label: "Tugas luar/WFH/Dinas", align: "center" },
   { key: "absent", label: "Tidak hadir", align: "center" },
   { key: "overtimeMinutes", label: "Lembur (mnt)", align: "center" },
   { key: "percent", label: "Presensi %", align: "center" },
@@ -451,7 +455,7 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
     }),
     { key: "present", label: "Hadir", align: "center" }, { key: "late", label: "Telat", align: "center" },
     { key: "incomplete", label: "Tdk lengkap", align: "center" }, { key: "leave", label: "Cuti/Izin", align: "center" },
-    { key: "arranged", label: "TL/WFH", align: "center" }, { key: "absent", label: "Tdk hadir", align: "center" },
+    { key: "arranged", label: "TL/WFH/PD", align: "center" }, { key: "absent", label: "Tdk hadir", align: "center" },
   ];
   const groups = grouped.map(({ unitName, employees }) => {
     const unitTotals = emptyTotals();

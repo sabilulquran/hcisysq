@@ -172,3 +172,114 @@ export function deactivateJobClassification(code: string, input: {
     method: "POST", body: JSON.stringify(input),
   });
 }
+
+// ---------------------------------------------------------------------------------------------
+// Package 4: export, audited import, change history, per-employee view.
+// ---------------------------------------------------------------------------------------------
+
+export type CatalogKind = "CLASSIFICATION" | "GRADE";
+
+/** A plain link: the browser downloads the CSV with the session cookie, no script involved. */
+export function catalogExportUrl(kind: CatalogKind, query: { onDate?: string; includeHistory?: boolean }): string {
+  const base = kind === "CLASSIFICATION" ? "/api/admin/job-classifications/export" : "/api/admin/job-grades/export";
+  const params = new URLSearchParams();
+  if (query.includeHistory) params.set("includeHistory", "true");
+  else if (query.onDate) params.set("onDate", query.onDate);
+  const text = params.toString();
+  return text ? `${base}?${text}` : base;
+}
+
+export type ImportOutcome = "CREATE" | "AMEND" | "UNCHANGED" | "ERROR";
+
+export interface CatalogImportReport {
+  importId: string;
+  kind: CatalogKind;
+  dryRun: boolean;
+  applied: boolean;
+  summary: { rows: number; create: number; amend: number; unchanged: number; error: number };
+  rows: Array<{ line: number; code: string | null; outcome: ImportOutcome; errorCode?: string; message?: string }>;
+}
+
+/**
+ * Send one CSV file. A rejected real import answers 422 with the same report as a dry run, so
+ * the report is returned in both cases and only a request-level problem throws.
+ */
+export async function importJobCatalog(input: {
+  kind: CatalogKind; csv: string; dryRun: boolean; fileName: string | null;
+}): Promise<CatalogImportReport> {
+  const response = await fetch("/api/admin/job-classification-imports", {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (response.status === 422) {
+    const body = (await response.json()) as { report: CatalogImportReport };
+    return body.report;
+  }
+  const body = await readJson<{ report: CatalogImportReport }>(response);
+  return body.report;
+}
+
+export const importOutcomeLabels: Record<ImportOutcome, string> = {
+  CREATE: "Kode baru",
+  AMEND: "Versi baru",
+  UNCHANGED: "Tidak berubah",
+  ERROR: "Ditolak",
+};
+
+export interface CatalogAuditEvent {
+  id: string;
+  action: string;
+  entityType: "JOB_GRADE" | "JOB_CLASSIFICATION";
+  entityCode: string | null;
+  payload: Record<string, unknown>;
+  actorName: string | null;
+  occurredAt: string;
+}
+
+export function listJobCatalogAuditEvents(query: {
+  page?: number; pageSize?: number; entityCode?: string;
+} = {}): Promise<{ events: CatalogAuditEvent[]; pagination: CatalogPagination }> {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.entityCode) params.set("entityCode", query.entityCode);
+  const text = params.toString();
+  return request(`/admin/job-classification-audit-events${text ? `?${text}` : ""}`);
+}
+
+export const catalogAuditActionLabels: Record<string, string> = {
+  "job_classification.created": "Klasifikasi dibuat",
+  "job_classification.amended": "Klasifikasi diubah",
+  "job_classification.deactivated": "Klasifikasi ditutup",
+  "job_classification.imported": "Impor klasifikasi",
+  "job_grade.created": "Golongan dibuat",
+  "job_grade.amended": "Golongan diubah",
+  "job_grade.deactivated": "Golongan ditutup",
+  "job_grade.imported": "Impor golongan",
+};
+
+export interface ResolvedClassification {
+  code: string;
+  name: string;
+  gradeCode: string | null;
+  source: "PLACEMENT" | "POSITION";
+}
+
+export interface EmployeeClassificationEmployment {
+  employmentId: string;
+  slots: { functional: ResolvedClassification | null; structural: ResolvedClassification | null } | null;
+  error: { code: string; message: string } | null;
+  bindings: Array<{
+    code: string; source: "PLACEMENT" | "POSITION";
+    name: string | null; family: JobFamily | null; gradeCode: string | null;
+  }>;
+}
+
+export function getEmployeeJobClassifications(employeeId: string, onDate?: string): Promise<{
+  employeeId: string; onDate: string; employments: EmployeeClassificationEmployment[];
+}> {
+  const suffix = onDate ? `?onDate=${encodeURIComponent(onDate)}` : "";
+  return request(`/admin/employees/${encodeURIComponent(employeeId)}/job-classifications${suffix}`);
+}

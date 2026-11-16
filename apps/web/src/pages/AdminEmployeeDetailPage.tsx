@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { EmployeeDocumentsPanel } from "@/components/employee-documents/EmployeeDocumentsPanel";
+import { EmployeeJobClassificationCard } from "@/components/job-classifications/EmployeeJobClassificationCard";
 import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
 import { FamilyAddressPanel } from "@/components/employment/FamilyAddressPanel";
 import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
@@ -169,6 +170,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [canManageProfile, setCanManageProfile] = useState(false);
   const [canReadDocuments, setCanReadDocuments] = useState(false);
   const [canManageDocuments, setCanManageDocuments] = useState(false);
+  // ORG-011: the classification card needs the catalog permission, held by HC admin/lead only.
+  const [canReadClassifications, setCanReadClassifications] = useState(false);
   const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | "PLACEMENT_END" | null>(null);
   const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
@@ -189,6 +192,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       setCanManageProfile(hasPermission(session, "employees.manage"));
       setCanReadDocuments(hasPermission(session, "employee_documents.read"));
       setCanManageDocuments(hasPermission(session, "employee_documents.manage"));
+      setCanReadClassifications(hasPermission(session, "job_classifications.read"));
     });
     return () => {
       mounted = false;
@@ -476,6 +480,9 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             ) : null
           }
         />
+      ) : null}
+      {tab === "penempatan" && canReadClassifications ? (
+        <div className="mt-4"><EmployeeJobClassificationCard employeeId={employeeId} /></div>
       ) : null}
       {/* "Tautkan dokumen" opens over the timeline; the row and its button stay where they are. */}
       {tab === "penempatan" && linkingAction && canManageEmployment && !outsideHcis

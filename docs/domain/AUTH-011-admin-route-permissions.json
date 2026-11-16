@@ -3497,6 +3497,46 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classifications/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-grades/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classification-imports",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classification-audit-events",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/job-classifications",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/auth/role-administration-routes.ts",
     "method": "POST",
     "url": "/internal/v1/role-administration/accounts/:accountId/role-assignments",

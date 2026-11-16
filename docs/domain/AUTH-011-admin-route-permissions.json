@@ -5494,5 +5494,189 @@
       "EMPLOYEE"
     ],
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/training/me/evaluation/tasks",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/training/me/evaluation/components/:id/form",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/training/me/evaluation/components/:id/responses",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/training/me/evaluation/results",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/instruments",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/instruments",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/instruments/:id",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/instruments/:id",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/instruments/:id/archive",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/programs/:id/evaluation",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/evaluation/components",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/evaluation/components",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/evaluation/components/:id",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/evaluation/components/:id/archive",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/evaluation/components/:id/assessors",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "PUT",
+    "url": "/admin/training/evaluation/components/:id/assessors",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/evaluation/components/:id/form",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/evaluation/components/:id/responses",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/evaluation/components/:id/comments",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/evaluation/summary",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/evaluation/results",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/evaluation-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/employees/:employeeId/evaluation",
+    "permissions": [
+      "training.read"
+    ]
   }
 ]

@@ -763,6 +763,28 @@
       "list": "paged"
     },
     {
+      "url": "/admin/trip-advances",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/trip-advances/:id",
+      "list": "single",
+      "reason": "Satu uang muka beserta perjalanannya, tahap approval, transaksi, klaim perjalanan itu milik pegawai yang sama, dan riwayatnya."
+    },
+    {
+      "url": "/admin/trip-advances/claimants",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/trip-advances/export.csv",
+      "list": "export",
+      "reason": "TRIP-002 D-19: rentang tanggal wajib maks. 366 hari; lebih dari 20.000 baris ditolak 422, tidak dipotong."
+    },
+    {
+      "url": "/admin/trip-per-diem-rates",
+      "list": "paged"
+    },
+    {
       "url": "/admin/trips",
       "list": "paged"
     },
@@ -1334,6 +1356,28 @@
       "list": "aggregate"
     },
     {
+      "url": "/trip-advances/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/trip-advances/me",
+      "list": "paged"
+    },
+    {
+      "url": "/trip-advances/me/:id",
+      "list": "single",
+      "reason": "Satu uang muka milik pegawai beserta tahap approval, transaksi, klaim perjalanan itu, dan riwayatnya."
+    },
+    {
+      "url": "/trip-advances/me/estimate",
+      "list": "bounded",
+      "reason": "Perkiraan satu perjalanan dengan rantai approval perjalanan itu (paling banyak dua approver)."
+    },
+    {
+      "url": "/trip-advances/me/trips",
+      "list": "paged"
+    },
+    {
       "url": "/trips/approvals",
       "list": "paged"
     },
@@ -1395,7 +1439,7 @@
     {
       "url": "/me/reminders/preferences",
       "list": "bounded",
-      "reason": "NOTIF-003 §6: katalog aturan pengingat di kode (sepuluh aturan) dengan preferensi WhatsApp akun itu."
+      "reason": "NOTIF-003 §6: katalog aturan pengingat di kode (tiga belas aturan) dengan preferensi WhatsApp akun itu."
     }
   ]
 }

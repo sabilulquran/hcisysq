@@ -101,6 +101,11 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["REIMB-001"], stage: "available", category: "finance", href: "/app/reimbursements",
   },
   {
+    key: "trip-advances", label: "Uang Muka Dinas",
+    description: "Uang muka dan uang harian perjalanan dinas, beserta pertanggungjawabannya.",
+    featureIds: ["TRIP-002"], stage: "available", category: "finance", href: "/app/trip-advances",
+  },
+  {
     key: "loan", label: "Pinjaman",
     description: "Ajukan pinjaman tanpa bunga dan pantau cicilan serta sisanya.",
     featureIds: ["LOAN-001"], stage: "available", category: "finance", href: "/app/loans",

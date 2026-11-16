@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrangementApprovalsSection } from "@/components/arrangements/ArrangementApprovalsSection";
 import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
 import { ReimbursementApprovalsSection } from "@/components/reimbursements/ReimbursementApprovalsSection";
+import { TripAdvanceApprovalsSection } from "@/components/tripAdvances/TripAdvanceApprovalsSection";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -386,6 +387,7 @@ export function EmployeeApprovalsPage() {
         ) : null}
       </section>
       <ReimbursementApprovalsSection />
+      <TripAdvanceApprovalsSection />
     </AppShell>
   );
 }

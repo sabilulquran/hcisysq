@@ -9,7 +9,7 @@ export { approverRoleLabel, formatRupiah, formatTimestamp, parseRupiahInput, tod
 
 export type ClaimStatus = "DRAFT" | "IN_REVIEW" | "APPROVED" | "VERIFIED" | "PAID" | "REJECTED" | "CANCELLED";
 export type CategoryKey = "TRANSPORT" | "ACCOMMODATION" | "MEALS" | "OPERATIONAL" | "OTHER";
-export type PaymentMethod = "CASH" | "TRANSFER" | "PAYROLL";
+export type PaymentMethod = "CASH" | "TRANSFER" | "PAYROLL" | "ADVANCE";
 
 export interface Category {
   key: CategoryKey;
@@ -279,6 +279,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Tunai",
   TRANSFER: "Transfer",
   PAYROLL: "Bersama gaji",
+  // REIMB-001 D-19: counted in the settlement of the trip's advance (TRIP-002).
+  ADVANCE: "Diperhitungkan dengan uang muka dinas",
 };
 
 const EVENT_LABELS: Record<string, string> = {

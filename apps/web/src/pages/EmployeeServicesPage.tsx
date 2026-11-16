@@ -43,6 +43,7 @@ const icons = {
   approvals: ClipboardCheck,
   payslips: WalletCards,
   reimbursement: HandCoins,
+  "trip-advances": HandCoins,
   loan: Landmark,
   performance: TrendingUp,
   training: GraduationCap,

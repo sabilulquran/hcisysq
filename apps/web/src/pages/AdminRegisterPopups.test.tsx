@@ -20,6 +20,7 @@ import { AdminHelpPage } from "@/pages/AdminHelpPage";
 import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminPerformancePage } from "@/pages/AdminPerformancePage";
 import { AdminReimbursementsPage } from "@/pages/AdminReimbursementsPage";
+import { AdminTripAdvancesPage } from "@/pages/AdminTripAdvancesPage";
 import { AdminTripsPage } from "@/pages/AdminTripsPage";
 import { AdminWorkArrangementsPage } from "@/pages/AdminWorkArrangementsPage";
 
@@ -35,6 +36,7 @@ afterEach(() => {
 const registers: Array<{ name: string; page: () => ReactElement; param: string; title: string; placeholder: string; list: string }> = [
   { name: "Pinjaman Pegawai", page: () => <AdminLoansPage />, param: "pinjaman", title: "Detail pinjaman", placeholder: "Pilih pinjaman untuk", list: "Memuat register" },
   { name: "Reimbursement", page: () => <AdminReimbursementsPage />, param: "klaim", title: "Detail klaim", placeholder: "Pilih klaim untuk", list: "Memuat register" },
+  { name: "Uang Muka Dinas", page: () => <AdminTripAdvancesPage />, param: "uangmuka", title: "Detail uang muka", placeholder: "Pilih uang muka untuk", list: "Memuat register" },
   { name: "Perjalanan Dinas", page: () => <AdminTripsPage />, param: "perjalanan", title: "Detail perjalanan dinas", placeholder: "Pilih perjalanan untuk", list: "Memuat register" },
   { name: "Tugas Luar, WFH & Ubah Jadwal", page: () => <AdminWorkArrangementsPage />, param: "pengajuan", title: "Detail pengajuan", placeholder: "Pilih pengajuan untuk", list: "Memuat register" },
   { name: "Kartu Pegawai", page: () => <AdminEmployeeCardsPage />, param: "pegawai", title: "Kartu pegawai", placeholder: "Pilih pegawai untuk", list: "Cari nama atau NIP" },

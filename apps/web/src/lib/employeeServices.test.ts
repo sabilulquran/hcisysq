@@ -11,6 +11,7 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("attendance")?.stage).toBe("available");
     expect(getEmployeeService("reimbursement")?.stage).toBe("available");
     expect(getEmployeeService("reimbursement")?.href).toBe("/app/reimbursements");
+    expect(getEmployeeService("trip-advances")?.href).toBe("/app/trip-advances");
     // PERF-001 Package 1 ships self-assessment, rating, validation and history.
     expect(getEmployeeService("performance")?.stage).toBe("available");
     expect(getEmployeeService("performance")?.href).toBe("/app/performance");

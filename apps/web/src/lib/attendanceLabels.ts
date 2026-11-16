@@ -3,7 +3,7 @@
 
 export const ATTENDANCE_STATUSES = [
   "scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off", "configuration_error",
-  "field_assignment", "remote_work",
+  "field_assignment", "remote_work", "business_trip",
 ] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
@@ -20,6 +20,8 @@ const statusLabels: Record<AttendanceStatus, string> = {
   // ATT-015: an approved arrangement explains a day without a scan.
   field_assignment: "Tugas luar",
   remote_work: "WFH/WFA",
+  // TRIP-001 Paket 2: a day covered by an issued business trip.
+  business_trip: "Dinas",
 };
 
 export function attendanceStatusLabel(value: unknown): string {

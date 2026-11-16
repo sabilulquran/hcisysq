@@ -13,6 +13,13 @@ export const OCCUPYING_TRIP_STATUSES: readonly TripStatus[] = ["IN_REVIEW", "APP
 /** D-11: these trips are shown in the ATT-014 exceptions tab. */
 export const VISIBLE_IN_ATTENDANCE: readonly TripStatus[] = ["APPROVED", "ISSUED", "COMPLETED"];
 
+/**
+ * Paket 2 (§9.2, D-15): only a trip whose surat tugas is issued decides attendance (`business_trip`).
+ * The engine, the provisional report view, the "changed since calculated" check and the PAY-003
+ * resolver all read this one list, passed to SQL as a parameter.
+ */
+export const TRIP_ATTENDANCE_STATUSES: readonly TripStatus[] = ["ISSUED", "COMPLETED"];
+
 export class TripPolicyError extends Error {
   constructor(
     readonly code: "TRIP_DATE_RANGE" | "TRIP_TOO_LONG" | "TRIP_START_IN_PAST",

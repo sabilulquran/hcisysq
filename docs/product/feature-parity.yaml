@@ -900,7 +900,7 @@ features:
       (DRAFT D-21..D-24), frozen in the snapshot, never recalculated; 409 when no slip was
       published in the window. HC reads an issued certificate through the audited
       GET /admin/documents/issued/:id; an income letter's content needs documents.manage (D-25).
-      Migration 0152 activates the type.
+      Migration 0153 activates the type.
 
   - id: DOC-002
     module: documents
@@ -953,10 +953,16 @@ features:
       Package 1 implemented 2026-11-02 (docs/domain/business-travel.md): employee request,
       APR-001 approval (direct manager then unit approver), numbered surat tugas from the
       DOC-001 register, cancellation, completion and history. Approved trips are visible in
-      the ATT-014 exceptions tab. Attendance disposition is Package 2; trip costs are claimed
-      through REIMB-001 (linked trip); advances are not built.
+      the ATT-014 exceptions tab. Package 2 implemented 2026-11-17 (business-travel.md §9.2):
+      a scheduled working day covered by an ISSUED/COMPLETED trip is the attendance status
+      business_trip ("Dinas", symbol PD) below approved leave; punches stand and lateness/early
+      leave are not counted; PAY-003 counts the day as present like field_assignment, with no
+      cost component (DRAFT D-15..D-17). Trip costs are claimed through REIMB-001 (linked trip);
+      advances are not built.
     docs:
       - docs/domain/business-travel.md
+      - docs/domain/attendance-report-calculation.md
+      - docs/domain/payroll-calculation-v1.md
       - docs/product/hcis-capability-map.md
 
   - id: ASSET-001

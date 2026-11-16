@@ -27,6 +27,13 @@ import {
   listClassifications,
   listGrades,
 } from "./job-classification-service.js";
+import {
+  employeeJobClassifications,
+  exportCatalogCsv,
+  importCatalog,
+  listCatalogAuditEvents,
+  type CatalogKind,
+} from "./job-classification-catalog-io.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 
@@ -76,6 +83,20 @@ const deactivateBody = z.object({
   reason: z.string().trim().min(5).max(500),
 });
 const codeParams = z.object({ code: z.string().trim().min(1).max(48) });
+const exportQuery = z.object({ onDate: isoDate.optional(), includeHistory: queryFlag });
+// Package 4: one CSV file per request, sent as text inside JSON so the audit can digest exactly
+// the bytes the operator reviewed in the dry run.
+const importBody = z.object({
+  kind: z.enum(["CLASSIFICATION", "GRADE"]),
+  csv: z.string().min(1).max(1_000_000),
+  dryRun: z.boolean(),
+  fileName: z.string().trim().max(200).nullable().default(null),
+});
+const auditQuery = pageQuerySchema.extend({
+  entityType: z.enum(["JOB_GRADE", "JOB_CLASSIFICATION"]).optional(),
+  entityCode: z.string().trim().min(1).max(48).optional(),
+});
+const employeeParams = z.object({ employeeId: z.string().uuid() });
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
@@ -283,5 +304,73 @@ export async function registerJobClassificationRoutes(
     } catch (error) {
       return handleError(reply, error);
     }
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // Package 4: export, audited import, change history, per-employee read view.
+  // ---------------------------------------------------------------------------------------------
+
+  function exportRoute(url: string, kind: CatalogKind, fileStem: string) {
+    app.get(url, async (request, reply) => {
+      const principal = await requirePermission(request, reply, "job_classifications.read");
+      if (!principal) return reply;
+      const parsed = exportQuery.safeParse(request.query ?? {});
+      if (!parsed.success) return invalid(reply, "Parameter ekspor tidak valid.");
+      const onDate = parsed.data.onDate ?? jakartaDate(new Date());
+      try {
+        const { csv } = await exportCatalogCsv(pool, kind, { onDate, includeHistory: parsed.data.includeHistory });
+        const suffix = parsed.data.includeHistory ? "seluruh-versi" : onDate;
+        reply.header("Content-Type", "text/csv; charset=utf-8");
+        reply.header("Content-Disposition", `attachment; filename="${fileStem}-${suffix}.csv"`);
+        return send(reply, 200, csv);
+      } catch (error) {
+        return handleError(reply, error);
+      }
+    });
+  }
+  exportRoute("/admin/job-classifications/export", "CLASSIFICATION", "klasifikasi-jabatan");
+  exportRoute("/admin/job-grades/export", "GRADE", "golongan");
+
+  app.post("/admin/job-classification-imports", { bodyLimit: 2 * 1024 * 1024 }, async (request, reply) => {
+    const principal = await requirePermission(request, reply, "job_classifications.manage");
+    if (!principal) return reply;
+    const body = importBody.safeParse(request.body ?? {});
+    if (!body.success) return invalid(reply, "Berkas impor tidak valid.");
+    try {
+      const report = await importCatalog(pool, body.data, principal.id);
+      // A real import with any row error writes nothing; 422 so a client cannot mistake it for done.
+      const status = !report.dryRun && !report.applied && report.summary.error > 0 ? 422 : 200;
+      return send(reply, status, { report });
+    } catch (error) {
+      return handleError(reply, error);
+    }
+  });
+
+  app.get("/admin/job-classification-audit-events", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "job_classifications.read");
+    if (!principal) return reply;
+    const parsed = auditQuery.safeParse(request.query ?? {});
+    if (!parsed.success) return invalid(reply, "Parameter riwayat perubahan tidak valid.");
+    const query = parsed.data;
+    const { rows, total } = await listCatalogAuditEvents(pool, {
+      entityType: query.entityType, entityCode: query.entityCode,
+      limit: query.pageSize, offset: pageOffset(query),
+    });
+    return send(reply, 200, { events: rows, pagination: pagination(query, total) });
+  });
+
+  /** Read-only: what payroll would resolve for this person on a date. Grants nothing. */
+  app.get("/admin/employees/:employeeId/job-classifications", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "job_classifications.read");
+    if (!principal) return reply;
+    const params = employeeParams.safeParse(request.params);
+    const query = z.object({ onDate: isoDate.optional() }).safeParse(request.query ?? {});
+    if (!params.success || !query.success) return invalid(reply, "Permintaan klasifikasi pegawai tidak valid.");
+    const onDate = query.data.onDate ?? jakartaDate(new Date());
+    const employments = await employeeJobClassifications(pool, params.data.employeeId, onDate);
+    if (!employments) {
+      return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+    }
+    return send(reply, 200, { employeeId: params.data.employeeId, onDate, employments });
   });
 }

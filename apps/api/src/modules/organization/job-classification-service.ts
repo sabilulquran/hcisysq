@@ -78,6 +78,22 @@ const CLASSIFICATION_COLUMNS = `
   to_char(effective_to, 'YYYY-MM-DD') AS "effectiveTo"
 `;
 
+/** Run `work` in one transaction on a dedicated client. */
+async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function writeCatalogAudit(
   target: QueryTarget,
   event: {
@@ -269,76 +285,75 @@ export interface ClassificationInput {
  * Create the first version of a code. A code that already covers `effectiveFrom` is an amend,
  * not a create, so this refuses rather than letting the exclusion constraint surface as 500.
  */
-export async function createGrade(
+export function createGrade(
   pool: Pool, input: GradeInput, actorAccountId: string | null,
 ): Promise<JobGrade> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    // Codes are permanent (spec §2.6), so one is created once and never resurrected: a code
-    // that appears again with a different meaning would silently re-point old payroll policy.
-    if (await codeExists(client, "job_grades", input.code)) {
-      throw new JobClassificationError(
-        409, "GRADE_CODE_IN_USE",
-        `Golongan ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
-      );
-    }
-    const id = randomUUID();
-    const inserted = await client.query<JobGrade>(
-      `INSERT INTO job_grades (id, code, name, rank_order, effective_from)
-       VALUES ($1, $2, $3, $4, $5::date) RETURNING ${GRADE_COLUMNS}`,
-      [id, input.code, input.name, input.rankOrder, input.effectiveFrom],
-    );
-    await writeCatalogAudit(client, {
-      actorAccountId, action: "job_grade.created", entityType: "JOB_GRADE",
-      entityId: id, entityCode: input.code,
-      payload: { name: input.name, rankOrder: input.rankOrder, effectiveFrom: input.effectiveFrom },
-    });
-    await client.query("COMMIT");
-    return inserted.rows[0]!;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  return inTransaction(pool, (client) => createGradeIn(client, input, actorAccountId));
 }
 
-export async function createClassification(
+/** createGrade inside a transaction the caller owns, so CSV import can batch rows atomically. */
+export async function createGradeIn(
+  client: QueryTarget, input: GradeInput, actorAccountId: string | null,
+  auditContext: Record<string, unknown> = {},
+): Promise<JobGrade> {
+  // Codes are permanent (spec §2.6), so one is created once and never resurrected: a code
+  // that appears again with a different meaning would silently re-point old payroll policy.
+  if (await codeExists(client, "job_grades", input.code)) {
+    throw new JobClassificationError(
+      409, "GRADE_CODE_IN_USE",
+      `Golongan ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
+    );
+  }
+  const id = randomUUID();
+  const inserted = await client.query<JobGrade>(
+    `INSERT INTO job_grades (id, code, name, rank_order, effective_from)
+     VALUES ($1, $2, $3, $4, $5::date) RETURNING ${GRADE_COLUMNS}`,
+    [id, input.code, input.name, input.rankOrder, input.effectiveFrom],
+  );
+  await writeCatalogAudit(client, {
+    actorAccountId, action: "job_grade.created", entityType: "JOB_GRADE",
+    entityId: id, entityCode: input.code,
+    payload: {
+      ...auditContext, name: input.name, rankOrder: input.rankOrder, effectiveFrom: input.effectiveFrom,
+    },
+  });
+  return inserted.rows[0]!;
+}
+
+export function createClassification(
   pool: Pool, input: ClassificationInput, actorAccountId: string | null,
 ): Promise<JobClassification> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    if (await codeExists(client, "job_classifications", input.code)) {
-      throw new JobClassificationError(
-        409, "CLASSIFICATION_CODE_IN_USE",
-        `Klasifikasi ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
-      );
-    }
-    await assertGradeResolvable(client, input.gradeCode, input.effectiveFrom);
-    const id = randomUUID();
-    const inserted = await client.query<JobClassification>(
-      `INSERT INTO job_classifications (id, code, name, family, grade_code, effective_from)
-       VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING ${CLASSIFICATION_COLUMNS}`,
-      [id, input.code, input.name, input.family, input.gradeCode, input.effectiveFrom],
+  return inTransaction(pool, (client) => createClassificationIn(client, input, actorAccountId));
+}
+
+/** createClassification inside a transaction the caller owns, so CSV import can batch rows atomically. */
+export async function createClassificationIn(
+  client: QueryTarget, input: ClassificationInput, actorAccountId: string | null,
+  auditContext: Record<string, unknown> = {},
+): Promise<JobClassification> {
+  if (await codeExists(client, "job_classifications", input.code)) {
+    throw new JobClassificationError(
+      409, "CLASSIFICATION_CODE_IN_USE",
+      `Klasifikasi ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
     );
-    await writeCatalogAudit(client, {
-      actorAccountId, action: "job_classification.created", entityType: "JOB_CLASSIFICATION",
-      entityId: id, entityCode: input.code,
-      payload: {
-        name: input.name, family: input.family,
-        gradeCode: input.gradeCode, effectiveFrom: input.effectiveFrom,
-      },
-    });
-    await client.query("COMMIT");
-    return inserted.rows[0]!;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
   }
+  await assertGradeResolvable(client, input.gradeCode, input.effectiveFrom);
+  const id = randomUUID();
+  const inserted = await client.query<JobClassification>(
+    `INSERT INTO job_classifications (id, code, name, family, grade_code, effective_from)
+     VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING ${CLASSIFICATION_COLUMNS}`,
+    [id, input.code, input.name, input.family, input.gradeCode, input.effectiveFrom],
+  );
+  await writeCatalogAudit(client, {
+    actorAccountId, action: "job_classification.created", entityType: "JOB_CLASSIFICATION",
+    entityId: id, entityCode: input.code,
+    payload: {
+      ...auditContext,
+      name: input.name, family: input.family,
+      gradeCode: input.gradeCode, effectiveFrom: input.effectiveFrom,
+    },
+  });
+  return inserted.rows[0]!;
 }
 
 export interface AmendInput {
@@ -358,104 +373,104 @@ export interface AmendInput {
  * getting it wrong at creation must be fixable; it still only takes effect from the new date,
  * so a period already calculated keeps the family it was calculated with.
  */
-export async function amendClassification(
+export function amendClassification(
   pool: Pool, code: string, input: AmendInput, actorAccountId: string | null,
 ): Promise<JobClassification> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const current = await classificationOn(client, code, input.effectiveFrom);
-    if (!current) {
-      throw new JobClassificationError(
-        404, "CLASSIFICATION_NOT_EFFECTIVE",
-        `Klasifikasi ${code} tidak berlaku pada ${input.effectiveFrom}.`,
-      );
-    }
-    if (current.effectiveFrom === input.effectiveFrom) {
-      throw new JobClassificationError(
-        409, "CLASSIFICATION_SAME_DAY_AMEND",
-        "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
-      );
-    }
-    await assertNoLaterVersion(client, "job_classifications", code, input.effectiveFrom);
-    const next = {
-      name: input.name ?? current.name,
-      family: input.family ?? current.family,
-      gradeCode: input.gradeCode === undefined ? current.gradeCode : input.gradeCode,
-    };
-    await assertGradeResolvable(client, next.gradeCode, input.effectiveFrom);
-
-    await client.query(
-      `UPDATE job_classifications SET effective_to = $2::date, updated_at = now() WHERE id = $1`,
-      [current.id, previousDay(input.effectiveFrom)],
-    );
-    const id = randomUUID();
-    const inserted = await client.query<JobClassification>(
-      `INSERT INTO job_classifications (id, code, name, family, grade_code, effective_from)
-       VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING ${CLASSIFICATION_COLUMNS}`,
-      [id, code, next.name, next.family, next.gradeCode, input.effectiveFrom],
-    );
-    await writeCatalogAudit(client, {
-      actorAccountId, action: "job_classification.amended", entityType: "JOB_CLASSIFICATION",
-      entityId: id, entityCode: code,
-      payload: { supersededId: current.id, effectiveFrom: input.effectiveFrom, ...next },
-    });
-    await client.query("COMMIT");
-    return inserted.rows[0]!;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  return inTransaction(pool, (client) => amendClassificationIn(client, code, input, actorAccountId));
 }
 
-export async function amendGrade(
+/** amendClassification inside a transaction the caller owns, so CSV import can batch rows atomically. */
+export async function amendClassificationIn(
+  client: QueryTarget, code: string, input: AmendInput, actorAccountId: string | null,
+  auditContext: Record<string, unknown> = {},
+): Promise<JobClassification> {
+  const current = await classificationOn(client, code, input.effectiveFrom);
+  if (!current) {
+    throw new JobClassificationError(
+      404, "CLASSIFICATION_NOT_EFFECTIVE",
+      `Klasifikasi ${code} tidak berlaku pada ${input.effectiveFrom}.`,
+    );
+  }
+  if (current.effectiveFrom === input.effectiveFrom) {
+    throw new JobClassificationError(
+      409, "CLASSIFICATION_SAME_DAY_AMEND",
+      "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
+    );
+  }
+  await assertNoLaterVersion(client, "job_classifications", code, input.effectiveFrom);
+  const next = {
+    name: input.name ?? current.name,
+    family: input.family ?? current.family,
+    gradeCode: input.gradeCode === undefined ? current.gradeCode : input.gradeCode,
+  };
+  await assertGradeResolvable(client, next.gradeCode, input.effectiveFrom);
+
+  await client.query(
+    `UPDATE job_classifications SET effective_to = $2::date, updated_at = now() WHERE id = $1`,
+    [current.id, previousDay(input.effectiveFrom)],
+  );
+  const id = randomUUID();
+  const inserted = await client.query<JobClassification>(
+    `INSERT INTO job_classifications (id, code, name, family, grade_code, effective_from)
+     VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING ${CLASSIFICATION_COLUMNS}`,
+    [id, code, next.name, next.family, next.gradeCode, input.effectiveFrom],
+  );
+  await writeCatalogAudit(client, {
+    actorAccountId, action: "job_classification.amended", entityType: "JOB_CLASSIFICATION",
+    entityId: id, entityCode: code,
+    payload: {
+      ...auditContext, supersededId: current.id, effectiveFrom: input.effectiveFrom, ...next,
+    },
+  });
+  return inserted.rows[0]!;
+}
+
+export function amendGrade(
   pool: Pool, code: string, input: AmendInput, actorAccountId: string | null,
 ): Promise<JobGrade> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const current = await gradeOn(client, code, input.effectiveFrom);
-    if (!current) {
-      throw new JobClassificationError(
-        404, "GRADE_NOT_EFFECTIVE", `Golongan ${code} tidak berlaku pada ${input.effectiveFrom}.`,
-      );
-    }
-    if (current.effectiveFrom === input.effectiveFrom) {
-      throw new JobClassificationError(
-        409, "GRADE_SAME_DAY_AMEND",
-        "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
-      );
-    }
-    await assertNoLaterVersion(client, "job_grades", code, input.effectiveFrom);
-    const next = {
-      name: input.name ?? current.name,
-      rankOrder: input.rankOrder ?? current.rankOrder,
-    };
-    await client.query(
-      `UPDATE job_grades SET effective_to = $2::date, updated_at = now() WHERE id = $1`,
-      [current.id, previousDay(input.effectiveFrom)],
+  return inTransaction(pool, (client) => amendGradeIn(client, code, input, actorAccountId));
+}
+
+/** amendGrade inside a transaction the caller owns, so CSV import can batch rows atomically. */
+export async function amendGradeIn(
+  client: QueryTarget, code: string, input: AmendInput, actorAccountId: string | null,
+  auditContext: Record<string, unknown> = {},
+): Promise<JobGrade> {
+  const current = await gradeOn(client, code, input.effectiveFrom);
+  if (!current) {
+    throw new JobClassificationError(
+      404, "GRADE_NOT_EFFECTIVE", `Golongan ${code} tidak berlaku pada ${input.effectiveFrom}.`,
     );
-    const id = randomUUID();
-    const inserted = await client.query<JobGrade>(
-      `INSERT INTO job_grades (id, code, name, rank_order, effective_from)
-       VALUES ($1, $2, $3, $4, $5::date) RETURNING ${GRADE_COLUMNS}`,
-      [id, code, next.name, next.rankOrder, input.effectiveFrom],
-    );
-    await writeCatalogAudit(client, {
-      actorAccountId, action: "job_grade.amended", entityType: "JOB_GRADE",
-      entityId: id, entityCode: code,
-      payload: { supersededId: current.id, effectiveFrom: input.effectiveFrom, ...next },
-    });
-    await client.query("COMMIT");
-    return inserted.rows[0]!;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
   }
+  if (current.effectiveFrom === input.effectiveFrom) {
+    throw new JobClassificationError(
+      409, "GRADE_SAME_DAY_AMEND",
+      "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
+    );
+  }
+  await assertNoLaterVersion(client, "job_grades", code, input.effectiveFrom);
+  const next = {
+    name: input.name ?? current.name,
+    rankOrder: input.rankOrder ?? current.rankOrder,
+  };
+  await client.query(
+    `UPDATE job_grades SET effective_to = $2::date, updated_at = now() WHERE id = $1`,
+    [current.id, previousDay(input.effectiveFrom)],
+  );
+  const id = randomUUID();
+  const inserted = await client.query<JobGrade>(
+    `INSERT INTO job_grades (id, code, name, rank_order, effective_from)
+     VALUES ($1, $2, $3, $4, $5::date) RETURNING ${GRADE_COLUMNS}`,
+    [id, code, next.name, next.rankOrder, input.effectiveFrom],
+  );
+  await writeCatalogAudit(client, {
+    actorAccountId, action: "job_grade.amended", entityType: "JOB_GRADE",
+    entityId: id, entityCode: code,
+    payload: {
+      ...auditContext, supersededId: current.id, effectiveFrom: input.effectiveFrom, ...next,
+    },
+  });
+  return inserted.rows[0]!;
 }
 
 /**

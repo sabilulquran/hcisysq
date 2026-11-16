@@ -6,6 +6,7 @@ import {
   ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, JOB_CLASSIFICATION_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
 import { coversDate, jakartaDate, previousDay } from "../src/modules/organization/job-classification-service.js";
+import { parseCsv } from "../src/modules/organization/job-classification-catalog-io.js";
 
 describe("ORG-011 effective dating", () => {
   it("closes the previous version the day before the amendment takes effect", () => {
@@ -45,5 +46,20 @@ describe("ORG-011 permission placement", () => {
       expect(ADMIN_PERMISSIONS as readonly string[]).not.toContain(key);
       expect(HC_ADMIN_PERMISSIONS as readonly string[]).toContain(key);
     }
+  });
+});
+
+describe("ORG-011 CSV reader (Package 4)", () => {
+  it("reads quoted cells, doubled quotes, CRLF and a byte-order mark, skipping blank lines", () => {
+    const records = parseCsv('﻿code,name\r\nA,"Guru, ""Kelas"""\r\n\r\nB,"dua\nbaris"\n');
+    expect(records).toEqual([
+      { line: 1, cells: ["code", "name"] },
+      { line: 2, cells: ["A", 'Guru, "Kelas"'] },
+      { line: 4, cells: ["B", "dua\nbaris"] },
+    ]);
+  });
+
+  it("refuses an unclosed quote instead of swallowing the rest of the file", () => {
+    expect(() => parseCsv('code\n"A\nB\n')).toThrow(/tidak ditutup/);
   });
 });

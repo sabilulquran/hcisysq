@@ -9,6 +9,8 @@ import { EmployeeSearchField, type PickedEmployee } from "@/components/attendanc
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { replaceDialogParam } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
+import { InstrumentsTab } from "@/components/training/InstrumentsTab";
+import { ProgramEvaluationPanel } from "@/components/training/ProgramEvaluationPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -65,7 +67,7 @@ import {
 } from "@/lib/training";
 import type { AuthSession } from "@/types/hcis";
 
-type Tab = "programs" | "records" | "hours";
+type Tab = "programs" | "records" | "instruments" | "hours";
 
 const input = "mt-1 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-normal text-brand-heading";
 const label = "text-xs font-semibold text-muted-foreground";
@@ -133,9 +135,9 @@ export function AdminTrainingPage() {
   }, []);
 
   return (
-    <AdminShell active="services" title="Pelatihan" description="Program, jadwal, peserta, kehadiran, catatan, dan jam pelatihan pegawai.">
+    <AdminShell active="services" title="Pelatihan" description="Program, jadwal, peserta, kehadiran, evaluasi, catatan, dan jam pelatihan pegawai.">
       <div role="tablist" className="mb-5 flex flex-wrap gap-2">
-        {([["programs", "Program"], ["records", "Catatan & verifikasi"], ["hours", "Rekap jam"]] as const).map(([key, text]) => (
+        {([["programs", "Program"], ["records", "Catatan & verifikasi"], ["instruments", "Instrumen evaluasi"], ["hours", "Rekap jam"]] as const).map(([key, text]) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
             className={`min-h-11 rounded-xl px-4 text-sm font-bold ${tab === key ? "bg-brand-primary text-brand-foreground" : "border border-border text-brand-heading"}`}>
             {text}
@@ -144,6 +146,7 @@ export function AdminTrainingPage() {
       </div>
       {tab === "programs" ? <ProgramsTab canManage={canManage} /> : null}
       {tab === "records" ? <RecordsTab canManage={canManage} /> : null}
+      {tab === "instruments" ? <InstrumentsTab canManage={canManage} /> : null}
       {tab === "hours" ? <HoursTab /> : null}
     </AdminShell>
   );
@@ -527,6 +530,8 @@ function ProgramPanel({ program, canManage, action, reload }: {
         </ul>
       )}
       {paging && paging.total > paging.pageSize ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
+
+      <ProgramEvaluationPanel programId={program.id} programStatus={program.status} canManage={canManage} />
     </div>
   );
 }

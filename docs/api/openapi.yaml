@@ -591,6 +591,42 @@ paths:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
   /admin/training/employee-options:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
+  /training/me/evaluation/tasks:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1training~1me~1evaluation~1tasks'
+  /training/me/evaluation/components/{id}/form:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1training~1me~1evaluation~1components~1{id}~1form'
+  /training/me/evaluation/components/{id}/responses:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1training~1me~1evaluation~1components~1{id}~1responses'
+  /training/me/evaluation/results:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1training~1me~1evaluation~1results'
+  /admin/training/instruments:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1instruments'
+  /admin/training/instruments/{id}:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1instruments~1{id}'
+  /admin/training/instruments/{id}/archive:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1instruments~1{id}~1archive'
+  /admin/training/programs/{id}/evaluation:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1evaluation'
+  /admin/training/programs/{id}/evaluation/components:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1evaluation~1components'
+  /admin/training/evaluation/components/{id}:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}'
+  /admin/training/evaluation/components/{id}/archive:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}~1archive'
+  /admin/training/evaluation/components/{id}/assessors:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}~1assessors'
+  /admin/training/evaluation/components/{id}/form:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}~1form'
+  /admin/training/evaluation/components/{id}/responses:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}~1responses'
+  /admin/training/evaluation/components/{id}/comments:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1evaluation~1components~1{id}~1comments'
+  /admin/training/programs/{id}/evaluation/summary:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1evaluation~1summary'
+  /admin/training/programs/{id}/evaluation/results:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1evaluation~1results'
+  /admin/training/employees/{employeeId}/evaluation:
+    $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1employees~1{employeeId}~1evaluation'
   /admin/reports/hr/access:
     $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1access'
   /admin/reports/hr/{report}:
@@ -2811,6 +2847,8 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1workforce'
   /attendance/me/schedule:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1schedule'
+  /attendance/me/transactions:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1transactions'
   /attendance/mobile/clock:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1mobile~1clock'
   /attendance/mobile/evidence/{evidenceId}/photo:

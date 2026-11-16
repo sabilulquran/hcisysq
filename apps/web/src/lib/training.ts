@@ -37,6 +37,7 @@ export interface ProgramSummary {
   sessionCount: number;
   firstSessionAt: string | null;
   lastSessionEndAt: string | null;
+  evaluationPassingScore?: number;
   participantStatus?: ParticipantStatus;
   attendedHours?: number | null;
   nextSessionAt?: string | null;
@@ -185,6 +186,9 @@ function query(params: Record<string, string | number | undefined | null>) {
   const text = search.toString();
   return text ? `?${text}` : "";
 }
+
+/** Shared with the R3 evaluation and R4 online-module clients. */
+export { get as trainingGet, query as trainingQuery, send as trainingSend };
 
 // ---------------------------------------------------------------- employee
 

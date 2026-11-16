@@ -408,7 +408,7 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 
 **Yang tetap di luar v1** (bukan kekurangan implementasi, melainkan batas cakupan §1.2 dan keputusan di atas):
 
-- ~~perhitungan tahunan Pasal 17 untuk masa pajak terakhir dan bukti potong 1721-A1~~ — **dibangun** (§7.4, migration 0155);
+- ~~perhitungan tahunan Pasal 17 untuk masa pajak terakhir dan bukti potong 1721-A1~~ — **dibangun** (§7.4, migration 0156);
 - aturan PPh21 pegawai tidak tetap (21-100-03, TER harian) untuk kontrak honorer dan lepas, sampai P10 diputuskan;
 - baris `PPH21_EMPLOYER` pada hasil perhitungan dan ringkasan biaya yayasan yang memuat PPh21 (P6);
 - ~~NIK/NPWP~~ (disimpan tersegel sejak §7.4); berkas unggah e-Bupot/SPT Masa PPh21 dalam format DJP tetap di luar HCIS — rekap CSV §7.4 adalah bahan pengisiannya;
@@ -464,7 +464,7 @@ Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.00
 
 | # | Keputusan | Default |
 |---|---|---|
-| A1 | Bentuk kebijakan `PPH21_ANNUAL` | `{ source, ptkp: { taxpayer, married, perDependent, maxDependents }, positionCost: { rate, monthlyCap, annualCap }, brackets: [{ upTo, rate }], pkpRoundingUnit, pensionContributionComponents: [], lineByComponent: {}, withholder: { name, taxNumber } }`, divalidasi saat ditulis. Versi yang berlaku pada **31 Desember** tahun pajak dipakai. Ketiadaannya: `409 PPH21_ANNUAL_POLICY_MISSING`; tidak memblokir periode. Migration 0155 menambah kunci ini ke constraint `payroll_policy_versions`. |
+| A1 | Bentuk kebijakan `PPH21_ANNUAL` | `{ source, ptkp: { taxpayer, married, perDependent, maxDependents }, positionCost: { rate, monthlyCap, annualCap }, brackets: [{ upTo, rate }], pkpRoundingUnit, pensionContributionComponents: [], lineByComponent: {}, withholder: { name, taxNumber } }`, divalidasi saat ditulis. Versi yang berlaku pada **31 Desember** tahun pajak dipakai. Ketiadaannya: `409 PPH21_ANNUAL_POLICY_MISSING`; tidak memblokir periode. Migration 0156 menambah kunci ini ke constraint `payroll_policy_versions`. |
 | A2 | Status PTKP | Dari profil kompensasi bulan pertama rentang (keadaan awal tahun pajak/awal masa kerja). Bentuk lain dari `TK/n`/`K/n` (mis. `K/I/n`) tidak ditebak. Belum ada field PTKP baru: `ptkp_status` profil sudah berlaku-efektif. |
 | A3 | Premi BPJS Kesehatan | Mengikuti dasar §5.3 (D9): `BPJS_KES_ALLOW` tidak masuk bruto dan baris 5 bernilai 0, karena efek bersihnya nol bagi pegawai. **Process owner perlu memastikan**: PMK 168/2023 memperlakukan premi yang dibayar pemberi kerja sebagai penghasilan; bila dikonfirmasi, kode itu dipindahkan ke baris 5 dan dasar §5.3 berubah bersamaan. |
 | A4 | Pembulatan | PKP ke bawah kelipatan `pkpRoundingUnit` (Rp1.000); biaya jabatan dan pajak `FLOOR` ke rupiah. |
@@ -477,7 +477,7 @@ Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.00
 | A11 | Bulan sebelum HCIS | Bila payroll HCIS mulai di tengah tahun pajak, bulan yang dibayar lewat spreadsheet tidak ada di HCIS dan rentang terbaca seperti pegawai yang masuk di tengah tahun. Tahun pajak pertama HCIS karena itu dicocokkan manual dengan rekap legacy sebelum bukti potong diserahkan (baris 13 "neto masa sebelumnya" tetap 0 di v1). |
 | A12 | Nomor yang tidak terbuka | NIK/NPWP yang tidak dapat dibuka (baris rusak atau kunci server dirotasi) tampil kosong, disebut di `unreadable` dokumen dan dihitung di audit ekspor (`unreadable_count`), tanpa menggagalkan seluruh rekap. |
 
-**NIK dan NPWP (`DRAFT`).** Bukti potong wajib memuat NIK/NPWP penerima, dan HCIS sebelumnya tidak menyimpannya. Tabel `payroll_tax_identities` (migration 0155) menyimpan keduanya **tersegel** AES-256-GCM dengan kunci turunan HKDF dari kunci server dan label tersendiri; associated data mengikat nilai ke pegawai dan kolomnya. Hanya empat digit terakhir disimpan terbaca untuk tampilan tersamar. NIK 16 digit; NPWP 15 atau 16 digit. Ditulis lewat `PUT /payroll/employees/{id}/tax-identity` oleh pemegang `payroll.profiles.manage`, tidak atas dirinya sendiri (aturan konflik kepentingan §2); field yang tidak dikirim dibiarkan, `null` mengosongkan. Nilai utuh **hanya** dibuka untuk dokumen 1721-A1 dan rekap CSV e-Bupot; layar rekap JSON hanya menyebut ada/tidaknya. Rotasi kunci server membutuhkan penyegelan ulang (tindak lanjut operasional).
+**NIK dan NPWP (`DRAFT`).** Bukti potong wajib memuat NIK/NPWP penerima, dan HCIS sebelumnya tidak menyimpannya. Tabel `payroll_tax_identities` (migration 0156) menyimpan keduanya **tersegel** AES-256-GCM dengan kunci turunan HKDF dari kunci server dan label tersendiri; associated data mengikat nilai ke pegawai dan kolomnya. Hanya empat digit terakhir disimpan terbaca untuk tampilan tersamar. NIK 16 digit; NPWP 15 atau 16 digit. Ditulis lewat `PUT /payroll/employees/{id}/tax-identity` oleh pemegang `payroll.profiles.manage`, tidak atas dirinya sendiri (aturan konflik kepentingan §2); field yang tidak dikirim dibiarkan, `null` mengosongkan. Nilai utuh **hanya** dibuka untuk dokumen 1721-A1 dan rekap CSV e-Bupot; layar rekap JSON hanya menyebut ada/tidaknya. Rotasi kunci server membutuhkan penyegelan ulang (tindak lanjut operasional).
 
 **Endpoint dan izin.**
 
@@ -492,7 +492,7 @@ Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.00
 
 **Layar.** `/admin/payroll/pph21-annual` (menu **PPh21 Tahunan & 1721-A1**) terbuka bagi pembaca angka per orang: pilih tahun, rekap per rentang, unduh CSV e-Bupot, tombol **1721-A1** pada rentang yang sudah ditutup (pop-up A4, **Cetak / Simpan PDF**), dan tombol **NIK/NPWP** bagi pemegang `payroll.profiles.manage`. Pegawai melihat bukti potongnya di bawah slip gaji.
 
-**Rollback.** Migration 0155: `-- Down:` di berkasnya (menghapus tabel identitas — catat sumber dokumen sebelum menghapus — dan mengembalikan constraint kunci kebijakan). Kode: rilis ulang build sebelumnya; tidak ada data hasil payroll yang ditulis oleh fitur ini.
+**Rollback.** Migration 0156: `-- Down:` di berkasnya (menghapus tabel identitas — catat sumber dokumen sebelum menghapus — dan mengembalikan constraint kunci kebijakan). Kode: rilis ulang build sebelumnya; tidak ada data hasil payroll yang ditulis oleh fitur ini.
 
 ## 8. Privasi dan audit
 

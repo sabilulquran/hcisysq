@@ -2811,6 +2811,8 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1workforce'
   /attendance/me/schedule:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1schedule'
+  /attendance/me/transactions:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1transactions'
   /attendance/mobile/clock:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1mobile~1clock'
   /attendance/mobile/evidence/{evidenceId}/photo:

@@ -111,7 +111,7 @@ Job classification/grade is a separate discovery concern from ORG-004 hierarchy/
 Employee services continue with:
 
 - Employee data change request — EMP-003.
-- Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
+- Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. Package 2, the income certificate (surat keterangan penghasilan), is implemented: it states the gross and net figures of the official published payslips of the three full months before issue and their average, frozen at issue (DRAFT D-21..D-24); its content goes only to the employee and to holders of `documents.manage` (D-25).
 - Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Attendance disposition is Package 2; trip costs are claimed through REIMB-001 Package 1 (advances not yet).
 - Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.

@@ -6,7 +6,7 @@
 // instead of going through requirePermissionsFromCookie (ADMIN_PERMISSIONS).
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -29,7 +29,10 @@ import {
   listDocumentTypes,
   loadEmployeeFacts,
   writeDocumentAudit,
+  type DocumentType,
+  type EmployeeFacts,
 } from "./service.js";
+import { INCOME_DOCUMENT_CODE, loadIncomeFacts } from "./income.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus YYYY-MM-DD");
 
@@ -96,20 +99,66 @@ export async function registerDocumentRoutes(
     return session.principal;
   }
 
-  async function requirePermission(
+  function forbidden(reply: FastifyReply) {
+    return send(reply, 403, { code: "DOCUMENT_FORBIDDEN", message: "Anda tidak memiliki akses untuk tindakan ini." });
+  }
+
+  async function requireAccess(
     request: FastifyRequest,
     reply: FastifyReply,
     ...permissions: DocumentPermission[]
-  ): Promise<AuthPrincipal | null> {
+  ): Promise<{ principal: AuthPrincipal; granted: readonly string[] } | null> {
     const principal = await authenticate(request, reply);
     if (!principal) return null;
     const context = await auth.getAuthorizationContext(principal);
     const granted = permissions.every((key) => context.organizationPermissions.includes(key));
     if (!granted) {
-      await send(reply, 403, { code: "DOCUMENT_FORBIDDEN", message: "Anda tidak memiliki akses untuk tindakan ini." });
+      await forbidden(reply);
       return null;
     }
-    return principal;
+    return { principal, granted: context.organizationPermissions };
+  }
+
+  async function requirePermission(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    ...permissions: DocumentPermission[]
+  ): Promise<AuthPrincipal | null> {
+    return (await requireAccess(request, reply, ...permissions))?.principal ?? null;
+  }
+
+  /**
+   * Issues one surat keterangan in the caller's transaction. An income letter (D-21..D-24) first
+   * reads its figures from the official published slips and refuses with 409 when there are none.
+   * The figures go into the snapshot only; the audit metadata keeps slip ids and periods.
+   */
+  async function issueCertificate(
+    client: PoolClient,
+    input: { type: DocumentType; employee: EmployeeFacts; issuedByAccountId: string; purpose: string },
+  ) {
+    const issuedAt = new Date();
+    const income = input.type.code === INCOME_DOCUMENT_CODE
+      ? await loadIncomeFacts(client, input.employee.id, issuedAt)
+      : null;
+    const issued = await issueDocument(client, {
+      documentKind: "CERTIFICATE",
+      documentCode: input.type.code,
+      numberCode: input.type.numberCode,
+      employee: input.employee,
+      issuedByAccountId: input.issuedByAccountId,
+      issuedAt,
+      contentSnapshot: buildContentSnapshot(input.employee, {
+        purpose: input.purpose,
+        documentLabel: input.type.label,
+        ...(income ? { income: income.facts } : {}),
+      }),
+    });
+    const auditMetadata: Record<string, unknown> = { documentCode: input.type.code, documentNumber: issued.documentNumber };
+    if (income) {
+      auditMetadata.payslipIds = income.payslipIds;
+      auditMetadata.incomePeriods = income.facts.months.map((month) => month.period);
+    }
+    return { issued, auditMetadata };
   }
 
   /** Self access is ownership, not a permission: the employee id comes from the session. */
@@ -508,13 +557,8 @@ export async function registerDocumentRoutes(
         return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       }
       assertEmploymentStateAllows(type, employee);
-      const issued = await issueDocument(client, {
-        documentKind: "CERTIFICATE",
-        documentCode: type.code,
-        numberCode: type.numberCode,
-        employee,
-        issuedByAccountId: principal.id,
-        contentSnapshot: buildContentSnapshot(employee, { purpose: found0.purpose, documentLabel: type.label }),
+      const { issued, auditMetadata } = await issueCertificate(client, {
+        type, employee, issuedByAccountId: principal.id, purpose: found0.purpose,
       });
       await client.query(
         `UPDATE hr_document_requests SET status = 'ISSUED', issued_document_id = $2, updated_at = now() WHERE id = $1`,
@@ -526,7 +570,7 @@ export async function registerDocumentRoutes(
         issuedDocumentId: issued.id,
         employeeId: employee.id,
         actorAccountId: principal.id,
-        metadata: { documentCode: type.code, documentNumber: issued.documentNumber },
+        metadata: auditMetadata,
       });
       await notifyEmployee(client, employee.id, {
         eventKey: `doc.issued.${issued.id}`,
@@ -566,20 +610,15 @@ export async function registerDocumentRoutes(
         return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       }
       assertEmploymentStateAllows(type, employee);
-      const issued = await issueDocument(client, {
-        documentKind: "CERTIFICATE",
-        documentCode: type.code,
-        numberCode: type.numberCode,
-        employee,
-        issuedByAccountId: principal.id,
-        contentSnapshot: buildContentSnapshot(employee, { purpose: body.data.purpose, documentLabel: type.label }),
+      const { issued, auditMetadata } = await issueCertificate(client, {
+        type, employee, issuedByAccountId: principal.id, purpose: body.data.purpose,
       });
       await writeDocumentAudit(client, {
         eventType: "doc.issued",
         issuedDocumentId: issued.id,
         employeeId: employee.id,
         actorAccountId: principal.id,
-        metadata: { documentCode: type.code, documentNumber: issued.documentNumber },
+        metadata: auditMetadata,
       });
       await client.query("COMMIT");
       return send(reply, 201, issued);
@@ -625,6 +664,52 @@ export async function registerDocumentRoutes(
     return send(reply, 200, {
       items: items.rows,
       pagination: pagination(query.data, count.rows[0]?.total ?? 0),
+    });
+  });
+
+  // D-25: HC reads one issued surat keterangan, e.g. to verify it for a bank or reprint it. The
+  // register stays register facts; content leaves only through this audited read. An income
+  // letter carries pay figures, so it also needs documents.manage: documents.read alone (the
+  // document_corrector) sees that it exists and can revoke it, but not what it says. Warning
+  // letters, surat tugas and SK panitia are not served here (D-13, TRIP-001, ORG-012).
+  app.get("/admin/documents/issued/:id", async (request, reply) => {
+    const access = await requireAccess(request, reply, "documents.read");
+    if (!access) return;
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return send(reply, 404, { code: "DOCUMENT_NOT_FOUND", message: "Surat tidak ditemukan." });
+    const found = await pool.query<{
+      id: string; employeeId: string; documentCode: string; documentNumber: string;
+      status: "ISSUED" | "REVOKED"; issuedAt: Date; revokedAt: Date | null;
+      signer: { title: string; name: string | null }; contentSnapshot: Record<string, unknown>;
+    }>(
+      `SELECT id, employee_id AS "employeeId", document_code AS "documentCode",
+              document_number AS "documentNumber", status, issued_at AS "issuedAt", revoked_at AS "revokedAt",
+              signer, content_snapshot AS "contentSnapshot"
+         FROM hr_issued_documents
+        WHERE id = $1 AND document_kind = 'CERTIFICATE'`,
+      [params.data.id],
+    );
+    const document = found.rows[0];
+    if (!document) return send(reply, 404, { code: "DOCUMENT_NOT_FOUND", message: "Surat tidak ditemukan." });
+    if (document.documentCode === INCOME_DOCUMENT_CODE && !access.granted.includes("documents.manage")) {
+      return forbidden(reply);
+    }
+    await writeDocumentAudit(pool, {
+      eventType: "doc.opened",
+      issuedDocumentId: document.id,
+      employeeId: document.employeeId,
+      actorAccountId: access.principal.id,
+      metadata: { documentCode: document.documentCode, documentNumber: document.documentNumber, surface: "admin" },
+    });
+    return send(reply, 200, {
+      id: document.id,
+      documentCode: document.documentCode,
+      documentNumber: document.documentNumber,
+      status: document.status,
+      issuedAt: document.issuedAt,
+      revokedAt: document.revokedAt,
+      signer: document.signer,
+      contentSnapshot: document.contentSnapshot,
     });
   });
 

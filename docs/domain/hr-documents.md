@@ -1,9 +1,9 @@
 # Dokumen Kepegawaian — Surat Keterangan dan Surat Peringatan
 
-**Status:** ACCEPTED (Paket 1) — spesifikasi ini mengizinkan implementasi Paket 1. Keputusan aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
+**Status:** ACCEPTED (Paket 1); Paket 2 (surat keterangan penghasilan, §14) diimplementasikan 2026-11-17 dengan aturan bisnis `DRAFT`. Keputusan aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
 **Spesifikasi:** DOC-001 (surat keterangan), DOC-002 (surat peringatan)
 **Tanggal:** 2026-10-27
-**Terkait:** EMP-005, EMP-006, EMP-010, NOTIF-004, APR-001, PAYSLIP-005, ORG-004, AUTH-011
+**Terkait:** EMP-005, EMP-006, EMP-010, NOTIF-004, APR-001, PAYSLIP-005, ORG-004, AUTH-011, PAY-001/PAY-002/PAY-003 (sumber angka surat keterangan penghasilan)
 **Roadmap:** `docs/product/roadmap.md` §G, `docs/product/hcis-capability-map.md` §5
 
 ## 1. Tujuan
@@ -30,13 +30,16 @@ Termasuk (Paket 1):
 - surat peringatan SP-1/SP-2/SP-3 dengan masa berlaku dan tanda terima;
 - notifikasi in-app melalui NOTIF-004.
 
+Termasuk (Paket 2, 2026-11-17):
+
+- surat keterangan penghasilan (`KETERANGAN_PENGHASILAN`) dengan angka dari slip gaji resmi yang sudah terbit (§14, D-21..D-25). Semula ditunda sampai PAY-003 punya hasil payroll final; sumbernya kini slip resmi yang terbit, apa pun jalur pembuatnya (D-21).
+
 **Tidak** termasuk:
 
 | Di luar lingkup | Alasan |
 | --- | --- |
 | Perjanjian Kerja dan Surat Keputusan | Milik EMP-010; register dokumen dasar tindakan kepegawaian, bukan surat layanan. DOC-001/DOC-002 tidak menulis ke register EMP-010. |
 | Ijazah, sertifikat, dokumen kualifikasi pegawai | Milik EMP-007/EMP-008. |
-| Surat keterangan penghasilan | Butuh angka payroll otoritatif. **Ditunda ke Paket 2**, setelah PAY-003 punya hasil payroll final. Jenisnya sudah disediakan di katalog tetapi tidak aktif. |
 | Unggah berkas dari pegawai | Paket 1 tidak menerima attachment. Object storage dan pemindaian berkas adalah keputusan terpisah. |
 | Tanda tangan elektronik bersertifikat | Paket 1 memakai blok penandatangan tercetak, sama seperti PAYSLIP-005. |
 | Akses mandiri pegawai non-aktif | Endpoint self HCIS mensyaratkan pegawai dan akun yang aktif. Paklaring karena itu diterbitkan HC dan diserahkan di luar sistem pada Paket 1; ini batas yang diketahui, bukan cacat. |
@@ -60,11 +63,16 @@ Termasuk (Paket 1):
 | D-12 | Pegawai **wajib** melihat SP-nya dan dapat menekan "Saya telah membaca". Tanda terima dicatat dengan waktu; ketiadaan tanda terima tidak membatalkan SP. | DRAFT |
 | D-13 | Surat peringatan hanya terlihat oleh pegawai ybs dan pemegang `documents.discipline.manage`. **Atasan tidak otomatis melihat**nya di Paket 1. Sejak migrasi 0102 izin itu dibawa `human_capital_admin`, karena di YSQ administrator HC-lah yang menerbitkan surat peringatan; tidak ada role bercakupan unit yang membawanya. | DRAFT (revisi 2026-10-27) |
 | D-14 | Pembatalan SP yang sudah terbit butuh permission terpisah `documents.correct` dan alasan; nilai lama tetap tersimpan. | ACCEPTED |
-| D-15 | Isi surat tidak boleh memuat gaji, NIK lengkap, nomor rekening, data medis, atau alamat rumah. Nomor identitas ditampilkan tersamar bila diperlukan. | ACCEPTED |
+| D-15 | Isi surat tidak boleh memuat gaji, NIK lengkap, nomor rekening, data medis, atau alamat rumah. Nomor identitas ditampilkan tersamar bila diperlukan. **Satu pengecualian yang disengaja (revisi 2026-11-17):** surat keterangan penghasilan memuat angka penghasilan pegawai itu sendiri sebagaimana tertulis di slip gajinya (D-24), karena itulah isi surat tersebut. Pengecualian ini hanya untuk angka penghasilan per bulan dan rata-ratanya; NIK, NPWP, nomor rekening, alamat, dan rincian komponen/potongan slip tetap tidak masuk. | ACCEPTED (pengecualian D-24 DRAFT) |
 | D-16 | `documents.correct` dibawa role tersendiri `document_corrector`, bukan bundel mana pun. Konsekuensi yang **disengaja**: pemegangnya dapat membatalkan surat peringatan yang tidak dapat ia baca isinya, karena pembatalan adalah tindakan atas register (nomor dan status), bukan atas isi surat. Alasan pembatalan wajib dan tercatat di audit. | ACCEPTED (2026-10-27) |
 | D-18 | Register surat terbit memuat surat peringatan untuk pemegang `documents.read`, tetapi **hanya fakta register**: nomor, tingkat (sudah tersirat di nomor), status, tanggal terbit, serta waktu dan alasan pembatalan. Identitas pegawai, perihal, uraian, dan snapshot isi SP **tidak** ikut, sehingga D-13 tetap berlaku: pemegang `document_corrector` mengenali SP dari nomornya saja. Pemegang `documents.discipline.manage` tetap melihat identitas dan perihal di daftar surat peringatan. | DRAFT (2026-11-02) |
 | D-19 | SP yang sudah ditandai dibaca, atau yang masa berlakunya sudah lewat, **tetap dapat dibatalkan**. Tanda terima dan kedaluwarsa bukan status tersimpan register (§5.2), jadi keduanya tidak mengunci pembatalan; yang mengunci hanya status `REVOKED`. | DRAFT (2026-11-02) |
 | D-20 | Pegawai aktif **dapat membuka, mencetak, dan menyimpan sebagai PDF** surat keterangan miliknya yang berstatus `ISSUED`, dari layar **Dokumen Saya** (tombol **Lihat & cetak**). Akses berdasarkan kepemilikan lewat endpoint self `GET /documents/me/issued/:id`, bukan permission; surat orang lain dijawab 404 seperti surat yang tidak ada, surat `REVOKED` dijawab 409 `DOCUMENT_REVOKED` dan tidak dapat dicetak. Surat dirender dari snapshot (§4.1) dan blok penandatangan tercetak (D-01, D-05); "unduh" berarti **Simpan sebagai PDF** dari dialog cetak peramban, bukan berkas PDF buatan server, sehingga tidak perlu object storage atau pustaka PDF. Setiap pembukaan dicatat sebagai audit `doc.opened` (bacaan dokumen pribadi, pola audit baca PAYSLIP). Daftar `GET /documents/me/issued` hanya membawa nomor, jenis (`documentLabel`), status, tanggal, dan penandatangan, tanpa isi snapshot, sehingga isi surat hanya keluar lewat endpoint yang diaudit dan tidak pernah untuk surat yang dibatalkan. Surat peringatan tidak ikut: pegawai membacanya di layar (D-12), dan cetak SP tetap urusan HC. Alasan: §2 sudah menjanjikan "unduh/cetak", tetapi layar Paket 1 belum menyediakannya (temuan HELP-001 2026-11-03). Bunyi surat: lihat §13. | ACCEPTED (2026-11-03); bunyi surat DRAFT |
+| D-21 | Sumber angka surat keterangan penghasilan adalah **slip gaji resmi yang sudah terbit** di tabel `payslips`: `published_at` terisi dan `superseded_by_id` kosong, yaitu satu slip berlaku per pegawai per bulan. Slip itu boleh berasal dari impor PAY-001/PAY-002 (`source_batch_id`) maupun periode PAY-003 (`source_period_id`). Alasan: AGENTS.md §5 menetapkan PAY-001/PAY-002 tetap jalur slip resmi sampai parallel run PAY-003 lulus, jadi "angka resmi" adalah apa yang sudah diterbitkan kepada pegawai, bukan hasil hitung PAY-003. Sistem **tidak pernah menghitung ulang** gaji; draf slip, slip yang sudah digantikan revisi, dan hasil payroll yang belum diterbitkan tidak dipakai. | DRAFT (2026-11-17) |
+| D-22 | Rentang bulan: **tiga bulan kalender penuh sebelum bulan terbit** menurut kalender Asia/Jakarta (surat terbit 17 November 2026 memakai Agustus, September, Oktober 2026). Bulan berjalan tidak dipakai karena slipnya bisa belum terbit. Bulan tanpa slip resmi dilewati; rata-rata dihitung dari bulan yang ada slipnya dan surat menyebutkannya. Bila **tidak ada satu pun** slip resmi dalam rentang, penerbitan ditolak `409 DOCUMENT_INCOME_UNAVAILABLE`, permintaan tetap `APPROVED`, dan nomor tidak terpakai (seperti DOC-001-F). | DRAFT (2026-11-17) |
+| D-23 | Angka yang dibaca per slip: **penghasilan bruto** dari baris berlabel "Total Bruto Gaji"/"Total Bruto" (impor tetap), "Total Penghasilan" (impor honorer), atau "Total pendapatan" (PAY-003); **penghasilan neto** dari baris "Gaji Neto"/"Gaji Netto" (impor) atau "Gaji bersih" (PAY-003). Label dicocokkan tanpa membedakan huruf besar/kecil dan spasi. "Gaji Neto 80%", "Gaji Prorata", dan "Nominal dibayar" sengaja **tidak** dipakai: itu jumlah yang dibayar setelah faktor bayar, bukan penghasilan. Nilai dibaca persis dari teks slip (format `Rp1.234.567`, `1.234.567`, `1,234,567`, atau angka polos); slip yang angka bruto atau netonya tidak terbaca menolak penerbitan dengan `409 DOCUMENT_INCOME_UNREADABLE` yang menyebut periodenya, bukan nominalnya. | DRAFT (2026-11-17) |
+| D-24 | Surat memuat, per bulan, periode, penghasilan bruto, dan penghasilan neto, ditambah **rata-rata per bulan** keduanya (dibulatkan ke rupiah terdekat, setengah ke atas). Angka dibekukan di snapshot saat terbit (§4.1, kunci `income`); revisi slip sesudahnya tidak mengubah surat yang sudah terbit. Surat hanya untuk pegawai **aktif** (seperti `KETERANGAN_KERJA`, D-06), dapat diminta sendiri atau diterbitkan langsung oleh HC. | DRAFT (2026-11-17) |
+| D-25 | Membaca isi surat keterangan oleh HC: `GET /admin/documents/issued/:id` dengan `documents.read`. Untuk **surat keterangan penghasilan** dibutuhkan juga `documents.manage`, karena isinya angka penghasilan: pemegang `documents.read` saja (`document_corrector`) melihat baris register (nomor, pegawai, status, tanggal, penandatangan, seperti D-18) dan tetap dapat membatalkannya (D-16), tetapi tidak membaca isinya (`403 DOCUMENT_FORBIDDEN`). Isi surat penghasilan hanya sampai ke pemegang `documents.manage` (`human_capital_admin`) dan ke pegawai ybs lewat D-20. Setiap pembacaan menulis `doc.opened` dengan `surface: "admin"`. Surat peringatan, surat tugas, dan SK panitia tidak dilayani endpoint ini (404). | DRAFT (2026-11-17) |
 | D-17 | Setiap migrasi yang menambahkan izin ke sebuah role harus dijalankan **setelah** build yang mengenal kunci izin itu berjalan. `canDelegateRole` menolak role yang membawa izin di luar allowlist-nya, sehingga build lama akan menolak pemberian/pencabutan role tersebut selama jendela antara migrasi dan restart. | ACCEPTED (2026-10-27) |
 
 ## 4. Objek
@@ -83,7 +91,7 @@ DisciplinaryLetter (DOC-002)
 
 ### 4.1 Snapshot isi
 
-Saat diterbitkan, surat menyimpan **snapshot** fakta yang dipakainya (nama, jabatan, unit, tanggal mulai kerja, status kepegawaian). Perubahan data pegawai sesudahnya tidak mengubah surat yang sudah terbit. Ini mengikuti pola snapshot-on-submit `docs/domain/workflows/approval-engine.md`.
+Saat diterbitkan, surat menyimpan **snapshot** fakta yang dipakainya (nama, jabatan, unit, tanggal mulai kerja, status kepegawaian; untuk surat keterangan penghasilan juga angka penghasilan per bulan dan rata-ratanya di kunci `income`, D-24). Perubahan data pegawai sesudahnya tidak mengubah surat yang sudah terbit. Ini mengikuti pola snapshot-on-submit `docs/domain/workflows/approval-engine.md`.
 
 ### 4.2 Jenis surat keterangan (katalog)
 
@@ -91,7 +99,7 @@ Saat diterbitkan, surat menyimpan **snapshot** fakta yang dipakainya (nama, jaba
 | --- | --- | --- | --- |
 | `KETERANGAN_KERJA` | Surat Keterangan Kerja | Pegawai aktif | 1 |
 | `PAKLARING` | Surat Keterangan Pengalaman Kerja | Hubungan kerja berakhir | 1 |
-| `KETERANGAN_PENGHASILAN` | Surat Keterangan Penghasilan | Pegawai aktif | 2 (tidak aktif) |
+| `KETERANGAN_PENGHASILAN` | Surat Keterangan Penghasilan | Pegawai aktif | 2 (aktif sejak migrasi 0151, §14) |
 
 Katalog disimpan sebagai data, bukan `enum` kode, supaya jenis baru tidak memerlukan rilis.
 
@@ -121,8 +129,8 @@ ISSUED/ACKNOWLEDGED -> EXPIRED  (turunan tanggal, bukan state tersimpan)
 
 | Permission | Arti |
 | --- | --- |
-| `documents.read` | Melihat register surat dan permintaan seluruh pegawai |
-| `documents.manage` | Memutuskan permintaan surat keterangan dan menerbitkannya |
+| `documents.read` | Melihat register surat dan permintaan seluruh pegawai, serta isi surat keterangan selain surat keterangan penghasilan (D-25) |
+| `documents.manage` | Memutuskan permintaan surat keterangan dan menerbitkannya; bersama `documents.read`, membaca isi surat keterangan penghasilan (D-25) |
 | `documents.discipline.manage` | Menerbitkan dan membaca surat peringatan |
 | `documents.correct` | Membatalkan surat yang sudah terbit |
 
@@ -143,7 +151,7 @@ Pegawai mengakses surat miliknya sendiri melalui endpoint self, bukan permission
 
 Setiap transisi menghasilkan audit event: `doc.request.submitted`, `doc.request.approved`, `doc.request.rejected`, `doc.request.cancelled`, `doc.issued`, `doc.revoked`, `doc.discipline.issued`, `doc.discipline.acknowledged`, `doc.discipline.revoked`. Pembukaan surat keterangan oleh pegawai untuk dicetak (D-20) bukan transisi, tetapi dicatat sebagai `doc.opened` dengan id surat, pegawai, aktor, serta `documentCode` dan `documentNumber` di metadata.
 
-Audit event memuat id surat, jenis, aktor, dan alasan bila ada. Audit **tidak** memuat isi naratif surat peringatan.
+Audit event memuat id surat, jenis, aktor, dan alasan bila ada. Audit **tidak** memuat isi naratif surat peringatan. Untuk surat keterangan penghasilan, `doc.issued` menambahkan `payslipIds` (id slip sumber) dan `incomePeriods` (bulan `YYYY-MM`) di metadata, **tanpa nominal apa pun** (`payroll-calculation-v1.md` §8); pembacaan oleh HC lewat D-25 dicatat sebagai `doc.opened` dengan `surface: "admin"`. Notifikasi surat terbit tidak memuat nominal, dan setiap respons yang membawa angka memakai `Cache-Control: no-store`.
 
 ## 8. Notifikasi
 
@@ -185,8 +193,10 @@ DOC-001:
 - DOC-001-E: surat yang terbit menyimpan snapshot; mengubah jabatan pegawai sesudahnya tidak mengubah isi surat.
 - DOC-001-F: penandatangan diselesaikan dengan aturan PAYSLIP-005; bila tidak ada kandidat eligible, penerbitan gagal dengan pesan jelas dan permintaan tetap `APPROVED`.
 - DOC-001-G: paklaring ditolak untuk pegawai yang masih aktif (D-06).
-- DOC-001-H: isi surat tidak memuat gaji, rekening, atau alamat rumah.
-- DOC-001-I: jenis `KETERANGAN_PENGHASILAN` tidak dapat diajukan di Paket 1.
+- DOC-001-H: isi surat tidak memuat gaji, rekening, atau alamat rumah. Satu-satunya pengecualian adalah angka penghasilan pada surat keterangan penghasilan (D-15 revisi, D-24); surat itu pun tidak memuat NIK, NPWP, rekening, alamat, atau rincian komponen slip.
+- DOC-001-I: ~~jenis `KETERANGAN_PENGHASILAN` tidak dapat diajukan di Paket 1.~~ Sejak Paket 2 (migrasi 0151): pegawai aktif dapat mengajukan surat keterangan penghasilan; saat terbit, surat membekukan bruto dan neto setiap bulan dalam rentang D-22 dari slip resmi D-21 serta rata-ratanya, dan revisi slip sesudahnya tidak mengubah surat.
+- DOC-001-L: tanpa slip resmi terbit dalam rentang D-22, penerbitan ditolak `409 DOCUMENT_INCOME_UNAVAILABLE`, permintaan tetap `APPROVED`, dan nomor tidak terpakai; slip yang angkanya tidak terbaca ditolak `409 DOCUMENT_INCOME_UNREADABLE` dengan periode, tanpa nominal. Draf slip, slip yang digantikan revisi, slip bulan berjalan, dan slip pegawai lain tidak ikut dihitung. Pegawai nonaktif ditolak `DOCUMENT_EMPLOYMENT_STATE`.
+- DOC-001-M: isi surat keterangan penghasilan hanya terbaca oleh pegawai ybs (D-20) dan pemegang `documents.read` + `documents.manage` (D-25); pemegang `documents.read` saja menerima 403 tanpa isi tetapi tetap melihat baris register dan dapat membatalkannya; tanpa `documents.read` 403; surat peringatan 404. Audit, notifikasi, register, dan daftar surat pegawai tidak memuat nominal.
 
 DOC-002:
 
@@ -211,7 +221,8 @@ Semua dijawab dengan default `DRAFT` di §3 supaya implementasi tidak berhenti. 
 3. apakah atasan langsung berhak melihat SP bawahannya (D-13);
 4. apakah surat keterangan perlu persetujuan di atas HC untuk kasus tertentu (D-07);
 5. siapa yang memegang role `document_corrector` di YSQ (D-16); sampai Super Admin memberikannya, pembatalan surat tidak tersedia bagi siapa pun dan tombolnya tidak ditampilkan;
-6. apakah pemegang `document_corrector` perlu melihat nama pegawai pada SP di register (D-18), dan apakah pegawai perlu diberi notifikasi saat SP-nya dibatalkan (saat ini tidak; statusnya berubah di layar dokumen pegawai).
+6. apakah pemegang `document_corrector` perlu melihat nama pegawai pada SP di register (D-18), dan apakah pegawai perlu diberi notifikasi saat SP-nya dibatalkan (saat ini tidak; statusnya berubah di layar dokumen pegawai);
+7. surat keterangan penghasilan (D-21..D-25): apakah sumbernya tetap slip resmi yang terbit atau harus menunggu parallel run PAY-003; berapa bulan yang dipakai; apakah bank membutuhkan bruto, neto, atau jumlah yang dibayar setelah faktor bayar; dan apakah pembaca `documents.read` saja boleh melihat isinya.
 
 Follow-up yang diketahui, di luar paket ini: resolver penandatangan (`modules/documents/signer-authority.ts`, warisan PAYSLIP-005) masih memakai `current_date` basis data, sehingga masa jabatan penanda tangan berganti pada 00:00 UTC (07:00 WIB), bukan tengah malam Jakarta. Perbaikannya menyentuh slip gaji juga, jadi menjadi perubahan tersendiri.
 
@@ -262,3 +273,29 @@ Bunyi surat (DRAFT, dapat disesuaikan HC lewat perubahan spesifikasi):
 - Isi surat keterangan kerja: "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini." Isi paklaring: "telah bekerja di Yayasan Sabilul Qur'an sejak <mulai> sampai dengan <berakhir>."
 - Keperluan: "Surat keterangan ini dibuat untuk keperluan: <keperluan pada permintaan>." (dilewati bila kosong).
 - Penutup: "Demikian surat keterangan ini dibuat untuk dipergunakan sebagaimana mestinya.", tanggal terbit (zona Asia/Jakarta), jabatan dan nama penandatangan dari blok penandatangan.
+
+## 14. Surat keterangan penghasilan (Paket 2, D-21..D-25)
+
+Ditambahkan 2026-11-17. Seluruh aturan bisnis di bagian ini `DRAFT` sampai dikonfirmasi pemilik produk (§11 butir 7).
+
+| Unsur | Isi |
+| --- | --- |
+| Aktor | Pegawai aktif (mengajukan, membaca, mencetak suratnya sendiri); HC pemegang `documents.manage` (memutuskan, menerbitkan, membaca isi); pemegang `documents.correct` (membatalkan). |
+| Prasyarat | Jenis `KETERANGAN_PENGHASILAN` aktif (migrasi 0151); pegawai berstatus aktif; penandatangan eligible (D-05); minimal satu slip resmi terbit dalam rentang D-22. |
+| Layar | Pegawai: `/app/documents`, jenis **Surat Keterangan Penghasilan** pada formulir permintaan, lalu **Lihat & cetak** seperti D-20. HC: `/admin/documents`, antrean permintaan (**Setujui**, **Terbitkan**), dan tombol **Lihat surat** di register yang hanya ditawarkan untuk surat penghasilan bila akun membawa `documents.manage`. |
+| Input | Keperluan (5–500 karakter) pada permintaan; HC dapat menerbitkan langsung lewat `POST /admin/documents/issue`. Angka penghasilan **tidak** diinput siapa pun; dibaca dari slip (D-21, D-23). |
+| Transisi | Sama dengan surat keterangan lain (§5.1). Penerbitan membaca slip, menyusun angka, mengalokasikan nomor `SKP`, dan menyimpan snapshot dalam satu transaksi. |
+| Permission | Lihat D-25 dan §6; pegawai lewat kepemilikan (D-20). |
+| Audit | `doc.request.*`, `doc.issued` (dengan `payslipIds` dan `incomePeriods`, tanpa nominal), `doc.opened` (pegawai, atau HC dengan `surface: "admin"`), `doc.revoked`. |
+| Kegagalan | Tidak ada slip resmi dalam rentang → `409 DOCUMENT_INCOME_UNAVAILABLE`; angka slip tidak terbaca → `409 DOCUMENT_INCOME_UNREADABLE`; pegawai nonaktif → `409 DOCUMENT_EMPLOYMENT_STATE`; tanpa penandatangan → `409 DOCUMENT_SIGNER_UNAVAILABLE`. Pada semua kegagalan permintaan tetap `APPROVED` dan nomor tidak terpakai; pesan galat menyebut periode, tidak pernah nominal. HC tanpa `documents.manage` membuka isi → `403 DOCUMENT_FORBIDDEN`. |
+
+Bunyi surat (DRAFT, dapat disesuaikan HC lewat perubahan spesifikasi):
+
+- Kepala, pembuka, dan data pegawai sama dengan §13; judul "SURAT KETERANGAN PENGHASILAN".
+- Isi: "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini, dengan penghasilan menurut slip gaji resmi yang telah diterbitkan sebagai berikut:", lalu tabel **Bulan · Penghasilan bruto · Penghasilan neto** per bulan dan baris **Rata-rata per bulan**. Nominal ditulis `Rp5.116.667` (sen ditulis `,50` hanya bila slip memuatnya).
+- Catatan sumber: "Angka diambil dari slip gaji resmi periode <bulan awal> sampai dengan <bulan akhir>." Bila ada bulan tanpa slip resmi: "; rata-rata dihitung dari <n> bulan yang memiliki slip gaji resmi."
+- Keperluan dan penutup sama dengan §13.
+
+Contoh hitung (data sintetis, juga di test): slip Agustus bruto 5.000.000 / neto 4.500.000, September 5.250.000 / 4.700.000, Oktober 5.100.000 / 4.600.001 → rata-rata bruto 15.350.000 / 3 = 5.116.666,67 → **Rp5.116.667**; neto 13.800.001 / 3 = 4.600.000,33 → **Rp4.600.000**.
+
+Yang **tidak** dilakukan: menghitung ulang gaji, memakai hasil payroll PAY-003 yang belum diterbitkan sebagai slip, menampilkan komponen atau potongan slip, menyimpan NIK/NPWP/rekening, atau menuliskan nominal ke log, audit, notifikasi, register, maupun daftar surat.

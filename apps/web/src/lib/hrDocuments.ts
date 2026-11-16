@@ -27,7 +27,34 @@ export interface IssuedDocumentSummary {
   status: "ISSUED" | "REVOKED";
   issuedAt: string;
   signer: { title: string; name: string | null };
-  contentSnapshot: Record<string, string | null>;
+  /** Facts frozen at issue (§4.1); an income letter adds `income` (D-24). */
+  contentSnapshot: Record<string, unknown>;
+}
+
+/** DOC-001 Package 2: the surat keterangan penghasilan, whose snapshot carries pay figures. */
+export const INCOME_DOCUMENT_CODE = "KETERANGAN_PENGHASILAN";
+
+/** D-24: amounts are rupiah decimal strings ("5116667" or "5250000.50"), never floats. */
+export interface IncomeFigures {
+  months: Array<{ period: string; gross: string; net: string }>;
+  monthCount: number;
+  averageGross: string;
+  averageNet: string;
+  windowFrom: string;
+  windowTo: string;
+}
+
+export function incomeFigures(document: Pick<IssuedDocumentSummary, "contentSnapshot">): IncomeFigures | null {
+  const income = document.contentSnapshot.income as IncomeFigures | undefined;
+  return income && Array.isArray(income.months) ? income : null;
+}
+
+/** "5116667" -> "Rp5.116.667", "5250000.50" -> "Rp5.250.000,50"; string arithmetic only. */
+export function formatRupiahAmount(amount: string): string {
+  const negative = amount.startsWith("-");
+  const [whole = "0", sen] = (negative ? amount.slice(1) : amount).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${negative ? "-" : ""}Rp${grouped}${sen ? `,${sen}` : ""}`;
 }
 
 export interface DisciplinaryLetterSummary {
@@ -99,6 +126,14 @@ export async function getMyIssuedDocuments() {
 /** D-20: my own issued certificate, to print or save as PDF. The API audits each opening. */
 export async function getMyIssuedDocument(documentId: string) {
   return get<IssuedDocumentSummary>(`/documents/me/issued/${documentId}`);
+}
+
+/**
+ * D-25: HC reads one issued certificate. The API audits each read and answers 403 for an income
+ * letter unless the account also holds documents.manage.
+ */
+export async function getIssuedDocument(documentId: string) {
+  return get<IssuedDocumentSummary & { revokedAt: string | null }>(`/admin/documents/issued/${documentId}`);
 }
 
 export async function getMyDisciplinaryLetters() {

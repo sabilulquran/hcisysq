@@ -2,14 +2,16 @@
 
 **Status:** ACCEPTED PRODUCT DIRECTION
 **Decision date:** 2026-09-18
-**Updated:** 2026-11-02
+**Updated:** 2026-11-16 (terms aligned to SQ-Hub ADR-0014; recruitment, DOC-003 and CAL-001 notes)
 **Related:** UX-001 and `docs/product/feature-parity.yaml`
 **Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
 **Legacy parity audit:** `docs/product/legacy-parity-audit-2026-11-02.md` (legacy features not recorded before are listed below as DISCOVERY)
 
 ## Product boundary
 
-HCIS YSQ is the operational platform for the employee lifecycle, workforce administration, organization, attendance, compensation, development, and employee services.
+HCIS YSQ is the application for the employee lifecycle, workforce administration, organization, attendance, compensation, development, and employee services.
+
+HCIS is one application inside SQ Hub, the ecosystem of Yayasan Sabilul Qur'an applications. The capabilities below are HCIS **modules**. Other SQ Hub applications (Aset SQ, Karir SQ, Kirim SQ, Sekretariat SQ, Al-Qur'an, and the rest), the portals, and their status are listed only in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) in the `SQ-Hub` repository (terms: SQ-Hub ADR-0014). In documents written before 2026-11-16, "SQ Core" means SQ Hub.
 
 This scope is broader than the verified MVP. Inclusion in this capability map means the capability belongs in the HCIS product direction; it does **not** mean the backend behavior is implemented, production-ready, or scheduled for a release date.
 
@@ -85,7 +87,7 @@ See `docs/domain/payroll-engine-discovery.md`.
 - Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. Results do not feed tunjangan kinerja until the PAY-003 link (spec §11).
 - Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. Evaluation and online modules remain discovery.
 
-- Employee awards — REWARD-001. Monthly awards whose candidates come only from the Al-Qur'an tilawah scoreboard (SQ Hub module, ADR-0013); the Kepala HCM decides, publication sends a notification, an announcement and a certificate. Specified in `docs/domain/rewards.md`; not an input to PERF-001 and not a payroll component. Staff open the Al-Qur'an module itself from an HCIS menu; reading data stays in SQ Hub.
+- Employee awards — REWARD-001. Monthly awards whose candidates come only from the tilawah scoreboard of the Al-Qur'an application (SQ-Hub ADR-0013); the Kepala HCM decides, publication sends a notification, an announcement and a certificate. Specified in `docs/domain/rewards.md`; not an input to PERF-001 and not a payroll component. Staff open the Al-Qur'an application itself from an HCIS menu; reading data stays in that application.
 
 TRAIN-001 stays inside HCIS (Product Owner decision, 2026-10-20). Discovery direction, including training evaluation and server-hosted video, is in `docs/domain/training-lms-discovery.md`.
 
@@ -115,7 +117,7 @@ Employee services continue with:
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.
 - Employee document file archive — EMP-011. Package 1 is implemented (`docs/domain/employee-documents.md`): scans of KTP, KK, NPWP, BPJS cards, diplomas, transcripts, certificates and licences with an expiry date. HC uploads and verifies; the employee sees and downloads their own documents and proposes uploads from Data Saya; HC's worklist Dokumen Pegawai lists documents about to expire and proposals waiting. EMP-011 owns the employee-document storage boundary (D-01): files encrypted in the HCIS database behind the `EmployeeFileStore` port, so object storage later is an adapter swap. The same boundary carries the scanned Perjanjian Kerja / Surat Keputusan of EMP-010. Only the owner and HC Admin read; every read is audited.
 - Employee ID card — EMP-012. Package 1 is implemented (`docs/domain/employee-id-card.md`): HC uploads the photo, issues, prints (CR80) and replaces cards with history; the employee sees a digital card and can report it lost; the QR opens a public check page that reads the card's status live.
-- Organization-wide letter numbering — DOC-003. Package 1 is implemented (`docs/domain/outgoing-letter-register.md`, DRAFT D-01: the book lives in HCIS): HC keeps letter types (yearly or monthly reset), issuers (yayasan, unit, committee) and per-issuer grants; a granted employee takes a gap-free number `TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR` from **Nomor Surat**, can change its subject or void it (voided numbers stay visible); HC reads one register that also lists the letters HCIS issued itself (DOC-001 numbering unchanged), searches, pages and exports CSV, and can continue a manual book with a starting number. Reuses `documents.read`/`documents.manage`; no file upload, no legacy import.
+- Organization-wide letter numbering — DOC-003. Package 1 is implemented (`docs/domain/outgoing-letter-register.md`). **Interim:** the owner decided on 2026-11-12 that the foundation-wide letter-number book moves to the Sekretariat SQ application (SEK-001), which supersedes D-01 ("the book lives in HCIS"); the HCIS implementation runs only until the migration cutover, after which HCIS consumes the Sekretariat SQ book. Sekretariat SQ status is in STRUKTUR-001. Until then, in HCIS: HC keeps letter types (yearly or monthly reset), issuers (yayasan, unit, committee) and per-issuer grants; a granted employee takes a gap-free number `TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR` from **Nomor Surat**, can change its subject or void it (voided numbers stay visible); HC reads one register that also lists the letters HCIS issued itself (DOC-001 numbering unchanged), searches, pages and exports CSV, and can continue a manual book with a starting number. Reuses `documents.read`/`documents.manage`; no file upload, no legacy import.
 
 ### 6. Communication
 
@@ -123,13 +125,11 @@ Employee services continue with:
 - Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
 - Reminders and scheduled notifications — NOTIF-003. Package 1 is implemented (`docs/domain/reminders.md`): an in-process engine with ten DRAFT rules (approval digest, HC queues, contract/probation ending, certificate and EMP-011 document expiry, performance due dates, payroll cutoff and pay date), 06:00–21:00 WIB, in-app plus WhatsApp per rule with a per-employee WhatsApp switch under Notifikasi.
-- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is accepted in `docs/domain/meeting-calendar.md` and implemented (menu Kalender, `/me/calendar`, `/me/meetings`): in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking. WhatsApp runs on the `log` adapter (dry run) until the HCIS number is paired.
+- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is accepted in `docs/domain/meeting-calendar.md` and implemented (menu Kalender, `/me/calendar`, `/me/meetings`): in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking. WhatsApp runs on the `log` adapter (dry run) until the HCIS number is paired. `TBD`: the boundary between CAL-001 (invitations, time blocking, personal calendar) and the proposed Rapat SQ application (meetings, minutes, decision list) is not documented yet; no rule is assumed here.
 
-### 7. Talent acquisition
+### 7. Recruitment hand-off (recruitment itself is Karir SQ)
 
-- Recruitment/candidate workflow — REC-001.
-
-Recruitment is a separate SQ Core application outside HCIS (Product Owner decision, 2026-10-16; see SQ Hub `docs/product/roadmap-and-decision-register.md` and ADR-0008). Candidates sign in through an external Akun SQ realm. HCIS keeps the employment side of the hand-off: vacant-position facts going out and the hire -> employment contract coming in.
+Recruitment is not an HCIS module. The recruitment/candidate workflow (REC-001) belongs to **Karir SQ**, a separate SQ Hub application (Product Owner decision, 2026-10-16; see SQ-Hub `docs/product/roadmap-and-decision-register.md` and SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status in STRUKTUR-001). Candidates sign in through an external Akun SQ realm. HCIS keeps the employment side of the hand-off: vacant-position facts going out and the hire -> employment contract coming in.
 
 Target integration direction:
 
@@ -150,7 +150,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005 (implemented v1, DRAFT spec `docs/domain/organization-sites-work-locations.md`: units and machines name a work location; mobile clock-in falls back from the shift's location to the unit's).
-- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (implemented; production export on and pulled by SQ Hub).
+- Organization Directory publishing to the SQ Hub platform (Direktori Organisasi) as a read-only projection/distribution boundary — ORG-006 (implemented; production export on and pulled by the platform).
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (DEFERRED by owner direction 2026-11-11: not needed now; ADR-0005 stays PROPOSED as reference).
 - Organization structure designer UX — ORG-008 (implemented: packages ORG-008-1..12).
 - Foundation organ accounts as structural approvers — ORG-013 (implemented; effective once a workflow rollout is STRUCTURE).
@@ -161,7 +161,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
-`ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is a read-only projection/distribution layer. The accepted v1 contract uses authenticated full-snapshot pull, stable namespaced HCIS identifiers, content-addressed versions, explicit effective/deactivation semantics, privacy minimization, and a default-OFF production export gate. Contract acceptance does not itself claim deployment or runtime activation.
+`ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while Direktori Organisasi on the SQ Hub platform is a read-only projection/distribution layer. The accepted v1 contract uses authenticated full-snapshot pull, stable namespaced HCIS identifiers, content-addressed versions, explicit effective/deactivation semantics, privacy minimization, and a default-OFF production export gate. Contract acceptance does not itself claim deployment or runtime activation.
 
 `ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented. The readiness assessment, staged plan E1..E6, and DRAFT defaults for the open ORG-007 decisions are in `docs/domain/multi-entity-readiness.md`.
 
@@ -183,7 +183,7 @@ Employee-facing services are grouped by user intent rather than implementation p
 5. **Layanan Pegawai** — Data Saya, Dokumen, Perjalanan Dinas, Asset Saya.
 6. **Informasi** — Pengumuman, Notifikasi, dan Pengingat. Notifikasi in-app may be available before reminder scheduling or external delivery adapters.
 
-Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
+Administrative/HC workspaces expose capabilities such as payroll processing, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
 
 Attendance administration should prefer the operational language **Shift, Jadwal, Kehadiran, Lembur** instead of exposing internal roster/versioning concepts as primary navigation.
 

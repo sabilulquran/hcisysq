@@ -4,10 +4,25 @@
 
 Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi yang sama.
 
+## Istilah ekosistem SQ Hub
+
+Ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-hub-ecosystem-structure.md) (ACCEPTED 2026-11-16); daftar aplikasi dan portal ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) dan tidak disalin ke sini.
+
+| Istilah | Definisi |
+|---|---|
+| SQ Hub | Seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Menggantikan istilah "SQ Core", yang hanya tersisa pada nama teknis dan catatan lama. |
+| Portal | Pintu masuk untuk satu kelompok pengguna dengan jenis akunnya: Portal Admin, Portal Pegawai, Portal Organ, Portal Keluarga, Portal Pelamar, Situs publik. |
+| Aplikasi | Sistem yang mengurus satu bidang dan memegang data serta aturannya. HCIS adalah aplikasi; begitu juga Aset SQ, Karir SQ, dan Kirim SQ. Aplikasi lain tidak disebut "modul". |
+| Modul | Bagian di dalam satu aplikasi, misalnya Cuti, Presensi, dan Payroll di dalam HCIS. |
+| Wajah | Cara satu aplikasi tampil di satu portal. HCIS punya wajah Kelola dan Layanan mandiri di Portal Pegawai serta wajah Laporan di Portal Organ. |
+| Platform SQ Hub | Bagian bersama SQ Hub di repository `SQ-Hub`: Beranda (peluncur aplikasi), Akun SQ (login), Admin SQ (akun, Application Access, peran), dan Direktori Organisasi. Tulis nama bagiannya, bukan "SQ Hub", bila yang dimaksud hanya salah satunya. |
+
+## Istilah domain HCIS
+
 | Istilah | Definisi awal |
 |---|---|
 | Employee / Pegawai | Individu yang memiliki atau pernah memiliki hubungan kerja dan menjadi principal utama untuk akses HCIS. Status aktif menentukan akses operasional. |
-| Candidate / Kandidat | Individu pada proses rekrutmen yang belum menjadi pegawai. Guard dan datanya harus terpisah dari employee sampai boundary hire/activation yang diterima. |
+| Candidate / Kandidat | Individu pada proses rekrutmen yang belum menjadi pegawai. Guard dan datanya harus terpisah dari employee sampai boundary hire/activation yang diterima. Kandidat adalah pengguna Karir SQ (Portal Pelamar), bukan HCIS. |
 | Employment / Hubungan Kerja | Hubungan formal seorang person/employee dengan satu legal entity untuk periode tertentu. Kontrak, assignment, payroll, leave, dan status statutory dapat bergantung pada employment ini. |
 | Employment Action / Tindakan Kepegawaian | Perubahan administratif bermakna historis seperti penempatan, promosi, demosi, mutasi, perpanjangan kontrak, atau perubahan kompensasi yang menghasilkan record effective-dated dan audit. |
 | Decision Document / Surat Keputusan | Dokumen pendukung/dasar administratif bagi suatu employment action. Nomor dan file dokumen bukan pengganti structured effective-dated domain fact. |
@@ -23,11 +38,11 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Grade / Golongan | Tingkat klasifikasi yang opsional dan hanya membawa urutan (`rank_order`) untuk tampilan dan laporan. Tidak menyimpan nominal dan tidak menjadi dasar gaji pokok; skala gaji pokok tetap pendidikan terakhir x MKG (PAY-003). DRAFT (ORG-011). |
 | Direct Manager / Atasan Langsung | Pegawai yang ditetapkan sebagai atasan operasional utama untuk approval tertentu. Tidak selalu identik dengan role aplikasi. |
 | Organization Snapshot | Satu change set ORG-004 yang memuat struktur efektif bertanggal; identitas snapshot tidak sama dengan ordered external version/cursor. |
-| Organization Directory | Projection read-only fakta struktur yang bersumber dari HCIS untuk pencarian, navigasi, integrasi, dan distribusi lintas aplikasi; bukan editor/master kedua dan bukan pemilik workflow aplikasi. |
+| Organization Directory | Projection read-only fakta struktur yang bersumber dari HCIS untuk pencarian, navigasi, integrasi, dan distribusi lintas aplikasi (Direktori Organisasi di platform SQ Hub); bukan editor/master kedua dan bukan pemilik workflow aplikasi. |
 | Stable Business Identifier | Identifier domain yang dimaksudkan bertahan lintas versi/snapshot; tidak boleh disamakan otomatis dengan primary-row id. |
-| Organ Yayasan | Pembina, Pengurus, atau Pengawas Yayasan Sabilul Qur'an. Keanggotaan organ dicatat di SQ Hub, bukan di HCIS, dan tidak memberi permission HCIS. |
+| Organ Yayasan | Pembina, Pengurus, atau Pengawas Yayasan Sabilul Qur'an. Keanggotaan organ dicatat di platform SQ Hub, bukan di HCIS, dan tidak memberi permission HCIS. Organ masuk lewat Portal Organ. |
 | Board Access / Akses Panel Organ Yayasan | Izin membaca `/board` dan governance summary: akun `FOUNDATION_BOARD` aktif, atau akun `EMPLOYEE` aktif dengan role Panel Organ Yayasan (`board.read`) yang efektif. ACCEPTED (ORG-010). |
-| Governance Summary | Ringkasan agregat read-only yang HCIS kirim ke SQ Hub Ringkasan Yayasan (kontrak HUB-IMPL-021 v1). Tanpa data pribadi. ACCEPTED (ORG-010). |
+| Governance Summary | Ringkasan agregat read-only HCIS untuk organ yayasan: wajah Laporan HCIS, ditampilkan di Portal Organ (SQ-Hub ADR-0012; di dokumen lama disebut "Ringkasan Yayasan", SQ-Hub ADR-0009). Kontrak HUB-IMPL-021 v1. Tanpa data pribadi. ACCEPTED (ORG-010). |
 | Role | Kelompok kewenangan tingkat tinggi, misalnya pegawai atau super admin. |
 | Peran dari jabatan (AUTH-015) | Peran yang dipegang seseorang karena ia memegang (utama atau Plt) jabatan yang ditautkan ke peran itu di struktur terbit hari ini. Pindah otomatis bersama jabatan; tidak pernah membawa permission `access.*`. Lawannya: pemberian langsung. |
 | Permission | Kemampuan spesifik terhadap aksi/resource. Permission lebih presisi daripada role. |
@@ -87,6 +102,7 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 ## Aturan terminologi
 
 - Jangan menggunakan `user` ketika yang dimaksud secara spesifik adalah employee atau candidate.
+- Jangan menyebut aplikasi lain di SQ Hub sebagai "modul", dan jangan memakai "SQ Core" di dokumen hidup atau teks yang dilihat pengguna.
 - Bedakan role, position, dan direct manager.
 - Bedakan status request dari status approval step.
 - Jangan menyebut data terhapus bila sebenarnya soft-deleted, archived, atau deactivated.

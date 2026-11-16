@@ -93,7 +93,7 @@ export function LoginPageView({
             Masuk dengan Akun SQ
           </a>
           <p className="text-center text-xs leading-5 text-muted-foreground">
-            Gunakan Akun SQ yang sama untuk SQ Hub, HCIS, dan Aset SQ.
+            Gunakan Akun SQ yang sama untuk semua aplikasi SQ Hub, termasuk HCIS dan Aset SQ.
           </p>
         </div>
       )}

@@ -1,7 +1,9 @@
 # Product Scope
 
 **Status:** ACCEPTED — MVP COMPLETE, POST-MVP OPERATIONAL VALIDATION ACTIVE  
-**Updated:** 2026-09-18
+**Updated:** 2026-09-18; terms and stale facts aligned to SQ-Hub ADR-0014 on 2026-11-16
+
+HCIS is the workforce application inside SQ Hub, the ecosystem of Yayasan Sabilul Qur'an applications. This document covers HCIS and its modules only; the list of SQ Hub applications, portals, and their status is kept in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) in the `SQ-Hub` repository.
 
 ## Sequencing principle
 
@@ -80,7 +82,7 @@ Still post-MVP:
 
 ## Payslip read-only — VERIFIED
 
-The MVP includes read-only payslip data from controlled import. HCIS does not calculate payroll.
+The MVP includes read-only payslip data from controlled import. The MVP payslip path (PAY-001/PAY-002) does not calculate payroll and never recalculates imported values. Payroll calculation is the separate post-MVP module PAY-003 (ADR-0003 ACCEPTED 2026-10-27, `docs/domain/payroll-calculation-v1.md`), whose v1 is implemented; PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
 
 ```text
 Authorized importer
@@ -94,7 +96,7 @@ Authorized importer
 
 Import/publish, owner-only read, Board denial, published immutability, audit, and canonical period serialization were verified with synthetic data.
 
-Reimbursement is not part of the completed MVP.
+Reimbursement is not part of the completed MVP; it was built after the MVP as REIMB-001 Package 1 (`docs/domain/reimbursement.md`).
 
 ## Foundation Board — VERIFIED
 
@@ -190,7 +192,7 @@ MVP COMPLETE
 
 The longer-term HCIS product direction was explicitly accepted on 2026-09-18 and is mapped in `docs/product/hcis-capability-map.md`. Inclusion there means the capability belongs to HCIS product scope; it does not mean implementation, production readiness, or a release date.
 
-After organization/pilot readiness is stable, target modules include:
+The list below is the direction accepted on 2026-09-18. Several of these modules have since been implemented; the current status of each is in `docs/product/hcis-capability-map.md`. Target modules include:
 
 - work schedules, shifts, holidays, and shift exchange;
 - mobile clock in/out with policy-controlled GPS/geotagging, photo evidence, and face-recognition capability;
@@ -207,7 +209,7 @@ After organization/pilot readiness is stable, target modules include:
 - richer organization/academic calendar management;
 - announcement, reminder, production email, and WhatsApp notification adapters;
 - employee data change request;
-- recruitment/careers;
+- the employment side of the recruitment hand-off only (REC-001): recruitment itself moved out of HCIS to the Karir SQ application by Product Owner decision of 2026-10-16;
 - additional role-aware/governance reporting;
 - full legacy-data migration/cutover.
 

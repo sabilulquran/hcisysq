@@ -2,6 +2,8 @@
 
 Human Capital Information System untuk Yayasan Sabilul Qur'an.
 
+HCIS adalah **aplikasi** kepegawaian di dalam **SQ Hub**, ekosistem aplikasi Yayasan Sabilul Qur'an. Pegawai memakainya lewat Portal Pegawai; organ yayasan membaca ringkasannya lewat Portal Organ. Daftar aplikasi SQ Hub, portal, dan statusnya hanya disimpan di [Struktur SQ Hub (STRUKTUR-001)](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) pada repository `sabilulquran/SQ-Hub`; istilahnya ditetapkan [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-hub-ecosystem-structure.md). Bagian di dalam HCIS (Cuti, Presensi, Payroll, dan seterusnya) disebut **modul**; rinciannya di [`docs/product/hcis-capability-map.md`](docs/product/hcis-capability-map.md).
+
 Repository ini adalah **source of truth canonical** untuk dokumentasi dan implementasi HCIS baru. Perilaku produk, aturan domain, kontrak API, keamanan, pengujian, dan strategi migrasi harus terdokumentasi sebelum implementasi dianggap selesai.
 
 ## Status
@@ -27,7 +29,7 @@ MVP berfokus pada:
 - Foundation Board statistics/report read-only;
 - Super Admin minimum untuk access/audit.
 
-Reimbursement dan payroll calculation penuh berada setelah MVP. Detail ada di [`docs/product/mvp.md`](docs/product/mvp.md).
+Reimbursement dan payroll calculation penuh berada setelah MVP dan dikerjakan sebagai modul pasca-MVP (REIMB-001, PAY-003; status tiap modul di [`docs/product/hcis-capability-map.md`](docs/product/hcis-capability-map.md)). Detail MVP ada di [`docs/product/mvp.md`](docs/product/mvp.md).
 
 ## Prinsip utama
 
@@ -90,6 +92,8 @@ Lockfile harus diperbarui dan seluruh gate diverifikasi dari environment lokal/C
 ## Peta dokumentasi
 
 - [`AGENTS.md`](AGENTS.md) — aturan kerja wajib untuk manusia dan coding agent.
+- [Struktur SQ Hub (STRUKTUR-001)](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) — daftar aplikasi, portal, dan status seluruh SQ Hub (repository `SQ-Hub`); istilah di [ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-hub-ecosystem-structure.md).
+- [`docs/product/hcis-capability-map.md`](docs/product/hcis-capability-map.md) — modul HCIS dan statusnya.
 - [`docs/product/mvp.md`](docs/product/mvp.md) — target MVP.
 - [`docs/domain/employee-import.md`](docs/domain/employee-import.md) — employee master import.
 - [`docs/README.md`](docs/README.md) — indeks dokumentasi.

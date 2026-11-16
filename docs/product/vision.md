@@ -6,6 +6,8 @@
 
 HCIS YSQ adalah sistem informasi human capital terpadu untuk membantu pegawai, atasan, pengelola unit, Human Capital, Finance, dan pengurus yayasan menjalankan proses kepegawaian secara konsisten, dapat diaudit, aman, dan mudah digunakan dari perangkat desktop maupun mobile.
 
+HCIS adalah aplikasi kepegawaian di dalam SQ Hub, ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah dan daftar aplikasi SQ Hub ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) (repository `SQ-Hub`, ADR-0014). HCIS tampil dengan tiga wajah: Kelola untuk Human Capital dan petugas berwenang serta Layanan mandiri untuk semua pegawai (keduanya di Portal Pegawai), dan Laporan untuk organ yayasan di Portal Organ.
+
 ## Masalah yang diselesaikan
 
 - Data pegawai dan struktur organisasi tersebar atau tidak konsisten.
@@ -30,9 +32,10 @@ HCIS YSQ adalah sistem informasi human capital terpadu untuk membantu pegawai, a
 - Kepala unit/pengelola unit.
 - Human Capital.
 - Finance.
-- Pengurus yayasan sesuai mandat.
+- Organ yayasan (Pembina, Pengurus, Pengawas) sesuai mandat, lewat Portal Organ.
 - Administrator sistem.
-- Kandidat rekrutmen, bila modul careers termasuk scope final.
+
+Kandidat rekrutmen bukan pengguna HCIS. Rekrutmen diurus aplikasi Karir SQ dengan Portal Pelamar (keputusan Product Owner 2026-10-16); HCIS hanya memegang sisi kepegawaian dari serah terimanya (REC-001 di `docs/product/hcis-capability-map.md`).
 
 ## Prinsip pengalaman pengguna
 

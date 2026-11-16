@@ -17,6 +17,7 @@ import {
   getPayrollTransfers,
   getPayrollVariance,
   payrollActionLabel,
+  payrollPeriodTitle,
   payrollOperationLabel,
   payrollStateLabel,
   payrollTransfersCsvUrl,
@@ -219,8 +220,12 @@ export function AdminPayrollPeriodPage() {
   return (
     <AdminShell
       active="payroll"
-      title={`Payroll ${period.periodMonth.slice(0, 7)}`}
-      description={`Tanggal gajian ${period.payDate} · cutoff ${period.cutoffStart} s.d. ${period.cutoffEnd}`}
+      title={payrollPeriodTitle(period)}
+      description={
+        period.kind === "THR"
+          ? `Tanggal bayar ${period.payDate} · hari raya ${period.holidayDate ?? "—"} · upah satu bulan, proporsional bila masa kerja di bawah 12 bulan`
+          : `Tanggal gajian ${period.payDate} · cutoff ${period.cutoffStart} s.d. ${period.cutoffEnd}`
+      }
     >
       <div className="space-y-6">
         {error ? (

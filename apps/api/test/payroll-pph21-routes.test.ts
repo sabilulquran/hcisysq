@@ -20,6 +20,7 @@ const config = {
 
 const PERIOD_ID = "50000000-0000-4000-8000-000000000001";
 const URL = `/payroll/periods/${PERIOD_ID}/pph21`;
+const THR_PERIOD_ID = "50000000-0000-4000-8000-000000000009";
 
 type Persona =
   | "employee"
@@ -103,6 +104,8 @@ const SOURCE_ROWS = [
 
 type Options = {
   state?: string;
+  /** PAY-003-THR T10: an approved THR period in the same month. */
+  withThr?: boolean;
   policy?: "valid" | "missing" | "invalid";
   periodMonth?: string;
   /** PPH21_SETTINGS payload in force (section 7.5); absent = no row. */
@@ -177,7 +180,18 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
         rowCount: 1,
       };
     }
+    if (text.includes("FROM payroll_periods current_period")) {
+      const periods = [
+        { id: PERIOD_ID, kind: "REGULAR", state: options.state ?? "APPROVED" },
+        ...(options.withThr ? [{ id: THR_PERIOD_ID, kind: "THR", state: "PAYMENT_CONFIRMED" }] : []),
+      ];
+      return { rows: periods, rowCount: periods.length };
+    }
     if (text.includes("pph21_report_excluded")) {
+      if (values?.[0] === THR_PERIOD_ID) {
+        const thrRows = [{ ...SOURCE_ROWS[0]!, payFactor: "1.0000", earnings: [{ code: "THR", amount: "3000000" }] }];
+        return { rows: thrRows, rowCount: 1 };
+      }
       return { rows: SOURCE_ROWS, rowCount: SOURCE_ROWS.length };
     }
     if (text.includes("FROM payroll_periods p")) {
@@ -200,6 +214,23 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
   await app.close();
   return { response, audits, sql };
 }
+
+describe("PAY-003-THR PPh21 masa pajak (payroll-thr.md T10)", () => {
+  it("adds an approved THR of the same month to the person's gross and says so", async () => {
+    const plain = await call("director", URL);
+    const combined = await call("director", URL, { withThr: true });
+    const before = plain.response.json().report;
+    const after = combined.response.json().report;
+    const person = (report: { rows: Array<{ employeeNumber: string; gross: string; flags: string[]; employmentIds: string[] }> }) =>
+      report.rows.find((row) => row.employeeNumber === "0016001")!;
+    expect(Number(person(after).gross) - Number(person(before).gross)).toBe(3_000_000);
+    expect(person(after).flags).toContain("INCLUDES_THR");
+    // One employment, not two, although salary and THR both come from it.
+    expect(person(after).employmentIds).toHaveLength(1);
+    expect(after.periods.map((period: { kind: string }) => period.kind)).toEqual(["REGULAR", "THR"]);
+    expect(after.pendingPeriodCount).toBe(0);
+  });
+});
 
 describe("PAY-003 PPh21 report authorization", () => {
   it("is closed to a holder of the aggregate report alone", async () => {

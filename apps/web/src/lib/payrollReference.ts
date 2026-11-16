@@ -170,6 +170,7 @@ const POLICY_LABELS: Record<string, string> = {
   CHILD_EDUCATION: "Pendidikan anak",
   VARIANCE_THRESHOLD: "Ambang perlu ditinjau",
   PERFORMANCE_PERCENT: "Predikat kinerja ke persentase",
+  THR: "THR (Tunjangan Hari Raya)",
 };
 
 /** The policy key as an operator reads it; an unknown key is shown as it is. */

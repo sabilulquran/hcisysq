@@ -13,6 +13,8 @@ import { clearOwnPeriods } from "./support/payroll-cleanup.js";
 import { setLoanDeductions } from "../src/modules/payroll/admin-store.js";
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
 import { settleEmployeeLoanDeductions } from "../src/modules/payroll/employee-loan-link.js";
+import { draftPayslipsFromPeriod } from "../src/modules/payroll/publication.js";
+import { loadPph21MonthSources } from "../src/modules/payroll/reports.js";
 import { applyTransition, getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
 import { createSyntheticActor } from "./support/synthetic-actor.js";
 
@@ -1169,6 +1171,154 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect(bound.rows[0]!.periodId).toBeNull();
       await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
       expect((await transition("approve", "APPROVED")).applied).toBe(true);
+    });
+  });
+
+  // PAY-003-THR (docs/domain/payroll-thr.md). In this file rather than one of its own because the
+  // monthly policy rows it needs are this suite's, and two files writing them would collide.
+  describe("PAY-003-THR", () => {
+    const HOLIDAY = "2026-09-30";
+    const THR_PAY_DATE = "2026-09-20";
+    let thrPeriodId: string;
+
+    async function ensureThrPolicy() {
+      await pool.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, payload, source)
+         SELECT $1, 'THR', DATE '2026-01-01', $2::jsonb, 'uji sintetis'
+         WHERE NOT EXISTS (SELECT 1 FROM payroll_policy_versions WHERE policy_key = 'THR')`,
+        [
+          randomUUID(),
+          JSON.stringify({
+            fullServiceMonths: 12,
+            minimumServiceMonths: 1,
+            paymentDeadlineDaysBeforeHoliday: 7,
+            terminationGraceDays: 30,
+            terminationGraceTermCategories: ["TETAP", "PERCOBAAN"],
+            eligibleTermCategories: ["TETAP", "PERCOBAAN", "KONTRAK"],
+          }),
+        ],
+      );
+    }
+
+    async function newThrPeriod(payDate = THR_PAY_DATE): Promise<string> {
+      const id = randomUUID();
+      ownedPeriodIds.push(id);
+      await pool.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state,
+           period_kind, holiday_date, holiday_name)
+         VALUES ($1, $2, DATE '2026-09-01', $3::date, DATE '2026-09-01', DATE '2026-09-30',
+                 DATE '2026-09-01', DATE '2026-09-30', 'COLLECTING', 'THR', $4::date, 'Hari Raya Uji')`,
+        [id, legalEntityKey, payDate, HOLIDAY],
+      );
+      return id;
+    }
+
+    const thrPeriod = (id: string, payDate = THR_PAY_DATE) => ({
+      id,
+      legalEntityKey,
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-30",
+      payDate,
+      kind: "THR" as const,
+      holidayDate: HOLIDAY,
+    });
+
+    beforeEach(async () => {
+      await ensureThrPolicy();
+      thrPeriodId = await newThrPeriod();
+    });
+
+    it("sits beside the monthly period of the same month, one THR per month", async () => {
+      await expect(newThrPeriod()).rejects.toMatchObject({ code: "23P01" });
+      await expect(
+        pool.query(
+          `INSERT INTO payroll_periods(id, legal_entity_key, period_month, pay_date, period_start, period_end,
+             cutoff_start, cutoff_end, period_kind, holiday_date, holiday_name)
+           VALUES ($1, $2, DATE '2026-10-01', DATE '2026-10-20', DATE '2026-10-01', DATE '2026-10-31',
+             DATE '2026-10-01', DATE '2026-10-31', 'THR', DATE '2026-10-15', 'Terlambat')`,
+          [randomUUID(), legalEntityKey],
+        ),
+      ).rejects.toMatchObject({ code: "23514" });
+    });
+
+    it("pays the people active on the holiday, and PKWTT that ended within the grace days", async () => {
+      const permanent = await newEmployment({ category: "TETAP" });
+      const probationLeft = await newEmployment({
+        category: "PERCOBAAN", startedOn: "2026-01-02", endedOn: "2026-09-10", endBasis: "RECORDED",
+      });
+      const contractLeft = await newEmployment({
+        category: "KONTRAK", startedOn: "2026-01-02", endedOn: "2026-09-10", endBasis: "RECORDED",
+      });
+      const honorarium = await newEmployment({ category: "KONTRAK_HONORER" });
+      const tooNew = await newEmployment({ category: "TETAP", startedOn: "2026-09-15" });
+
+      const outcome = await calculatePeriod(pool, thrPeriod(thrPeriodId), actorAccountId, 0);
+      expect(outcome.policyProblems).toEqual([]);
+      expect(outcome.notEligibleCount).toBe(1);
+
+      const { rows } = await pool.query<{ employmentId: string; payable: string; blockers: unknown[] }>(
+        `SELECT employment_id AS "employmentId", payable::text, blockers FROM payroll_results WHERE period_id = $1`,
+        [thrPeriodId],
+      );
+      const byEmployment = new Map(rows.map((row) => [row.employmentId, row]));
+      expect([...byEmployment.keys()].sort()).toEqual([permanent.employmentId, probationLeft.employmentId].sort());
+      // Ten years of service: one month of wages, the 3 000 000 basic salary of MKG 10.
+      expect(byEmployment.get(permanent.employmentId)!.payable).toBe("3000000");
+      // Eight whole months: (2 000 000 basic + 40 000 unrated monthly PERF) x 8 / 12.
+      expect(byEmployment.get(probationLeft.employmentId)!.payable).toBe("1360000");
+      expect(byEmployment.has(contractLeft.employmentId)).toBe(false);
+      expect(byEmployment.has(honorarium.employmentId)).toBe(false);
+      expect(byEmployment.has(tooNew.employmentId)).toBe(false);
+
+      const lines = await pool.query<{ code: string }>(
+        `SELECT DISTINCT l.component_code AS code FROM payroll_result_lines l
+         JOIN payroll_results r ON r.id = l.result_id WHERE r.period_id = $1`,
+        [thrPeriodId],
+      );
+      expect(lines.rows.map((row) => row.code)).toEqual(["THR"]);
+
+      const audit = await pool.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM payroll_audit_events WHERE period_id = $1 AND action = 'payroll.period.calculated'",
+        [thrPeriodId],
+      );
+      expect(audit.rows[0]!.payload).toMatchObject({ period_kind: "THR", not_eligible_count: 1, employee_count: 2 });
+    });
+
+    it("refuses a pay date later than the policy allows before the holiday", async () => {
+      await pool.query("UPDATE payroll_periods SET pay_date = DATE '2026-09-25' WHERE id = $1", [thrPeriodId]);
+      const outcome = await calculatePeriod(pool, thrPeriod(thrPeriodId, "2026-09-25"), actorAccountId, 0);
+      expect(outcome.thrPayDateLate).toEqual({ latestPayDate: "2026-09-23" });
+      const { rows } = await pool.query("SELECT 1 FROM payroll_results WHERE period_id = $1", [thrPeriodId]);
+      expect(rows).toHaveLength(0);
+    });
+
+    it("drafts a THR slip beside the salary slip of the same month, and taxes both in one masa pajak", async () => {
+      const { employeeId } = await newEmployment({ category: "TETAP" });
+      await calculatePeriod(pool, period(), actorAccountId, 0);
+      await calculatePeriod(pool, thrPeriod(thrPeriodId), actorAccountId, 0);
+      await pool.query("UPDATE payroll_periods SET state = 'PAYMENT_CONFIRMED' WHERE id = ANY($1::uuid[])", [
+        [periodId, thrPeriodId],
+      ]);
+
+      expect(await draftPayslipsFromPeriod(pool, periodId, actorAccountId)).toMatchObject({ ok: true, drafted: 1 });
+      expect(await draftPayslipsFromPeriod(pool, thrPeriodId, actorAccountId)).toMatchObject({ ok: true, drafted: 1 });
+      const slips = await pool.query<{ kind: string; lines: Array<{ label: string; value: string }> }>(
+        "SELECT kind, lines FROM payslips WHERE employee_id = $1 AND superseded_by_id IS NULL ORDER BY kind",
+        [employeeId],
+      );
+      expect(slips.rows.map((row) => row.kind)).toEqual(["REGULAR", "THR"]);
+      expect(slips.rows[1]!.lines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: "Jenis", value: "THR Hari Raya Uji" }),
+          expect.objectContaining({ label: "Tunjangan Hari Raya" }),
+        ]),
+      );
+
+      const month = await loadPph21MonthSources(pool, periodId);
+      expect(month.periods.map((entry) => entry.kind)).toEqual(["REGULAR", "THR"]);
+      const mine = month.rows.filter((row) => row.employeeId === employeeId);
+      expect(mine.map((row) => row.periodKind).sort()).toEqual(["REGULAR", "THR"]);
     });
   });
 });

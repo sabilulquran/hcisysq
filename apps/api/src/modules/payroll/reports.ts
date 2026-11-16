@@ -358,6 +358,8 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
      JOIN payroll_periods prev
        ON coalesce(prev.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
           = coalesce(current_period.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+      -- PAY-003-THR T12: compared within its kind, so a THR never reads as a salary that jumped.
+      AND prev.period_kind = current_period.period_kind
       AND prev.period_month < current_period.period_month
      WHERE current_period.id = $1
        AND prev.state = ANY(ARRAY['APPROVED', 'PAYMENT_CONFIRMED', 'PUBLISHED', 'REOPEN_REQUESTED'])
@@ -474,6 +476,43 @@ export async function findPph21Settings(pool: Pick<Pool, "query">, date: string)
   return { ok: true, versionId: row.id, settings: parsed.settings };
 }
 
+/**
+ * PAY-003-THR T10: a masa pajak is a month, and THR paid in it joins the month's gross. The report
+ * of any period therefore reads every period of the same month and legal entity that has been
+ * approved, salary and THR alike, and names the ones still waiting so a reader knows the figure
+ * is not complete.
+ */
+export async function loadPph21MonthSources(
+  pool: Pool,
+  periodId: string,
+): Promise<{
+  rows: Pph21SourceRow[];
+  periods: Array<{ id: string; kind: "REGULAR" | "THR"; state: string }>;
+  pendingPeriodCount: number;
+}> {
+  const { rows: periods } = await pool.query<{ id: string; kind: "REGULAR" | "THR"; state: string }>(
+    `SELECT other.id, other.period_kind AS kind, other.state
+     FROM payroll_periods current_period
+     JOIN payroll_periods other
+       ON other.period_month = current_period.period_month
+      AND coalesce(other.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+          = coalesce(current_period.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+     WHERE current_period.id = $1
+     ORDER BY other.period_kind, other.id`,
+    [periodId],
+  );
+  const included = periods.filter((period) => APPROVED_STATES.includes(period.state));
+  const rows: Pph21SourceRow[] = [];
+  for (const period of included) {
+    for (const row of await loadPph21SourceRows(pool, period.id)) {
+      rows.push({ ...row, periodKind: period.kind });
+    }
+  }
+  return { rows, periods: included, pendingPeriodCount: periods.length - included.length };
+}
+
+const APPROVED_STATES: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
 export type Pph21PolicyLookup =
   | { ok: true; versionId: string; effectiveFrom: string; policy: Pph21TerPolicy }
   | { ok: false; code: "PPH21_TER_POLICY_MISSING" | "PPH21_TER_POLICY_INVALID"; message: string };
@@ -561,6 +600,9 @@ export function pph21RowNote(row: Pph21Row): string {
   }
   if (row.employmentIds.length > 1) {
     notes.push(`Bruto gabungan ${row.employmentIds.length} employment`);
+  }
+  if (row.flags.includes("INCLUDES_THR")) {
+    notes.push("Termasuk THR yang dibayar pada masa pajak ini");
   }
   return notes.join("; ");
 }

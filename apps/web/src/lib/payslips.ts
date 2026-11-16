@@ -5,6 +5,8 @@ export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 export interface PayslipSummary {
   id: string;
   period: string;
+  /** PAY-003-THR T13: a salary slip or a THR slip; absent from an older API build. */
+  kind?: "REGULAR" | "THR";
   sourceFormat: PayslipSourceFormat;
   employmentStatus: string | null;
   publishedAt: string;

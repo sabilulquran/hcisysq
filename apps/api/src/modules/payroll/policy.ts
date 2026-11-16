@@ -275,6 +275,57 @@ export function parsePph21AnnualPolicy(
   return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
 }
 
+/**
+ * PAY-003-THR (docs/domain/payroll-thr.md): read only by a THR period's calculation, so its
+ * absence never refuses a monthly period. Every statutory figure of Permenaker 6/2016 lives here.
+ */
+const THR_SCHEMA = z
+  .object({
+    fullServiceMonths: z.number().int().positive(),
+    minimumServiceMonths: z.number().int().min(0),
+    paymentDeadlineDaysBeforeHoliday: z.number().int().min(0),
+    terminationGraceDays: z.number().int().min(0),
+    terminationGraceTermCategories: z.array(z.string()),
+    eligibleTermCategories: z.array(z.string()).min(1),
+  })
+  .refine((value) => value.minimumServiceMonths <= value.fullServiceMonths, {
+    message: "minimumServiceMonths tidak boleh melebihi fullServiceMonths",
+  });
+
+export type ThrPolicyPayload = z.infer<typeof THR_SCHEMA>;
+
+/** The THR policy among the rows effective on a pay date, or why there is none to use. */
+export function parseThrPolicy(
+  rows: readonly PolicyVersionRow[],
+): { ok: true; policy: ThrPolicyPayload; versionId: string } | { ok: false; problem: PolicyProblem } {
+  const found = rows.filter((row) => row.policyKey === "THR");
+  if (found.length !== 1) {
+    return {
+      ok: false,
+      problem: {
+        policyKey: "THR",
+        code: found.length === 0 ? "MISSING" : "DUPLICATE",
+        message:
+          found.length === 0
+            ? "Kebijakan THR tidak tersedia untuk tanggal bayar periode ini."
+            : "Lebih dari satu versi kebijakan THR berlaku pada tanggal bayar periode ini.",
+      },
+    };
+  }
+  const parsed = THR_SCHEMA.safeParse(found[0]!.payload);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      problem: {
+        policyKey: "THR",
+        code: "INVALID",
+        message: `Isi kebijakan THR tidak sesuai bentuk yang dibutuhkan: ${parsed.error.issues[0]?.message ?? "tidak valid"}.`,
+      },
+    };
+  }
+  return { ok: true, policy: parsed.data, versionId: found[0]!.id };
+}
+
 const PAYLOAD_SCHEMAS = {
   SALARY_SCALE: z.object({
     // The legacy scale is chained percentage rises, so its entries are not whole
@@ -332,6 +383,8 @@ const PAYLOAD_SCHEMAS = {
   PPH21_ANNUAL: PPH21_ANNUAL_SCHEMA,
   // Read by the PPh21 report, the annual calculation and the calculation (section 7.5).
   PPH21_SETTINGS: PPH21_SETTINGS_SCHEMA,
+  // Not read by the monthly engine: only a THR period's calculation reads it (thr.ts).
+  THR: THR_SCHEMA,
 } as const;
 
 /**

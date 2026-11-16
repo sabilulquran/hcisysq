@@ -105,6 +105,7 @@ const ACCOUNTS: Record<Persona, string> = {
 
 type PeriodOverrides = {
   state?: string;
+  kind?: "REGULAR" | "THR";
   submittedByAccountId?: string | null;
   blockerCount?: number;
   resultCount?: number;
@@ -121,6 +122,9 @@ function periodRow(overrides: PeriodOverrides = {}) {
   return {
     id: PERIOD_ID,
     legalEntityKey: null,
+    kind: overrides.kind ?? "REGULAR",
+    holidayDate: overrides.kind === "THR" ? "2026-09-30" : null,
+    holidayName: overrides.kind === "THR" ? "Hari Raya Uji" : null,
     periodMonth: "2026-09-01",
     payDate: "2026-09-25",
     periodStart: "2026-09-01",
@@ -554,6 +558,71 @@ describe("PAY-003 route authorization", () => {
       expect(response.headers["cache-control"]).toBe("no-store");
     }
   }, 20_000);
+});
+
+describe("PAY-003-THR period (payroll-thr.md)", () => {
+  const thr = { kind: "THR" as const };
+
+  it("creates a THR period with its holiday", async () => {
+    const { response, audits } = await call("hc", "POST", "/payroll/periods", {
+      payload: {
+        periodMonth: "2026-09-01", kind: "THR", payDate: "2026-09-20", holidayDate: "2026-09-30", holidayName: "Idul Fitri",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(audits).toEqual(["payroll.period.created"]);
+  });
+
+  it("refuses a THR period without its holiday, or paid on or after it", async () => {
+    for (const payload of [
+      { periodMonth: "2026-09-01", kind: "THR", payDate: "2026-09-20" },
+      { periodMonth: "2026-09-01", kind: "THR", payDate: "2026-09-20", holidayDate: "2026-09-30" },
+      { periodMonth: "2026-09-01", kind: "THR", payDate: "2026-09-30", holidayDate: "2026-09-30", holidayName: "Uji" },
+      { periodMonth: "2026-09-01", holidayDate: "2026-09-30", holidayName: "Uji" },
+    ]) {
+      const { response } = await call("hc", "POST", "/payroll/periods", { payload });
+      expect(response.statusCode, JSON.stringify(payload)).toBe(400);
+    }
+  }, 20_000);
+
+  it("offers only the adjustment as a typed input, and no attendance resolve", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { ...thr, state: "COLLECTING" },
+    });
+    expect(response.json().period.inputRules.manual).toEqual(["ADJUSTMENT"]);
+    expect(response.json().period.availableOperations).toEqual([]);
+    expect(response.json().period.kind).toBe("THR");
+  });
+
+  it("refuses any other input on a THR period", async () => {
+    const { response, inputWrites } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ARREARS", value: 100_000, reason: "uji" }] },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_INPUT_NOT_FOR_THR");
+    expect(inputWrites).toEqual([]);
+  });
+
+  it("accepts an adjustment on a THR period", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: {
+        inputs: [{
+          employmentId: EMPLOYMENT_ID, inputKey: "ADJUSTMENT", value: 25_000, reason: "uji", decisionReference: "SK-UJI",
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("refuses the attendance resolve on a THR period", async () => {
+    const { response } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/inputs/from-attendance`, {
+      period: { ...thr, state: "COLLECTING" },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_OPERATION_NOT_FOR_THR");
+  });
 });
 
 describe("PAY-003 period creation", () => {

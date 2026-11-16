@@ -315,6 +315,9 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
     if (outcome.code === "PAYROLL_LOAN_CLOSED") {
       return send(reply, 409, { code: outcome.code, message: "Kasbon sudah ditutup." });
     }
+    if (outcome.code === "PAYROLL_LOAN_NOT_FOR_THR") {
+      return send(reply, 409, { code: outcome.code, message: "Potongan kasbon tidak diambil dari THR." });
+    }
     if (outcome.code === "PAYROLL_LOAN_LOCKED") {
       return send(reply, 409, {
         code: outcome.code,

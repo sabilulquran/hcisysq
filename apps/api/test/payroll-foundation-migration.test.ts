@@ -99,8 +99,21 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
         "ADJUST_DEDUCT", "ADJUST_EARN", "ARREARS", "BASIC", "BPJS_KES", "BPJS_KES_ALLOW",
         "BPJS_KES_EXTRA", "CHILD", "CHILD_EDU", "FUNC", "LOAN", "OTHER_INCOME", "OVERTIME",
         "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "REIMBURSE", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
-        "TEACH_OVER", "TEACH_SHORT", "TRANSPORT",
+        "TEACH_OVER", "TEACH_SHORT", "THR", "TRANSPORT",
       ]);
+    });
+
+    it("marks basic salary and the fixed allowances as the THR wage (migration 0153, T6)", async () => {
+      const { rows } = await client.query<{ code: string }>(
+        "SELECT code FROM payroll_components WHERE is_thr_wage ORDER BY code",
+      );
+      expect(rows.map((row) => row.code)).toEqual(["BASIC", "CHILD", "FUNC", "PERF", "POS", "SPECIAL_QUAL", "SPOUSE"]);
+      await expectSqlError(
+        `INSERT INTO payroll_components(code, display_name, category, is_thr_wage, display_order)
+         VALUES ('TEST_BAD_THR', 'Uji', 'DEDUCTION', true, 999)`,
+        [],
+        "23514",
+      );
     });
 
     it("marks only the fixed allowances that feed the BPJS base", async () => {

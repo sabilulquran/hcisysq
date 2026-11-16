@@ -42,7 +42,7 @@ import {
   buildVariance,
   findPph21Policy,
   findPph21Settings,
-  loadPph21SourceRows,
+  loadPph21MonthSources,
   pph21ReportToCsv,
   pph21RowNote,
   previousPeriodId,
@@ -74,7 +74,14 @@ const createBody = z.object({
   cutoffStart: isoDate.optional(),
   cutoffEnd: isoDate.optional(),
   legalEntityKey: z.string().uuid().nullable().optional(),
+  // PAY-003-THR T1: a THR period names its holiday.
+  kind: z.enum(["REGULAR", "THR"]).default("REGULAR"),
+  holidayDate: isoDate.optional(),
+  holidayName: z.string().trim().min(1).max(120).optional(),
 });
+
+/** PAY-003-THR T8: the one input typed on a THR period. */
+const THR_MANUAL_INPUT_KEYS: readonly string[] = ["ADJUSTMENT"];
 
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -205,6 +212,7 @@ function send(reply: FastifyReply, status: number, body: unknown) {
 
 function snapshotOf(period: PeriodWithCalculation): PeriodSnapshot {
   return {
+    kind: period.kind,
     state: period.state,
     stateBeforeReopenRequest: period.stateBeforeReopenRequest as PeriodState | null,
     submittedByAccountId: period.submittedByAccountId,
@@ -377,7 +385,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         // condition refuses the write below, so a screen never has to know the
         // state table.
         editable: INPUT_EDITABLE_STATES.includes(period.state),
-        manual: MANUAL_INPUT_KEYS,
+        manual: period.kind === "THR" ? THR_MANUAL_INPUT_KEYS : MANUAL_INPUT_KEYS,
         reasonRequired: REASON_REQUIRED_INPUT_KEYS,
         decisionRequired: DECISION_REQUIRED_INPUT_KEYS,
       },
@@ -396,7 +404,30 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       });
     }
 
-    const { periodMonth, payDate, cutoffStart, cutoffEnd, legalEntityKey } = parsed.data;
+    const { periodMonth, payDate, cutoffStart, cutoffEnd, legalEntityKey, kind, holidayDate, holidayName } =
+      parsed.data;
+
+    // PAY-003-THR T1/T3: a THR period is paid on a date the operator chooses, before the holiday
+    // it is for. The deadline in days comes from the THR policy and is checked when calculating.
+    if (kind === "THR") {
+      if (!payDate || !holidayDate || !holidayName) {
+        return send(reply, 400, {
+          code: "PAYROLL_INVALID_PERIOD",
+          message: "Periode THR membutuhkan tanggal bayar, tanggal hari raya, dan nama hari raya.",
+        });
+      }
+      if (holidayDate <= payDate) {
+        return send(reply, 400, {
+          code: "PAYROLL_INVALID_PERIOD",
+          message: "Tanggal bayar THR harus sebelum hari raya.",
+        });
+      }
+    } else if (holidayDate || holidayName) {
+      return send(reply, 400, {
+        code: "PAYROLL_INVALID_PERIOD",
+        message: "Tanggal dan nama hari raya hanya untuk periode THR.",
+      });
+    }
 
     // Validate the window that will actually be stored, defaults included: giving
     // only one end would otherwise reach the database and fail its check there.
@@ -423,6 +454,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         cutoffStart,
         cutoffEnd,
         legalEntityKey,
+        kind,
+        holidayDate: holidayDate ?? null,
+        holidayName: holidayName ?? null,
         actorAccountId: actor.accountId,
       });
       return send(reply, 201, { period });
@@ -432,7 +466,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       if ((error as { code?: string }).code === "23P01") {
         return send(reply, 409, {
           code: "PAYROLL_PERIOD_EXISTS",
-          message: "Periode untuk bulan tersebut sudah ada.",
+          message:
+            kind === "THR"
+              ? "Periode THR untuk bulan tersebut sudah ada."
+              : "Periode untuk bulan tersebut sudah ada.",
         });
       }
       throw error;
@@ -535,6 +572,16 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // The resolver owns its two keys: it writes them and clears them. A hand
     // written value would be thrown away by the next resolve, so this route
     // refuses what it does not publish as manual.
+    // PAY-003-THR T8: a THR period pays one month of wages and takes only an adjustment.
+    if (period.kind === "THR") {
+      const foreign = body.data.inputs.find((input) => !THR_MANUAL_INPUT_KEYS.includes(input.inputKey));
+      if (foreign) {
+        return send(reply, 409, {
+          code: "PAYROLL_INPUT_NOT_FOR_THR",
+          message: `Input ${foreign.inputKey} tidak berlaku untuk periode THR; hanya penyesuaian yang dapat dicatat.`,
+        });
+      }
+    }
     const resolverOwned = body.data.inputs.find((input) => !MANUAL_INPUT_KEYS.includes(input.inputKey));
     if (resolverOwned) {
       return send(reply, 409, {
@@ -605,6 +652,13 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",
         message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
+      });
+    }
+
+    if (period.kind === "THR") {
+      return send(reply, 409, {
+        code: "PAYROLL_OPERATION_NOT_FOR_THR",
+        message: "Periode THR tidak memakai lembur atau kehadiran.",
       });
     }
 
@@ -769,7 +823,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       reply.header("Content-Type", "text/csv; charset=utf-8");
       reply.header(
         "Content-Disposition",
-        `attachment; filename="daftar-transfer-${period.periodMonth.slice(0, 7)}.csv"`,
+        `attachment; filename="daftar-transfer-${period.kind === "THR" ? "thr-" : ""}${period.periodMonth.slice(0, 7)}.csv"`,
       );
       return reply.status(200).send(transferListToCsv(transfers));
     }
@@ -807,6 +861,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 409, { code: lookup.code, message: lookup.message });
     }
 
+    // PAY-003-THR T10: the masa pajak is the month, salary and THR together.
+    const month = await loadPph21MonthSources(pool, period.id);
     const settings = await findPph21Settings(pool, period.payDate);
     if (!settings.ok) {
       return send(reply, 409, { code: settings.code, message: settings.message });
@@ -815,7 +871,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     const report = buildPph21Report({
       period: { periodMonth: period.periodMonth, periodStart: period.periodStart, periodEnd: period.periodEnd },
       policy: lookup.policy,
-      rows: await loadPph21SourceRows(pool, period.id),
+      rows: month.rows,
       settings: settings.settings,
     });
     await recordSensitiveRead(
@@ -836,6 +892,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       report: {
         taxPeriod: report.taxPeriod,
         objectCode: report.objectCode,
+        periods: month.periods,
+        pendingPeriodCount: month.pendingPeriodCount,
         policy: {
           versionId: lookup.versionId,
           effectiveFrom: lookup.effectiveFrom,
@@ -1002,6 +1060,8 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
           periodStart: period.periodStart,
           periodEnd: period.periodEnd,
           payDate: period.payDate,
+          kind: period.kind,
+          holidayDate: period.holidayDate,
         },
         actor.accountId,
         period.version,
@@ -1010,6 +1070,13 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
           reimbursementHandoff: config.REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED === "1",
         },
       );
+      if (outcome.thrPayDateLate) {
+        return send(reply, 409, {
+          code: "PAYROLL_THR_PAY_DATE_LATE",
+          message: `THR harus dibayar paling lambat ${outcome.thrPayDateLate.latestPayDate} menurut kebijakan THR; ubah tanggal bayar periode.`,
+          latestPayDate: outcome.thrPayDateLate.latestPayDate,
+        });
+      }
       if (outcome.conflict) {
         return send(reply, 409, {
           code: "PAYROLL_STATE_CONFLICT",

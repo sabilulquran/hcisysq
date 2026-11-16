@@ -28,12 +28,23 @@ import {
   type PerformanceLinkTrace,
 } from "./performance-link.js";
 import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
-import { DEFAULT_PPH21_SETTINGS, parsePph21Settings, parsePph21TerPolicy, resolvePolicy, type PolicyProblem } from "./policy.js";
+import {
+  DEFAULT_PPH21_SETTINGS,
+  parsePph21Settings,
+  parsePph21TerPolicy,
+  parseThrPolicy,
+  resolvePolicy,
+  type PolicyProblem,
+  type ThrPolicyPayload,
+} from "./policy.js";
 import { needsAnnualCalculation, type Pph21SourceRow } from "./pph21.js";
 import { findPph21AnnualPolicy, loadAnnualMonths } from "./pph21-annual-store.js";
 import { employerPph21Lines } from "./pph21-employer.js";
+import { loadPph21SourceRows } from "./reports.js";
 import { bindReimbursementHandoffs } from "./reimbursement-link.js";
 import { writeAudit } from "./store.js";
+import { calculateEmployeeThr, thrEligibility } from "./thr.js";
+import type { ComponentCode } from "./engine.js";
 
 /** The engine cannot be called without a profile, a category and a start date. */
 const PROFILE_MISSING: PayrollBlocker = {
@@ -124,7 +135,70 @@ export type CalculationOutcome = {
   policyProblems: PolicyProblem[];
   /** The period moved or left its working phase while this run was starting. */
   conflict: boolean;
+  /**
+   * PAY-003-THR T3: the pay date is later than the THR policy allows before the holiday, so
+   * nothing was calculated. Carries the latest allowed pay date.
+   */
+  thrPayDateLate?: { latestPayDate: string };
+  /** PAY-003-THR T4/T9: employments in the population with less than the minimum service. */
+  notEligibleCount?: number;
 };
+
+/** ISO date minus whole days, as an ISO date; calendar arithmetic only, no clock. */
+function isoDateMinusDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number) as [number, number, number];
+  const date = new Date(Date.UTC(year, month - 1, day - days));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * PAY-003-THR T4: the people a THR period pays. Active on the holiday, or ended at most the grace
+ * days before it when their term is PKWTT; only the term categories the THR policy names. The term
+ * is read on the earlier of the holiday and the end date, since an ended employment has no term
+ * on the holiday itself.
+ */
+async function loadThrEmployments(
+  client: PoolClient,
+  period: { legalEntityKey: string | null; holidayDate: string },
+  thr: ThrPolicyPayload,
+): Promise<EmploymentRow[]> {
+  const { rows } = await client.query<EmploymentRow>(
+    `SELECT e.id AS "employmentId",
+            e.employee_id AS "employeeId",
+            to_char(coalesce(e.service_start_on, e.started_on), 'YYYY-MM-DD') AS "serviceStartDate",
+            to_char(e.ended_on, 'YYYY-MM-DD') AS "serviceEndDate",
+            e.end_basis AS "endBasis",
+            term.category AS "termCategory"
+     FROM employments e
+     JOIN LATERAL (
+       SELECT t.category FROM employment_terms t
+       WHERE t.employment_id = e.id
+         AND t.voided_by_action_id IS NULL
+         AND (t.effective_from IS NULL OR t.effective_from <= least($2::date, coalesce(e.ended_on, $2::date)))
+         AND (t.effective_to IS NULL OR t.effective_to >= least($2::date, coalesce(e.ended_on, $2::date)))
+       ORDER BY t.sequence DESC LIMIT 1
+     ) term ON true
+     WHERE e.voided_by_action_id IS NULL
+       AND coalesce(e.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+           = coalesce($1::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+       AND (e.started_on IS NULL OR e.started_on <= $2::date)
+       AND term.category = ANY($3::text[])
+       AND (
+         e.ended_on IS NULL
+         OR e.ended_on >= $2::date
+         OR (term.category = ANY($4::text[]) AND e.ended_on >= $2::date - $5::int)
+       )
+     ORDER BY e.id`,
+    [
+      period.legalEntityKey,
+      period.holidayDate,
+      thr.eligibleTermCategories,
+      thr.terminationGraceTermCategories,
+      thr.terminationGraceDays,
+    ],
+  );
+  return rows;
+}
 
 const WORKING_STATES = ["COLLECTING", "CALCULATED"];
 
@@ -344,12 +418,16 @@ export async function calculatePeriod(
     periodStart: string;
     periodEnd: string;
     payDate: string;
+    /** PAY-003-THR: absent means a monthly period. */
+    kind?: "REGULAR" | "THR";
+    holidayDate?: string | null;
   },
   actorAccountId: string,
   expectedVersion: number,
   /** Feature switches read from configuration by the caller; all default off. */
   options: { employeeLoanDeduction?: boolean; reimbursementHandoff?: boolean } = {},
 ): Promise<CalculationOutcome> {
+  const isThr = period.kind === "THR";
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -391,32 +469,83 @@ export async function calculatePeriod(
       };
     }
 
-    const employments = await loadEmployments(client, period);
+    // PAY-003-THR: the THR policy, the payment deadline and the wage components, read only for a
+    // THR period. A monthly period never needs the THR policy to exist.
+    let thrPolicy: ThrPolicyPayload | null = null;
+    let wageComponents: ComponentCode[] = [];
+    if (isThr) {
+      const thr = parseThrPolicy(policyRows.rows);
+      if (!thr.ok || !period.holidayDate) {
+        await client.query("ROLLBACK");
+        return {
+          employeeCount: 0,
+          blockerCount: 0,
+          skipped: [],
+          policyProblems: thr.ok
+            ? [{ policyKey: "THR", code: "INVALID", message: "Periode THR tidak memiliki tanggal hari raya." }]
+            : [thr.problem],
+          conflict: false,
+        };
+      }
+      const latestPayDate = isoDateMinusDays(period.holidayDate, thr.policy.paymentDeadlineDaysBeforeHoliday);
+      if (period.payDate > latestPayDate) {
+        await client.query("ROLLBACK");
+        return {
+          employeeCount: 0,
+          blockerCount: 0,
+          skipped: [],
+          policyProblems: [],
+          conflict: false,
+          thrPayDateLate: { latestPayDate },
+        };
+      }
+      thrPolicy = thr.policy;
+      resolved.versionIds.push(thr.versionId);
+      const wage = await client.query<{ code: ComponentCode }>(
+        "SELECT code FROM payroll_components WHERE is_thr_wage ORDER BY display_order",
+      );
+      wageComponents = wage.rows.map((row) => row.code);
+    }
+
+    const employments = isThr && thrPolicy && period.holidayDate
+      ? await loadThrEmployments(client, { legalEntityKey: period.legalEntityKey, holidayDate: period.holidayDate }, thrPolicy)
+      : await loadEmployments(client, period);
     const employmentIds = employments.map((row) => row.employmentId);
     const employeeIds = [...new Set(employments.map((row) => row.employeeId))];
     // LOAN-001 Package 2: propose this month's instalments before the loans are
     // read, so the engine sees them like any other kasbon deduction.
-    const loanLink = await syncEmployeeLoanDeductions(
-      client,
-      { id: period.id, periodMonth: period.periodStart },
-      employeeIds,
-      actorAccountId,
-      options.employeeLoanDeduction === true,
-    );
-    const loans = await loadLoans(client, period.id, employeeIds);
-    // REIMB-001 section 9: reimbursements handed to this month, per employee.
-    const reimbursements = await bindReimbursementHandoffs(
-      client,
-      { id: period.id, periodMonth: period.periodStart },
-      employeeIds,
-      options.reimbursementHandoff === true,
-    );
+    // PAY-003-THR T8: THR carries no kasbon or loan instalment, so a THR period
+    // proposes none and reads none; the register belongs to the monthly periods.
+    const loanLink = isThr
+      ? { proposed: 0, mirrored: 0 }
+      : await syncEmployeeLoanDeductions(
+          client,
+          { id: period.id, periodMonth: period.periodStart },
+          employeeIds,
+          actorAccountId,
+          options.employeeLoanDeduction === true,
+        );
+    const loans = isThr
+      ? new Map<string, { outstanding: number; deduction: number }>()
+      : await loadLoans(client, period.id, employeeIds);
+    // REIMB-001 section 9: reimbursements handed to this month, per employee. A THR period
+    // binds none: reimbursements are paid with the monthly salary (payroll-thr.md T8).
+    const reimbursements = isThr
+      ? new Map<string, number>()
+      : await bindReimbursementHandoffs(
+          client,
+          { id: period.id, periodMonth: period.periodStart },
+          employeeIds,
+          options.reimbursementHandoff === true,
+        );
     // Paid once per person: with two employments in one period, the first
     // carries it (employments are ordered by id).
     const reimbursedEmployees = new Set<string>();
     // Switched off (no enabled PERFORMANCE_PERCENT version on the pay date):
     // not one review is read and every input stays exactly as it was.
-    const performancePolicy = resolved.performancePercent;
+    // PAY-003-THR T6: a THR period takes the wage from the profile only, so the
+    // PERF-001 link (a monthly appraisal override) is not applied to it.
+    const performancePolicy = isThr ? null : resolved.performancePercent;
     const linkedReviews = performancePolicy ? await loadLinkedReviews(client, period, employeeIds) : null;
     let performanceLinkedCount = 0;
 
@@ -443,6 +572,38 @@ export async function calculatePeriod(
        ORDER BY employment_id, effective_from DESC`,
       [employmentIds, period.payDate],
     );
+    // PAY-003-THR T6: someone who left within the grace days has no profile on the pay date, so
+    // their wage is read from the profile in force on their last day.
+    if (isThr) {
+      const covered = new Set(profiles.rows.map((row) => row.employmentId));
+      const ended = employments.filter(
+        (row) => !covered.has(row.employmentId) && row.serviceEndDate !== null && row.serviceEndDate < period.payDate,
+      );
+      for (const employment of ended) {
+        const last = await client.query<ProfileRow>(
+          `SELECT id, employment_id AS "employmentId", education, work_pattern AS "workPattern",
+                  unit_ref AS "unitRef", functional_position_ref AS "functionalPositionRef",
+                  structural_position_ref AS "structuralPositionRef",
+                  teaching_hours_per_week AS "teachingHoursPerWeek",
+                  spouse_count AS "spouseCount", child_count AS "childCount",
+                  registered_dependants AS "registeredDependants",
+                  special_qualification_target AS "specialQualificationTarget",
+                  annual_performance_rate AS "annualPerformanceRate",
+                  monthly_performance_rate AS "monthlyPerformanceRate",
+                  bpjs_segment AS "bpjsSegment",
+                  to_char(bpjs_active_from, 'YYYY-MM-DD') AS "bpjsActiveFrom",
+                  bpjs_extra_family_override AS "bpjsExtraFamilyOverride",
+                  bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName"
+           FROM payroll_compensation_profiles
+           WHERE employment_id = $1
+             AND effective_from <= $2::date
+             AND (effective_to IS NULL OR effective_to >= $2::date)
+           ORDER BY effective_from DESC LIMIT 1`,
+          [employment.employmentId, employment.serviceEndDate],
+        );
+        if (last.rows[0]) profiles.rows.push(last.rows[0]);
+      }
+    }
     const profileByEmployment = new Map(profiles.rows.map((row) => [row.employmentId, row]));
 
     const inputs = await client.query<InputRow & { recordedAt: Date }>(
@@ -480,6 +641,7 @@ export async function calculatePeriod(
 
     const results: EmployeePayrollResult[] = [];
     const skipped: CalculationOutcome["skipped"] = [];
+    let notEligibleCount = 0;
     const resultRows: Array<Record<string, unknown>> = [];
     const lineRows: Array<Record<string, unknown>> = [];
     const pph21Sources: Pph21SourceRow[] = [];
@@ -567,10 +729,33 @@ export async function calculatePeriod(
       const profile = profileOf(employment, profileByEmployment.get(employment.employmentId));
       const unresolvedEnd = employment.endBasis === "UNKNOWN";
 
+      // T4/T9: below the minimum service there is no THR to pay, which is not a blocker anyone
+      // could clear; the employment is counted and left out of the results.
+      if (isThr && thrPolicy && period.holidayDate && employment.serviceStartDate !== null) {
+        const eligibility = thrEligibility(employment.serviceStartDate, period.holidayDate, thrPolicy);
+        if (!eligibility.eligible) {
+          notEligibleCount += 1;
+          continue;
+        }
+      }
+
       // Someone without a usable profile still gets a result row, carrying the
       // blocker and nothing else. Leaving them out would hide them from the
       // period's blocker count and let an incomplete period be submitted.
-      const calculated: EmployeePayrollResult | null = profile
+      const calculated: EmployeePayrollResult | null = profile && isThr && thrPolicy && period.holidayDate
+        ? calculateEmployeeThr({
+            profile,
+            payDate:
+              employment.serviceEndDate !== null && employment.serviceEndDate < period.payDate
+                ? employment.serviceEndDate
+                : period.payDate,
+            holidayDate: period.holidayDate,
+            policy: resolved.policy,
+            thrPolicy,
+            wageComponents,
+            adjustment: employmentInputs.adjustment,
+          })
+        : profile
         ? calculateEmployeePayroll({
             profile,
             inputs: employmentInputs,
@@ -775,12 +960,13 @@ export async function calculatePeriod(
         policy_version_count: resolved.versionIds.length,
         // Counts only: which predicate anyone received stays in the result row.
         ...(performancePolicy ? { performance_link_enabled: true, performance_linked_count: performanceLinkedCount } : {}),
-        ...(options.employeeLoanDeduction === true
+        ...(options.employeeLoanDeduction === true && !isThr
           ? { employee_loan_deduction_enabled: true, employee_loan_proposed_count: loanLink.proposed }
           : {}),
         ...(options.reimbursementHandoff === true
           ? { reimbursement_handoff_enabled: true, reimbursement_employee_count: reimbursedEmployees.size }
           : {}),
+        ...(isThr ? { period_kind: "THR", not_eligible_count: notEligibleCount } : {}),
       },
     });
 
@@ -791,6 +977,7 @@ export async function calculatePeriod(
       skipped,
       policyProblems: [],
       conflict: false,
+      ...(isThr ? { notEligibleCount } : {}),
     };
   } catch (error) {
     await client.query("ROLLBACK");

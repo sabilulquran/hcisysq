@@ -19,9 +19,16 @@ import {
 } from "./reimbursement-link.js";
 import { defaultCutoffWindow, monthEnd, type PeriodAction, type PeriodState } from "./lifecycle.js";
 
+/** PAY-003-THR T1: a monthly payroll period or a THR period. */
+export type PeriodKind = "REGULAR" | "THR";
+
 export type PeriodRow = {
   id: string;
   legalEntityKey: string | null;
+  kind: PeriodKind;
+  /** THR only: the holiday the THR is for, and its name. Null on a monthly period. */
+  holidayDate: string | null;
+  holidayName: string | null;
   periodMonth: string;
   payDate: string;
   periodStart: string;
@@ -54,6 +61,9 @@ export type PeriodWithCalculation = PeriodRow & {
 const PERIOD_COLUMNS = `
   p.id,
   p.legal_entity_key AS "legalEntityKey",
+  p.period_kind AS kind,
+  to_char(p.holiday_date, 'YYYY-MM-DD') AS "holidayDate",
+  p.holiday_name AS "holidayName",
   to_char(p.period_month, 'YYYY-MM-DD') AS "periodMonth",
   to_char(p.pay_date, 'YYYY-MM-DD') AS "payDate",
   to_char(p.period_start, 'YYYY-MM-DD') AS "periodStart",
@@ -128,6 +138,9 @@ export type CreatePeriodInput = {
   cutoffStart?: string | undefined;
   cutoffEnd?: string | undefined;
   legalEntityKey?: string | null | undefined;
+  kind?: PeriodKind | undefined;
+  holidayDate?: string | null | undefined;
+  holidayName?: string | null | undefined;
   actorAccountId: string;
 };
 
@@ -144,8 +157,8 @@ export async function createPeriod(pool: Pool, input: CreatePeriodInput): Promis
     const { rows } = await client.query<PeriodRow>(
       `INSERT INTO payroll_periods(
          id, legal_entity_key, period_month, pay_date, period_start, period_end,
-         cutoff_start, cutoff_end, created_by_account_id)
-       VALUES ($1, $2, $3::date, $4::date, $3::date, $5::date, $6::date, $7::date, $8)
+         cutoff_start, cutoff_end, created_by_account_id, period_kind, holiday_date, holiday_name)
+       VALUES ($1, $2, $3::date, $4::date, $3::date, $5::date, $6::date, $7::date, $8, $9, $10::date, $11)
        RETURNING ${PERIOD_COLUMNS.replace(/\bp\./g, "")}`,
       [
         id,
@@ -156,13 +169,20 @@ export async function createPeriod(pool: Pool, input: CreatePeriodInput): Promis
         input.cutoffStart ?? cutoff.start,
         input.cutoffEnd ?? cutoff.end,
         input.actorAccountId,
+        input.kind ?? "REGULAR",
+        input.kind === "THR" ? (input.holidayDate ?? null) : null,
+        input.kind === "THR" ? (input.holidayName ?? null) : null,
       ],
     );
     await writeAudit(client, {
       actorAccountId: input.actorAccountId,
       action: "payroll.period.created",
       periodId: id,
-      payload: { period_month: input.periodMonth },
+      payload: {
+        period_month: input.periodMonth,
+        period_kind: input.kind ?? "REGULAR",
+        ...(input.kind === "THR" ? { holiday_date: input.holidayDate, holiday_name: input.holidayName } : {}),
+      },
     });
     await client.query("COMMIT");
     return rows[0]!;

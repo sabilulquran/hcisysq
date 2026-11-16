@@ -597,6 +597,7 @@ export type LoanDeductionOutcome =
       ok: false;
       code:
         | "PAYROLL_LOAN_LOCKED"
+        | "PAYROLL_LOAN_NOT_FOR_THR"
         | "PAYROLL_LOAN_NOT_FOUND"
         | "PAYROLL_LOAN_CLOSED"
         | "PAYROLL_PERIOD_NOT_FOUND"
@@ -618,14 +619,19 @@ export async function setLoanDeductions(
   try {
     await client.query("BEGIN");
 
-    const period = await client.query<{ state: string }>(
-      "SELECT state FROM payroll_periods WHERE id = $1 FOR UPDATE",
+    const period = await client.query<{ state: string; kind: string }>(
+      "SELECT state, period_kind AS kind FROM payroll_periods WHERE id = $1 FOR UPDATE",
       [periodId],
     );
     const state = period.rows[0]?.state;
     if (state === undefined) {
       await client.query("ROLLBACK");
       return { ok: false, code: "PAYROLL_PERIOD_NOT_FOUND" };
+    }
+    // PAY-003-THR T8: no kasbon instalment is taken from THR; the calculation ignores it anyway.
+    if (period.rows[0]?.kind === "THR") {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYROLL_LOAN_NOT_FOR_THR" };
     }
     if (state !== "COLLECTING" && state !== "DRAFT") {
       await client.query("ROLLBACK");

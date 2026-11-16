@@ -36,6 +36,9 @@ import {
 } from "@/lib/payroll";
 import type { AuthSession } from "@/types/hcis";
 
+/** Not an API code: the screen did not ask, because readAccess says the answer is always 403. */
+const PANEL_HIDDEN = "PANEL_HIDDEN";
+
 /**
  * What to say when a panel came back refused. A period still being worked on is
  * not an error, and neither is a permission someone does not hold; both are
@@ -45,6 +48,8 @@ function panelNote(key: string, outcome: PromiseSettledResult<unknown>): Record<
   if (outcome.status === "fulfilled") return {};
   const reason = outcome.reason;
   if (reason instanceof PayrollApiError) {
+    // A panel the actor may never open is hidden, not explained.
+    if (reason.code === PANEL_HIDDEN) return {};
     if (reason.code === "PAYROLL_NOT_APPROVED_YET") {
       return { [key]: "Angka periode ini baru terbuka setelah periode disahkan." };
     }
@@ -63,16 +68,7 @@ const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
   LARGE_MANUAL_INPUT: "Input manual besar",
 };
 
-/**
- * The permissions the PPh21 report route accepts (AUTH-011 manifest). Not
- * payroll.periods.manage alone: running the lifecycle does not open per-person
- * gross and tax (PAY-003 section 7.2).
- */
-const PPH21_READER_PERMISSIONS = [
-  "payroll.reports.read.organization",
-  "payroll.calculate",
-  "payroll.inputs.manage",
-];
+const NO_READ_ACCESS = { report: false, perPerson: false, transfers: false };
 
 export function AdminPayrollPeriodPage() {
   const { periodId } = useParams({ from: "/admin/payroll/$periodId" });
@@ -90,11 +86,13 @@ export function AdminPayrollPeriodPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const canReadTransfers = hasPermission(session, "payroll.transfers.read.organization");
+  // Which panels this actor may open at all is the server's answer (PAY-003 section 7.3), so the
+  // screen keeps no copy of the permission table. A panel the actor may never read is not shown;
+  // one that is only closed for now (not approved yet) still says why.
+  const access = period?.readAccess ?? NO_READ_ACCESS;
+  const canReadTransfers = access.transfers;
   const canManageInputs = hasPermission(session, "payroll.inputs.manage");
-  // Whether to offer the PPh21 panel at all; the server still decides whether
-  // this reader may open it, and says why not when it refuses.
-  const canOpenPph21 = PPH21_READER_PERMISSIONS.some((permission) => hasPermission(session, permission));
+  const canOpenPph21 = access.perPerson;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,10 +108,16 @@ export function AdminPayrollPeriodPage() {
       // empty rather than unreadable. The transfer list is not fetched here: it
       // carries account numbers and every read of it is recorded, so it is
       // opened deliberately.
+      // A panel this actor may never open is not requested at all (section 7.3): asking would
+      // only earn a 403 and a note about a door that is not theirs. An older API build without
+      // readAccess is asked for everything, as before.
+      const allowed = detail.period.readAccess ?? { report: true, perPerson: true, transfers: true };
+      const skipped = Promise.reject(new PayrollApiError("", PANEL_HIDDEN));
+      skipped.catch(() => undefined);
       const [resultsOutcome, reportOutcome, varianceOutcome] = await Promise.allSettled([
-        getPayrollResults(periodId),
-        getPayrollReport(periodId),
-        getPayrollVariance(periodId),
+        allowed.perPerson ? getPayrollResults(periodId) : skipped,
+        allowed.report ? getPayrollReport(periodId) : skipped,
+        allowed.perPerson ? getPayrollVariance(periodId) : skipped,
       ]);
       setResults(resultsOutcome.status === "fulfilled" ? resultsOutcome.value.results : []);
       // Results and variance carry the same identity list; whichever the actor
@@ -284,12 +288,16 @@ export function AdminPayrollPeriodPage() {
           </div>
         </section>
 
-        <PeriodInputsPanel
-          period={period}
-          identities={identities}
-          canManage={canManageInputs}
-          onChanged={() => void load()}
-        />
+        {/* Each input row is one person's rapel or penyesuaian, so the panel follows the
+            per-person read (section 7.3). */}
+        {access.perPerson || canManageInputs ? (
+          <PeriodInputsPanel
+            period={period}
+            identities={identities}
+            canManage={canManageInputs}
+            onChanged={() => void load()}
+          />
+        ) : null}
 
         {panelNotes.report ? (
           <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{panelNotes.report}</p>

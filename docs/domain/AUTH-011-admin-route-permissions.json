@@ -3014,7 +3014,8 @@
       "payroll.approve",
       "payroll.reopen.approve",
       "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.reports.read.organization",
+      "payroll.results.read.organization"
     ]
   },
   {
@@ -3026,7 +3027,8 @@
       "payroll.approve",
       "payroll.reopen.approve",
       "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.reports.read.organization",
+      "payroll.results.read.organization"
     ]
   },
   {
@@ -3039,6 +3041,7 @@
       "payroll.reopen.approve",
       "payroll.payments.confirm",
       "payroll.reports.read.organization",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.submit"
     ]
@@ -3048,11 +3051,9 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/inputs",
     "permissions": [
-      "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   },
   {
@@ -3076,11 +3077,9 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/results",
     "permissions": [
-      "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   },
   {
@@ -3164,7 +3163,7 @@
     "url": "/payroll/periods/:periodId/report",
     "permissions": [
       "payroll.reports.read.organization",
-      "payroll.periods.manage",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
@@ -3174,7 +3173,7 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/pph21",
     "permissions": [
-      "payroll.reports.read.organization",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
@@ -3192,8 +3191,7 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/variance",
     "permissions": [
-      "payroll.reports.read.organization",
-      "payroll.periods.manage",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]

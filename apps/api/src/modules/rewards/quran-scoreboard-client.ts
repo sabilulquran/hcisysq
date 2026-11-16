@@ -16,6 +16,7 @@ const DEFAULT_TOKEN_LIFETIME_MS = 60_000;
 export const QURAN_SCOREBOARD_SCOPE = "quran.scoreboard.read";
 export const MAX_SCOPE_ENTRIES = 5_000;
 export const MAX_UNIT_SCOPES = 200;
+const MAX_RESPONSE_CHARS = 32_000_000;
 
 const monthText = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const personRef = z.string().regex(/^hcis:employee:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -25,7 +26,7 @@ const entrySchema = z
   .object({
     personId: personRef,
     unitId: unitRef.nullable(),
-    rank: z.number().int().min(1),
+    rank: z.number().int().min(1).max(1_000_000),
     pages: z.number().min(0).max(999_999).refine((value) => Math.abs(Math.round(value * 10) - value * 10) < 1e-6),
     activeDays: z.number().int().min(0).max(31),
     khatam: z.number().int().min(0).max(1000),
@@ -126,7 +127,9 @@ export class QuranMonthlyScoreboardClient implements MonthlyScoreboardReader {
 
     let body: unknown = null;
     try {
-      body = await response.json();
+      // A snapshot of 201 boards x 5,000 rows stays well under this; anything larger is not one.
+      const text = await response.text();
+      body = text.length <= MAX_RESPONSE_CHARS ? JSON.parse(text) : null;
     } catch {
       body = null;
     }

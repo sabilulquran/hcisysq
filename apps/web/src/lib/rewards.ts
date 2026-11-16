@@ -107,7 +107,7 @@ export interface RoundDetail {
   candidates: Candidate[];
   awards: Award[];
   outbox: OutboxItem[];
-  viewer: { canManage: boolean; decidableCandidateIds: string[]; isImporter: boolean };
+  viewer: { canManage: boolean; decidableCandidateIds: string[]; isImporter: boolean; employeeId?: string | null };
 }
 
 export interface AuditEvent {

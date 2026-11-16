@@ -187,6 +187,7 @@ export async function registerRewardRoutes(
   }
 
   async function holdsHcAdminRole(db: Pool | PoolClient, accountId: string): Promise<boolean> {
+    // Directly assigned, or following a seat the account's employee holds (AUTH-015).
     const found = await db.query(
       `SELECT 1
          FROM account_role_assignments assignment
@@ -195,6 +196,8 @@ export async function registerRewardRoutes(
           AND assignment.scope_type = 'organization' AND assignment.organizational_unit_id IS NULL
           AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
           AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
+       UNION ALL
+       SELECT 1 FROM hcis_seat_permissions(current_date, $1::uuid) seat WHERE seat.role_key = $2
         LIMIT 1`,
       [accountId, HC_ADMIN_ROLE_KEY],
     );
@@ -419,7 +422,7 @@ export async function registerRewardRoutes(
       candidates: candidates.rows.map((candidate) => ({ ...candidate, pages: numeric(candidate.pages) })),
       awards: awards.rows,
       outbox: outbox.rows,
-      viewer: { canManage, decidableCandidateIds: decidable, isImporter: importer },
+      viewer: { canManage, decidableCandidateIds: decidable, isImporter: importer, employeeId: viewerEmployee?.id ?? null },
     };
   }
 
@@ -525,8 +528,18 @@ export async function registerRewardRoutes(
             problems.push({ line, message: byName.length > 1 ? `Nama unit "${token}" tidak unik; pakai kode unit.` : `Unit "${token}" tidak dikenal.` });
           }
         }
+        // Two spellings of one unit (name and code) are one board: a NIP twice on it is a duplicate.
+        const seenOnBoard = new Set<string>();
         for (const row of parsed.rows) {
-          if (!byNumber.has(row.employeeNumber)) problems.push({ line: row.line, message: `NIP ${row.employeeNumber} tidak dikenal.` });
+          if (!byNumber.has(row.employeeNumber)) {
+            problems.push({ line: row.line, message: `NIP ${row.employeeNumber} tidak dikenal.` });
+            continue;
+          }
+          const board = row.scopeToken === "YAYASAN" ? "YAYASAN" : unitRefByToken.get(row.scopeToken);
+          if (!board) continue;
+          const key = `${board}\u0000${byNumber.get(row.employeeNumber)}`;
+          if (seenOnBoard.has(key)) problems.push({ line: row.line, message: "Pegawai yang sama muncul dua kali dalam satu cakupan." });
+          seenOnBoard.add(key);
         }
         if (problems.length) {
           throw Object.assign(new RewardError(400, "INVALID_REWARD_IMPORT", "Berkas CSV tidak valid."), { problems: problems.slice(0, 50) });
@@ -738,7 +751,8 @@ export async function registerRewardRoutes(
         const winners = await client.query<{ id: string; employeeId: string; category: RewardScope; seat: number; unitName: string | null; fullName: string; active: boolean }>(
           `SELECT candidate.id, candidate.employee_id AS "employeeId", candidate.category, candidate.seat,
                   candidate.unit_name AS "unitName", employee.full_name AS "fullName",
-                  (employee.status = 'active' AND employee.removed_at IS NULL) AS active
+                  (employee.status = 'active' AND employee.removed_at IS NULL
+                   AND employee.management_scope = 'MANAGED') AS active
              FROM reward_candidates candidate
              JOIN employees employee ON employee.id = candidate.employee_id
             WHERE candidate.round_id = $1 AND candidate.status = 'AWARDED'
@@ -964,7 +978,9 @@ export async function registerRewardRoutes(
   const publicHits = new Map<string, { windowStart: number; count: number }>();
   function publicRateLimited(request: FastifyRequest): boolean {
     const at = Date.now();
-    const address = request.ip || "unknown";
+    // Same client address as the employee-card check: CF-Connecting-IP first, then request.ip.
+    const forwarded = request.headers["cf-connecting-ip"];
+    const address = (typeof forwarded === "string" && forwarded.trim()) || request.ip || "unknown";
     const state = publicHits.get(address);
     if (!state || at - state.windowStart >= PUBLIC_RATE_WINDOW_MS) {
       if (!state && publicHits.size >= PUBLIC_RATE_MAX_KEYS) {

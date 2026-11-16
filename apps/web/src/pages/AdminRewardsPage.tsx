@@ -112,7 +112,7 @@ function CandidateCard({
           {decidable && candidate.status !== "AWARDED" && !candidate.replaced ? (
             <button type="button" disabled={busy} onClick={onAward} className={`${button} bg-brand-primary text-brand-foreground`}>Tetapkan</button>
           ) : null}
-          {decidable && candidate.status !== "DECLINED" ? (
+          {decidable && candidate.status !== "DECLINED" && !candidate.replaced ? (
             <button type="button" disabled={busy} onClick={onDecline} className={`${button} border border-border text-brand-heading`}>Tidak ditetapkan</button>
           ) : null}
           {canRefill ? (
@@ -201,7 +201,7 @@ export function RoundDetailView({
                     {award.status === "REVOKED" ? ` · Dicabut: ${award.revokeReason}` : award.certificateReady ? " · Sertifikat siap" : " · Sertifikat disiapkan"}
                   </span>
                 </span>
-                {round.viewer.canManage && award.status === "ACTIVE" ? (
+                {round.viewer.canManage && award.status === "ACTIVE" && award.employeeId !== round.viewer.employeeId ? (
                   <button type="button" disabled={busy} onClick={() => onAction("revoke", award.id)}
                     className={`${button} border border-danger-line text-danger-ink`}>Cabut</button>
                 ) : null}

@@ -3006,7 +3006,8 @@
       "payroll.approve",
       "payroll.reopen.approve",
       "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.reports.read.organization",
+      "payroll.results.read.organization"
     ]
   },
   {
@@ -3018,7 +3019,8 @@
       "payroll.approve",
       "payroll.reopen.approve",
       "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.reports.read.organization",
+      "payroll.results.read.organization"
     ]
   },
   {
@@ -3031,6 +3033,7 @@
       "payroll.reopen.approve",
       "payroll.payments.confirm",
       "payroll.reports.read.organization",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.submit"
     ]
@@ -3040,11 +3043,9 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/inputs",
     "permissions": [
-      "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   },
   {
@@ -3068,11 +3069,9 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/results",
     "permissions": [
-      "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   },
   {
@@ -3156,7 +3155,7 @@
     "url": "/payroll/periods/:periodId/report",
     "permissions": [
       "payroll.reports.read.organization",
-      "payroll.periods.manage",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
@@ -3166,7 +3165,7 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/pph21",
     "permissions": [
-      "payroll.reports.read.organization",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
@@ -3184,8 +3183,7 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/variance",
     "permissions": [
-      "payroll.reports.read.organization",
-      "payroll.periods.manage",
+      "payroll.results.read.organization",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
@@ -3488,6 +3486,46 @@
     "url": "/admin/job-classifications/:code/deactivation",
     "permissions": [
       "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classifications/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-grades/export",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classification-imports",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classification-audit-events",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/job-classifications",
+    "permissions": [
+      "job_classifications.read"
     ]
   },
   {

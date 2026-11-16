@@ -38,8 +38,8 @@ Permission mengikuti pola `<resource>.<action>[.<scope>]`. Semua permission baru
 |---|---|---|
 | Kepala HCM / staf HC | `payroll.policies.manage`, `payroll.profiles.manage`, `payroll.periods.manage`, `payroll.inputs.manage`, `payroll.calculate`, `payroll.submit` | organization |
 | Keuangan (pengelola kasbon) | `payroll.loans.manage` | organization |
-| Kepala Keuangan | `payroll.transfers.read.organization`, `payroll.reports.read.organization`, `payroll.payments.confirm` | organization |
-| Direktur | `payroll.approve`, `payroll.reopen.approve`, `payroll.reports.read.organization` | organization |
+| Kepala Keuangan | `payroll.transfers.read.organization`, `payroll.reports.read.organization`, `payroll.results.read.organization`, `payroll.payments.confirm` | organization |
+| Direktur | `payroll.approve`, `payroll.reopen.approve`, `payroll.reports.read.organization`, `payroll.results.read.organization` | organization |
 | Pengurus Yayasan | **tidak ada permission payroll di v1** | — |
 | Pegawai | `payslips.read.own` (sudah ada) | own |
 
@@ -54,6 +54,7 @@ Aturan:
 - **Pemisahan kasbon dan konfirmasi bayar.** Kasbon terkunci begitu periode mencapai `CALCULATED`; perubahan kasbon setelah itu hanya mungkin lewat kembalikan ke `COLLECTING` oleh Direktur, sehingga pemegang `payroll.loans.manage` tidak dapat mengubah nominal yang sedang dikonfirmasinya.
 - Super Admin tidak otomatis mendapat permission payroll.
 - Laporan payroll per orang adalah data sensitif: setiap baca dicatat `payroll.report.read`.
+- **Angka per orang punya izin baca sendiri** (`payroll.results.read.organization`, migration 0151; §7.3). Menjalankan lifecycle (`payroll.periods.manage`), memutus periode (`payroll.approve`, `payroll.payments.confirm`), atau membaca rekap (`payroll.reports.read.organization`) tidak membukanya.
 
 ## 3. Data dasar (berlaku-efektif)
 
@@ -297,16 +298,16 @@ Aturan:
 - APPROVED mengunci snapshot input, versi kebijakan, dan baris hasil. Hasil revisi menyimpan lineage ke versi sebelumnya.
 - Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi yang membawa baris penanda `Status: Revisi` pada slip itu sendiri; slip lama ditandai `superseded_by_id` dan tidak lagi muncul di daftar slip pegawai, tetapi tetap tersimpan. Mekanismenya §10 butir 8.
 - **Buka ulang setelah bayar atau setelah publikasi** tidak membatalkan pembayaran yang sudah terjadi. Hasil periode yang baru menyimpan `selisih_bayar = dibayar_baru − dibayar_lama` per pegawai. Selisih positif dibayarkan sebagai `ARREARS` pada periode berikutnya; selisih negatif menjadi `ADJUST_DEDUCT` pada periode berikutnya dengan alasan dan referensi keputusan. Konfirmasi bayar lama tetap tercatat sebagai fakta dan tidak dihapus.
-- Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED. Sebelum itu, hanya aktor yang menjalankan periode (`payroll.periods.manage`, `payroll.calculate`, `payroll.inputs.manage`) yang melihat angkanya.
+- Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED. Sebelum itu, hanya aktor yang menyusun angkanya (`payroll.calculate`, `payroll.inputs.manage`) yang melihatnya. `payroll.periods.manage` saja tidak membuka angka apa pun (§7.3).
 
 ## 7. Output
 
 Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 
 - **Daftar transfer** (`payroll.transfers.read.organization`, hanya Keuangan dan Kepala Keuangan): per penerima — NIP, nama, unit, nominal dibayar, bank, nomor rekening, nama pemilik rekening, status konfirmasi bayar. Bank disimpan pada profil kompensasi (`bank_name`), bukan ditebak dari nomor rekening. Ekspor CSV UTF-8 dengan BOM dan akhir baris CRLF agar nama berdiakritik dan nomor rekening berawalan nol selamat di spreadsheet (§10 butir 7). Penerima dengan nominal nol tidak muncul; nominal negatif tetap muncul supaya Keuangan melihatnya. Setiap baca dan setiap ekspor dicatat sebagai akses sensitif.
-- **Laporan payroll final** (`payroll.reports.read.organization`; aktor yang menjalankan periode juga membacanya selama periode berjalan): rekap per unit dan per komponen, jumlah penerima, total bruto/potongan/netto/dibayar, dan biaya yayasan. **Tanpa nomor rekening.** Memegang `payroll.approve` atau `payroll.payments.confirm` saja tidak cukup untuk membacanya. Unit diambil dari profil yang dipakai saat hitung, sehingga laporan periode lampau terbaca seperti saat dibayar.
+- **Laporan payroll final** (`payroll.reports.read.organization` atau izin baca per orang §7.3; penyusun angka — `payroll.calculate`, `payroll.inputs.manage` — juga membacanya selama periode berjalan): rekap per unit dan per komponen, jumlah penerima, total bruto/potongan/netto/dibayar, dan biaya yayasan. **Tanpa nomor rekening.** Memegang `payroll.approve` atau `payroll.payments.confirm` saja tidak cukup untuk membacanya. Unit diambil dari profil yang dipakai saat hitung, sehingga laporan periode lampau terbaca seperti saat dibayar.
 - Pengurus Yayasan tidak memperoleh kedua laporan di v1 (§2).
-- **Perbandingan periode** (`payroll.reports.read.organization`, serta aktor yang menjalankan periode): selisih per pegawai per komponen terhadap periode sebelumnya pada legal entity yang sama, disaring ambang §10 butir 6. Pegawai yang baru masuk atau keluar dilaporkan satu baris, bukan satu baris per komponen. Periode pertama menjawab perbandingan kosong, bukan error.
+- **Perbandingan periode** (izin baca per orang §7.3): selisih per pegawai per komponen terhadap periode sebelumnya pada legal entity yang sama, disaring ambang §10 butir 6. Pegawai yang baru masuk atau keluar dilaporkan satu baris, bukan satu baris per komponen. Periode pertama menjawab perbandingan kosong, bukan error.
 - **Slip pegawai:** hasil final dipetakan ke draft slip (`lines` label/value sesuai urutan katalog komponen) setelah pembayaran dikonfirmasi, lalu diterbitkan lewat aksi tersendiri yang meminta `payslips.publish` — payroll menyiapkan, pemegang permission itu menerbitkan. Jalur publish batch PAY-002 bekerja per batch impor dan tidak dapat melihat slip bersumber periode, sehingga payroll memakai pintunya sendiri dengan permission yang sama. Slip bersumber periode payroll (`payslips.source_period_id`), bukan batch impor; tepat satu sumber per baris. Slip yang belum terbit diperbarui di tempat; slip yang sudah terbit tidak pernah diubah. Bila slip berlaku untuk bulan itu ternyata milik batch impor PAY-001, payroll tidak menyentuhnya dan melaporkan pegawainya sebagai konflik, supaya batch impor tidak kehilangan draftnya.
 - **Laporan PPh21 TER** per masa pajak dari hasil final — **sudah diimplementasikan** sebagai laporan (§7.2); baris `PPH21_EMPLOYER` pada hasil perhitungan belum.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
@@ -335,7 +336,7 @@ Data acuan dibaca berhalaman: `GET /payroll/loans` dan `GET /payroll/employments
 
 ## 7.2 Laporan PPh21 TER (status implementasi)
 
-**Endpoint.** `GET /payroll/periods/{id}/pph21?format=json|csv` (`docs/api/payroll.openapi.yaml`). Pembacanya `payroll.reports.read.organization`, `payroll.calculate`, atau `payroll.inputs.manage`; tidak ada permission baru. **`payroll.periods.manage` saja tidak cukup**: peran `hcis_module_admin` memegangnya untuk menjalankan lifecycle, dan itu bukan izin membaca bruto dan pajak per orang. Memegang `payroll.approve` atau `payroll.payments.confirm` saja juga tidak cukup. Pengurus Yayasan dan Super Admin tidak membacanya (§2). *Tindak lanjut:* penyempitan yang sama untuk `/report`, `/results`, dan `/variance`, yang hari ini masih menerima `payroll.periods.manage` saja, dikerjakan di perubahan tersendiri.
+**Endpoint.** `GET /payroll/periods/{id}/pph21?format=json|csv` (`docs/api/payroll.openapi.yaml`). Pembacanya pembaca angka per orang (§7.3): `payroll.results.read.organization`, `payroll.calculate`, atau `payroll.inputs.manage`. **`payroll.periods.manage` saja tidak cukup**: peran `hcis_module_admin` memegangnya untuk menjalankan lifecycle, dan itu bukan izin membaca bruto dan pajak per orang. Memegang `payroll.approve`, `payroll.payments.confirm`, atau rekap `payroll.reports.read.organization` saja juga tidak cukup. Pengurus Yayasan dan Super Admin tidak membacanya (§2). Penyempitan yang sama untuk `/report`, `/results`, `/inputs`, dan `/variance` sudah diterapkan (§7.3).
 
 **Layar.** Bagian "Laporan PPh21 (TER)" pada layar periode, dibuka dengan sengaja seperti daftar transfer (tidak diambil otomatis), menampilkan total, baris per pegawai berikut penandanya, sumber tabel TER, dan unduhan CSV. Penolakan yang memang diharapkan (belum disahkan, tanpa akses, tabel TER belum dimuat) ditampilkan sebagai penjelasan, bukan galat.
 
@@ -373,12 +374,28 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 
 - perhitungan tahunan Pasal 17 untuk masa pajak terakhir (Desember / berakhirnya masa kerja) dan bukti potong 1721-A1;
 - aturan PPh21 pegawai tidak tetap (21-100-03, TER harian) untuk kontrak honorer dan lepas, sampai P10 diputuskan;
-- penyempitan pembaca `/report`, `/results`, dan `/variance` agar `payroll.periods.manage` saja tidak membuka angka per orang (tindak lanjut tersendiri);
 - baris `PPH21_EMPLOYER` pada hasil perhitungan dan ringkasan biaya yayasan yang memuat PPh21 (P6);
 - NIK/NPWP dan berkas e-Bupot/SPT Masa PPh21;
 - THR;
 - integrasi transfer bank (daftar transfer tetap CSV, §10 butir 7);
 - penerima non-pegawai, reimbursement, multi legal entity, akuntansi.
+
+## 7.3 Pembaca angka per orang (`DRAFT`, default agent 2026-11-17)
+
+Angka per orang dipisahkan dari menjalankan periode dan dari membaca rekap. Sebelum perubahan ini `GET .../results`, `.../inputs`, `.../variance`, dan `.../report` menerima siapa pun yang memegang `payroll.periods.manage` — termasuk HCIS Module Admin (`hcis_module_admin`, AUTH-014), yang memegangnya hanya untuk menjalankan lifecycle — dan setelah periode disahkan, `.../results` dan `.../inputs` menerima pemegang permission payroll mana pun, termasuk `payroll.approve` atau `payroll.payments.confirm` saja.
+
+| Bagian | Endpoint | Pembaca | Sebelum `APPROVED` |
+|---|---|---|---|
+| Angka per orang | `.../results`, `.../inputs` (GET), `.../variance`, `.../pph21` | `payroll.results.read.organization`, `payroll.calculate`, `payroll.inputs.manage` | hanya `payroll.calculate`/`payroll.inputs.manage` (PPh21: tidak ada, §7.2 P3) |
+| Rekap periode | `.../report` | `payroll.reports.read.organization` atau salah satu pembaca angka per orang | hanya `payroll.calculate`/`payroll.inputs.manage` |
+| Daftar transfer | `.../transfers` | `payroll.transfers.read.organization` (tidak berubah) | tidak ada |
+| Periode itu sendiri | `GET .../periods`, `GET .../periods/{id}`, transisi | `PERIOD_READ_PERMISSIONS` + `payroll.results.read.organization` | — |
+
+**Pemegang (`DRAFT`).** `payroll.results.read.organization` diberikan migration 0151 kepada **Direktur** (`director`, meninjau per orang sebelum mengesahkan) dan **Kepala Keuangan** (`finance_lead`, mencocokkan pembayaran dengan daftar transfer). Keduanya membaca angka per orang hari ini lewat `payroll.reports.read.organization`, sehingga tidak ada yang kehilangan akses yang memang dibutuhkannya. Kepala Human Capital membacanya lewat `payroll.calculate`/`payroll.inputs.manage`. HCIS Module Admin, Keuangan (`finance_officer`), Pengurus Yayasan, dan Super Admin tidak menerimanya. Matriks peran yang dipakai: tabel §2 dan `docs/domain/roles-permissions.md`.
+
+**Layar.** `GET /payroll/periods/{id}` mengembalikan `period.readAccess` (`report`, `perPerson`, `transfers`), diputuskan server dari permission aktor. Layar periode tidak meminta dan tidak menampilkan panel yang `false` (rekap, perlu ditinjau, hasil per pegawai, input periode, laporan PPh21, daftar transfer), alih-alih menampilkan pesan "tidak memiliki akses". Panel yang hanya tertutup sementara (periode belum disahkan) tetap menjelaskan alasannya.
+
+**Rilis.** Migration 0151 hanya menambah kunci; build lama tidak memeriksanya. Saat cutover, HCIS Module Admin kehilangan pembacaan angka per orang. Rollback: hapus kunci (komentar migration) dan rilis ulang build sebelumnya.
 
 ## 8. Privasi dan audit
 
@@ -430,7 +447,7 @@ Butir berikut sebelumnya terbuka. Agar implementasi dapat berjalan, setiap butir
 | 1 | Jendela cutoff lembur dan kehadiran PKWT | Tanggal **23 bulan sebelumnya s.d. 22 bulan periode** (Asia/Jakarta, inklusif), sama dengan cutoff Pj. Media legacy. Disimpan sebagai `cutoff_start_day`/`cutoff_end_day` per periode, dapat diubah per periode oleh HC dengan alasan. | Audit legacy §Pj. Media langkah 3 (23–22); satu jendela untuk semua input menghindari dua kalender. |
 | 2 | Komponen bertanda tunjangan tetap (dasar BPJS) | `PERF` (tunjangan kinerja) **ya**; `SPECIAL_QUAL` **ya**; `TEACH_OVER` (kelebihan jam) **tidak**. | Tunjangan kinerja dan kualifikasi khusus dibayar rutin tanpa bergantung kehadiran → tunjangan tetap. Kelebihan jam berubah tiap bulan mengikuti beban mengajar → tunjangan tidak tetap (Perpres 82/2018 Pasal 30). |
 | 3 | Default kinerja masa kerja < 1 tahun | `%tahunan = 0`, `%bulanan` diisi penilai; bila belum ada penilaian pada periode itu, `%bulanan = 0` — tunjangan kinerja tidak dibayar sampai ada penilaian (**keputusan owner 2026-11-04**, mengganti default agent 100%). Penetapan persentase dilakukan atasan langsung dan disahkan Kepala HCM lewat profil kompensasi berlaku-efektif. Disimpan di kebijakan `PERFORMANCE.unratedBelowOneYear`. | Sama dengan spreadsheet legacy, yang membayar 0 kepada pegawai di bawah setahun tanpa penilaian; default 100% sebelumnya akan membayar porsi bulanan kepada mereka. |
-| 4 | Definisi "hadir" untuk transport PKWT | Hari kerja dengan **check-in tercatat** pada versi hasil kehadiran terbaru dalam jendela cutoff, satu hari dihitung satu kali, tanpa memperhitungkan keterlambatan. Hari cuti/izin/libur tidak menghasilkan transport, kecuali hari libur yang memang dijadwalkan kerja (`holiday_scheduled_work`). Hari yang tercatat sebelum ATT-014 menambahkan jenis hari dianggap hari kerja. Hari tugas luar ATT-015 yang `APPROVED` tanpa check-in (`field_assignment`) juga menghasilkan transport; WFH/WFA (`remote_work`) tanpa check-in tidak (ATT-015 D-07, ACCEPTED owner 2026-11-03). | Transport mengganti ongkos perjalanan; dasarnya pegawai berangkat untuk bekerja (ke lokasi kerja atau ke tempat tugas luar), bukan kelengkapan jam. |
+| 4 | Definisi "hadir" untuk transport PKWT | Hari kerja dengan **check-in tercatat** pada versi hasil kehadiran terbaru dalam jendela cutoff, satu hari dihitung satu kali, tanpa memperhitungkan keterlambatan. Hari cuti/izin/libur tidak menghasilkan transport, kecuali hari libur yang memang dijadwalkan kerja (`holiday_scheduled_work`). Hari yang tercatat sebelum ATT-014 menambahkan jenis hari dianggap hari kerja. Hari tugas luar ATT-015 yang `APPROVED` tanpa check-in (`field_assignment`) juga menghasilkan transport; WFH/WFA (`remote_work`) tanpa check-in tidak (ATT-015 D-07, ACCEPTED owner 2026-11-03). Hari dinas TRIP-001 Paket 2 (`business_trip`, perjalanan `ISSUED`/`COMPLETED`) diperlakukan sama dengan tugas luar: dihitung hadir satu kali, tanpa komponen biaya perjalanan apa pun di payroll (`docs/domain/business-travel.md` §9.2, D-17 `DRAFT`). | Transport mengganti ongkos perjalanan; dasarnya pegawai berangkat untuk bekerja (ke lokasi kerja atau ke tempat tugas luar), bukan kelengkapan jam. |
 | 5 | Tarif dan verifikator Pj. Media | Tarif per konten disimpan pada penugasan Pj. Media (`ADDITIONAL` placement) berlaku-efektif; nilai awal Rp30.000, Rp40.000 untuk penugasan yang ditetapkan tertulis. Rekap periode diverifikasi **Kepala HCM** sebelum menjadi input. | Legacy memilih tarif manual tanpa aturan (temuan audit); mengikat tarif ke penugasan menghilangkan pilihan per bulan. |
 | 6 | Ambang peringatan selisih antar periode | Peringatan bila selisih mutlak komponen > **10%** dan > **Rp50.000** dibanding periode sebelumnya. Pegawai baru/keluar dilaporkan satu baris dengan nominal utuh **tanpa memandang ambang**, dan input manual > **Rp1.000.000** adalah pemicu tersendiri. Ambang disimpan sebagai kebijakan; nilai yang tidak masuk akal (negatif, bukan angka) jatuh ke default. Pembanding adalah periode sebelumnya yang sudah `APPROVED` ke atas. | Dua syarat sekaligus menekan peringatan palsu pada komponen kecil; pegawai baru/keluar adalah fakta yang harus dilihat peninjau apa pun nominalnya. |
 | 7 | Format ekspor laporan Keuangan | **CSV UTF-8** (satu baris per penerima: NIP, nama, unit, nominal dibayar, bank, nomor rekening, nama pemilik rekening) dan tampilan HTML di HCIS. Tanpa pembuatan surat/memorandum (ADR-0003 keputusan 6). Setiap ekspor dicatat sebagai akses sensitif. | CSV cukup untuk pembuatan daftar pindah buku dan tidak mengunci ke format bank tertentu. |

@@ -263,6 +263,11 @@ function placementLine(placement: Placement): string {
   return where ? `${placement.jobTitleLabel} — ${where}` : placement.jobTitleLabel;
 }
 
+/** ORG-011: shown only when the placement names a code itself; a seat default is read elsewhere. */
+export function classificationLabel(placement: Placement): string | null {
+  return placement.jobClassificationCode ? `Klasifikasi ${placement.jobClassificationCode}` : null;
+}
+
 function sinceLabel(placement: Placement): string {
   return placement.effectiveFromBasis === "BASELINE_ASSUMED" ? "sejak data awal" : `sejak ${formatDate(placement.effectiveFrom)}`;
 }
@@ -323,6 +328,7 @@ export function PlacementCareerPanel({
             <Field label="Unit" value={primary.unitName ?? "—"} />
             <Field label="Jabatan" value={primary.jobTitleLabel} />
             <Field label="Berlaku" value={sinceLabel(primary)} />
+            {classificationLabel(primary) ? <Field label="Klasifikasi jabatan" value={primary.jobClassificationCode!} /> : null}
           </dl>
         ) : (
           <p className="mt-4 text-sm text-muted-foreground">
@@ -335,7 +341,7 @@ export function PlacementCareerPanel({
             <ul className="mt-2 space-y-1 text-sm">
               {data.current.additionalPlacements.map((placement) => (
                 <li key={placement.id} className="flex flex-wrap items-center gap-2">
-                  <span>{placementLine(placement)} · {sinceLabel(placement)}</span>
+                  <span>{placementLine(placement)} · {sinceLabel(placement)}{classificationLabel(placement) ? ` · ${classificationLabel(placement)}` : ""}</span>
                   {onEndAdditional ? (
                     <button
                       type="button"
@@ -408,6 +414,7 @@ export function PlacementCareerPanel({
                 <span className="block text-xs text-muted-foreground">
                   {placement.kind === "ADDITIONAL" ? "Tugas tambahan · " : ""}
                   {sinceLabel(placement)}{placement.effectiveTo ? ` s.d. ${formatDate(placement.effectiveTo)}` : ""}
+                  {classificationLabel(placement) ? ` · ${classificationLabel(placement)}` : ""}
                 </span>
               </li>
             ))}

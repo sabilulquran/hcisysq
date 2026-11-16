@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { ATTENDANCE_INPUT_KEYS, ownEmploymentIds } from "./inputs-store.js";
 import { writeAudit } from "./store.js";
 
@@ -121,12 +122,20 @@ async function resolveOvertime(pool: Pool, window: AttendanceWindow) {
  * follows a cancellation can fail and wait for Kalkulasi, and until then the day
  * still reads `field_assignment`. Overtime reads its request status for the same
  * reason.
+ *
+ * A day covered by an issued business trip (TRIP-001 Paket 2, status
+ * `business_trip`) is read exactly like a field assignment: the employee was
+ * present for work, away from the usual site, so the day counts once. Nothing
+ * else follows from the trip — no per diem, allowance or travel cost exists in
+ * payroll (business-travel.md §9.2, "tanpa komponen biaya"). The trip must still
+ * be ISSUED or COMPLETED, for the same stale-recompute reason.
  */
 async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
   const { rows } = await pool.query<{ employmentId: string; days: string }>(
     `WITH latest AS (
        SELECT DISTINCT ON (v.employee_id, v.work_date)
-              v.employee_id, v.work_date, v.status, v.source_work_arrangement_id, v.first_check_in_at,
+              v.employee_id, v.work_date, v.status, v.source_work_arrangement_id, v.source_business_trip_id,
+              v.first_check_in_at,
               v.day_type, v.holiday_scheduled_work
        FROM attendance_result_versions v
        WHERE v.work_date BETWEEN $1::date AND $2::date
@@ -145,6 +154,13 @@ async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
              WHERE r.id = latest.source_work_arrangement_id AND r.status = 'APPROVED'
            )
          )
+         OR (
+           latest.status = 'business_trip'
+           AND EXISTS (
+             SELECT 1 FROM business_trip_requests t
+             WHERE t.id = latest.source_business_trip_id AND t.status = ANY($5::text[])
+           )
+         )
        )
        AND (
          latest.day_type IS NULL
@@ -156,7 +172,7 @@ async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
        AND (e.ended_on IS NULL OR e.ended_on >= latest.work_date)
        AND ${TERM_CATEGORY_ON_DAY}
      GROUP BY e.id`,
-    [window.cutoffStart, window.cutoffEnd, window.legalEntityKey, TRANSPORT_CATEGORIES],
+    [window.cutoffStart, window.cutoffEnd, window.legalEntityKey, TRANSPORT_CATEGORIES, [...TRIP_ATTENDANCE_STATUSES]],
   );
   return rows.map((row) => ({ employmentId: row.employmentId, days: Number(row.days) }));
 }

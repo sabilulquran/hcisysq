@@ -1,9 +1,9 @@
 # Perjalanan Dinas
 
-**Status:** ACCEPTED (Paket 1) — spesifikasi ini mengizinkan implementasi Paket 1. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
+**Status:** ACCEPTED (Paket 1 dan Paket 2) — Paket 1 (pengajuan, persetujuan, surat tugas) dan Paket 2 (disposisi kehadiran `business_trip`, §9.2) sudah dibangun. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
 **Spesifikasi:** TRIP-001
 **Tanggal:** 2026-11-02
-**Terkait:** APR-001, ORG-002, ORG-004, DOC-001, NOTIF-004, ATT-014, LEAVE-001, REIMB-001, AUTH-011, ENG-LIST-001
+**Terkait:** APR-001, ORG-002, ORG-004, DOC-001, NOTIF-004, ATT-014, ATT-015, LEAVE-001, PAY-003, REIMB-001, AUTH-011, ENG-LIST-001
 **Roadmap:** `docs/product/roadmap.md` §G, `docs/product/hcis-capability-map.md` §5, `docs/design/employee-self-service-experience.md` (Layanan Pegawai)
 
 ## 1. Tujuan
@@ -18,6 +18,8 @@ Yang dituju Paket 1:
 - perjalanan bisa dibatalkan dengan alasan, dan diselesaikan dengan laporan singkat;
 - setiap langkah tercatat sebagai riwayat dan audit event;
 - perjalanan yang sudah disetujui **terlihat** di tab Pengecualian rekap kehadiran, tanpa mengubah hasil kehadiran.
+
+Yang ditambah Paket 2 (§9.2): hari kerja terjadwal yang tertutup perjalanan bersurat tugas (`ISSUED`/`COMPLETED`) tidak lagi tampil "Tidak hadir", melainkan **Dinas** (`business_trip`), dan payroll PAY-003 membacanya sebagai hari hadir.
 
 ## 2. Batas
 
@@ -36,7 +38,6 @@ Termasuk (Paket 1):
 | Di luar lingkup | Alasan |
 | --- | --- |
 | Uang muka, biaya, uang harian, akomodasi, tiket | TRIP-001 tidak menyimpan nominal apa pun dan tidak menghitung biaya. Biaya yang sudah dikeluarkan (tiket, akomodasi, konsumsi) diklaim lewat REIMB-001 dengan menautkan perjalanan `APPROVED`/`ISSUED`/`COMPLETED` (`docs/domain/reimbursement.md` D-06). Uang muka dan uang harian belum ada (REIMB-001 §2). |
-| Status kehadiran "dinas" pada hasil harian dan dampaknya ke payroll | Menyentuh engine ATT dan payroll. Kontraknya ditulis di §9.2 sebagai **Paket 2**. |
 | Pengajuan oleh atasan untuk bawahan, atau satu pengajuan untuk rombongan | Paket 1 satu pengajuan = satu pegawai yang berangkat (D-02). |
 | Perubahan tanggal setelah diajukan | Batalkan lalu ajukan ulang (D-09). |
 | Lampiran undangan/agenda | Belum ada object storage untuk berkas pegawai (sama dengan DOC-001 §2). |
@@ -61,6 +62,9 @@ Termasuk (Paket 1):
 | D-12 | `trips.read` dan `trips.manage` dibawa `human_capital_admin`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy. Atasan melihat pengajuan bawahan hanya lewat antrean approval-nya sendiri. | DRAFT |
 | D-13 | Surat tugas hanya memuat nama, NIP, jabatan, unit, tujuan, keperluan, tanggal, dan penandatangan. Tidak memuat nominal, rekening, NIK, atau alamat rumah (DOC-001 D-15). | ACCEPTED |
 | D-14 | Surat tugas **tidak** dapat dibatalkan lewat tombol Batalkan register DOC-001, karena status perjalanan harus ikut berubah. Satu-satunya jalan adalah pembatalan perjalanan (D-08). | ACCEPTED |
+| D-15 | Paket 2: hanya perjalanan `ISSUED`/`COMPLETED` yang menjadi disposisi kehadiran; `APPROVED` tanpa surat tugas tetap hanya terlihat di Pengecualian (D-11). Urutan: jadwal bermasalah/libur → cuti atau penyelesaian final → **perjalanan dinas** → tugas luar/WFH ATT-015 → punch. Perjalanan menang atas tugas luar/WFH pada hari yang sama (biasanya tidak terjadi karena D-05/ATT-015 D-08 saling menolak). Pada hari dinas dengan punch, menit telat dan pulang awal disimpan **0** (bukan sekadar `justified`), sehingga punch yang terlambat dibaca `present`; `absent`/`incomplete` diganti `business_trip` dengan jam punch yang tercatat tetap disimpan. | DRAFT |
+| D-16 | Label status `business_trip` di layar pegawai dan HC: **"Dinas"**. Simbol rekap: **`PD`**. Kolom rekap "Tugas luar/WFH" menjadi "Tugas luar/WFH/Dinas" (`TL/WFH/PD` pada matriks) dan menjumlah ketiganya. | DRAFT |
+| D-17 | Payroll PAY-003 memperlakukan hari `business_trip` **sama dengan `field_assignment`**: hari kerja yang dihitung satu kali untuk transport PKWT (`CONTRACT_ATTENDANCE_DAYS`), selama perjalanannya masih `ISSUED`/`COMPLETED`. Tidak ada komponen biaya perjalanan (uang harian, uang saku) di payroll; biaya mengikuti REIMB-001. | DRAFT |
 
 ## 4. Actor
 
@@ -179,13 +183,39 @@ Notifikasi ditulis dalam transaksi yang sama dengan transisinya dan idempoten pe
 
 `GET /admin/attendance/exceptions` (ATT-014 §20.2) menambah baris `kind = "trip"` untuk perjalanan `APPROVED`, `ISSUED`, `COMPLETED` yang beririsan dengan rentang, dengan `type = destination`, `reason = purpose`, `status` = status perjalanan. Baca-saja; tidak ada penulisan ke tabel kehadiran.
 
-### 9.2 Kontrak Paket 2 (belum dibangun)
+### 9.2 Paket 2: disposisi `business_trip` (dibangun 2026-11-17)
+
+Kontrak:
 
 - Hari kerja terjadwal yang tertutup perjalanan `ISSUED`/`COMPLETED` mendapat disposisi `business_trip` di engine harian, dengan prioritas di bawah cuti yang disetujui.
 - Disposisi itu menggantikan `absent`/`incomplete` saja. Hari dengan punch tetap memakai punch-nya; tidak ada punch yang dibuat dari jam jadwal (anti-copy guardrail roadmap).
 - Keterlambatan dan pulang awal pada hari dinas tidak dihitung.
 - Payroll membaca hari `business_trip` sebagai hadir, tanpa komponen biaya.
-- Perlu revisi ATT-014 dan pemeriksaan payroll PAY-003 sebelum dibangun.
+
+Implementasi (`materializeAttendanceResult`, ATT-007; aturan urutan D-15):
+
+```text
+jadwal bermasalah        -> configuration_error   (tidak berubah)
+libur / tanpa jadwal     -> off                   (tidak berubah)
+cuti / penyelesaian final -> leave | absent       (tidak berubah)
+perjalanan ISSUED/COMPLETED:
+   tanpa punch            -> business_trip, menit kerja 0, justified
+   dengan punch           -> penilaian punch biasa, lalu:
+                               absent | incomplete -> business_trip (jam punch tetap disimpan)
+                               late               -> present
+                               menit telat dan pulang awal = 0; telat/pulang awal/di luar lokasi justified
+tugas luar / WFH ATT-015 -> seperti sebelumnya
+selain itu               -> penilaian punch biasa
+```
+
+- Hari yang menjadi `business_trip` karena punch tidak lengkap tetap menyimpan sesinya, tetapi tidak ditandai `incomplete_session`: harinya sudah diputus perjalanan.
+- Hari multi-blok (ATT-013) mengikuti aturan yang sama: tanpa punch sama sekali → `business_trip`; dengan punch → penilaian per blok, lalu rollup hari diperlakukan seperti di atas. Bila hari menjadi `business_trip`, baris blok tidak disimpan (sama dengan hari tanpa punch), supaya tidak ada blok "Tidak hadir" di bawah hari Dinas yang dihitung penuh; bila hari `present`, blok disimpan dengan blok terlambat dibaca hadir dan menit 0.
+- Versi hasil menyimpan `attendance_result_versions.source_business_trip_id`; id perjalanan (bukan statusnya) masuk ke `input_hash`, sehingga penerbitan dan pembatalan menghasilkan versi baru, sedangkan penyelesaian (`ISSUED` → `COMPLETED`) tidak.
+- **Hitung ulang** (sama dengan ATT-015 §7.3): menerbitkan surat tugas dan pembatalan perjalanan `ISSUED` menghitung ulang tanggal perjalanan yang sudah dimulai (sampai hari ini), setelah COMMIT, berurutan; gagal satu tanggal tidak menggagalkan transisi dan Kalkulasi memperbaikinya. Jawaban membawa `recalculatedDates`. Tanggal mendatang dihitung saat harinya tiba. Tanggal yang gagal dihitung ulang tetap terlihat: penanda "Berubah sejak dikalkulasi" (ATT-014 §6.5) menyala untuk hari yang tertutup perjalanan yang terbit, selesai, atau dibatalkan setelah surat tugas terbit sesudah hasilnya dihitung.
+- Daftar status perjalanan yang memutus kehadiran (`ISSUED`, `COMPLETED`) ada di satu konstanta `TRIP_ATTENDANCE_STATUSES` (`apps/api/src/modules/trips/domain.ts`) yang dipakai engine, tampilan harian/Pantauan, penanda perubahan, dan resolver PAY-003.
+- Status, label, dan rekap (D-16): `business_trip` | **Dinas** | simbol `PD` | Normal 1 | Riil 1. Laporan periode dan per unit menghitungnya sebagai hari hadir. Tampilan harian yang membaca hari belum dihitung dan Pantauan Hari Ini memakai disposisi yang sama (penanda "Dinas" di kolom Keterangan; kartu Pantauan tetap fakta scan). Antrean tindakan hanya memuat `incomplete` dan `configuration_error`, jadi hari dinas tidak muncul di sana.
+- Payroll PAY-003 (D-17): resolver kehadiran (`resolveAttendanceDays`) menghitung hari `business_trip` seperti `field_assignment` — satu hari hadir untuk transport PKWT pada hari kerja (atau hari libur yang dijadwalkan kerja), hanya selama perjalanannya masih `ISSUED`/`COMPLETED`. Tidak ada input biaya, uang harian, atau komponen lain yang lahir dari perjalanan. Jalur slip resmi PAY-001/PAY-002 tidak berubah.
+- Tab Pengecualian (§9.1) tidak berubah.
 
 ## 10. Penyimpanan
 
@@ -194,6 +224,7 @@ business_trip_requests        pengajuan, snapshot resolusi, laporan penyelesaian
 business_trip_approval_steps  snapshot rantai APR-001
 business_trip_events          riwayat dan audit
 hr_issued_documents           surat tugas (document_kind = 'ASSIGNMENT', number_code 'ST')
+attendance_result_versions.source_business_trip_id   Paket 2: perjalanan yang memutus hari itu
 ```
 
 Aturan:
@@ -201,9 +232,10 @@ Aturan:
 - `business_trip_requests` unik pada `(employee_id, idempotency_key)`; `CHECK (end_on >= start_on)` dan `CHECK (end_on - start_on <= 29)`;
 - `business_trip_approval_steps` unik pada `(request_id, step_order)`, satu `pending` per pengajuan (indeks unik parsial);
 - `hr_issued_documents.document_kind` menerima `ASSIGNMENT`;
+- Paket 2 (migrasi `0152`): status hasil kehadiran menerima `business_trip`; kolom `source_business_trip_id` (FK ke `business_trip_requests`, indeks parsial);
 - tidak ada endpoint hapus.
 
-Rollback migrasi ditulis sebagai komentar `-- Down:` di berkas migrasi.
+Rollback migrasi ditulis sebagai komentar `-- Down:` di berkas migrasi. Untuk `0152`, mengembalikan CHECK status hasil hanya aman bila belum ada versi hasil berstatus `business_trip`; bila sudah ada, rollback kode cukup (build lama tidak menulis status baru dan membaca status asing sebagai "·").
 
 ## 11. API
 
@@ -238,6 +270,11 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 - TRIP-001-K: setiap transisi menulis event riwayat dengan aktor.
 - TRIP-001-L: perjalanan yang disetujui tampil di tab Pengecualian; tidak ada baris yang ditulis ke tabel kehadiran.
 - TRIP-001-M: tidak ada kolom atau field nominal di skema maupun kontrak.
+- TRIP-001-N (Paket 2): hari kerja terjadwal tanpa punch yang tertutup perjalanan `ISSUED`/`COMPLETED` dihitung `business_trip`; perjalanan `APPROVED` tidak mengubah hasil; tidak ada baris baru di `attendance_events`.
+- TRIP-001-O (Paket 2): pada hari dinas dengan punch, punch tetap dipakai; `absent`/`incomplete` menjadi `business_trip`, menit telat dan pulang awal 0.
+- TRIP-001-P (Paket 2): cuti atau penyelesaian final pada hari dinas menang; hari libur dan jadwal bermasalah tidak berubah.
+- TRIP-001-Q (Paket 2): menerbitkan surat tugas dan pembatalan HC menghitung ulang tanggal yang sudah dimulai; setelah pembatalan hari kembali dinilai dari punch saja.
+- TRIP-001-R (Paket 2): resolver kehadiran PAY-003 menghitung hari `business_trip` sebagai satu hari hadir PKWT, tidak untuk perjalanan yang sudah dibatalkan, dan tidak menghasilkan input biaya.
 
 ## 14. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk
 
@@ -251,4 +288,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 | D-07 | Siapa penanda tangan surat tugas? | Kepala HCM, cadangan Direktur |
 | D-08 | Siapa boleh membatalkan setelah surat terbit? | HC saja |
 | D-10 | Perlu laporan setelah kembali? | Ya, singkat, tanpa verifikasi HC |
-| D-11 | Dampak ke kehadiran? | Terlihat di Pengecualian; status "dinas" otomatis di Paket 2 |
+| D-11 | Dampak ke kehadiran? | Terlihat di Pengecualian; status "Dinas" otomatis sejak Paket 2 (§9.2) |
+| D-15 | Perjalanan atau tugas luar yang menang bila keduanya ada? Telat pada hari dinas dihapus atau hanya dijelaskan? | Perjalanan menang; menit telat/pulang awal 0 dan status `present` |
+| D-16 | Label dan simbol rekap hari dinas? | "Dinas", simbol `PD` |
+| D-17 | Hari dinas PKWT mendapat transport? | Ya, sama dengan tugas luar (ATT-015 D-07); tanpa uang harian |

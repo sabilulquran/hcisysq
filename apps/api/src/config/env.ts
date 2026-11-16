@@ -139,8 +139,25 @@ const envSchema = z
     ),
     // §9.3: the reminder and WhatsApp runner inside the API process; "0" stops it (e.g. a second instance).
     MEETING_RUNNER_ENABLED: z.preprocess((value) => value === "" ? undefined : value, z.enum(["0", "1"]).default("1")),
+    // TRAIN-001 R4 (docs/domain/training-online-modules.md M-04..M-06): online modules stay off until
+    // the owner provides media capacity. The media directory is explicit and lives outside the
+    // release directory; the adapter is chosen here (ADR-0002), "local" being the only one so far.
+    TRAINING_ONLINE_ENABLED: z.preprocess((value) => value === "" ? undefined : value, z.enum(["0", "1"]).default("0")),
+    TRAINING_MEDIA_STORAGE: z.preprocess((value) => value === "" ? undefined : value, z.enum(["local"]).default("local")),
+    TRAINING_MEDIA_DIR: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    TRAINING_VIDEO_MAX_BYTES: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.coerce.number().int().min(1_048_576).max(4_294_967_296).default(314_572_800),
+    ),
+    TRAINING_MEDIA_QUOTA_BYTES: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.coerce.number().int().min(1_048_576).max(1_099_511_627_776).default(5_368_709_120),
+    ),
   })
   .superRefine((value, ctx) => {
+    if (value.TRAINING_ONLINE_ENABLED === "1" && !value.TRAINING_MEDIA_DIR) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["TRAINING_MEDIA_DIR"], message: "TRAINING_MEDIA_DIR is required when TRAINING_ONLINE_ENABLED=1" });
+    }
     if (value.WHATSAPP_ADAPTER === "kirim") {
       // The explicit client is a pair: a secret without its id is refused, never silently ignored.
       if (value.KIRIM_CLIENT_SECRET && !value.KIRIM_CLIENT_ID) {

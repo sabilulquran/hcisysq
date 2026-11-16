@@ -19,7 +19,7 @@ Penilaian kinerja di HCIS lama dilakukan atasan setiap bulan dan disahkan Kepala
 - **riwayat** per pegawai lintas siklus dan **rekap HC** per siklus;
 - setiap langkah tercatat sebagai riwayat dan audit event.
 
-Paket 1 **hanya menyimpan hasil**. Nilai kinerja tidak mengubah gaji siapa pun sampai paket sambungan PAY-003 dibangun (§11).
+Paket 1 **hanya menyimpan hasil**. Sambungan ke PAY-003 sudah dibangun (§11) di balik sakelar yang default-nya mati; selama mati, nilai kinerja tidak mengubah gaji siapa pun.
 
 ## 2. Kajian HCIS lama
 
@@ -73,7 +73,7 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | D-09 | Pegawai melihat nilai penilai dan predikat **setelah disahkan**, lalu dapat menandai sudah dibaca dengan tanggapan opsional (≤ 1000 karakter). Tanggapan tidak mengubah nilai. Tidak ada banding di Paket 1. | DRAFT |
 | D-10 | Siklus ditutup HC pada atau sesudah akhir periode. Penutupan ditolak selama masih ada penilaian menunggu pengesahan. Penilaian yang belum dinilai menjadi `UNRATED` (tanpa predikat). Siklus tertutup tidak dapat dibuka kembali. | DRAFT |
 | D-11 | Penilaian `FINALIZED` tidak dapat diubah atau dihapus. Kesalahan setelah final dicatat lewat siklus berikutnya; koreksi resmi menunggu keputusan owner. | DRAFT |
-| D-12 | Paket 1 tidak menyimpan persentase atau nominal dan tidak dibaca payroll. | ACCEPTED |
+| D-12 | PERF-001 tidak menyimpan persentase atau nominal. Payroll membaca predikat penilaian `FINALIZED` hanya bila sakelar §11 menyala; pemetaan ke persen milik kebijakan payroll. | ACCEPTED (diperbarui 2026-11-17) |
 | D-13 | `performance.read` dan `performance.manage` dibawa `human_capital_admin`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy. Penilai melihat penilaian yang ditugaskan kepadanya saja; pegawai melihat miliknya saja. | DRAFT |
 | D-14 | Peserta dapat ditambahkan selama `DRAFT` dan `OPEN` (satu per satu atau semua pegawai aktif sekaligus). Pegawai yang berhenti atau dipindahkan dari siklus dikeluarkan HC dengan alasan (`REMOVED`); menambahkannya kembali menghidupkan penilaian yang sama. | DRAFT |
 | D-16 | Saat disahkan, sistem menyimpan **trend** dibanding penilaian final sebelumnya dengan jenis siklus yang sama: `FIRST` (belum ada pembanding), `IMPROVING`, `STABLE`, `DECLINING`. Dibandingkan pada nilai akhir, bukan kode predikat, karena rubrik dua siklus bisa berbeda. Legacy menyimpan trend atas keputusan PO 2026-05-31. | DRAFT |
@@ -202,18 +202,19 @@ Pegawai melihat riwayat penilaiannya sendiri tanpa catatan apa pun dan tanpa eve
 
 Ditulis dalam transaksi yang sama dengan transisinya. Setiap kejadian memakai `eventKey` sendiri, sehingga pemberitahuan ulang (peserta dimasukkan kembali, penilai ditunjuk ulang, dikembalikan lagi) tidak tertelan oleh kejadian sebelumnya. Isi notifikasi tidak memuat nilai atau predikat.
 
-## 11. Kontrak sambungan payroll (Paket berikutnya, belum dibangun)
+## 11. Kontrak sambungan payroll (dibangun 2026-11-17, sakelar default MATI)
 
-PAY-003 menghitung `PERF = %tahunan × dasar × 60% + %bulanan × dasar × 40%` (`payroll-calculation-v1.md` §5.1) dan saat ini mengambil kedua persentase dari profil kompensasi atau override HC. Sambungannya kelak:
+PAY-003 menghitung `PERF = %tahunan × dasar × 60% + %bulanan × dasar × 40%` (`payroll-calculation-v1.md` §5.1). Tanpa sambungan, kedua persentase datang dari profil kompensasi atau override HC. Sambungan di bawah **sudah dibangun** (`payroll-calculation-v1.md` §5.5) di balik kebijakan payroll berversi `PERFORMANCE_PERCENT`, yang juga sakelarnya: tanpa versi (keadaan bawaan) atau `enabled: false`, payroll tidak membaca satu pun penilaian dan hasilnya tidak berubah. Butir kontraknya:
 
 1. **Sumber.** Payroll hanya membaca penilaian `FINALIZED`. `UNRATED`, `REMOVED`, dan penilaian siklus yang belum ditutup tidak pernah dibaca.
 2. **Pemetaan.** Predikat → persentase disimpan sebagai kebijakan payroll berversi baru (`PERFORMANCE_PERCENT`), bukan di PERF-001. Default yang akan diusulkan: A 100%, B 90%, C 75%, D 50% (`DRAFT`, butuh keputusan owner).
 3. **Periode.** `%bulanan` periode payroll bulan *M* membaca siklus `MONTHLY` bulan *M−1* (penilaian bulan lalu, sama dengan default formulir legacy). `%tahunan` membaca siklus `ANNUAL` tahun ajaran terakhir yang sudah `CLOSED` pada tanggal gajian.
 4. **Tanpa hasil.** Bila tidak ada penilaian final, payroll memakai nilai profil kompensasi seperti hari ini (termasuk default masa kerja < 1 tahun, PAY-003 §10 butir 3). Tidak ada nilai yang ditebak.
 5. **Jejak.** Snapshot input payroll menyimpan `reviewId`, siklus, dan predikat yang dipakai, sehingga hasil dapat diaudit ulang.
-6. **Prasyarat.** Parallel run PAY-003 lulus, kebijakan pemetaan disetujui owner, dan revisi `payroll-calculation-v1.md`.
+6. **Prasyarat menyalakan.** Parallel run PAY-003 lulus dan owner menjadikannya jalur slip resmi, serta pemetaan disetujui owner. Revisi `payroll-calculation-v1.md` sudah dibuat (§5.5). Sampai itu, sakelar tetap mati.
+7. **Predikat tanpa pemetaan** (kode predikat siklus yang tidak ada di kebijakan) memblokir hasil pegawai itu (`PERFORMANCE_PREDICATE_UNMAPPED`), bukan ditebak.
 
-PERF-001 tidak mengubah tabel, kebijakan, atau hasil payroll mana pun.
+Status per butir: 1–5 dan 7 diimplementasikan dan diuji (`test/payroll-performance-link.test.ts`, `test/payroll-calculation.integration.test.ts`); butir 6 adalah keputusan owner. PERF-001 sendiri tetap tidak mengubah tabel payroll; arah bacanya hanya payroll → penilaian, dan payroll tidak pernah menulis tabel `performance_*`.
 
 ## 12. Penyimpanan
 
@@ -275,4 +276,4 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 | D-05 | Indikator dan bobot? | Hasil kerja 30, Disiplin 20, Akhlak 20, Kerja sama 15, Inisiatif 15 |
 | D-07 | Siapa mengesahkan, dan bagaimana kalibrasi? | HC; kalibrasi = mengembalikan ke penilai |
 | D-09 | Ada banding? | Tidak; pegawai memberi tanggapan |
-| §11 | Predikat → persentase tunjangan kinerja? | Diusulkan A 100%, B 90%, C 75%, D 50%; belum dipakai payroll |
+| §11 | Predikat → persentase tunjangan kinerja? | Diusulkan A 100%, B 90%, C 75%, D 50%; sambungan dibangun, kebijakan `PERFORMANCE_PERCENT` belum dimuat (sakelar mati) |

@@ -92,7 +92,10 @@ export type PayrollBlockerCode =
   | "NEGATIVE_NET"
   | "NEGATIVE_PAYABLE"
   | "LOAN_EXCEEDS_BALANCE"
-  | "BANK_ACCOUNT_MISSING";
+  | "BANK_ACCOUNT_MISSING"
+  // Raised by the PERF-001 link (performance-link.ts): a finalized review
+  // carries a predicate the PERFORMANCE_PERCENT policy does not map.
+  | "PERFORMANCE_PREDICATE_UNMAPPED";
 
 export type PayrollBlocker = { code: PayrollBlockerCode; message: string };
 
@@ -225,6 +228,14 @@ export type PeriodInputs = {
   teachingHoursPerWeekOverride: number | null;
   annualPerformanceRateOverride: number | null;
   monthlyPerformanceRateOverride: number | null;
+  /**
+   * Rates from a finalized PERF-001 review (section 5.5). Present only while
+   * the PERFORMANCE_PERCENT policy is switched on; absent or null means no
+   * finalized review applies and the profile is used as before. An HC
+   * override for the period still wins over both.
+   */
+  annualPerformanceRateFromReview?: number | null;
+  monthlyPerformanceRateFromReview?: number | null;
 };
 
 export type EmployeePayrollInput = {
@@ -396,8 +407,10 @@ function performanceAllowance(
   policy: PayrollPolicy,
   months: number,
 ): Rupiah {
-  let annualRate = inputs.annualPerformanceRateOverride ?? profile.annualPerformanceRate;
-  let monthlyRate = inputs.monthlyPerformanceRateOverride ?? profile.monthlyPerformanceRate;
+  let annualRate =
+    inputs.annualPerformanceRateOverride ?? inputs.annualPerformanceRateFromReview ?? profile.annualPerformanceRate;
+  let monthlyRate =
+    inputs.monthlyPerformanceRateOverride ?? inputs.monthlyPerformanceRateFromReview ?? profile.monthlyPerformanceRate;
   if (annualRate === null && monthlyRate === null) {
     // Below a year of service there is no annual appraisal cycle yet, so the
     // policy default applies rather than a silent zero (section 10 item 3).

@@ -854,7 +854,7 @@ export async function registerAttendanceWorkforceRoutes(
       const query = scheduleRangeSchema.safeParse(request.query);
       const realDate = (value: string) => {
         const parsed = new Date(`${value}T00:00:00Z`);
-        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+        return value >= "1900-01-01" && !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
       };
       if (!query.success || !realDate(query.data.from) || !realDate(query.data.to)) {
         throw new WorkforceAttendanceError(400, "INVALID_DATE_RANGE", "Rentang tanggal tidak valid.");

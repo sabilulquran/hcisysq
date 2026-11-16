@@ -50,7 +50,7 @@ export function transactionKindLabel(kind: string | null): string {
   return kind === "check_in" ? "Masuk" : kind === "check_out" ? "Keluar" : "Scan";
 }
 
-export const REQUEST_STATUSES =["submitted", "approved", "rejected", "cancelled"] as const;
+export const REQUEST_STATUSES = ["submitted", "approved", "rejected", "cancelled"] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 const requestStatusLabels: Record<RequestStatus, string> = {
   submitted: "Menunggu",

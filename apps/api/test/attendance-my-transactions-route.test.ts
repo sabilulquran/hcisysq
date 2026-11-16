@@ -11,6 +11,7 @@ import type { ApiConfig } from "../src/config/env.js";
 
 const EMPLOYEE_ID = "00000000-0000-4000-8000-000000031001";
 const OTHER_EMPLOYEE_ID = "00000000-0000-4000-8000-000000031009";
+const TRANSACTIONS_SQL = "JOIN attendance_adms_events event";
 let principalType = "EMPLOYEE";
 
 vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
@@ -48,11 +49,12 @@ describe("GET /attendance/me/transactions", () => {
     if (sql.includes("JOIN employees employee ON employee.id = account.employee_id")) {
       return { rows: [{ id: EMPLOYEE_ID, fullName: "Pegawai Sintetis", employeeNumber: "SYN-1" }] };
     }
-    if (sql.includes("FROM attendance_adms_events event")) {
+    if (sql.includes(TRANSACTIONS_SQL)) {
+      // The query returns newest first; the read model turns it ascending.
       return { rows: [
-        { occurredAt: new Date("2026-11-12T00:02:00.000Z"), workDate: "2026-11-12", source: "adms", kind: null, deviceName: "Mesin Lobi", reviewState: null, calculatedAt: new Date("2026-11-12T05:00:00.000Z"), afterCalculation: false },
-        { occurredAt: new Date("2026-11-12T09:15:00.000Z"), workDate: "2026-11-12", source: "adms", kind: null, deviceName: "Mesin Lobi", reviewState: null, calculatedAt: new Date("2026-11-12T05:00:00.000Z"), afterCalculation: true },
         { occurredAt: new Date("2026-11-13T00:30:00.000Z"), workDate: "2026-11-13", source: "mobile", kind: "check_in", deviceName: null, reviewState: "needs_review", calculatedAt: null, afterCalculation: false },
+        { occurredAt: new Date("2026-11-12T09:15:00.000Z"), workDate: "2026-11-12", source: "adms", kind: null, deviceName: "Mesin Lobi", reviewState: null, calculatedAt: new Date("2026-11-12T05:00:00.000Z"), afterCalculation: true },
+        { occurredAt: new Date("2026-11-12T00:02:00.000Z"), workDate: "2026-11-12", source: "adms", kind: null, deviceName: "Mesin Lobi", reviewState: null, calculatedAt: new Date("2026-11-12T05:00:00.000Z"), afterCalculation: false },
       ] };
     }
     return { rows: [] };
@@ -101,23 +103,23 @@ describe("GET /attendance/me/transactions", () => {
 
   it("always reads the signed-in employee, whatever the query says", async () => {
     await get(`from=2026-11-11&to=2026-11-13&employeeId=${OTHER_EMPLOYEE_ID}`);
-    const read = query.mock.calls.find(([sql]) => sql.includes("FROM attendance_adms_events event"));
+    const read = query.mock.calls.find(([sql]) => sql.includes(TRANSACTIONS_SQL));
     expect(read?.[1]?.[0]).toBe(EMPLOYEE_ID);
     expect(JSON.stringify(query.mock.calls)).not.toContain(OTHER_EMPLOYEE_ID);
   });
 
   it("reads once per range and never writes", async () => {
     await get("from=2026-10-14&to=2026-11-13");
-    expect(query.mock.calls.filter(([sql]) => sql.includes("FROM attendance_adms_events event"))).toHaveLength(1);
+    expect(query.mock.calls.filter(([sql]) => sql.includes(TRANSACTIONS_SQL))).toHaveLength(1);
     expect(query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\s/i.test(sql))).toEqual([]);
   });
 
   it("rejects a range over 31 days, a reversed range and an impossible date before reading", async () => {
-    for (const search of ["from=2026-10-13&to=2026-11-13", "from=2026-11-13&to=2026-11-12", "from=2026-02-30&to=2026-03-01", "from=2026-11-01"]) {
+    for (const search of ["from=2026-10-13&to=2026-11-13", "from=2026-11-13&to=2026-11-12", "from=2026-02-30&to=2026-03-01", "from=0000-01-01&to=0000-01-02", "from=2026-11-01"]) {
       const response = await get(search);
       expect(response.statusCode, search).toBe(400);
     }
-    expect(query.mock.calls.filter(([sql]) => sql.includes("FROM attendance_adms_events event"))).toEqual([]);
+    expect(query.mock.calls.filter(([sql]) => sql.includes(TRANSACTIONS_SQL))).toEqual([]);
   });
 
   it("needs an employee session", async () => {

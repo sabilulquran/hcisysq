@@ -69,18 +69,19 @@ export async function myAttendanceTransactions(
        SELECT event.occurred_at, event.created_at AS recorded_at, 'adms'::text AS source,
               NULL::text AS kind, nullif(btrim(device.display_name), '') AS device_name,
               NULL::text AS review_state
-       FROM attendance_adms_events event
-       JOIN attendance_adms_devices device ON device.id = event.device_id
+       -- Start from the employee's own mappings so the planner walks (device_id, occurred_at) per
+       -- mapped device instead of every scan in the window. Mappings of one device+PIN never
+       -- overlap (migration 0023), so one scan joins at most one mapping.
+       FROM attendance_adms_employee_mappings mapping
        CROSS JOIN bounds
-       WHERE event.occurred_at >= bounds.start_at AND event.occurred_at < bounds.end_at
-         AND EXISTS (
-           SELECT 1 FROM attendance_adms_employee_mappings mapping
-           WHERE mapping.employee_id = $1
-             AND mapping.device_id = event.device_id
-             AND mapping.pin = event.pin
-             AND event.occurred_at >= mapping.effective_from
-             AND (mapping.effective_to IS NULL OR event.occurred_at < mapping.effective_to)
-         )
+       JOIN attendance_adms_events event
+         ON event.device_id = mapping.device_id
+        AND event.pin = mapping.pin
+        AND event.occurred_at >= mapping.effective_from
+        AND (mapping.effective_to IS NULL OR event.occurred_at < mapping.effective_to)
+        AND event.occurred_at >= bounds.start_at AND event.occurred_at < bounds.end_at
+       JOIN attendance_adms_devices device ON device.id = event.device_id
+       WHERE mapping.employee_id = $1
        UNION ALL
        SELECT event.occurred_at, event.created_at, event.source,
               CASE WHEN event.event_kind IN ('check_in', 'check_out') THEN event.event_kind END,
@@ -104,12 +105,13 @@ export async function myAttendanceTransactions(
        (latest.created_at IS NOT NULL AND scans.recorded_at > latest.created_at) AS "afterCalculation"
      FROM scans
      LEFT JOIN latest ON latest.work_date = (scans.occurred_at AT TIME ZONE 'Asia/Jakarta')::date
-     ORDER BY scans.occurred_at, scans.source
+     ORDER BY scans.occurred_at DESC, scans.source DESC
      LIMIT $4`,
     [employeeId, from, to, MY_TRANSACTIONS_ROW_CEILING + 1],
   );
+  // Newest first before the ceiling, so a cut drops the oldest dates, never today's; then ascending.
   const truncated = result.rows.length > MY_TRANSACTIONS_ROW_CEILING;
-  const rows = truncated ? result.rows.slice(0, MY_TRANSACTIONS_ROW_CEILING) : result.rows;
+  const rows = (truncated ? result.rows.slice(0, MY_TRANSACTIONS_ROW_CEILING) : result.rows).reverse();
   const items: MyTransaction[] = rows.map((row) => ({
     occurredAt: new Date(row.occurredAt).toISOString(),
     workDate: row.workDate,

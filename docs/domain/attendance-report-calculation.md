@@ -304,7 +304,9 @@ tab terlihat dan saat tab kembali terlihat, plus tombol **Segarkan scan**. Gagal
 tidak mengosongkan halaman: baris memakai sumber lama dan pesan galat tampil di atas tabel.
 
 **Pengecualian ENG-LIST-001:** daftar dibatasi rentang (maks 31 hari) dan plafon 2000 baris; bila
-lebih, respons membawa `truncated: true` dan layar menampilkannya, bukan memotong diam-diam.
+lebih, respons membawa `truncated: true` dan layar menampilkannya, bukan memotong diam-diam. Yang
+terpotong adalah scan **terlama** (tanggal hari ini selalu utuh); tanggal yang terpotong memakai
+sumber lama (hasil kalkulasi) alih-alih tampil "tanpa scan".
 
 **Asumsi `DRAFT`** (default diambil agen 2026-11-17, belum ditinjau owner):
 

@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarDays, CalendarRange, CheckCircle2, ClipboardCheck, Clock3, Loader2, LogIn, LogOut, Plus, RefreshCw, TimerReset } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ClarificationForm } from "@/components/attendance/ClarificationForm";
 import { MyTransactionList } from "@/components/attendance/MyTransactionList";
@@ -180,22 +180,35 @@ export function EmployeeAttendancePage() {
   };
   const load = async () => { apply(await fetchAll()); };
   const historyFrom=shiftDate(today,-29);
+  // Only the latest request may write state: the timer, the tab coming back and Segarkan can overlap.
+  const transactionsRequest=useRef(0);
   const loadTransactions=useCallback(async()=>{
+    const ticket=++transactionsRequest.current;
     setRefreshingTransactions(true);
-    try{ setTransactions(await getMyAttendanceTransactions(historyFrom,today)); setTransactionsError(null); }
-    catch(cause){ setTransactionsError(cause instanceof Error?cause.message:"Transaksi tidak dapat dimuat."); }
-    finally{ setRefreshingTransactions(false); }
+    try{
+      const next=await getMyAttendanceTransactions(historyFrom,today);
+      if(ticket===transactionsRequest.current){ setTransactions(next); setTransactionsError(null); }
+    }
+    catch(cause){ if(ticket===transactionsRequest.current) setTransactionsError(cause instanceof Error?cause.message:"Transaksi tidak dapat dimuat."); }
+    finally{ if(ticket===transactionsRequest.current) setRefreshingTransactions(false); }
   },[historyFrom,today]);
   useEffect(()=>{
     void loadTransactions();
     const onVisible=()=>{ if(document.visibilityState==="visible") void loadTransactions(); };
     const timer=window.setInterval(onVisible,60_000);
     document.addEventListener("visibilitychange",onVisible);
-    return ()=>{ window.clearInterval(timer); document.removeEventListener("visibilitychange",onVisible); };
+    return ()=>{ transactionsRequest.current+=1; window.clearInterval(timer); document.removeEventListener("visibilitychange",onVisible); };
   },[loadTransactions]);
   const dayByDate=useMemo(()=>new Map((transactions?.days??[]).map(day=>[day.workDate,day])),[transactions]);
-  /** undefined while the transactions are not loaded: the row then falls back to the stored sources. */
-  const dayFor=(workDate:string):MyTransactionDay|null|undefined=>transactions?dayByDate.get(workDate)??null:undefined;
+  /**
+   * undefined while the transactions are not loaded, or for a date dropped by the row ceiling
+   * (`truncated`): the row then falls back to the stored sources instead of claiming "no scan".
+   */
+  const dayFor=(workDate:string):MyTransactionDay|null|undefined=>{
+    if(!transactions) return undefined;
+    const day=dayByDate.get(workDate);
+    return day ?? (transactions.truncated ? undefined : null);
+  };
   useEffect(()=>{
     void fetchAll().then(apply)
       .catch(cause=>setError(cause instanceof Error?cause.message:"Kehadiran tidak dapat dimuat.")).finally(()=>setLoading(false));

@@ -65,6 +65,13 @@ const CATEGORY_BY_TERM: Readonly<Record<string, EmploymentCategory>> = {
 
 const PAYROLL_TERM_CATEGORIES = Object.keys(CATEGORY_BY_TERM);
 
+/** The terms paid under section 5.1, which is where PERF lives. */
+const PERFORMANCE_TERM_CATEGORIES = new Set(
+  Object.entries(CATEGORY_BY_TERM)
+    .filter(([, category]) => category !== "HONORARIUM")
+    .map(([term]) => term),
+);
+
 type EmploymentRow = {
   employmentId: string;
   employeeId: string;
@@ -447,7 +454,11 @@ export async function calculatePeriod(
       };
       let performanceTrace: PerformanceLinkTrace | null = null;
       const linkBlockers: PayrollBlocker[] = [];
-      if (performancePolicy && linkedReviews) {
+      // Only the pay bases that earn PERF read a review. Honorarium staff
+      // (KONTRAK_HONORER, LEPAS) have no performance allowance (section 5.2),
+      // so a review of theirs must neither change nor block anything.
+      const earnsPerformance = employment.termCategory !== null && PERFORMANCE_TERM_CATEGORIES.has(employment.termCategory);
+      if (performancePolicy && linkedReviews && earnsPerformance) {
         const linked = resolvePerformanceLink({
           policy: performancePolicy,
           monthly: linkedReviews.monthly.get(employment.employeeId) ?? null,

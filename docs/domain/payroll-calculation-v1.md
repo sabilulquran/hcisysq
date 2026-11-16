@@ -282,7 +282,7 @@ Kontrak: `docs/domain/performance-review.md` §11. Implementasi: `apps/api/src/m
 
 Siklus dihitung "sudah ditutup" bila berstatus `CLOSED` dan tanggal tutupnya (Asia/Jakarta) tidak setelah tanggal gajian, sehingga menghitung ulang periode lama setelah siklus berikutnya ditutup tidak membaca ke depan. `UNRATED`, `REMOVED`, penilaian yang belum final, dan siklus yang belum ditutup tidak pernah dibaca. Penilaian dimiliki pegawai (`employee_id`), sehingga dua employment orang yang sama memakai penilaian yang sama.
 
-**Urutan.** `override HC periode itu` > `penilaian final` > `profil kompensasi` (> default masa kerja < 1 tahun §10 butir 3 bila keduanya kosong). Pegawai tanpa penilaian final memakai profil seperti hari ini; tidak ada nilai yang ditebak. Bila hanya `%bulanan` yang berasal dari penilaian dan `%tahunan` profil kosong, `%tahunan` = 0 — sama dengan aturan masa kerja < 1 tahun.
+**Urutan.** `override HC periode itu` > `penilaian final` > `profil kompensasi` (> default masa kerja < 1 tahun §10 butir 3 bila keduanya kosong). Pegawai tanpa penilaian final memakai profil seperti hari ini; tidak ada nilai yang ditebak. Bila hanya `%bulanan` yang berasal dari penilaian dan `%tahunan` profil kosong, `%tahunan` = 0 (bukan `PERFORMANCE.unratedBelowOneYear.annualRate`), sama seperti profil yang hanya mengisi satu persen hari ini; default masa kerja < 1 tahun hanya dipakai bila kedua persen kosong. Pegawai honorer (`KONTRAK_HONORER`, `LEPAS`) tidak mendapat `PERF` (§5.2), sehingga penilaiannya tidak dibaca dan tidak memblokir.
 
 **Predikat tanpa pemetaan.** Siklus boleh memakai kode predikat sendiri (PERF-001 D-06). Kode yang tidak ada di `byPredicate` menjadi blocker per pegawai `PERFORMANCE_PREDICATE_UNMAPPED`; HC menambah kodenya lewat versi kebijakan baru lalu menghitung ulang.
 
@@ -298,7 +298,7 @@ Siklus dihitung "sudah ditutup" bila berstatus `CLOSED` dan tanggal tutupnya (As
 | K4 | Siklus ditutup setelah perhitungan | Tidak membuat periode basi otomatis; HC menghitung ulang setelah menutup siklus. Penilaian yang dipakai terlihat di `performance_link`. |
 | K5 | Kapan dinyalakan | Setelah owner menjadikan PAY-003 jalur slip resmi dan menyetujui K1 (PERF-001 §11 butir 6). Menyalakannya adalah perubahan kebijakan production yang dilaporkan. |
 
-Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `enabled: false`) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0151.
+Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `{ "enabled": false }`; `byPredicate` boleh dihilangkan selama mati) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0151.
 
 ## 6. Lifecycle periode
 

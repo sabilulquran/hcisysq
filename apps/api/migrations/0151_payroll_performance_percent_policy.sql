@@ -23,8 +23,10 @@
 -- payroll screen behind a long transaction.
 SET LOCAL lock_timeout = '5s';
 
+-- No IF EXISTS: 0069 always created this constraint under its default name,
+-- and a silent no-op would leave the old CHECK refusing the new key.
 ALTER TABLE payroll_policy_versions
-  DROP CONSTRAINT IF EXISTS payroll_policy_versions_policy_key_check;
+  DROP CONSTRAINT payroll_policy_versions_policy_key_check;
 
 ALTER TABLE payroll_policy_versions
   ADD CONSTRAINT payroll_policy_versions_policy_key_check

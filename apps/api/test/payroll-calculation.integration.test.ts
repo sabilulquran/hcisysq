@@ -590,6 +590,43 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect(await perfOf(employmentId)).toBe(72_000);
     });
 
+    it("reads only the latest closed ANNUAL cycle, and closes on the Asia/Jakarta date", async () => {
+      const older = await newEmployment({ category: "TETAP" });
+      const boundary = await newEmployment({ category: "TETAP" });
+      // A review only in an older annual cycle is not reached for (K3).
+      const olderCycle = await cycle("ANNUAL", "2029-07-01", "CLOSED", "2030-07-02T03:00:00Z");
+      await review(olderCycle, older.employeeId, "FINALIZED", "A");
+      // Closed 24 March 17:30 UTC = 25 March 00:30 WIB: the pay date itself, so it counts.
+      const latest = await cycle("ANNUAL", ANNUAL_START, "CLOSED", "2031-03-24T17:30:00Z");
+      await review(latest, boundary.employeeId, "FINALIZED", "C");
+      await switchLink(true);
+      try {
+        await calculatePeriod(pool, linkPeriod(), actorAccountId, 0);
+        expect(await perfOf(older.employmentId)).toBe(0);
+        // 0.75 x 100000 x 60 %.
+        expect(await perfOf(boundary.employmentId)).toBe(45_000);
+
+        // 25 March 17:30 UTC = 26 March WIB: after the pay date, so the older cycle is the latest.
+        await pool.query("UPDATE performance_cycles SET closed_at = '2031-03-25T17:30:00Z' WHERE id = $1", [latest]);
+        await calculatePeriod(pool, linkPeriod(), actorAccountId, 0);
+        expect(await perfOf(older.employmentId)).toBe(60_000);
+        expect(await perfOf(boundary.employmentId)).toBe(0);
+      } finally {
+        await pool.query("DELETE FROM performance_reviews WHERE cycle_id = $1", [olderCycle]);
+        await pool.query("DELETE FROM performance_cycles WHERE id = $1", [olderCycle]);
+      }
+    });
+
+    it("leaves honorarium staff alone: no PERF and no blocker from their review", async () => {
+      const { employmentId, employeeId } = await newEmployment({ category: "KONTRAK_HONORER" });
+      await review(await cycle("MONTHLY", MONTHLY_START, "CLOSED", "2031-03-03T03:00:00Z"), employeeId, "FINALIZED", "Z");
+      await switchLink(true);
+      await calculatePeriod(pool, linkPeriod(), actorAccountId, 0);
+      const result = await latestResult(employmentId);
+      expect(result.blockers.map((blocker) => blocker.code)).not.toContain("PERFORMANCE_PREDICATE_UNMAPPED");
+      expect(Object.keys(result.snapshot)).not.toContain("performance_link");
+    });
+
     it("blocks a predicate the policy does not map", async () => {
       const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
       await review(await cycle("MONTHLY", MONTHLY_START, "CLOSED", "2031-03-03T03:00:00Z"), employeeId, "FINALIZED", "D");

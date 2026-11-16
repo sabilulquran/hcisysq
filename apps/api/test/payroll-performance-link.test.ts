@@ -146,6 +146,10 @@ describe("PERFORMANCE_PERCENT policy", () => {
     expect(validatePolicyPayload("PERFORMANCE_PERCENT", { enabled: true, byPredicate: { A: 0.12345 } }).ok).toBe(false);
     expect(validatePolicyPayload("PERFORMANCE_PERCENT", { enabled: true, byPredicate: { a: 1 } }).ok).toBe(false);
     expect(validatePolicyPayload("PERFORMANCE_PERCENT", { byPredicate: MAPPING }).ok).toBe(false);
+    // A minimal "off" version is enough to close the link again.
+    expect(validatePolicyPayload("PERFORMANCE_PERCENT", { enabled: false })).toEqual({ ok: true });
+    expect(validatePolicyPayload("PERFORMANCE_PERCENT", { enabled: true }).ok).toBe(false);
+    expect(validatePolicyPayload("PERFORMANCE_PERCENT", { enabled: true, byPredicate: JSON.parse('{"__proto__": 1}') }).ok).toBe(false);
   });
 });
 

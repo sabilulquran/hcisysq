@@ -102,20 +102,27 @@ const terTable = z
  * effective on the pay date, or with `enabled: false`, payroll reads the
  * compensation profile exactly as before; nothing is guessed.
  */
-const PERFORMANCE_PERCENT_SCHEMA = z.object({
-  enabled: z.boolean(),
-  byPredicate: z
-    .record(
-      z.string().regex(/^[A-Z][A-Z0-9_]{0,15}$/, "kode predikat tidak valid"),
-      z
-        .number()
-        .min(0)
-        .max(2)
-        // Same precision as the profile column, numeric(5, 4).
-        .refine((value) => Math.abs(value * 10_000 - Math.round(value * 10_000)) < 1e-6, "persentase paling banyak empat desimal"),
-    )
-    .refine((mapping) => Object.keys(mapping).length > 0, "pemetaan predikat tidak boleh kosong"),
-});
+const PERFORMANCE_PERCENT_SCHEMA = z
+  .object({
+    enabled: z.boolean(),
+    // Optional while switched off, so HC can close the link with a minimal
+    // `{ enabled: false }` version; required and non-empty while on.
+    byPredicate: z
+      .record(
+        z.string().regex(/^[A-Z][A-Z0-9_]{0,15}$/, "kode predikat tidak valid"),
+        z
+          .number()
+          .min(0)
+          .max(2)
+          // Same precision as the profile column, numeric(5, 4).
+          .refine((value) => Math.abs(value * 10_000 - Math.round(value * 10_000)) < 1e-6, "persentase paling banyak empat desimal"),
+      )
+      .optional(),
+  })
+  .refine((policy) => !policy.enabled || Object.keys(policy.byPredicate ?? {}).length > 0, {
+    path: ["byPredicate"],
+    message: "pemetaan predikat tidak boleh kosong selama sambungan menyala",
+  });
 
 export type PerformancePercentPolicy = z.infer<typeof PERFORMANCE_PERCENT_SCHEMA>;
 
@@ -346,7 +353,7 @@ export function resolvePolicy(rows: readonly PolicyVersionRow[]): PolicyResoluti
       };
     }
     if (performanceParsed.data.enabled) {
-      performancePercent = { versionId: performanceRow.id, byPredicate: performanceParsed.data.byPredicate };
+      performancePercent = { versionId: performanceRow.id, byPredicate: performanceParsed.data.byPredicate ?? {} };
       versionIds.push(performanceRow.id);
     }
   }

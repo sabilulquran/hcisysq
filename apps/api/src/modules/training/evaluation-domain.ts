@@ -391,6 +391,23 @@ export function computeOutcome(input: {
   return { finalScore, status: finalScore >= input.passingScore ? "PASSED" : "FAILED" };
 }
 
+/**
+ * E-11: aggregates and comments of an anonymous component show only once it no longer takes
+ * answers (closed window, archived, cancelled program) and at least the threshold answered, so a
+ * lone answer, or the difference between two reads while answers arrive, cannot single anyone out.
+ */
+export function anonymousAggregatesVisible(input: {
+  responses: number;
+  status: string;
+  programStatus: string;
+  closesAt: Date | null;
+  nowMs: number;
+}): boolean {
+  if (input.responses < ANONYMOUS_COMMENT_THRESHOLD) return false;
+  return input.status !== "ACTIVE" || input.programStatus === "CANCELLED"
+    || (input.closesAt !== null && input.closesAt.getTime() <= input.nowMs);
+}
+
 /** Mean of numbers, two decimals; null for none. */
 export function mean(values: readonly number[]): number | null {
   return values.length === 0 ? null : round2(values.reduce((sum, value) => sum + value, 0) / values.length);

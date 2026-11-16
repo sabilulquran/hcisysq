@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  anonymousAggregatesVisible,
   computeOutcome,
   EvaluationPolicyError,
   normalizeItems,
@@ -89,6 +90,15 @@ describe("TRAIN-001 R3 evaluation rules", () => {
     expect(computeOutcome({ components, done: new Set(["t", "r"]), scores, passingScore: 80 }).status).toBe("INCOMPLETE");
     expect(computeOutcome({ components: [components[2]!], done: new Set(["x"]), scores, passingScore: 80 }))
       .toEqual({ finalScore: null, status: "NOT_GRADED" });
+  });
+
+  it("shows anonymous aggregates only once closed with three answers (E-11)", () => {
+    const base = { status: "ACTIVE", programStatus: "ACTIVE", closesAt: new Date(1_000), nowMs: 2_000 };
+    expect(anonymousAggregatesVisible({ ...base, responses: 3 })).toBe(true);
+    expect(anonymousAggregatesVisible({ ...base, responses: 2 })).toBe(false);
+    expect(anonymousAggregatesVisible({ ...base, responses: 5, closesAt: new Date(3_000) })).toBe(false);
+    expect(anonymousAggregatesVisible({ ...base, responses: 5, closesAt: null })).toBe(false);
+    expect(anonymousAggregatesVisible({ ...base, responses: 5, closesAt: null, status: "ARCHIVED" })).toBe(true);
   });
 
   it("summarizes scale and choice items", () => {

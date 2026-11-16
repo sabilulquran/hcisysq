@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { OutcomeList, TaskList } from "@/components/training/EmployeeEvaluationSection";
 import { EvaluationFormView } from "@/components/training/EvaluationFormView";
-import { blankItem, cleanItems, describeTask, missingRequired, summaryLine, type EvaluationForm, type Task } from "@/lib/trainingEvaluation";
+import { blankItem, cleanItems, describeTask, missingRequired, summaryLine, validPassingScore, type EvaluationForm, type Task } from "@/lib/trainingEvaluation";
 
 const form: EvaluationForm = {
   component: { id: "c1", title: "Kuesioner reaksi", kind: "REACTION", level: 1, instrumentKind: "FORM", anonymous: true, respondent: "PARTICIPANT", closesAt: null },
@@ -60,9 +60,17 @@ describe("TRAIN-001 R3 evaluation web", () => {
     expect(missingRequired(form.items, { q1: 4 })).toEqual([]);
   });
 
-  it("cleans builder lines and summarizes components", () => {
+  it("cleans builder lines, keeps the key on the same option, and summarizes components", () => {
     const item = { ...blankItem("CHOICE"), prompt: "  Pilih ", options: ["Ya", "", " Tidak "] };
     expect(cleanItems([item])[0]).toMatchObject({ prompt: "Pilih", options: ["Ya", "Tidak"] });
+    const single = { ...blankItem("SINGLE"), prompt: "x", options: ["A", "", "C", "D"], correct: 2 };
+    expect(cleanItems([single])[0]).toMatchObject({ options: ["A", "C", "D"], correct: 1 });
+    const multi = { ...blankItem("MULTI"), prompt: "x", options: ["A", " ", "C"], correct: [0, 2] };
+    expect(cleanItems([multi])[0]).toMatchObject({ options: ["A", "C"], correct: [0, 1] });
+    expect(cleanItems([{ ...single, correct: 1 }])[0]!.correct).toBe(-1);
+    expect(validPassingScore("")).toBe(false);
+    expect(validPassingScore("75")).toBe(true);
+    expect(validPassingScore("101")).toBe(false);
     expect(summaryLine({
       id: "c1", kind: "PRE_POST_TEST", level: 2, respondent: "PARTICIPANT", title: "x", anonymous: false, weight: 100,
       expected: 3, submitted: 2, submittedPre: 3, averagePre: 55, averagePost: 80, averageGain: 20, pairs: 2,

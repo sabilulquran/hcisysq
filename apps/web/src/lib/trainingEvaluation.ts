@@ -285,14 +285,31 @@ export function missingRequired(items: readonly Item[], answers: Answers): Item[
 
 const fromLines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
 
-/** Trims the builder's free text into the shape the API validates. */
+/**
+ * Trims the builder's free text into the shape the API validates. Blank option lines are dropped
+ * and the answer key is renumbered with them, so the key keeps pointing at the same option.
+ */
 export function cleanItems(items: Item[]): Item[] {
-  return items.map((item) => ({
-    ...item,
-    prompt: item.prompt.trim(),
-    ...(item.options ? { options: fromLines(item.options.join("\n")) } : {}),
-    ...(item.accepted ? { accepted: fromLines(item.accepted.join("\n")) } : {}),
-  }));
+  return items.map((item) => {
+    const cleaned: Item = { ...item, prompt: item.prompt.trim() };
+    if (item.options) {
+      const kept: number[] = [];
+      const options: string[] = [];
+      item.options.forEach((option, index) => {
+        if (option.trim()) {
+          kept[index] = options.length;
+          options.push(option.trim());
+        }
+      });
+      cleaned.options = options;
+      if (typeof item.correct === "number") cleaned.correct = kept[item.correct] ?? -1;
+      if (Array.isArray(item.correct)) {
+        cleaned.correct = item.correct.map((index) => kept[index]).filter((index): index is number => index !== undefined);
+      }
+    }
+    if (item.accepted) cleaned.accepted = fromLines(item.accepted.join("\n"));
+    return cleaned;
+  });
 }
 
 /** One line of numbers per component, exported for markup tests. */
@@ -306,4 +323,10 @@ export function summaryLine(summary: ComponentSummary | undefined) {
   const scales = (summary.items ?? []).filter((item) => item.type === "SCALE" && item.average !== null && item.average !== undefined);
   if (scales.length > 0) return `${base} · skala rata-rata ${formatScore(scales.reduce((sum, item) => sum + (item.average ?? 0), 0) / scales.length)}/5`;
   return base;
+}
+
+/** An empty or partial field never saves as 0 (which would pass everyone). */
+export function validPassingScore(value: string) {
+  const number = Number(value);
+  return value.trim() !== "" && Number.isInteger(number) && number >= 0 && number <= 100;
 }

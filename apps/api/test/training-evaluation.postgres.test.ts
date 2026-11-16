@@ -202,6 +202,7 @@ describe.skipIf(!allowed)("TRAIN-001 R3 evaluation", () => {
     const results = await call("GET", `/admin/training/programs/${programId}/evaluation/results`);
     const byName = Object.fromEntries(results.json().items.map((row: { fullName: string }) => [row.fullName, row]));
     expect(byName["Pegawai aisyah"]).toMatchObject({ pre: 60, post: 100, gain: 40, finalScore: 100, status: "PASSED" });
+    expect(byName["Pegawai aisyah"].prePost).toEqual([{ componentId, title: "Instrumen TEST", pre: 60, post: 100, gain: 40 }]);
     expect(byName["Pegawai bilal"]).toMatchObject({ pre: null, post: 0, finalScore: 0, status: "FAILED" });
 
     const audit = await client.query(
@@ -247,6 +248,14 @@ describe.skipIf(!allowed)("TRAIN-001 R3 evaluation", () => {
       actAs(who);
       expect((await call("POST", `/training/me/evaluation/components/${reactionId}/responses`, { answers: { ...answers, q1: 3 } })).statusCode).toBe(201);
     }
+    // Three answers, but the window is still open: a fourth answer would show as a difference.
+    actAs("hc", ["training.read"]);
+    expect((await call("GET", `/admin/training/evaluation/components/${reactionId}/comments`)).json().hidden).toBe(true);
+    const open = await call("GET", `/admin/training/programs/${programId}/evaluation/summary`);
+    expect(open.json().components[0]).toMatchObject({ hidden: true, submitted: 3 });
+    expect(open.json().components[0].items).toBeUndefined();
+    actAs("hc", HC);
+    expect((await call("PATCH", `/admin/training/evaluation/components/${reactionId}`, { closesAt: hoursFromNow(-0.01) })).statusCode).toBe(200);
     actAs("hc", ["training.read"]);
     const shown = await call("GET", `/admin/training/evaluation/components/${reactionId}/comments`);
     expect(shown.json().hidden).toBe(false);
@@ -368,6 +377,16 @@ describe.skipIf(!allowed)("TRAIN-001 R3 evaluation", () => {
     actAs("hc", ["training.read"]);
     expect((await call("POST", "/admin/training/instruments", { kind: "FORM", title: "Tanpa izin", items: [{ type: "SCALE", prompt: "x" }] })).statusCode).toBe(403);
     expect((await call("GET", "/admin/training/instruments")).json().items[0].isSystem).toBe(true);
+    // A read-only holder may be a participant: no answer keys for them.
+    const testId = await instrument("TEST", TEST_ITEMS);
+    actAs("hc", ["training.read"]);
+    const readOnly = await call("GET", `/admin/training/instruments/${testId}`);
+    expect(readOnly.statusCode).toBe(200);
+    expect(readOnly.body).not.toContain("correct");
+    expect(readOnly.body).not.toContain("accepted");
+    actAs("hc", HC);
+    expect((await call("GET", `/admin/training/instruments/${testId}`)).body).toContain("correct");
+    actAs("hc", ["training.read"]);
     const archived = await call("POST", `/admin/training/evaluation/components/${componentId}/archive`, { reason: "Tidak dipakai" });
     expect(archived.statusCode).toBe(403);
 

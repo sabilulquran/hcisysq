@@ -16,14 +16,10 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
-import {
-  OrganizationAuthorityResolver,
-  OrganizationResolutionError,
-  OrganizationRolloutService,
-  PostgresOrganizationRepository,
-} from "../organization/index.js";
+import { resolveLineManager, type ResolvedLineManager } from "../organization/line-manager.js";
 import {
   ANONYMOUS_COMMENT_THRESHOLD,
+  anonymousAggregatesVisible,
   COMPONENT_KINDS,
   componentOpen,
   computeOutcome,
@@ -116,62 +112,13 @@ function rows<T extends { total?: number }>(result: { rows: T[] }) {
 
 // ------------------------------------------------------------- assessors
 
-interface ResolvedRater {
-  employeeId: string | null;
-  source: "DIRECT_MANAGER" | "GOVERNANCE_APPROVER" | "UNRESOLVED";
-  resolution: Record<string, unknown>;
-}
-
-/**
- * E-14: the participant's line manager from the same resolver as PERF-001 and APR-001 (ORG-002 data
- * while the TRAINING workflow is LEGACY, the ORG-004 structure once it is STRUCTURE). Unresolved is
- * not an error: the row is stored without an assessor and HC assigns one.
- */
-async function resolveRater(db: Queryable, employeeId: string, effectiveDate: string): Promise<ResolvedRater> {
-  const legacy = await db.query<{ directManagerEmployeeId: string | null }>(
-    `SELECT direct_manager_employee_id AS "directManagerEmployeeId" FROM employees WHERE id = $1`,
-    [employeeId],
-  );
-  const repository = new PostgresOrganizationRepository(db);
-  const rollout = new OrganizationRolloutService(repository, new OrganizationAuthorityResolver(repository));
-  let result;
-  try {
-    result = await rollout.resolveAuthorities({
-      workflowKey: TRAINING_WORKFLOW_KEY,
-      requesterEmployeeId: employeeId,
-      effectiveDate,
-      legacy: { directManagerEmployeeId: legacy.rows[0]?.directManagerEmployeeId ?? null, unitApproverEmployeeId: null },
-      authorityRequirement: "LINE_AND_UNIT",
-    });
-  } catch (error) {
-    if (error instanceof OrganizationResolutionError) {
-      return { employeeId: null, source: "UNRESOLVED", resolution: { unresolved: error.code, effectiveDate } };
-    }
-    throw error;
-  }
-  const sourcesOf = (authority: (typeof result.authorities)[number]) => authority.sources ?? [authority.source];
-  const authority = result.authorities.find((item) => sourcesOf(item).includes("DIRECT_MANAGER"))
-    ?? result.authorities.find((item) => sourcesOf(item).includes("GOVERNANCE_APPROVER"));
-  const base = { mode: result.mode, authoritativeSource: result.authoritativeSource, effectiveDate };
-  if (!authority?.employeeId || authority.employeeId === employeeId) {
-    return { employeeId: null, source: "UNRESOLVED", resolution: { ...base, unresolved: "DIRECT_MANAGER_MISSING" } };
-  }
-  const active = await db.query(
-    "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL AND management_scope = 'MANAGED'",
-    [authority.employeeId],
-  );
-  if (!active.rows[0]) return { employeeId: null, source: "UNRESOLVED", resolution: { ...base, unresolved: "RATER_NOT_ACTIVE" } };
-  return {
-    employeeId: authority.employeeId,
-    source: sourcesOf(authority).includes("DIRECT_MANAGER") ? "DIRECT_MANAGER" : "GOVERNANCE_APPROVER",
-    resolution: { ...base, source: authority.source, path: authority.path, incumbentKind: authority.incumbentKind },
-  };
-}
+type RaterSource = "DIRECT_MANAGER" | "GOVERNANCE_APPROVER" | "UNRESOLVED";
 
 /**
  * E-14 / §6.1: stores the assessor of each given participant for every active SUPERVISOR component
- * of the program (or only `componentId`). An existing row is kept, so re-enrolment never moves it.
- * Returns the assessors to notify, per component.
+ * of the program (or only `componentId`), from the shared line-manager resolver (alur TRAINING).
+ * An existing row is kept, so re-enrolment never moves it, and nobody already assigned on every
+ * component is resolved again. Assessors are notified once per component and call.
  */
 export async function assignSupervisorAssessors(
   db: PoolClient,
@@ -180,35 +127,52 @@ export async function assignSupervisorAssessors(
   if (input.employeeIds.length === 0) return [];
   const components = await db.query<{ id: string; title: string }>(
     `SELECT id, title FROM training_evaluation_components
-      WHERE program_id = $1 AND status = 'ACTIVE' AND respondent = 'SUPERVISOR' AND ($2::uuid IS NULL OR id = $2)`,
+      WHERE program_id = $1 AND status = 'ACTIVE' AND respondent = 'SUPERVISOR' AND ($2::uuid IS NULL OR id = $2)
+      ORDER BY id`,
     [input.programId, input.componentId ?? null],
   );
   if (components.rows.length === 0) return [];
+  const existing = await db.query<{ componentId: string; subjectEmployeeId: string }>(
+    `SELECT component_id AS "componentId", subject_employee_id AS "subjectEmployeeId"
+       FROM training_evaluation_assessors
+      WHERE component_id = ANY($1::uuid[]) AND subject_employee_id = ANY($2::uuid[])`,
+    [components.rows.map((row) => row.id), input.employeeIds],
+  );
+  const assigned = new Set(existing.rows.map((row) => `${row.componentId}:${row.subjectEmployeeId}`));
   const today = jakartaDate(new Date());
-  const resolved = new Map<string, ResolvedRater>();
-  for (const employeeId of input.employeeIds) resolved.set(employeeId, await resolveRater(db, employeeId, today));
-  const notify: Array<{ componentId: string; title: string; assessorEmployeeId: string }> = [];
+  const notify = new Map<string, { componentId: string; title: string; assessorEmployeeId: string }>();
+  const resolved = new Map<string, ResolvedLineManager>();
   for (const component of components.rows) {
-    for (const [employeeId, rater] of resolved) {
-      const inserted = await db.query(
+    for (const employeeId of input.employeeIds) {
+      if (assigned.has(`${component.id}:${employeeId}`)) continue;
+      let rater = resolved.get(employeeId);
+      if (!rater) {
+        rater = await resolveLineManager(db, { workflowKey: TRAINING_WORKFLOW_KEY, employeeId, effectiveDate: today });
+        resolved.set(employeeId, rater);
+      }
+      const source: RaterSource = rater.source ?? "UNRESOLVED";
+      await db.query(
         `INSERT INTO training_evaluation_assessors
            (component_id, subject_employee_id, assessor_employee_id, source, resolution, assigned_by_account_id)
          VALUES ($1, $2, $3, $4, $5::jsonb, NULL)
          ON CONFLICT (component_id, subject_employee_id) DO NOTHING`,
-        [component.id, employeeId, rater.employeeId, rater.source, JSON.stringify(rater.resolution)],
+        [component.id, employeeId, rater.employeeId, source, JSON.stringify(rater.snapshot)],
       );
-      if (inserted.rowCount && rater.employeeId) notify.push({ componentId: component.id, title: component.title, assessorEmployeeId: rater.employeeId });
+      if (rater.employeeId) {
+        notify.set(`${component.id}:${rater.employeeId}`, { componentId: component.id, title: component.title, assessorEmployeeId: rater.employeeId });
+      }
     }
   }
-  const unique = new Map(notify.map((item) => [`${item.componentId}:${item.assessorEmployeeId}`, item]));
-  for (const item of unique.values()) {
+  // One notice per assessor and component for this call; a later call (new participant) notifies again.
+  const stamp = Date.now();
+  for (const item of notify.values()) {
     await notifyEmployee(db, item.assessorEmployeeId, {
-      eventKey: `training.evaluation.${item.componentId}.${item.assessorEmployeeId}`, category: "system",
+      eventKey: `training.evaluation.${item.componentId}.${item.assessorEmployeeId}.${stamp}`, category: "system",
       title: "Penilaian penerapan pelatihan", body: `Anda diminta menilai peserta pada evaluasi ${item.title}.`,
       href: "/app/training?tab=evaluasi", actorAccountId: input.actorAccountId,
     });
   }
-  return [...unique.values()];
+  return [...notify.values()];
 }
 
 // ------------------------------------------------------------ components
@@ -418,18 +382,30 @@ async function submitResponse(
 
 // --------------------------------------------------------------- outcome
 
-interface OutcomeRow {
-  programId: string;
-  employeeId: string;
+interface PrePost {
+  componentId: string;
+  title: string;
   pre: number | null;
   post: number | null;
   gain: number | null;
+}
+
+interface OutcomeRow {
+  programId: string;
+  employeeId: string;
+  /** The first pre/post test of the plan; every pre/post test is in `prePost`. */
+  pre: number | null;
+  post: number | null;
+  gain: number | null;
+  prePost: PrePost[];
   scores: Record<string, number | null>;
   finalScore: number | null;
   status: string;
   applicationScore: number | null;
   applicationRating: number | null;
 }
+
+const gainOf = (pre: number | null, post: number | null) => (pre !== null && post !== null ? Math.round((post - pre) * 100) / 100 : null);
 
 /** §5.4 / §6.2: the outcome of each (program, participant) pair, computed when read (E-09). */
 async function outcomesFor(db: Queryable, pairs: ReadonlyArray<{ programId: string; employeeId: string }>): Promise<OutcomeRow[]> {
@@ -441,53 +417,68 @@ async function outcomesFor(db: Queryable, pairs: ReadonlyArray<{ programId: stri
     [programIds],
   );
   const passing = new Map(programs.rows.map((row) => [row.id, row.passingScore]));
+  // Plan order, so "the first pre/post test" is stable between requests.
   const components = await db.query<{
-    id: string; programId: string; kind: ComponentKind; level: number; weight: number; required: boolean;
+    id: string; programId: string; kind: ComponentKind; level: number; weight: number; required: boolean; title: string;
     respondent: Respondent; instrumentKind: InstrumentKind; items: Item[];
   }>(
-    `SELECT id, program_id AS "programId", kind, level, weight, required, respondent, instrument_kind AS "instrumentKind", items
-       FROM training_evaluation_components WHERE program_id = ANY($1::uuid[]) AND status = 'ACTIVE'`,
+    `SELECT id, program_id AS "programId", kind, level, weight, required, title, respondent, instrument_kind AS "instrumentKind", items
+       FROM training_evaluation_components WHERE program_id = ANY($1::uuid[]) AND status = 'ACTIVE'
+      ORDER BY level ASC, created_at ASC, id ASC`,
     [programIds],
   );
   const componentIds = components.rows.map((row) => row.id);
-  const completions = componentIds.length === 0 ? [] : (await db.query<{
-    componentId: string; stage: Stage; subjectEmployeeId: string | null; respondentEmployeeId: string | null;
-  }>(
-    `SELECT component_id AS "componentId", stage, subject_employee_id AS "subjectEmployeeId", respondent_employee_id AS "respondentEmployeeId"
-       FROM training_evaluation_completions
-      WHERE component_id = ANY($1::uuid[])
-        AND (subject_employee_id = ANY($2::uuid[]) OR respondent_employee_id = ANY($2::uuid[]))`,
-    [componentIds, employeeIds],
-  )).rows;
-  const responses = componentIds.length === 0 ? [] : (await db.query<{
-    componentId: string; stage: Stage; subjectEmployeeId: string; score: string | null; answers: Answers;
-  }>(
-    `SELECT component_id AS "componentId", stage, subject_employee_id AS "subjectEmployeeId", score, answers
-       FROM training_evaluation_responses
-      WHERE component_id = ANY($1::uuid[]) AND NOT anonymous AND subject_employee_id = ANY($2::uuid[])`,
-    [componentIds, employeeIds],
-  )).rows;
+  const byProgram = new Map<string, typeof components.rows>();
+  for (const component of components.rows) byProgram.set(component.programId, [...(byProgram.get(component.programId) ?? []), component]);
+  // Grouped once by component and person, so each pair reads its own rows directly.
+  const finishedStages = new Map<string, Set<Stage>>();
+  const responsesOf = new Map<string, Array<{ stage: Stage; score: number | null; answers: Answers }>>();
+  if (componentIds.length > 0) {
+    const completions = await db.query<{ componentId: string; stage: Stage; subjectEmployeeId: string | null; respondentEmployeeId: string | null }>(
+      `SELECT component_id AS "componentId", stage, subject_employee_id AS "subjectEmployeeId", respondent_employee_id AS "respondentEmployeeId"
+         FROM training_evaluation_completions
+        WHERE component_id = ANY($1::uuid[])
+          AND (subject_employee_id = ANY($2::uuid[]) OR respondent_employee_id = ANY($2::uuid[]))`,
+      [componentIds, employeeIds],
+    );
+    const mark = (key: string, stage: Stage) => finishedStages.set(key, (finishedStages.get(key) ?? new Set<Stage>()).add(stage));
+    for (const row of completions.rows) {
+      if (row.subjectEmployeeId) mark(`${row.componentId}:${row.subjectEmployeeId}:subject`, row.stage);
+      if (row.respondentEmployeeId) mark(`${row.componentId}:${row.respondentEmployeeId}:respondent`, row.stage);
+    }
+    const responses = await db.query<{ componentId: string; stage: Stage; subjectEmployeeId: string; score: string | null; answers: Answers }>(
+      `SELECT component_id AS "componentId", stage, subject_employee_id AS "subjectEmployeeId", score, answers
+         FROM training_evaluation_responses
+        WHERE component_id = ANY($1::uuid[]) AND NOT anonymous AND subject_employee_id = ANY($2::uuid[])`,
+      [componentIds, employeeIds],
+    );
+    for (const row of responses.rows) {
+      const key = `${row.componentId}:${row.subjectEmployeeId}`;
+      responsesOf.set(key, [...(responsesOf.get(key) ?? []), { stage: row.stage, score: row.score === null ? null : Number(row.score), answers: row.answers }]);
+    }
+  }
   return pairs.map((pair) => {
-    const own = components.rows.filter((component) => component.programId === pair.programId);
+    const own = byProgram.get(pair.programId) ?? [];
     const done = new Set<string>();
     const scores = new Map<string, number>();
-    let pre: number | null = null;
-    let post: number | null = null;
+    const prePost: PrePost[] = [];
     const applicationScores: number[] = [];
     const applicationRatings: number[] = [];
     for (const component of own) {
-      const finished = completions.filter((row) => row.componentId === component.id && (component.respondent === "PARTICIPANT"
-        ? row.respondentEmployeeId === pair.employeeId
-        : row.subjectEmployeeId === pair.employeeId));
-      const needed: Stage = component.kind === "PRE_POST_TEST" ? "POST" : "SINGLE";
-      if (finished.some((row) => row.stage === needed)) done.add(component.id);
-      for (const response of responses.filter((row) => row.componentId === component.id && row.subjectEmployeeId === pair.employeeId)) {
-        const score = response.score === null ? null : Number(response.score);
-        if (component.kind === "PRE_POST_TEST" && response.stage === "PRE") pre = score;
-        if (component.kind === "PRE_POST_TEST" && response.stage === "POST") post = score;
-        if (score !== null && (response.stage === "SINGLE" || response.stage === "POST")) {
-          if (component.level <= 2) scores.set(component.id, score);
-          if (component.level === 3 && component.instrumentKind === "RUBRIC") applicationScores.push(score);
+      // A participant's own answers are found by respondent (anonymous ones have no subject).
+      const side = component.respondent === "PARTICIPANT" ? "respondent" : "subject";
+      const stages = finishedStages.get(`${component.id}:${pair.employeeId}:${side}`);
+      if (stages?.has(component.kind === "PRE_POST_TEST" ? "POST" : "SINGLE")) done.add(component.id);
+      const responses = responsesOf.get(`${component.id}:${pair.employeeId}`) ?? [];
+      if (component.kind === "PRE_POST_TEST") {
+        const pre = responses.find((row) => row.stage === "PRE")?.score ?? null;
+        const post = responses.find((row) => row.stage === "POST")?.score ?? null;
+        prePost.push({ componentId: component.id, title: component.title, pre, post, gain: gainOf(pre, post) });
+      }
+      for (const response of responses) {
+        if (response.score !== null && (response.stage === "SINGLE" || response.stage === "POST")) {
+          if (component.level <= 2) scores.set(component.id, response.score);
+          if (component.level === 3 && component.instrumentKind === "RUBRIC") applicationScores.push(response.score);
         }
         if (component.level === 3 && component.instrumentKind === "FORM") {
           const rating = scaleMean(component.items, response.answers);
@@ -496,12 +487,14 @@ async function outcomesFor(db: Queryable, pairs: ReadonlyArray<{ programId: stri
       }
     }
     const outcome = computeOutcome({ components: own, done, scores, passingScore: passing.get(pair.programId) ?? 75 });
+    const first = prePost[0];
     return {
       programId: pair.programId,
       employeeId: pair.employeeId,
-      pre,
-      post,
-      gain: pre !== null && post !== null ? Math.round((post - pre) * 100) / 100 : null,
+      pre: first?.pre ?? null,
+      post: first?.post ?? null,
+      gain: first?.gain ?? null,
+      prePost,
       scores: Object.fromEntries(own.filter((component) => component.weight > 0).map((component) => [component.id, scores.get(component.id) ?? null])),
       finalScore: outcome.finalScore,
       status: outcome.status,
@@ -514,7 +507,7 @@ async function outcomesFor(db: Queryable, pairs: ReadonlyArray<{ programId: stri
 // ----------------------------------------------------------------- routes
 
 export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: TrainingRouteKit) {
-  const { pool, requireEmployee, requirePermission, handle, transact, invalid } = kit;
+  const { pool, requireEmployee, requirePermission, handle, transact, invalid, canManage } = kit;
 
   async function hcActor(db: Queryable, principal: AuthPrincipal): Promise<Actor> {
     const account = await db.query<{ employeeId: string | null }>(`SELECT employee_id AS "employeeId" FROM accounts WHERE id = $1`, [principal.id]);
@@ -699,8 +692,10 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
            FROM training_instruments WHERE id = $1`,
         [params.data.id],
       );
-      if (!result.rows[0]) throw instrumentNotFound();
-      return send(reply, 200, result.rows[0]);
+      const instrument = result.rows[0] as { items: Item[] } | undefined;
+      if (!instrument) throw instrumentNotFound();
+      // Keys only for those who write tests; a read-only holder may be a participant too.
+      return send(reply, 200, (await canManage(principal)) ? instrument : { ...instrument, items: publicItems(instrument.items) });
     });
   });
 
@@ -812,7 +807,11 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
           LIMIT 100`,
         [params.data.id],
       );
-      return send(reply, 200, { passingScore: program.rows[0].passingScore, items: result.rows });
+      const withKeys = await canManage(principal);
+      return send(reply, 200, {
+        passingScore: program.rows[0].passingScore,
+        items: withKeys ? result.rows : result.rows.map((row: { items: Item[] }) => ({ ...row, items: publicItems(row.items) })),
+      });
     });
   });
 
@@ -1015,7 +1014,7 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
           actorAccountId: principal.id, metadata: { componentId: component.id, assessorEmployeeId: entry.assessorEmployeeId },
         });
         await notifyEmployee(client, entry.assessorEmployeeId, {
-          eventKey: `training.evaluation.${component.id}.${entry.assessorEmployeeId}`, category: "system",
+          eventKey: `training.evaluation.${component.id}.${entry.assessorEmployeeId}.${entry.subjectEmployeeId}`, category: "system",
           title: "Penilaian penerapan pelatihan", body: `Anda diminta menilai peserta pada evaluasi ${component.title}.`,
           href: "/app/training?tab=evaluasi", actorAccountId: principal.id,
         });
@@ -1067,8 +1066,11 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
         [component.id],
       );
       const responses = count.rows[0]?.count ?? 0;
-      // E-11: anonymous comments only once enough people answered that none can be singled out.
-      if (component.anonymous && responses < ANONYMOUS_COMMENT_THRESHOLD) {
+      // E-11: anonymous comments only once the component has closed with enough answers, so neither
+      // a lone answer nor the difference between two reads can single anyone out.
+      if (component.anonymous && !anonymousAggregatesVisible({
+        responses, status: component.status, programStatus: component.programStatus, closesAt: component.closesAt, nowMs: Date.now(),
+      })) {
         return send(reply, 200, {
           hidden: true, threshold: ANONYMOUS_COMMENT_THRESHOLD, items: [], pagination: pagination(query.data, 0),
         });
@@ -1095,20 +1097,22 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
     const params = idParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "INVALID_TRAINING_PROGRAM_ID", "Program pelatihan tidak valid.");
     return handle(reply, async () => {
-      const program = await pool.query<{ passingScore: number }>(
-        `SELECT evaluation_passing_score AS "passingScore" FROM training_programs WHERE id = $1`,
+      const program = await pool.query<{ passingScore: number; status: string }>(
+        `SELECT evaluation_passing_score AS "passingScore", status FROM training_programs WHERE id = $1`,
         [params.data.id],
       );
       if (!program.rows[0]) throw programNotFound();
+      const programStatus = program.rows[0].status;
       const participants = (await pool.query<{ employeeId: string }>(
         `SELECT employee_id AS "employeeId" FROM training_participants WHERE program_id = $1 AND status <> 'WITHDRAWN'`,
         [params.data.id],
       )).rows.map((row) => row.employeeId);
       const components = await pool.query<{
         id: string; kind: ComponentKind; level: number; respondent: Respondent; title: string; instrumentKind: InstrumentKind;
-        items: Item[]; anonymous: boolean; weight: number;
+        items: Item[]; anonymous: boolean; weight: number; status: string; closesAt: Date | null;
       }>(
-        `SELECT id, kind, level, respondent, title, instrument_kind AS "instrumentKind", items, anonymous, weight
+        `SELECT id, kind, level, respondent, title, instrument_kind AS "instrumentKind", items, anonymous, weight, status,
+                closes_at AS "closesAt"
            FROM training_evaluation_components WHERE program_id = $1 AND status = 'ACTIVE'
           ORDER BY level ASC, created_at ASC, id ASC`,
         [params.data.id],
@@ -1129,8 +1133,11 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
           GROUP BY assessor.component_id`,
         [params.data.id],
       );
+      const current = new Set(participants);
       const items = components.rows.map((component) => {
-        const own = responses.filter((row) => row.componentId === component.id);
+        // Named answers of withdrawn participants stay stored but leave the aggregates, as in the results.
+        const own = responses.filter((row) => row.componentId === component.id
+          && (row.subjectEmployeeId === null || current.has(row.subjectEmployeeId)));
         const expected = component.kind === "RESULT" ? 1
           : component.respondent === "SUPERVISOR" ? assessors.rows.find((row) => row.componentId === component.id)?.count ?? 0
             : participants.length;
@@ -1149,11 +1156,16 @@ export function registerTrainingEvaluationRoutes(app: FastifyInstance, kit: Trai
           };
         }
         const single = own.filter((row) => row.stage === "SINGLE");
+        // E-11: anonymous distributions follow the same rule as anonymous comments.
+        const hidden = component.anonymous && !anonymousAggregatesVisible({
+          responses: single.length, status: component.status, programStatus, closesAt: component.closesAt, nowMs: Date.now(),
+        });
         return {
           ...base,
           submitted: single.length,
+          hidden,
           averageScore: component.instrumentKind === "FORM" ? null : mean(scoresOf("SINGLE")),
-          items: component.instrumentKind === "TEST" ? undefined : summarizeForm(component.items, single.map((row) => row.answers)),
+          items: component.instrumentKind === "TEST" || hidden ? undefined : summarizeForm(component.items, single.map((row) => row.answers)),
         };
       });
       return send(reply, 200, { passingScore: program.rows[0].passingScore, participantCount: participants.length, components: items });

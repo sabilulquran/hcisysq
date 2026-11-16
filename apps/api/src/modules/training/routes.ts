@@ -1484,5 +1484,9 @@ export async function registerTrainingRoutes(
     return send(reply, 200, { items: result.rows });
   });
 
-  registerTrainingEvaluationRoutes(app, { pool, requireEmployee, requirePermission, handle, transact, invalid });
+  async function canManage(principal: AuthPrincipal) {
+    return (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("training.manage");
+  }
+
+  registerTrainingEvaluationRoutes(app, { pool, requireEmployee, requirePermission, handle, transact, invalid, canManage });
 }

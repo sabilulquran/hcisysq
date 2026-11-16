@@ -54,11 +54,12 @@ Termasuk: instrumen, rencana evaluasi per program (komponen, bobot, nilai minima
 | E-08 | Kelulusan hanya dari komponen tingkat 1–2. Tingkat 3–4 dicatat terpisah dan **tidak** mengubah kelulusan. | ACCEPTED (discovery §12 no. 10) |
 | E-09 | Kelulusan **dihitung saat dibaca**, tidak dibekukan ke catatan pelatihan, dan **tidak** menghalangi penutupan program Paket 1. Catatan pelatihan tetap membedakan ikut dan menyelesaikan kehadiran (D-06). | DRAFT |
 | E-10 | Kuesioner reaksi **standar** (6 butir skala 1–5 + komentar, discovery §7.5) disediakan sistem sebagai instrumen bawaan yang tidak dapat diubah. Komponen `REACTION` selalu **anonim**. | ACCEPTED (discovery §7.5, §12 no. 9) |
-| E-11 | Respons anonim tidak menyimpan pengisi. "Siapa sudah mengisi" disimpan terpisah tanpa jam (hanya tanggal) dan respons anonim tanpa jam, supaya waktu tidak dapat dipakai menautkan keduanya. Tidak ada audit per respons anonim. Komentar anonim baru tampil bila respons komponen itu **≥ 3**. | DRAFT (ambang 3) |
+| E-11 | Respons anonim tidak menyimpan pengisi. "Siapa sudah mengisi" disimpan terpisah tanpa jam (hanya tanggal) dan respons anonim tanpa jam, supaya waktu tidak dapat dipakai menautkan keduanya. Tidak ada audit per respons anonim. Sebaran butir dan komentar anonim baru tampil bila komponen **sudah tidak menerima jawaban** (jendela ditutup, diarsipkan, atau program dibatalkan) **dan** respons ≥ 3, supaya satu jawaban atau selisih dua kali baca tidak dapat ditautkan ke orang yang baru mengisi. Anonimitas berlaku terhadap pengguna aplikasi (termasuk HC); di tingkat basis data, urutan sisipan dan id transaksi masih dapat menautkan baris, jadi akses basis data production tetap terbatas pada operator (risiko diterima). | DRAFT (ambang 3) |
 | E-12 | **Pre-test** dan **post-test** adalah satu komponen `PRE_POST_TEST` dengan satu instrumen yang dipakai dua kali, sehingga skornya sebanding. Pre-test dapat diisi selama peserta belum mengisi post-test; post-test terbuka sejak sesi terjadwal terakhir program dimulai (atau sejak program ditutup). Peningkatan = post − pre. Bobot memakai skor post-test. | DRAFT |
 | E-13 | Satu kali isi per (komponen, tahap, pengisi, subjek). Respons final; tidak dapat diubah atau dihapus. | DRAFT |
 | E-14 | **Atasan penilai** komponen `SUPERVISOR` ditetapkan per peserta dari atasan langsung (resolver yang sama dengan PERF-001/APR-001, alur `TRAINING`) saat komponen dibuat atau peserta ditambahkan, lalu disalin. Bila tidak terselesaikan, HC menunjuk penilai. HC dapat mengganti penilai selama penilaian peserta itu belum diisi. | DRAFT |
 | E-15 | Penilai tidak menilai dirinya sendiri: HC yang juga peserta tidak mengisi rubrik/indikator tentang dirinya, dan penilai yang ditunjuk tidak boleh peserta yang dinilainya. | DRAFT |
+| E-20 | Kunci jawaban (`correct`, `accepted`) hanya dikirim ke pemegang `training.manage` (penyusun instrumen). Pemegang `training.read` saja melihat instrumen dan komponen tanpa kunci, karena ia bisa juga menjadi peserta. | DRAFT |
 | E-16 | Peserta melihat **skor tesnya sendiri** segera setelah mengirim. Kunci dan jawaban benar tidak pernah ditampilkan di R3. Nilai rubrik dan penilaian atasan tampil bagi peserta di rekap pribadinya. | DRAFT |
 | E-17 | Izin memakai `training.read` (rekap) dan `training.manage` (instrumen, rencana, penilai, pengisian HC). **Tidak ada permission baru**, jadi tidak ada migrasi izin. Atasan mengisi berdasarkan penugasan, bukan permission. | DRAFT |
 | E-18 | Paling banyak **20 komponen aktif** per program. | DRAFT |
@@ -139,7 +140,7 @@ Formulir yang dikirim ke pengisi tidak memuat `correct` dan `accepted`. Respons 
 **Per program** (`training.read`):
 
 - per komponen: jumlah wajib isi, jumlah sudah isi, rata-rata skor; `PRE_POST_TEST`: rata-rata pre, rata-rata post, rata-rata peningkatan (hanya peserta yang mengisi keduanya); FORM: rata-rata dan sebaran per butir `SCALE`, jumlah per pilihan `CHOICE`; jumlah komentar `TEXT` (isi lewat daftar komentar berhalaman; anonim mengikuti E-11);
-- per peserta (berhalaman): pre, post, peningkatan, skor tiap komponen berbobot, nilai akhir, status E-07, dan tingkat 3 (rata-rata penilaian atasan) terpisah.
+- per peserta (berhalaman): pre, post, peningkatan (kolom utama dari pre/post test pertama di rencana; semua pre/post test per komponen di `prePost`), skor tiap komponen berbobot, nilai akhir, status E-07, dan tingkat 3 (rata-rata penilaian atasan) terpisah.
 
 **Per pegawai**: daftar program yang diikuti beserta pre/post, nilai akhir, status, dan rata-rata penilaian penerapan. Pegawai melihat miliknya sendiri; HC (`training.read`) melihat semua pegawai. Atasan tidak melihat rekap bawahan di R3 (Paket 1 D-11).
 
@@ -172,7 +173,7 @@ Respons anonim **tidak** diaudit (E-11). Audit respons non-anonim memuat id komp
 - komponen `PARTICIPANT` dibuat → peserta non-`WITHDRAWN` ("evaluasi perlu diisi");
 - penilai atasan ditetapkan atau diganti → penilai.
 
-Idempoten per `eventKey` `training.evaluation.<componentId>.<employeeId>`.
+Idempoten per `eventKey`: `training.evaluation.<componentId>.<employeeId>` untuk peserta; untuk penilai, per penetapan (penambahan peserta atau penggantian penilai memberi tahu lagi).
 
 ## 10. Penyimpanan (migrasi `0151`)
 
@@ -206,7 +207,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 
 - TRAIN-R3-A: kunci jawaban (`correct`, `accepted`) tidak pernah ada di respons API formulir pengisi; skor tes dihitung server sesuai E-04/E-05.
 - TRAIN-R3-B: hanya peserta non-`WITHDRAWN` yang mengisi komponen `PARTICIPANT`; hanya penilai tercatat yang mengisi komponen `SUPERVISOR`; orang lain mendapat 404; pengisian kedua 409.
-- TRAIN-R3-C: respons `REACTION` tidak menyimpan pengisi atau jam; "sudah mengisi" tetap tercatat; komentar anonim tersembunyi bila respons < 3.
+- TRAIN-R3-C: respons `REACTION` tidak menyimpan pengisi atau jam; "sudah mengisi" tetap tercatat; sebaran dan komentar anonim tersembunyi selama komponen masih menerima jawaban atau respons < 3.
 - TRAIN-R3-D: pre-test ditolak setelah post-test diisi; post-test ditolak sebelum sesi terakhir dimulai; rekap menghitung peningkatan post − pre.
 - TRAIN-R3-E: nilai akhir dan status mengikuti E-07; tingkat 3 tidak mengubah status.
 - TRAIN-R3-F: mengubah instrumen tidak mengubah salinan komponen yang sudah ada; bobot terkunci setelah ada respons.
@@ -221,7 +222,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 | E-04 | Skor pilihan ganda kompleks? | Semua-atau-tidak |
 | E-07 | Nilai minimal lulus bawaan? | 75 |
 | E-09 | Kelulusan dibekukan ke catatan atau menghalangi penutupan? | Tidak; dihitung saat dibaca |
-| E-11 | Ambang tampil komentar anonim? | 3 respons |
+| E-11 | Kapan hasil anonim tampil? | Setelah komponen ditutup dan minimal 3 respons |
 | E-12 | Kapan pre-test dan post-test terbuka? | Pre sampai peserta mengisi post; post sejak sesi terakhir dimulai |
 | E-13 | Boleh mengulang tes? | Tidak di R3 awal |
 | E-14 | Siapa menilai penerapan? | Atasan langsung (resolver PERF/APR); HC dapat mengganti |

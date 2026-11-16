@@ -20,12 +20,7 @@ import type { PerformancePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
-import {
-  OrganizationAuthorityResolver,
-  OrganizationResolutionError,
-  OrganizationRolloutService,
-  PostgresOrganizationRepository,
-} from "../organization/index.js";
+import { resolveLineManager } from "../organization/line-manager.js";
 import {
   ACTIVE_REVIEW_STATUSES,
   canRaterReview,
@@ -156,61 +151,6 @@ async function loadEmployee(db: Queryable, accountId: string): Promise<{ id: str
     throw new PerformanceError(403, "EMPLOYEE_NOT_ACTIVE", "Akun tidak terhubung ke pegawai aktif.");
   }
   return employee;
-}
-
-interface ResolvedRater {
-  employeeId: string | null;
-  source: "DIRECT_MANAGER" | "GOVERNANCE_APPROVER" | null;
-  snapshot: Record<string, unknown>;
-}
-
-/**
- * D-01: the line manager from the same resolver as APR-001 and overtime (ORG-002 data while the
- * PERF workflow is LEGACY, the ORG-004 structure when it is STRUCTURE). An unresolved rater is not
- * an error here: the review is stored without one and HC assigns it.
- */
-async function resolveRater(db: Queryable, employeeId: string, effectiveDate: string): Promise<ResolvedRater> {
-  const legacy = await db.query<{ directManagerEmployeeId: string | null }>(
-    `SELECT direct_manager_employee_id AS "directManagerEmployeeId" FROM employees WHERE id = $1`,
-    [employeeId],
-  );
-  const repository = new PostgresOrganizationRepository(db);
-  const rollout = new OrganizationRolloutService(repository, new OrganizationAuthorityResolver(repository));
-  let result;
-  try {
-    result = await rollout.resolveAuthorities({
-      workflowKey: PERFORMANCE_WORKFLOW_KEY,
-      requesterEmployeeId: employeeId,
-      effectiveDate,
-      legacy: { directManagerEmployeeId: legacy.rows[0]?.directManagerEmployeeId ?? null, unitApproverEmployeeId: null },
-      authorityRequirement: "LINE_AND_UNIT",
-    });
-  } catch (error) {
-    if (error instanceof OrganizationResolutionError) {
-      return { employeeId: null, source: null, snapshot: { unresolved: error.code, effectiveDate } };
-    }
-    throw error;
-  }
-  const sourcesOf = (authority: (typeof result.authorities)[number]) => authority.sources ?? [authority.source];
-  const authority = result.authorities.find((item) => sourcesOf(item).includes("DIRECT_MANAGER"))
-    ?? result.authorities.find((item) => sourcesOf(item).includes("GOVERNANCE_APPROVER"));
-  const base = { mode: result.mode, authoritativeSource: result.authoritativeSource, effectiveDate };
-  if (!authority || authority.employeeId === employeeId) {
-    return { employeeId: null, source: null, snapshot: { ...base, unresolved: "DIRECT_MANAGER_MISSING" } };
-  }
-  // EMP-005 S2B §8.7: a rater outside HCIS management reads as not active.
-  const active = await db.query(
-    "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL AND management_scope = 'MANAGED'",
-    [authority.employeeId],
-  );
-  if (!active.rows[0]) {
-    return { employeeId: null, source: null, snapshot: { ...base, unresolved: "RATER_NOT_ACTIVE" } };
-  }
-  return {
-    employeeId: authority.employeeId,
-    source: sourcesOf(authority).includes("DIRECT_MANAGER") ? "DIRECT_MANAGER" : "GOVERNANCE_APPROVER",
-    snapshot: { ...base, source: authority.source, path: authority.path, incumbentKind: authority.incumbentKind },
-  };
 }
 
 async function addEvent(
@@ -850,7 +790,7 @@ export async function registerPerformanceRoutes(
           summary.alreadyIn += 1;
           continue;
         }
-        const rater = await resolveRater(client, employeeId, effectiveDate);
+        const rater = await resolveLineManager(client, { workflowKey: PERFORMANCE_WORKFLOW_KEY, employeeId, effectiveDate });
         if (!rater.employeeId) summary.withoutRater += 1;
         const reviewId = current?.id ?? randomUUID();
         if (current) {

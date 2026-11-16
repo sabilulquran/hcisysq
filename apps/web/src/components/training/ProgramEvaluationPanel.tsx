@@ -30,6 +30,7 @@ import {
   RESPONDENT_LABELS,
   setPassingScore,
   summaryLine,
+  validPassingScore,
   submitHcEvaluation,
   type AssessorRow,
   type Component,
@@ -163,7 +164,7 @@ export function ProgramEvaluationPanel({ programId, programStatus, canManage }: 
           <input type="number" min={0} max={100} disabled={!editable} className={`${input} w-28`} value={passing} onChange={(event) => setPassing(event.target.value)} />
         </label>
         {editable ? (
-          <button type="button" className={secondary} disabled={busy}
+          <button type="button" className={secondary} disabled={busy || !validPassingScore(passing)}
             onClick={() => void run(async () => { await setPassingScore(programId, Number(passing)); return "Nilai minimal lulus disimpan."; })}>
             Simpan
           </button>
@@ -391,7 +392,7 @@ function CommentsDialog({ component, onClose }: { component: Component; onClose:
   return (
     <DetailDialog title={`Komentar · ${component.title}`} onClose={onClose}>
       {error ? <p role="alert" className="text-sm text-danger-ink">{error}</p> : !state ? <DialogLoading /> : state.hidden ? (
-        <p className="text-sm text-muted-foreground">Komentar anonim tampil setelah minimal {state.threshold} peserta mengisi, supaya pengisinya tidak dapat dikenali.</p>
+        <p className="text-sm text-muted-foreground">Komentar anonim tampil setelah komponen ditutup dan minimal {state.threshold} peserta mengisi, supaya pengisinya tidak dapat dikenali.</p>
       ) : state.items.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada komentar.</p> : (
         <ul className="space-y-2">
           {state.items.map((item, index) => (

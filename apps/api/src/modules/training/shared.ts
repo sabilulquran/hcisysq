@@ -18,6 +18,8 @@ export interface TrainingRouteKit {
   handle: (reply: FastifyReply, work: () => Promise<unknown>) => Promise<unknown>;
   transact: (reply: FastifyReply, work: (client: PoolClient) => Promise<[number, unknown]>) => Promise<unknown>;
   invalid: (reply: FastifyReply, code: string, message: string) => unknown;
+  /** Whether the principal also holds training.manage (answer keys are shown only then). */
+  canManage: (principal: AuthPrincipal) => Promise<boolean>;
 }
 
 export class TrainingError extends Error {

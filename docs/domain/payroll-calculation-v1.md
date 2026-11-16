@@ -138,7 +138,7 @@ Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (te
 
 ### 3.5 Potongan cicilan LOAN-001 (dibangun 2026-11-17, sakelar default MATI)
 
-Kontrak: `docs/domain/employee-loans.md` §9.2. Implementasi: `apps/api/src/modules/payroll/employee-loan-link.ts`, migration 0153. Sakelar: variabel lingkungan `LOAN_PAYROLL_DEDUCTION_ENABLED` (bawaan `0`), pola yang sama dengan `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED`. **Menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi** (LOAN-001 §9.2 butir 6) dan merupakan perubahan konfigurasi production yang dilaporkan.
+Kontrak: `docs/domain/employee-loans.md` §9.2. Implementasi: `apps/api/src/modules/payroll/employee-loan-link.ts`, migration 0154. Sakelar: variabel lingkungan `LOAN_PAYROLL_DEDUCTION_ENABLED` (bawaan `0`), pola yang sama dengan `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED`. **Menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi** (LOAN-001 §9.2 butir 6) dan merupakan perubahan konfigurasi production yang dilaporkan.
 
 | Saat | Yang terjadi | Bergantung sakelar? |
 |---|---|---|
@@ -161,7 +161,7 @@ Sisa yang dipakai untuk cermin LOAN-001 — oleh mesin (`LOAN_EXCEEDS_BALANCE`),
 
 Audit: `payroll.period.calculated` menambah `employee_loan_deduction_enabled` dan `employee_loan_proposed_count`; transisi `approve`/`approve_reopen` menambah `loan_payments_settled`/`loan_payments_reversed` — hitungan saja. Event dan notifikasi LOAN-001 tidak memuat nominal (D-15).
 
-Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang sudah tercatat tetap fakta dan tetap dibalik bila periodenya dibuka ulang. Skema: `-- Down:` migration 0153.
+Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang sudah tercatat tetap fakta dan tetap dibalik bila periodenya dibuka ulang. Skema: `-- Down:` migration 0154.
 
 ## 4. Input periode
 

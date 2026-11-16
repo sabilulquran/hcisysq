@@ -99,7 +99,7 @@ Saat diterbitkan, surat menyimpan **snapshot** fakta yang dipakainya (nama, jaba
 | --- | --- | --- | --- |
 | `KETERANGAN_KERJA` | Surat Keterangan Kerja | Pegawai aktif | 1 |
 | `PAKLARING` | Surat Keterangan Pengalaman Kerja | Hubungan kerja berakhir | 1 |
-| `KETERANGAN_PENGHASILAN` | Surat Keterangan Penghasilan | Pegawai aktif | 2 (aktif sejak migrasi 0153, §14) |
+| `KETERANGAN_PENGHASILAN` | Surat Keterangan Penghasilan | Pegawai aktif | 2 (aktif sejak migrasi 0154, §14) |
 
 Katalog disimpan sebagai data, bukan `enum` kode, supaya jenis baru tidak memerlukan rilis.
 
@@ -194,7 +194,7 @@ DOC-001:
 - DOC-001-F: penandatangan diselesaikan dengan aturan PAYSLIP-005; bila tidak ada kandidat eligible, penerbitan gagal dengan pesan jelas dan permintaan tetap `APPROVED`.
 - DOC-001-G: paklaring ditolak untuk pegawai yang masih aktif (D-06).
 - DOC-001-H: isi surat tidak memuat gaji, rekening, atau alamat rumah. Satu-satunya pengecualian adalah angka penghasilan pada surat keterangan penghasilan (D-15 revisi, D-24); surat itu pun tidak memuat NIK, NPWP, rekening, alamat, atau rincian komponen slip.
-- DOC-001-I: ~~jenis `KETERANGAN_PENGHASILAN` tidak dapat diajukan di Paket 1.~~ Sejak Paket 2 (migrasi 0153): pegawai aktif dapat mengajukan surat keterangan penghasilan; saat terbit, surat membekukan bruto dan neto setiap bulan dalam rentang D-22 dari slip resmi D-21 serta rata-ratanya, dan revisi slip sesudahnya tidak mengubah surat.
+- DOC-001-I: ~~jenis `KETERANGAN_PENGHASILAN` tidak dapat diajukan di Paket 1.~~ Sejak Paket 2 (migrasi 0154): pegawai aktif dapat mengajukan surat keterangan penghasilan; saat terbit, surat membekukan bruto dan neto setiap bulan dalam rentang D-22 dari slip resmi D-21 serta rata-ratanya, dan revisi slip sesudahnya tidak mengubah surat.
 - DOC-001-L: tanpa slip resmi terbit dalam rentang D-22, penerbitan ditolak `409 DOCUMENT_INCOME_UNAVAILABLE`, permintaan tetap `APPROVED`, dan nomor tidak terpakai; slip yang angkanya tidak terbaca ditolak `409 DOCUMENT_INCOME_UNREADABLE` dengan periode, tanpa nominal. Draf slip, slip yang digantikan revisi, slip bulan berjalan, dan slip pegawai lain tidak ikut dihitung. Pegawai nonaktif ditolak `DOCUMENT_EMPLOYMENT_STATE`.
 - DOC-001-M: isi surat keterangan penghasilan hanya terbaca oleh pegawai ybs (D-20) dan pemegang `documents.read` + `documents.manage` (D-25); pemegang `documents.read` saja menerima 403 tanpa isi tetapi tetap melihat baris register dan dapat membatalkannya; tanpa `documents.read` 403; surat peringatan 404. Audit, notifikasi, register, dan daftar surat pegawai tidak memuat nominal.
 
@@ -281,7 +281,7 @@ Ditambahkan 2026-11-17. Seluruh aturan bisnis di bagian ini `DRAFT` sampai dikon
 | Unsur | Isi |
 | --- | --- |
 | Aktor | Pegawai aktif (mengajukan, membaca, mencetak suratnya sendiri); HC pemegang `documents.manage` (memutuskan, menerbitkan, membaca isi); pemegang `documents.correct` (membatalkan). |
-| Prasyarat | Jenis `KETERANGAN_PENGHASILAN` aktif (migrasi 0153); pegawai berstatus aktif; penandatangan eligible (D-05); minimal satu slip resmi terbit dalam rentang D-22. |
+| Prasyarat | Jenis `KETERANGAN_PENGHASILAN` aktif (migrasi 0154); pegawai berstatus aktif; penandatangan eligible (D-05); minimal satu slip resmi terbit dalam rentang D-22. |
 | Layar | Pegawai: `/app/documents`, jenis **Surat Keterangan Penghasilan** pada formulir permintaan, lalu **Lihat & cetak** seperti D-20. HC: `/admin/documents`, antrean permintaan (**Setujui**, **Terbitkan**), dan tombol **Lihat surat** di register yang hanya ditawarkan untuk surat penghasilan bila akun membawa `documents.manage`. |
 | Input | Keperluan (5–500 karakter) pada permintaan; HC dapat menerbitkan langsung lewat `POST /admin/documents/issue`. Angka penghasilan **tidak** diinput siapa pun; dibaca dari slip (D-21, D-23). |
 | Transisi | Sama dengan surat keterangan lain (§5.1). Penerbitan membaca slip, menyusun angka, mengalokasikan nomor `SKP`, dan menyimpan snapshot dalam satu transaksi. |

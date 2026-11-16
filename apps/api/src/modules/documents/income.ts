@@ -193,6 +193,9 @@ export async function loadIncomeFacts(db: QueryTarget, employeeId: string, issue
       WHERE payslip.employee_id = $1
         AND payslip.published_at IS NOT NULL
         AND payslip.superseded_by_id IS NULL
+        -- PAY-003-THR T13: the monthly salary slip, never the THR slip of the same month, which
+        -- would otherwise win DISTINCT ON whenever it was published later.
+        AND payslip.kind = 'REGULAR'
         AND payslip.period >= $2::date
         AND payslip.period <= $3::date
       ORDER BY payslip.period ASC, payslip.published_at DESC, payslip.id DESC`,

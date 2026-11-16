@@ -18,7 +18,7 @@ THR berada di luar PAY-003 v1 (`payroll-calculation-v1.md` §1.2). Spesifikasi i
 | Waktu bayar | paling lambat 7 hari sebelum hari raya | `THR.paymentDeadlineDaysBeforeHoliday` = 7 |
 | PKWTT yang berakhir ≤ 30 hari sebelum hari raya | tetap berhak | `THR.terminationGraceDays` = 30, `THR.terminationGraceTermCategories` |
 
-Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta kode), seperti kebijakan statutori lain (`payroll-calculation-v1.md` §10 butir 9). Migration 0153 memuat satu versi awal bertanda `DRAFT` yang berlaku sejak 2026-01-01; perubahan dilakukan dengan menambah versi.
+Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta kode), seperti kebijakan statutori lain (`payroll-calculation-v1.md` §10 butir 9). Migration 0155 memuat satu versi awal bertanda `DRAFT` yang berlaku sejak 2026-01-01; perubahan dilakukan dengan menambah versi.
 
 ## 2. Keputusan (`DRAFT`, default agent 2026-11-17)
 
@@ -36,12 +36,12 @@ Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta 
 | T10 | PPh21 | THR adalah penghasilan tidak teratur yang dibayar pada bulan itu. Masa pajak = bulan pembayaran; TER bulanan dikenakan atas **jumlah** bruto bulan itu. Laporan PPh21 (§7.2 PAY-003) pada periode mana pun menggabungkan semua periode legal entity yang sama pada bulan itu yang sudah `APPROVED` ke atas (gaji bulanan + THR), per orang. Baris yang memuat THR diberi penanda `INCLUDES_THR`; respons JSON menyebut periode yang digabung. Periode bulan itu yang belum disahkan tidak ikut, dan laporan menyebut jumlahnya (`pendingPeriodCount`) agar pembaca tahu angka belum final. Tabel TER dibaca pada tanggal bayar terakhir di antara periode yang digabung, sehingga laporan sama dari periode mana pun dibuka; pembacaan dicatat pada setiap periode yang digabung. Pengingat tenggat input (REMIND) tidak berlaku untuk periode THR. |
 | T11 | Lifecycle dan izin | Sama persis dengan periode bulanan (`payroll-calculation-v1.md` §6): hitung, ajukan, kembalikan/sahkan Direktur (tanpa self-approval), konfirmasi bayar, siapkan dan terbitkan slip, buka ulang. Izin dan pembaca angka per orang (§7.3) tidak berubah. "Ambil lembur & kehadiran" tidak ditawarkan untuk periode THR. |
 | T12 | Perbandingan | Periode THR dibandingkan dengan periode THR sebelumnya yang sudah disahkan; periode bulanan hanya dengan periode bulanan. |
-| T13 | Slip | `payslips.kind` (`REGULAR`/`THR`); satu slip berlaku per pegawai per bulan **per jenis**, sehingga slip THR tidak menggantikan slip gaji bulan yang sama. Slip THR memuat jenis, nama hari raya, tanggal hari raya, masa kerja (bulan), baris THR, dan ringkasan ("THR bersih"). Komit batch impor PAY-001 juga hanya bertabrakan dengan slip `REGULAR`. Daftar slip pegawai menandai slip THR. Impor PAY-001 hanya bertabrakan dengan slip `REGULAR`. |
+| T13 | Slip | `payslips.kind` (`REGULAR`/`THR`); satu slip berlaku per pegawai per bulan **per jenis**, sehingga slip THR tidak menggantikan slip gaji bulan yang sama. Slip THR memuat jenis, nama hari raya, tanggal hari raya, masa kerja (bulan), baris THR, dan ringkasan ("THR bersih"). Komit batch impor PAY-001 juga hanya bertabrakan dengan slip `REGULAR`. Daftar slip pegawai menandai slip THR. Surat keterangan penghasilan (DOC-001) hanya membaca slip `REGULAR`: THR bukan penghasilan bulanan rutin (`DRAFT`). |
 | T14 | Daftar transfer | Sama dengan periode bulanan; berkas `daftar-transfer-thr-YYYY-MM.csv`. |
 
 ## 3. Data
 
-Migration `0153_payroll_thr.sql`:
+Migration `0155_payroll_thr.sql`:
 
 - `payroll_periods.period_kind` (`REGULAR` default, `THR`), `holiday_date`, `holiday_name`; CHECK: periode THR wajib punya keduanya dan tanggal bayar sebelum hari raya; periode bulanan tidak punya keduanya. Exclusion constraint `payroll_periods_unique_month` diganti `payroll_periods_unique_month_per_kind`.
 - `payroll_components.is_thr_wage` + CHECK hanya `EARNING`; komponen baru `THR`.

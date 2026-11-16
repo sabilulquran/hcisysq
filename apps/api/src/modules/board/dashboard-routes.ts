@@ -33,6 +33,18 @@ export async function registerBoardDashboardRoutes(
       return reply.status(error.statusCode).send({ code: error.code, message: error.message });
     }
 
+    // ORG-010 amendment 2026-11-13: with ORGAN_PORTAL_URL set, an organ account reads the summary
+    // and employee list in the Portal Organ Yayasan; /board stays for its leave approvals only.
+    // Refused before any aggregate query. Like every other /board refusal (D10), not audited.
+    if (principalType === "FOUNDATION_BOARD" && config.ORGAN_PORTAL_URL) {
+      reply.header("Cache-Control", "no-store");
+      return reply.status(403).send({
+        code: "ORGAN_PORTAL_ONLY",
+        message: "Ringkasan dan data pegawai untuk Organ Yayasan ada di Portal Organ Yayasan.",
+        organPortalUrl: config.ORGAN_PORTAL_URL,
+      });
+    }
+
     const aggregates = await loadBoardAggregates(pool);
     reply.header("Cache-Control", "private, no-store");
     return reply.send({

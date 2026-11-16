@@ -1,13 +1,15 @@
 # HCIS Product Roadmap
 
 **Status:** ACCEPTED PRODUCT DIRECTION  
-**Updated:** 2026-09-22  
+**Updated:** 2026-09-22; istilah dan fakta usang diselaraskan dengan SQ-Hub ADR-0014 pada 2026-11-16  
 **Scope:** Post-MVP product direction; no release dates are implied.  
 **Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
 
 ## Purpose
 
 Roadmap ini menjaga HCIS tetap lengkap sebagai sistem Human Capital tanpa memaksa kompleksitas teknis muncul sebagai kompleksitas operasional.
+
+Roadmap ini hanya memuat modul HCIS. HCIS adalah satu aplikasi di SQ Suite; aplikasi lain, portal, dan urutan prioritas lintas aplikasi ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) pada repository `SQ-Hub`. Status implementasi tiap modul HCIS ada di `docs/product/hcis-capability-map.md`.
 
 Prinsip utamanya:
 
@@ -96,7 +98,7 @@ Detail ada di `docs/domain/job-classification-grade.md` (DRAFT) dan ADR-0004 (PR
 
 Payroll penuh resmi masuk roadmap HCIS melalui PAY-003.
 
-Model payroll **belum menjadi runtime**. Discovery direction sekarang menetapkan minimum architecture:
+PAY-003 v1 sudah diimplementasikan (lihat `docs/product/hcis-capability-map.md` §3); PAY-001/PAY-002 tetap jalur slip resmi sampai parallel run ditutup owner. Arah discovery yang mendasarinya menetapkan minimum architecture:
 
 ```text
 Component Catalog
@@ -184,7 +186,7 @@ Arah yang ditetapkan ADR-0005: entity diturunkan dari employment (bukan dari acc
 
 ### F. Recruitment linked to organization and employment
 
-REC-001 tetap discovery. Sejak keputusan Product Owner 2026-10-16, Recruitment adalah aplikasi SQ Core terpisah di luar HCIS, dan kandidat login melalui realm eksternal Akun SQ (SQ Hub ADR-0008, PROPOSED). HCIS hanya memiliki kontrak hand-off di kedua ujung alur berikut:
+Sejak keputusan Product Owner 2026-10-16, rekrutmen (REC-001) bukan modul HCIS: ia diurus Karir SQ, aplikasi SQ Suite tersendiri, dan kandidat login melalui realm eksternal Akun SQ di Portal Pelamar (SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status Karir SQ di STRUKTUR-001). HCIS hanya memiliki kontrak hand-off di kedua ujung alur berikut:
 
 ```text
 ORG-004 vacant position
@@ -206,7 +208,7 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 
 - PERF-001 Performance/KPI — Package 1 implemented, `docs/domain/performance-review.md`; tunjangan kinerja link to PAY-003 is a later package;
 - TRAIN-001 Training/LMS — Package 1 (training record keeping) implemented, `docs/domain/training.md`;
-- REC-001 Recruitment;
+- REC-001 Recruitment — di luar HCIS (Karir SQ); HCIS hanya sisi hand-off, lihat bagian F;
 - TRIP-001 Business travel — Package 1 implemented, `docs/domain/business-travel.md`;
 - ASSET-001 Employee assets;
 - REIMB-001 Reimbursement — Package 1 implemented, `docs/domain/reimbursement.md`; paid outside payroll, payroll handoff behind an off switch;

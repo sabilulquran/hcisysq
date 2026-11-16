@@ -81,12 +81,12 @@ const HUB_REFUSAL_MESSAGES: Record<string, string> = {
   HCIS_EMPLOYEE_NOT_ACTIVE: "SQ Hub membaca status pegawai ini tidak aktif.",
   HCIS_EMPLOYEE_INVALID_CONTACT: "Email pegawai belum terisi. Lengkapi email pegawai lalu kirim lagi.",
   EMPLOYEE_IDENTITY_CONFLICT:
-    "Sudah ada Akun SQ dengan NIP ini tetapi milik data lain atau emailnya berbeda. Minta Admin Platform memeriksanya di SQ Hub.",
-  DUPLICATE_USERNAME: "NIP ini sudah dipakai Akun SQ lain. Minta Admin Platform memeriksanya di SQ Hub.",
+    "Sudah ada Akun SQ dengan NIP ini tetapi milik data lain atau emailnya berbeda. Minta Admin Platform memeriksanya di Admin SQ.",
+  DUPLICATE_USERNAME: "NIP ini sudah dipakai Akun SQ lain. Minta Admin Platform memeriksanya di Admin SQ.",
   DUPLICATE_EMAIL: "Email pegawai ini sudah dipakai Akun SQ lain. Periksa email pegawai atau minta Admin Platform memeriksanya.",
-  STAFF_IDENTITY_DISABLED: "Akun SQ pegawai ini dinonaktifkan di SQ Hub. Admin Platform perlu mengaktifkannya kembali.",
+  STAFF_IDENTITY_DISABLED: "Akun SQ pegawai ini dinonaktifkan di Admin SQ. Admin Platform perlu mengaktifkannya kembali.",
   ORGAN_IDENTITY_LINK_REQUIRES_ADMIN:
-    "Email pegawai ini dipakai Akun SQ Organ Yayasan. Menghubungkannya ke data pegawai dilakukan Admin Platform di SQ Hub.",
+    "Email pegawai ini dipakai Akun SQ Organ Yayasan. Menghubungkannya ke data pegawai dilakukan Admin Platform di Admin SQ.",
 };
 
 function refusal(code: string, message: string, statusCode = 409) {

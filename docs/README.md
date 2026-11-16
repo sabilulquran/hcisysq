@@ -2,6 +2,10 @@
 
 Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku harus mengubah dokumen dan test yang terkait.
 
+## Istilah dan struktur SQ Suite
+
+HCIS adalah satu aplikasi di SQ Suite, ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah SQ Suite, SQ Hub, Portal, Aplikasi, dan Modul ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-suite-ecosystem-structure.md); daftar aplikasi, portal, dan statusnya hanya ada di [`docs/product/struktur-sq-suite.md`](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) (STRUKTUR-001) pada repository `SQ-Hub`. Ringkasannya untuk repository ini ada di `AGENTS.md` §10 dan `domain/glossary.md`. Dokumen lama yang menulis "SQ Core" bermaksud SQ Suite.
+
 ## Urutan membaca
 
 Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang audit yang sudah selesai:
@@ -21,11 +25,11 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk finalisasi Manajemen ADMS, baca `domain/attendance-adms-operational-management.md` (ATT-012).
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-010), lalu Package 1 di `domain/employment-administration-package1.md` dan rencana implementasinya.
    - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
-   - untuk payroll v1 (DRAFT), baca `domain/payroll-legacy-flow-audit.md` (audit alur spreadsheet + keputusan owner), `domain/payroll-calculation-v1.md`, dan `architecture/adr/0003-payroll-calculation-in-hcis.md` (PROPOSED).
+   - untuk payroll v1, baca `domain/payroll-legacy-flow-audit.md` (audit alur spreadsheet + keputusan owner), `domain/payroll-calculation-v1.md` (ACCEPTED; parameter bertanda `DRAFT` menunggu konfirmasi), dan `architecture/adr/0003-payroll-calculation-in-hcis.md` (ACCEPTED 2026-10-27).
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
-   - untuk akses Panel Organ Yayasan bagi Employee dan governance summary ke SQ Hub Ringkasan Yayasan, baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
+   - untuk akses Panel Organ Yayasan bagi Employee dan governance summary HCIS (wajah Laporan) yang dibaca Portal Organ (SQ-Hub ADR-0012; sebelumnya "Ringkasan Yayasan" di SQ-Hub ADR-0009), baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
    - untuk daftar pegawai yang dilihat Organ Yayasan di portal, baca `domain/organ-employee-list.md` (ORG-014, ACCEPTED).
-   - untuk akun Organ Yayasan sebagai approver struktural, baca `domain/organ-account-approver.md` (ORG-013, ACCEPTED); Portal Organ Yayasan ditetapkan di SQ Hub ADR-0012 dan ORGAN-IMPL-001; `product/organ-portal-concept.md` (GOV-001) kini hanya catatan diskusi.
+   - untuk akun Organ Yayasan sebagai approver struktural, baca `domain/organ-account-approver.md` (ORG-013, ACCEPTED); Portal Organ ditetapkan di SQ-Hub ADR-0012 dan ORGAN-IMPL-001; `product/organ-portal-concept.md` (GOV-001) kini hanya catatan diskusi.
    - untuk evidence benchmarking SemartHRIS dan guardrail yang tidak boleh dicopy, baca `product/semarthris-benchmark-2026-09-22.md`.
 11. `architecture/system-context.md`
 12. ADR yang relevan
@@ -56,8 +60,8 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 
 ## Engineering standards
 
-- `development/list-pagination-standard.md` — ENG-LIST-001 (DIUSULKAN): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar SQ Core.
-- `development/list-pagination-audit-2026-10-24.md` — audit daftar panjang di HCIS, SQ Hub, Aset, Karir, SPMB, dan Keluarga SQ beserta paket perbaikan berprioritas.
+- `development/list-pagination-standard.md` — ENG-LIST-001 (BERLAKU untuk HCIS sejak 2026-10-26): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar di aplikasi SQ Suite.
+- `development/list-pagination-audit-2026-10-24.md` — audit daftar panjang di HCIS, platform SQ Hub, Aset SQ, Karir SQ, SPMB SQ, dan Keluarga SQ beserta paket perbaikan berprioritas.
 
 ## Deployment dan repository operations
 

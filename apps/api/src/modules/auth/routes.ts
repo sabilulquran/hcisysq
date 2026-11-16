@@ -206,7 +206,13 @@ export async function registerAuthRoutes(
       });
     }
 
-    return reply.send({ ...session, authorization: await auth.getSessionAuthorization(session.principal) });
+    // ORG-010 amendment 2026-11-13: only an organ account needs the Portal Organ Yayasan link.
+    const organPortalUrl = session.principal.principalType === "FOUNDATION_BOARD" ? config.ORGAN_PORTAL_URL : undefined;
+    return reply.send({
+      ...session,
+      authorization: await auth.getSessionAuthorization(session.principal),
+      ...(organPortalUrl ? { organPortalUrl } : {}),
+    });
   });
 
   // AUTH-013: the SQ Hub applications this session's Akun SQ identity may open.

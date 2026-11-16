@@ -2,9 +2,9 @@
 
 Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku harus mengubah dokumen dan test yang terkait.
 
-## Istilah dan struktur SQ Hub
+## Istilah dan struktur SQ Suite
 
-HCIS adalah satu aplikasi di SQ Hub, ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah SQ Hub, Portal, Aplikasi, dan Modul ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-hub-ecosystem-structure.md); daftar aplikasi, portal, dan statusnya hanya ada di [`docs/product/struktur-sq-hub.md`](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) (STRUKTUR-001) pada repository `SQ-Hub`. Ringkasannya untuk repository ini ada di `AGENTS.md` §10 dan `domain/glossary.md`. Dokumen lama yang menulis "SQ Core" bermaksud SQ Hub.
+HCIS adalah satu aplikasi di SQ Suite, ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah SQ Suite, SQ Hub, Portal, Aplikasi, dan Modul ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-suite-ecosystem-structure.md); daftar aplikasi, portal, dan statusnya hanya ada di [`docs/product/struktur-sq-suite.md`](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) (STRUKTUR-001) pada repository `SQ-Hub`. Ringkasannya untuk repository ini ada di `AGENTS.md` §10 dan `domain/glossary.md`. Dokumen lama yang menulis "SQ Core" bermaksud SQ Suite.
 
 ## Urutan membaca
 
@@ -60,7 +60,7 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 
 ## Engineering standards
 
-- `development/list-pagination-standard.md` — ENG-LIST-001 (BERLAKU untuk HCIS sejak 2026-10-26): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar di aplikasi SQ Hub.
+- `development/list-pagination-standard.md` — ENG-LIST-001 (BERLAKU untuk HCIS sejak 2026-10-26): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar di aplikasi SQ Suite.
 - `development/list-pagination-audit-2026-10-24.md` — audit daftar panjang di HCIS, platform SQ Hub, Aset SQ, Karir SQ, SPMB SQ, dan Keluarga SQ beserta paket perbaikan berprioritas.
 
 ## Deployment dan repository operations

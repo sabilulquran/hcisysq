@@ -11,7 +11,7 @@
 
 HCIS YSQ is the application for the employee lifecycle, workforce administration, organization, attendance, compensation, development, and employee services.
 
-HCIS is one application inside SQ Hub, the ecosystem of Yayasan Sabilul Qur'an applications. The capabilities below are HCIS **modules**. Other SQ Hub applications (Aset SQ, Karir SQ, Kirim SQ, Sekretariat SQ, Al-Qur'an, and the rest), the portals, and their status are listed only in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) in the `SQ-Hub` repository (terms: SQ-Hub ADR-0014). In documents written before 2026-11-16, "SQ Core" means SQ Hub.
+HCIS is one application inside SQ Suite, the ecosystem of Yayasan Sabilul Qur'an applications. The capabilities below are HCIS **modules**. Other SQ Suite applications (Aset SQ, Karir SQ, Kirim SQ, Sekretariat SQ, Al-Qur'an, and the rest), the portals, and their status are listed only in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) in the `SQ-Hub` repository (terms: SQ-Hub ADR-0014). In documents written before 2026-11-16, "SQ Core" means SQ Suite.
 
 This scope is broader than the verified MVP. Inclusion in this capability map means the capability belongs in the HCIS product direction; it does **not** mean the backend behavior is implemented, production-ready, or scheduled for a release date.
 
@@ -129,7 +129,7 @@ Employee services continue with:
 
 ### 7. Recruitment hand-off (recruitment itself is Karir SQ)
 
-Recruitment is not an HCIS module. The recruitment/candidate workflow (REC-001) belongs to **Karir SQ**, a separate SQ Hub application (Product Owner decision, 2026-10-16; see SQ-Hub `docs/product/roadmap-and-decision-register.md` and SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status in STRUKTUR-001). Candidates sign in through an external Akun SQ realm. HCIS keeps the employment side of the hand-off: vacant-position facts going out and the hire -> employment contract coming in.
+Recruitment is not an HCIS module. The recruitment/candidate workflow (REC-001) belongs to **Karir SQ**, a separate SQ Suite application (Product Owner decision, 2026-10-16; see SQ-Hub `docs/product/roadmap-and-decision-register.md` and SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status in STRUKTUR-001). Candidates sign in through an external Akun SQ realm. HCIS keeps the employment side of the hand-off: vacant-position facts going out and the hire -> employment contract coming in.
 
 Target integration direction:
 

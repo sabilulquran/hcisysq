@@ -4,18 +4,19 @@
 
 Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi yang sama.
 
-## Istilah ekosistem SQ Hub
+## Istilah ekosistem SQ Suite
 
-Ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-hub-ecosystem-structure.md) (ACCEPTED 2026-11-16); daftar aplikasi dan portal ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) dan tidak disalin ke sini.
+Ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-suite-ecosystem-structure.md) (ACCEPTED 2026-11-16); daftar aplikasi dan portal ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) dan tidak disalin ke sini.
 
 | Istilah | Definisi |
 |---|---|
-| SQ Hub | Seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Menggantikan istilah "SQ Core", yang hanya tersisa pada nama teknis dan catatan lama. |
+| SQ Suite | Seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Menggantikan istilah "SQ Core", yang hanya tersisa pada nama teknis dan catatan lama. |
+| SQ Hub | Halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`. Bukan nama keseluruhan. |
 | Portal | Pintu masuk untuk satu kelompok pengguna dengan jenis akunnya: Portal Admin, Portal Pegawai, Portal Organ, Portal Keluarga, Portal Pelamar, Situs publik. |
 | Aplikasi | Sistem yang mengurus satu bidang dan memegang data serta aturannya. HCIS adalah aplikasi; begitu juga Aset SQ, Karir SQ, dan Kirim SQ. Aplikasi lain tidak disebut "modul". |
 | Modul | Bagian di dalam satu aplikasi, misalnya Cuti, Presensi, dan Payroll di dalam HCIS. |
 | Wajah | Cara satu aplikasi tampil di satu portal. HCIS punya wajah Kelola dan Layanan mandiri di Portal Pegawai serta wajah Laporan di Portal Organ. |
-| Platform SQ Hub | Bagian bersama SQ Hub di repository `SQ-Hub`: Beranda (peluncur aplikasi), Akun SQ (login), Admin SQ (akun, Application Access, peran), dan Direktori Organisasi. Tulis nama bagiannya, bukan "SQ Hub", bila yang dimaksud hanya salah satunya. |
+| Platform SQ Hub | Istilah dokumen teknis untuk layanan bersama SQ Suite di repository `SQ-Hub`: SQ Hub (halaman awal dan peluncur aplikasi), Akun SQ (login), Admin SQ (akun, Application Access, peran), dan Direktori Organisasi. Tulis nama bagiannya bila yang dimaksud hanya salah satunya. |
 
 ## Istilah domain HCIS
 
@@ -102,7 +103,7 @@ Ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main
 ## Aturan terminologi
 
 - Jangan menggunakan `user` ketika yang dimaksud secara spesifik adalah employee atau candidate.
-- Jangan menyebut aplikasi lain di SQ Hub sebagai "modul", dan jangan memakai "SQ Core" di dokumen hidup atau teks yang dilihat pengguna.
+- Jangan menyebut aplikasi lain di SQ Suite sebagai "modul", dan jangan memakai "SQ Core" di dokumen hidup atau teks yang dilihat pengguna.
 - Bedakan role, position, dan direct manager.
 - Bedakan status request dari status approval step.
 - Jangan menyebut data terhapus bila sebenarnya soft-deleted, archived, atau deactivated.

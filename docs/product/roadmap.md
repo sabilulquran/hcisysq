@@ -9,7 +9,7 @@
 
 Roadmap ini menjaga HCIS tetap lengkap sebagai sistem Human Capital tanpa memaksa kompleksitas teknis muncul sebagai kompleksitas operasional.
 
-Roadmap ini hanya memuat modul HCIS. HCIS adalah satu aplikasi di SQ Hub; aplikasi lain, portal, dan urutan prioritas lintas aplikasi ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) pada repository `SQ-Hub`. Status implementasi tiap modul HCIS ada di `docs/product/hcis-capability-map.md`.
+Roadmap ini hanya memuat modul HCIS. HCIS adalah satu aplikasi di SQ Suite; aplikasi lain, portal, dan urutan prioritas lintas aplikasi ada di [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) pada repository `SQ-Hub`. Status implementasi tiap modul HCIS ada di `docs/product/hcis-capability-map.md`.
 
 Prinsip utamanya:
 
@@ -186,7 +186,7 @@ Arah yang ditetapkan ADR-0005: entity diturunkan dari employment (bukan dari acc
 
 ### F. Recruitment linked to organization and employment
 
-Sejak keputusan Product Owner 2026-10-16, rekrutmen (REC-001) bukan modul HCIS: ia diurus Karir SQ, aplikasi SQ Hub tersendiri, dan kandidat login melalui realm eksternal Akun SQ di Portal Pelamar (SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status Karir SQ di STRUKTUR-001). HCIS hanya memiliki kontrak hand-off di kedua ujung alur berikut:
+Sejak keputusan Product Owner 2026-10-16, rekrutmen (REC-001) bukan modul HCIS: ia diurus Karir SQ, aplikasi SQ Suite tersendiri, dan kandidat login melalui realm eksternal Akun SQ di Portal Pelamar (SQ-Hub ADR-0008, ACCEPTED 2026-10-17; status Karir SQ di STRUKTUR-001). HCIS hanya memiliki kontrak hand-off di kedua ujung alur berikut:
 
 ```text
 ORG-004 vacant position

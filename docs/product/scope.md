@@ -3,7 +3,7 @@
 **Status:** ACCEPTED — MVP COMPLETE, POST-MVP OPERATIONAL VALIDATION ACTIVE  
 **Updated:** 2026-09-18; terms and stale facts aligned to SQ-Hub ADR-0014 on 2026-11-16
 
-HCIS is the workforce application inside SQ Hub, the ecosystem of Yayasan Sabilul Qur'an applications. This document covers HCIS and its modules only; the list of SQ Hub applications, portals, and their status is kept in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) in the `SQ-Hub` repository.
+HCIS is the workforce application inside SQ Suite, the ecosystem of Yayasan Sabilul Qur'an applications. This document covers HCIS and its modules only; the list of SQ Suite applications, portals, and their status is kept in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) in the `SQ-Hub` repository.
 
 ## Sequencing principle
 

@@ -4,16 +4,16 @@
 
 > This document is a living overview, not a retired one. Only its former mention of a staging environment was retired: staging was permanently retired by owner decision of 2 October 2026 (`docs/operations/permanent-staging-retirement-2026-10-02.md`) and production runs on Mi8VPS only. Nothing here authorizes recreating staging.
 
-## Place in SQ Hub
+## Place in SQ Suite
 
-HCIS is the workforce application inside SQ Hub, the ecosystem of Yayasan Sabilul Qur'an applications. It runs as its own program with its own database. The list of SQ Hub applications, portals, and their status is kept only in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-hub.md) in the `SQ-Hub` repository.
+HCIS is the workforce application inside SQ Suite, the ecosystem of Yayasan Sabilul Qur'an applications. It runs as its own program with its own database. The list of SQ Suite applications, portals, and their status is kept only in [STRUKTUR-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) in the `SQ-Hub` repository.
 
-HCIS reaches the rest of SQ Hub only through contracts:
+HCIS reaches the rest of SQ Suite only through contracts:
 
 | Counterpart | What crosses the boundary | HCIS reference |
 |---|---|---|
 | Akun SQ (platform) | Sign-in through OIDC; HCIS holds no production passwords | AUTH-012, `docs/domain/access-model.md` |
-| Admin SQ and Beranda (platform) | Application Access check, launcher list, staff activation invite, role grants through the admin channel | AUTH-013, AUTH-014 |
+| Admin SQ and SQ Hub (platform) | Application Access check, launcher list, staff activation invite, role grants through the admin channel | AUTH-013, AUTH-014 |
 | Direktori Organisasi (platform) | Read-only organization snapshot pulled from HCIS | ORG-006 |
 | Portal Organ | HCIS governance summary (the Laporan face), employee list for organs, organ approvals | ORG-010, ORG-013, ORG-014 |
 | Kirim SQ | Outgoing WhatsApp messages | NOTIF-001, CAL-001 |
@@ -35,7 +35,7 @@ Employee / Approver / HC / Finance            Organ yayasan
       |             |              |
       +------- Worker/Scheduler ----+
                     |
-   Akun SQ (OIDC) / Kirim SQ (WhatsApp) / other SQ Hub applications
+   Akun SQ (OIDC) / Kirim SQ (WhatsApp) / other SQ Suite applications
 ```
 
 ## Component responsibilities

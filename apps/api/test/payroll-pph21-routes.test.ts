@@ -30,6 +30,7 @@ type Persona =
   | "director"
   | "finance"
   | "approver_only"
+  | "report_only"
   | "super_admin"
   | "board";
 
@@ -41,8 +42,15 @@ const PERMISSIONS: Record<Persona, string[]> = {
   // hcis_module_admin runs the lifecycle with payroll.periods.manage; that alone
   // must not open per-person gross and tax (specification section 7.2).
   module_admin: ["payroll.periods.manage", "payroll.policies.manage", "payroll.profiles.manage"],
-  director: ["payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization"],
-  finance: ["payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization"],
+  director: [
+    "payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization", "payroll.results.read.organization",
+  ],
+  finance: [
+    "payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization",
+    "payroll.results.read.organization",
+  ],
+  // The aggregate report only: since migration 0151 it opens no per-person figure (section 7.3).
+  report_only: ["payroll.reports.read.organization"],
   // Section 7: deciding on a period is not a licence to read its figures.
   approver_only: ["payroll.approve", "payroll.payments.confirm"],
   super_admin: [],
@@ -187,7 +195,12 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
 }
 
 describe("PAY-003 PPh21 report authorization", () => {
-  it("is read by payroll.reports.read.organization holders", async () => {
+  it("is closed to a holder of the aggregate report alone", async () => {
+    const { response } = await call("report_only", URL);
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("is read by payroll.results.read.organization holders", async () => {
     for (const persona of ["director", "finance"] as const) {
       const { response } = await call(persona, URL);
       expect(response.statusCode, persona).toBe(200);

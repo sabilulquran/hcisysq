@@ -93,6 +93,7 @@ describe("PAY-003 payroll screens", () => {
       "payroll.reopen.approve",
       "payroll.payments.confirm",
       "payroll.reports.read.organization",
+      "payroll.results.read.organization",
     ]) {
       expect(canAccessAdminPath(session("EMPLOYEE", [permission]), "/admin/payroll")).toBe(true);
     }

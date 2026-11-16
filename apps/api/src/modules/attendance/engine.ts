@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { overtimeExclusionFor } from "./overtime-rules.js";
 
 type ScheduleRow = {
@@ -56,7 +57,7 @@ export type AttendanceSession = {
 
 export type AttendanceComputation = {
   status: "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-    | "field_assignment" | "remote_work";
+    | "field_assignment" | "remote_work" | "business_trip";
   firstCheckInAt: Date | null;
   lastCheckOutAt: Date | null;
   workedMinutes: number;
@@ -94,6 +95,9 @@ type LeaveDispositionRow = {
 
 /** ATT-015 §7.1: an approved tugas luar or WFH/WFA covering the day. */
 type WorkArrangementRow = { id: string; disposition: "field_assignment" | "remote_work" };
+
+/** TRIP-001 Paket 2 (business-travel.md §9.2): an ISSUED or COMPLETED trip covering the day. */
+type BusinessTripRow = { id: string };
 
 type OvertimeRow = { id: string; approvedMinutes: number };
 
@@ -220,6 +224,12 @@ export function evaluateSessions(input: {
    * outside the geofence are justified.
    */
   workArrangement?: "field_assignment" | "remote_work" | null;
+  /**
+   * TRIP-001 Paket 2: an ISSUED or COMPLETED business trip. Without any session the day is
+   * `business_trip`; with sessions the punches stand, and the trip only replaces an `absent` or
+   * `incomplete` verdict. Lateness and early leave are not counted (see applyBusinessTrip).
+   */
+  businessTrip?: boolean;
   lateJustified: boolean;
   earlyLeaveJustified: boolean;
   outsideGeofenceJustified: boolean;
@@ -228,9 +238,10 @@ export function evaluateSessions(input: {
 }): AttendanceComputation {
   const now = input.now ?? new Date();
   const arranged = input.workArrangement ?? null;
-  const lateJustified = input.lateJustified || arranged !== null;
-  const earlyLeaveJustified = input.earlyLeaveJustified || arranged !== null;
-  const outsideGeofenceJustified = input.outsideGeofenceJustified || arranged !== null;
+  const trip = input.businessTrip === true;
+  const lateJustified = input.lateJustified || arranged !== null || trip;
+  const earlyLeaveJustified = input.earlyLeaveJustified || arranged !== null || trip;
+  const outsideGeofenceJustified = input.outsideGeofenceJustified || arranged !== null || trip;
   const justified = lateJustified || earlyLeaveJustified || outsideGeofenceJustified;
   const empty = (status: AttendanceComputation["status"]) => emptyComputation(status, {
     lateJustified,
@@ -249,6 +260,9 @@ export function evaluateSessions(input: {
   }
   if (input.attendanceDisposition === "absent") {
     return empty("absent");
+  }
+  if (trip && input.sessions.length === 0) {
+    return empty("business_trip");
   }
   if (arranged && input.sessions.length === 0) {
     return empty(arranged);
@@ -293,7 +307,7 @@ export function evaluateSessions(input: {
   if (incompleteSession) status = "incomplete";
   else if (lateMinutes > 0) status = "late";
 
-  return {
+  const computed: AttendanceComputation = {
     status,
     firstCheckInAt: first,
     lastCheckOutAt: lastComplete,
@@ -308,6 +322,42 @@ export function evaluateSessions(input: {
     outsideGeofenceJustified,
     overtimeMinutes: input.overtimeMinutes,
     sessions: input.sessions,
+  };
+  return trip ? applyBusinessTrip(computed) : computed;
+}
+
+/**
+ * TRIP-001 Paket 2 (business-travel.md §9.2) on a day with punches. The punches stay as recorded
+ * (first/last time, sessions, worked minutes); nothing is synthesised from the schedule. The trip
+ * replaces only an `absent` or `incomplete` verdict, and lateness and early leave on a trip day are
+ * not counted: their minutes are zero, so a late punch reads `present`.
+ */
+export function applyBusinessTrip(computed: AttendanceComputation): AttendanceComputation {
+  const status: AttendanceComputation["status"] =
+    computed.status === "absent" || computed.status === "incomplete" ? "business_trip"
+      : computed.status === "late" ? "present"
+      : computed.status;
+  return {
+    ...computed,
+    status,
+    // The open session stays in `sessions`; the day itself is decided, so it is not flagged incomplete.
+    incompleteSession: status === "business_trip" ? false : computed.incompleteSession,
+    lateMinutes: 0,
+    earlyLeaveMinutes: 0,
+    justified: true,
+    lateJustified: true,
+    earlyLeaveJustified: true,
+    outsideGeofenceJustified: true,
+  };
+}
+
+/** The same rule for the blocks of a multi-block trip day: punches stay, minutes are not counted. */
+export function applyBusinessTripToBlock(block: BlockComputation): BlockComputation {
+  return {
+    ...block,
+    status: block.status === "late" ? "present" : block.status,
+    lateMinutes: 0,
+    earlyLeaveMinutes: 0,
   };
 }
 
@@ -742,7 +792,21 @@ export async function materializeAttendanceResult(
 
     // ATT-015 §7.1: an approved tugas luar or WFH/WFA counts only on a scheduled working day that no leave
     // or resolution decided. Rest days and misconfigured days stay untouched, hash and source column included.
-    const arrangementResult = disposition || schedule.state !== "scheduled" ? null : await client.query<WorkArrangementRow>(
+    // TRIP-001 Paket 2 (§9.2): an ISSUED or COMPLETED business trip ranks below leave and resolution and
+    // above an ATT-015 arrangement (DRAFT D-15; the trip's own overlap check normally keeps them apart).
+    const tripResult = disposition || schedule.state !== "scheduled" ? null : await client.query<BusinessTripRow>(
+      `SELECT id
+       FROM business_trip_requests
+       WHERE employee_id = $1
+         AND status = ANY($3::text[])
+         AND $2::date BETWEEN start_on AND end_on
+       ORDER BY submitted_at, id
+       LIMIT 1`,
+      [employeeId, workDate, [...TRIP_ATTENDANCE_STATUSES]],
+    );
+    const trip = tripResult?.rows[0] ?? null;
+
+    const arrangementResult = disposition || trip || schedule.state !== "scheduled" ? null : await client.query<WorkArrangementRow>(
       `SELECT id,
               CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
        FROM attendance_work_arrangement_requests
@@ -807,6 +871,7 @@ export async function materializeAttendanceResult(
       sessions,
       attendanceDisposition: disposition?.disposition ?? null,
       workArrangement: arrangement?.disposition ?? null,
+      businessTrip: trip !== null,
       lateJustified,
       earlyLeaveJustified,
       outsideGeofenceJustified,
@@ -817,19 +882,25 @@ export async function materializeAttendanceResult(
     // approved arrangement on a day without any session has already decided the day (ATT-015 §7.1).
     let blockResults: BlockComputation[] = [];
     if (schedule.state === "scheduled" && (schedule.blocks?.length ?? 0) > 1 && !disposition
-      && !(arrangement && sessions.length === 0)) {
+      && !((arrangement || trip) && sessions.length === 0)) {
+      const explained = arrangement !== null || trip !== null;
       const multi = evaluateBlocks({
         schedule,
         events,
         corrections: clarifications.rows.filter((item) => item.mode === "correction"),
-        lateJustified: lateJustified || arrangement !== null,
-        earlyLeaveJustified: earlyLeaveJustified || arrangement !== null,
-        outsideGeofenceJustified: outsideGeofenceJustified || arrangement !== null,
+        lateJustified: lateJustified || explained,
+        earlyLeaveJustified: earlyLeaveJustified || explained,
+        outsideGeofenceJustified: outsideGeofenceJustified || explained,
         overtimeMinutes,
         now,
       });
-      computed = multi.computation;
-      blockResults = multi.blocks;
+      // TRIP-001 Paket 2: the day's rollup and its blocks follow the same rule as a single-block day. A
+      // day the trip decides (business_trip) keeps its punches in the sessions but stores no block rows,
+      // as a day without punches does, so no block reads "Tidak hadir" under a credited Dinas day.
+      computed = trip ? applyBusinessTrip(multi.computation) : multi.computation;
+      blockResults = !trip ? multi.blocks
+        : computed.status === "business_trip" ? []
+        : multi.blocks.map(applyBusinessTripToBlock);
     }
     const input = {
       schedule: {
@@ -850,6 +921,8 @@ export async function materializeAttendanceResult(
       resolutionCase: disposition?.resolutionCaseId ?? null,
       // Only days with an approved arrangement carry it, so every other day keeps its input hash.
       ...(arrangement ? { workArrangement: arrangement.id } : {}),
+      // Only days covered by an issued trip carry it, so every other day keeps its input hash.
+      ...(trip ? { businessTrip: trip.id } : {}),
       overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
       // Only excluded days carry it, so every other day keeps its input hash.
       ...(overtimeExclusion ? { overtimeExcludedByRule: overtimeExclusion.ruleId } : {}),
@@ -930,11 +1003,11 @@ export async function materializeAttendanceResult(
          incomplete_session, justified, late_justified, early_leave_justified,
          outside_geofence_justified, overtime_minutes, input_hash, source_event_ids,
          source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata,
-         day_type, holiday_scheduled_work, source_work_arrangement_id
+         day_type, holiday_scheduled_work, source_work_arrangement_id, source_business_trip_id
        ) VALUES (
          $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12,
          $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb,
-         $29, $30, $31
+         $29, $30, $31, $32
        )
        RETURNING
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
@@ -963,7 +1036,7 @@ export async function materializeAttendanceResult(
           overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds,
           ...(overtimeExclusion ? { overtimeExcludedByRuleId: overtimeExclusion.ruleId } : {}),
         }),
-        dayType, holidayScheduledWork, arrangement?.id ?? null,
+        dayType, holidayScheduledWork, arrangement?.id ?? null, trip?.id ?? null,
       ],
     );
     const insertedResult = result.rows[0];

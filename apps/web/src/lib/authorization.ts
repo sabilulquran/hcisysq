@@ -51,7 +51,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     // back to the home page, whatever the payroll rules below said.
     "payroll.periods.manage", "payroll.approve", "payroll.reopen.approve", "payroll.payments.confirm",
     "payroll.reports.read.organization", "payroll.policies.manage", "payroll.loans.manage",
-    "payroll.profiles.manage",
+    "payroll.profiles.manage", "payroll.results.read.organization",
     // DOC-002-F: document_corrector carries only documents.read and documents.correct, so
     // without this the shell bounced the one role that may revoke a letter (spec §12).
     "documents.read",
@@ -107,6 +107,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       "payroll.reopen.approve",
       "payroll.payments.confirm",
       "payroll.reports.read.organization",
+      "payroll.results.read.organization",
     ].some((permission) => hasPermission(session, permission));
   }
   if (/^\/admin\/attendance\/adms(?:\/|$)/.test(path)) return hasPermission(session, "attendance.devices.read");

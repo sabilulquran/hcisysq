@@ -52,7 +52,17 @@ const OWN_EMPLOYMENT_ID = "60000000-0000-4000-8000-000000000002";
 const HC_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 const DIRECTOR_ACCOUNT = "00000000-0000-4000-8000-000000000002";
 
-type Persona = "anonymous" | "employee" | "hc" | "director" | "finance" | "super_admin" | "board";
+type Persona =
+  | "anonymous"
+  | "employee"
+  | "hc"
+  | "director"
+  | "finance"
+  | "super_admin"
+  | "board"
+  | "module_admin"
+  | "report_only"
+  | "approver_only";
 
 const PERMISSIONS: Record<Persona, string[]> = {
   anonymous: [],
@@ -60,8 +70,20 @@ const PERMISSIONS: Record<Persona, string[]> = {
   // Exactly what migration 0069 grants each role: the director and the finance
   // lead never hold payroll.periods.manage.
   hc: ["payroll.policies.manage", "payroll.profiles.manage", "payroll.periods.manage", "payroll.inputs.manage", "payroll.calculate", "payroll.submit"],
-  director: ["payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization"],
-  finance: ["payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization"],
+  director: [
+    "payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization", "payroll.results.read.organization",
+  ],
+  finance: [
+    "payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization",
+    "payroll.results.read.organization",
+  ],
+  // hcis_module_admin (migration 0111) runs the lifecycle; that is no licence to
+  // read anyone's pay (specification section 7.3).
+  module_admin: ["payroll.policies.manage", "payroll.periods.manage"],
+  // The aggregate report alone, without the per-person read of migration 0151.
+  report_only: ["payroll.reports.read.organization"],
+  // Section 7: deciding on a period is not a licence to read its figures.
+  approver_only: ["payroll.approve", "payroll.reopen.approve", "payroll.payments.confirm"],
   // Legacy Super Admin compatibility grants no payroll permission (ADR-0003).
   super_admin: [],
   // ORG-003-F and ORG-010-F forbid the Foundation Board payroll figures entirely.
@@ -76,6 +98,9 @@ const ACCOUNTS: Record<Persona, string> = {
   finance: "00000000-0000-4000-8000-000000000003",
   super_admin: "00000000-0000-4000-8000-000000000004",
   board: "00000000-0000-4000-8000-000000000005",
+  module_admin: "00000000-0000-4000-8000-000000000006",
+  report_only: "00000000-0000-4000-8000-000000000007",
+  approver_only: "00000000-0000-4000-8000-000000000008",
 };
 
 type PeriodOverrides = {
@@ -958,6 +983,81 @@ describe("PAY-003 results", () => {
     });
     expect(response.statusCode).toBe(200);
   });
+});
+
+describe("PAY-003 per-person read (section 7.3)", () => {
+  const perPerson = ["results", "inputs", "variance"].map((path) => `/payroll/periods/${PERIOD_ID}/${path}`);
+  const report = `/payroll/periods/${PERIOD_ID}/report`;
+
+  it("keeps every figure from the module administrator, who runs the lifecycle", async () => {
+    for (const state of ["CALCULATED", "APPROVED"]) {
+      for (const url of [...perPerson, report]) {
+        const { response, audits } = await call("module_admin", "GET", url, {
+          period: { state },
+          hasPreviousPeriod: true,
+        });
+        expect(response.statusCode, `${state} ${url}`).toBe(403);
+        expect(response.json().code).toBe("PAYROLL_FORBIDDEN");
+        expect(audits).toEqual([]);
+      }
+    }
+  }, 40_000);
+
+  it("still lets the module administrator open the period itself", async () => {
+    const { response } = await call("module_admin", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "COLLECTING" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().period.readAccess).toEqual({ report: false, perPerson: false, transfers: false });
+  });
+
+  it("opens the aggregate report, and nothing per person, to a report-only reader", async () => {
+    const aggregate = await call("report_only", "GET", report, { period: { state: "APPROVED" } });
+    expect(aggregate.response.statusCode).toBe(200);
+    for (const url of perPerson) {
+      const { response } = await call("report_only", "GET", url, { period: { state: "APPROVED" }, hasPreviousPeriod: true });
+      expect(response.statusCode, url).toBe(403);
+    }
+  }, 20_000);
+
+  it("gives a decision without a read permission no figure at all", async () => {
+    for (const url of [...perPerson, report]) {
+      const { response } = await call("approver_only", "GET", url, { period: { state: "APPROVED" }, hasPreviousPeriod: true });
+      expect(response.statusCode, url).toBe(403);
+    }
+  }, 20_000);
+
+  it("opens the per-person figures to the director and the finance lead once approved", async () => {
+    for (const persona of ["director", "finance"] as const) {
+      for (const url of perPerson) {
+        const { response } = await call(persona, "GET", url, { period: { state: "APPROVED" }, hasPreviousPeriod: true });
+        expect(response.statusCode, `${persona} ${url}`).toBe(200);
+      }
+    }
+  }, 40_000);
+
+  it("keeps them from the director until approval, and shows them to human capital throughout", async () => {
+    for (const url of perPerson) {
+      const director = await call("director", "GET", url, { period: { state: "SUBMITTED" }, hasPreviousPeriod: true });
+      expect(director.response.statusCode, url).toBe(409);
+      const hc = await call("hc", "GET", url, { period: { state: "CALCULATED" }, hasPreviousPeriod: true });
+      expect(hc.response.statusCode, url).toBe(200);
+    }
+  }, 40_000);
+
+  it("tells each reader which panels they may open", async () => {
+    const expected = {
+      hc: { report: true, perPerson: true, transfers: false },
+      director: { report: true, perPerson: true, transfers: false },
+      finance: { report: true, perPerson: true, transfers: true },
+      report_only: { report: true, perPerson: false, transfers: false },
+      approver_only: { report: false, perPerson: false, transfers: false },
+    } as const;
+    for (const [persona, access] of Object.entries(expected)) {
+      const { response } = await call(persona as Persona, "GET", `/payroll/periods/${PERIOD_ID}`);
+      expect(response.json().period.readAccess, persona).toEqual(access);
+    }
+  }, 40_000);
 });
 
 describe("PAY-003 input ranges", () => {

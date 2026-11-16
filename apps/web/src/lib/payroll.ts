@@ -66,6 +66,19 @@ export interface PayrollPeriod {
     reasonRequired: PayrollInputKey[];
     decisionRequired: PayrollInputKey[];
   };
+  /**
+   * Which figure panels this actor may open at all (PAY-003 section 7.3), decided by the server.
+   * The state gate still applies per request; a panel marked false would always be refused, so
+   * the screen does not show it. Optional only for an older API build during a release window.
+   */
+  readAccess?: {
+    /** The aggregate report: totals per unit and per component. */
+    report: boolean;
+    /** Per-person figures: results, period inputs, the comparison and the PPh21 report. */
+    perPerson: boolean;
+    /** The transfer list with bank accounts. */
+    transfers: boolean;
+  };
 }
 
 export interface PayrollPeriodTransition {

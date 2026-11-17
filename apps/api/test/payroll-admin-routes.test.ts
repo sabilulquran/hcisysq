@@ -83,6 +83,10 @@ function createPool(persona: Persona, options: Options = {}) {
     if (sql.includes('closed_at AS "closedAt" FROM payroll_loans')) {
       return { rows: [{ closedAt: options.loanClosed ? "2026-06-01T00:00:00.000Z" : null }], rowCount: 1 };
     }
+    // LOAN-001 Package 2: whether the kasbon mirrors a LOAN-001 loan. Not here.
+    if (sql.includes("employee_loan_id IS NOT NULL")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("DELETE FROM payroll_loan_deductions")) {
       writes.push("loan_deduction_removed");
       return { rows: [], rowCount: 1 };

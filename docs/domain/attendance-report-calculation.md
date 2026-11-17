@@ -254,6 +254,74 @@ saat scan diterima. Status `DRAFT`: belum ditinjau owner apakah baris "Belum dih
 diajukan klarifikasi, dan apakah tanggal yang sudah punya hasil tetapi menerima scan baru perlu
 penanda serupa di layar pegawai (di layar HC sudah ada "Berubah sejak dikalkulasi", §6.5).
 
+Sejak §6.5c layar pegawai tidak lagi membaca jam dari `pendingScans`; field itu dipertahankan di
+`GET /attendance/me/schedule` demi kompatibilitas (deprecated) dan hanya dipakai sebagai cadangan
+selama transaksi belum termuat.
+
+### 6.5c Transaksi pegawai real-time, terpisah dari hasil kehadiran (DRAFT)
+
+**Pemicu (owner, 2026-11-17):** riwayat presensi di menu pegawai tidak muncul "karena harus
+dikalkulasi dulu"; riwayat dan monitoring transaksi harus real-time dan **tidak disamakan dengan
+generate laporan absensi**. §6.5b baru menutup tanggal yang belum dikalkulasi; tanggal yang sudah
+dikalkulasi lalu menerima scan baru tetap tidak menampilkannya, dan pegawai tidak bisa melihat
+daftar scannya.
+
+Dua hal yang berbeda dan tidak boleh tercampur di layar pegawai (`/app/attendance`):
+
+| | **Transaksi** (fakta mentah) | **Hasil kehadiran** (kalkulasi/laporan) |
+| --- | --- | --- |
+| Isi | setiap scan: waktu, sumber, jenis bila ada | status, menit kerja, telat, pulang awal, lembur |
+| Kapan berubah | begitu scan diterima server (real-time) | hanya saat Kalkulasi dijalankan HC (keputusan 2026-10-24 tetap) |
+| Sumber | `attendance_adms_events` lewat pemetaan PIN yang berlaku pada waktu scan, plus presensi HP dan input manual HC di `attendance_events` | `attendance_result_versions` versi terbaru |
+| API | `GET /attendance/me/transactions` | `GET /attendance/me/schedule`, `/attendance/me/workforce` |
+
+**API `GET /attendance/me/transactions?from&to`.** Hanya pegawai yang login (diambil dari sesi,
+tidak pernah dari query), rentang maks 31 hari, `Cache-Control: no-store`. Satu kueri untuk seluruh
+rentang (beban Mi8VPS), tanpa kalkulasi, tanpa materialisasi, tanpa tulis. Tiap baris: `occurredAt`,
+`workDate` (tanggal kalender WIB scan), `source` (`adms` | `mobile` | `manual`), `kind` (`check_in`/
+`check_out` hanya bila sumbernya menyatakan, yaitu presensi HP atau input manual; scan mesin `null`),
+`deviceName` (nama tampilan mesin, **bukan** nomor seri), `reviewState` presensi HP, dan
+`afterCalculation`. Ringkasan `days` per tanggal: scan pertama, scan terakhir, jumlah, `calculatedAt`
+versi hasil terbaru, dan `newSinceCalculation`. Yang sengaja **tidak** dikirim: PIN, nomor seri/ID
+mesin, baris mentah ADMS, ID event, koordinat GPS, ID foto. Normalisasi `attendance_events` bersumber
+`adms` tidak dibaca (scan mesin sudah dibaca dari tabel mentahnya), dan koreksi yang disetujui bukan
+transaksi: hasilnya terlihat di sisi hasil kehadiran.
+
+**Layar pegawai, Riwayat 30 hari:**
+
+| Kolom | Sumber | Bila belum ada hasil | Bila ada scan baru sejak dihitung |
+| --- | --- | --- | --- |
+| Masuk / Keluar | transaksi: scan pertama / terakhir tanggal itu (Keluar "—" bila baru satu scan) | tetap tampil | tetap tampil (sudah memuat scan baru) |
+| Status | hasil kalkulasi | **Belum dihitung** bila ada scan, selain itu status jadwal | status hasil + penanda **Ada scan baru sejak dihitung** |
+| Kerja / Telat / Lembur | hasil kalkulasi | "—", bukan 0 | angka hasil apa adanya, tidak ditebak ulang |
+
+Tombol **Transaksi (n)** per tanggal membuka pop-up (`?transaksi=<tanggal>`, pola `DetailDialog`)
+yang mendaftar setiap scan beserta jam (detik), sumber ("Mesin absensi · <nama>", "Presensi HP",
+"Koreksi HC", kosakata ATT-011 §3), jenis, penanda "Perlu ditinjau HC" dan "Masuk setelah dihitung", lalu di
+bawahnya ringkasan hasil kalkulasi tanggal itu agar keduanya tidak tertukar. Kartu hari ini juga
+mengambil Masuk/Keluar aktual dari transaksi. Transaksi dimuat ulang otomatis tiap 60 detik selama
+tab terlihat dan saat tab kembali terlihat, plus tombol **Segarkan scan**. Gagal memuat transaksi
+tidak mengosongkan halaman: baris memakai sumber lama dan pesan galat tampil di atas tabel.
+
+**Pengecualian ENG-LIST-001:** daftar dibatasi rentang (maks 31 hari) dan plafon 2000 baris; bila
+lebih, respons membawa `truncated: true` dan layar menampilkannya, bukan memotong diam-diam. Yang
+terpotong adalah scan **terlama** (tanggal hari ini selalu utuh); tanggal yang terpotong memakai
+sumber lama (hasil kalkulasi) alih-alih tampil "tanpa scan".
+
+**Asumsi `DRAFT`** (default diambil agen 2026-11-17, belum ditinjau owner):
+
+1. Tanggal transaksi = tanggal kalender WIB scan, sama dengan Data Transaksi HC dan §6.5b. Scan shift
+   malam setelah tengah malam tampil di tanggal kalendernya, walau hasilnya milik hari kerja sebelumnya.
+2. "Ada scan baru sejak dihitung" = ada transaksi tanggal itu yang tercatat (`created_at`) setelah
+   versi hasil terbaru tanggal yang sama. Sumber perubahan lain di §6.5 (jadwal, cuti, klarifikasi)
+   tidak ditandai di layar pegawai.
+3. Masuk/Keluar riwayat adalah scan pertama/terakhir apa adanya, bukan jam setelah koreksi; jam
+   resmi setelah koreksi terlihat di ringkasan hasil pada pop-up Transaksi.
+4. Input manual HC ikut didaftar sebagai transaksi ("Koreksi HC") karena merupakan punch
+   milik pegawai; alasan dan pelakunya tidak ditampilkan.
+5. Muat ulang otomatis 60 detik; rute tidak dibuka untuk akun reaktivasi sementara (EMP-005 D-15),
+   sama seperti `/attendance/me/schedule`.
+
 ### 6.6 Simbol
 
 Simbol dipakai di tab Detail Harian dan di Laporan Harian (grid bulanan). Usulan bawaan (D-14-5),
@@ -394,6 +462,7 @@ Ditambahkan ke `docs/api/attendance-workforce.openapi.yaml`.
 | `GET /admin/attendance/reports/{type}` | `attendance.reports.read` | Laporan bawaan §7. `format=json|xlsx|csv`. |
 | `POST /admin/attendance/reports/active-view` | `attendance.reports.read` | Body definisi tampilan + lingkup → `xlsx`/`csv`. |
 | `GET/POST/PATCH/DELETE /admin/attendance/report-views[/{id}]` | `attendance.reports.read`; `shared=true` butuh `attendance.policy.manage` | Tampilan tersimpan. Pemilik saja yang boleh mengubah/menghapus tampilan pribadinya. |
+| `GET /attendance/me/transactions` | sesi `EMPLOYEE` aktif, data sendiri | Transaksi saya §6.5c: scan mentah real-time, maks 31 hari, `no-store`, tanpa kalkulasi. |
 
 `POST /admin/attendance/finalize/{date}` dipertahankan satu rilis sebagai alias kalkulasi seluruh
 pegawai untuk satu tanggal, lalu dihapus. `GET /admin/attendance/report` (ATT-009) tetap sampai

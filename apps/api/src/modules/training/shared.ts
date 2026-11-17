@@ -18,6 +18,8 @@ export interface TrainingRouteKit {
   handle: (reply: FastifyReply, work: () => Promise<unknown>) => Promise<unknown>;
   transact: (reply: FastifyReply, work: (client: PoolClient) => Promise<[number, unknown]>) => Promise<unknown>;
   invalid: (reply: FastifyReply, code: string, message: string) => unknown;
+  /** Runs `work` in its own transaction (for steps around a long upload that must not hold locks). */
+  transactWork: <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
   /** Whether the principal also holds training.manage (answer keys are shown only then). */
   canManage: (principal: AuthPrincipal) => Promise<boolean>;
 }

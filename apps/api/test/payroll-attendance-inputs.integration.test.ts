@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { applyAttendanceInputs, resolveAttendanceInputs } from "../src/modules/payroll/attendance-inputs.js";
 import { listInputs } from "../src/modules/payroll/inputs-store.js";
+import { createSyntheticActor } from "./support/synthetic-actor.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -197,22 +198,9 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
       [periodId, legalEntityKey, CUTOFF_START, CUTOFF_END],
     );
 
-    const { rows } = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
-    if (rows[0]) {
-      actorAccountId = rows[0].id;
-    } else {
-      const employeeId = randomUUID();
-      actorAccountId = randomUUID();
-      await pool.query(
-        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Actor', 'active')",
-        [employeeId, `EMP-ATT-ACTOR-${employeeId}`],
-      );
-      await pool.query(
-        `INSERT INTO accounts(id, employee_id, email, principal_type, status)
-         VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
-        [actorAccountId, employeeId, `att-${actorAccountId}@example.invalid`],
-      );
-    }
+    // A fresh actor of this suite: a borrowed account could be another suite's
+    // (see support/synthetic-actor.ts).
+    actorAccountId = await createSyntheticActor(pool, "ATT");
   });
 
   const window = () => ({ periodId, cutoffStart: CUTOFF_START, cutoffEnd: CUTOFF_END, legalEntityKey });

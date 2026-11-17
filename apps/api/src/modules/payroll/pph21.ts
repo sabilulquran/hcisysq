@@ -60,6 +60,8 @@ export type Pph21SourceRow = {
   /** EMP-005 term category on the pay date, or null when none resolves. */
   termCategory: string | null;
   earnings: ReadonlyArray<{ code: string; amount: number }>;
+  /** DEDUCTION lines; the annual calculation reads the pension contribution from them. */
+  deductions?: ReadonlyArray<{ code: string; amount: number }>;
 };
 
 /** One person on the report. */

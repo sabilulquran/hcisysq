@@ -1234,6 +1234,28 @@
       "reason": "Laporan PPh21 TER satu masa pajak, dibatasi jumlah pegawai aktif; ekspor CSV."
     },
     {
+      "url": "/payroll/pph21/annual",
+      "list": "export",
+      "reason": "Rekap PPh21 tahunan satu tahun pajak (satu baris per masa kerja pegawai), dibatasi jumlah pegawai yayasan; ekspor CSV e-Bupot 1721-A1."
+    },
+    {
+      "url": "/payroll/pph21/annual/:year/employees/:employeeId/a1/:index",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/employees/:employeeId/tax-identity",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/me/a1",
+      "list": "bounded",
+      "reason": "Bukti potong milik pegawai sendiri: paling banyak beberapa per tahun pajak, tanpa angka."
+    },
+    {
+      "url": "/payroll/me/a1/:year/:index",
+      "list": "single"
+    },
+    {
       "url": "/payroll/periods/:periodId/results",
       "list": "bounded",
       "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."
@@ -1477,6 +1499,40 @@
     },
     {
       "url": "/admin/training/employees/:employeeId/evaluation",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/programs/:id/modules",
+      "list": "bounded",
+      "reason": "Modul terbit satu program daring; M-02 membatasi 20 modul × 20 materi."
+    },
+    {
+      "url": "/training/me/materials/:id/stream",
+      "list": "single",
+      "reason": "Satu rentang byte video (maks 4 MB per respons, M-09)."
+    },
+    {
+      "url": "/training/me/modules/:id/quiz",
+      "list": "single",
+      "reason": "Satu kuis modul; butir dibatasi 50 (R3 E-02)."
+    },
+    {
+      "url": "/admin/training/online/storage",
+      "list": "aggregate",
+      "reason": "Pemakaian dan batas penyimpanan media pelatihan."
+    },
+    {
+      "url": "/admin/training/programs/:id/modules",
+      "list": "bounded",
+      "reason": "Modul satu program daring; M-02 membatasi 20 modul aktif × 20 materi, seluruhnya termasuk arsip dibatasi 100."
+    },
+    {
+      "url": "/admin/training/materials/:id/stream",
+      "list": "single",
+      "reason": "Pratinjau satu rentang byte video (maks 4 MB per respons)."
+    },
+    {
+      "url": "/admin/training/programs/:id/online-progress",
       "list": "paged"
     }
   ]

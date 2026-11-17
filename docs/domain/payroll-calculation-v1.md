@@ -166,7 +166,7 @@ Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang suda
 
 ### 3.6 Penggantian biaya REIMB-001 (dibangun 2026-11-17, sakelar default MATI)
 
-Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0157 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
+Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0159 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
 
 | Saat | Yang terjadi | Bergantung sakelar? |
 |---|---|---|
@@ -444,7 +444,7 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 | P2 | Pembulatan PPh21 | `FLOOR` ke rupiah bulat atas bruto × tarif. |
 | P3 | Status gerbang | Laporan baru terbuka setelah periode `APPROVED` ke atas **bagi semua pembaca, termasuk penjalan periode**, karena dibangun dari hasil final; berbeda dari laporan payroll yang dibaca penjalan periode sejak awal. Sebelum itu `409 PAYROLL_NOT_APPROVED_YET`. |
 | P4 | Kebijakan tidak tersedia | `409 PPH21_TER_POLICY_MISSING` bila tidak ada versi `PPH21_TER` yang berlaku pada tanggal gajian; `409 PPH21_TER_POLICY_INVALID` bila versi yang berlaku (mis. dimuat sebelum skema ini ada) tidak sesuai bentuk. Kebijakan ini bukan kunci wajib perhitungan: ketiadaannya tidak memblokir periode. |
-| P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan; perhitungan itu **di luar v1**. Baris diberi `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap ditampilkan sebagai angka sementara. |
+| P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan. Laporan bulanan memberi baris itu `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap tampil sebagai angka sementara; angka finalnya ada di rekap PPh21 tahunan dan bukti potong 1721-A1 (§7.4). |
 | P6 | Laporan saja | Laporan **tidak** menulis baris `PPH21_EMPLOYER` ke hasil perhitungan, agar angka parallel run tetap stabil. Baris biaya yayasan menyusul setelah tabel TER diverifikasi dan dimuat; saat itu `PPH21_TER` menjadi kunci yang dibaca perhitungan. |
 | P7 | Pengecualian per orang | Atribut profil kompensasi `pph21_report_excluded` dengan `pph21_report_exclusion_reason` wajib (CHECK basis data, migration 0147). Mengikuti aturan profil: tidak dikirim = dibawa dari profil berlaku; `false` menghapus alasan. CLI pemuatan awal yang barisnya tidak menyebut pengecualian juga membawa nilai profil yang berlaku, bukan menulis `false`. Audit `payroll.profile.opened` mencatat `pph21_report_excluded` (penanda, bukan alasan). |
 | P8 | Kolom ekspor | CSV UTF-8 dengan BOM dan CRLF: NIP, nama, status PTKP, kategori TER, penghasilan bruto, tarif (persen dengan koma desimal), PPh21, kode objek, dilaporkan (`Y`/`N`), catatan; orang yang dikecualikan di baris terakhir; nama berkas `pph21-ter-YYYY-MM.csv`. **Tanpa NIK/NPWP** — HCIS tidak menyimpannya untuk payroll; formulir DJP diisi dari lembar ini di luar HCIS. |
@@ -456,10 +456,10 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 
 **Yang tetap di luar v1** (bukan kekurangan implementasi, melainkan batas cakupan §1.2 dan keputusan di atas):
 
-- perhitungan tahunan Pasal 17 untuk masa pajak terakhir (Desember / berakhirnya masa kerja) dan bukti potong 1721-A1;
+- ~~perhitungan tahunan Pasal 17 untuk masa pajak terakhir dan bukti potong 1721-A1~~ — **dibangun** (§7.4, migration 0157);
 - aturan PPh21 pegawai tidak tetap (21-100-03, TER harian) untuk kontrak honorer dan lepas, sampai P10 diputuskan;
 - baris `PPH21_EMPLOYER` pada hasil perhitungan dan ringkasan biaya yayasan yang memuat PPh21 (P6);
-- NIK/NPWP dan berkas e-Bupot/SPT Masa PPh21;
+- ~~NIK/NPWP~~ (disimpan tersegel sejak §7.4); berkas unggah e-Bupot/SPT Masa PPh21 dalam format DJP tetap di luar HCIS — rekap CSV §7.4 adalah bahan pengisiannya;
 - THR;
 - integrasi transfer bank (daftar transfer tetap CSV, §10 butir 7);
 - penerima non-pegawai, reimbursement, multi legal entity, akuntansi.
@@ -481,6 +481,67 @@ Angka per orang dipisahkan dari menjalankan periode dan dari membaca rekap. Sebe
 
 **Rilis.** Migration 0151 hanya menambah kunci; build lama tidak memeriksanya. Saat cutover, HCIS Module Admin kehilangan pembacaan angka per orang. Rollback: hapus kunci (komentar migration) dan rilis ulang build sebelumnya.
 
+## 7.4 PPh21 masa pajak terakhir (Pasal 17) dan bukti potong 1721-A1
+
+Ditambahkan 2026-11-17. Dasar hukum: PP 58/2023 dan PMK 168/2023 (TER selama tahun berjalan, penghitungan setahun dengan tarif Pasal 17 UU PPh sebagaimana diubah UU 7/2021 pada masa pajak terakhir), PER-2/PJ/2024 (bentuk 1721-A1). Implementasi: `apps/api/src/modules/payroll/pph21-annual.ts` (fungsi murni), `pph21-annual-store.ts`, `pph21-annual-routes.ts`; layar `/admin/payroll/pph21-annual` dan bagian **Bukti potong PPh21 (1721-A1)** di `/app/payslips`.
+
+**Masa kerja dalam setahun.** Satu baris rekap adalah satu rentang masa kerja seorang pegawai dalam satu tahun pajak. Rentang ditutup oleh masa pajak terakhir: Desember, atau bulan berakhirnya employment tanpa employment lain yang berlanjut (aturan `ANNUAL_CALCULATION_REQUIRED` §7.2). Pegawai yang berhenti lalu masuk lagi dalam tahun yang sama mendapat dua rentang dan dua bukti potong (`DRAFT`). Bulan yang dihitung hanya periode yang sudah final (`APPROVED` ke atas, seperti laporan bulanan); periode lain dilaporkan sebagai `pendingPeriods`. Orang yang dikecualikan (§7.2 P7) dan employment yang masih memiliki blocker tidak masuk, sama seperti laporan bulanan.
+
+**Rumus** (semua rupiah bulat; nilai dari kebijakan `PPH21_ANNUAL`, tidak ada di kode):
+
+```text
+bruto        = Σ bruto bulanan rentang itu (penghasilan yang benar-benar dibayar, §5.3; tanpa BPJS_KES_ALLOW)
+biaya_jabatan = min(FLOOR(bruto × positionCost.rate), positionCost.monthlyCap × jumlah_bulan, positionCost.annualCap)
+iuran_pensiun = Σ baris DEDUCTION yang kodenya ada di pensionContributionComponents (default kosong)
+neto         = bruto − biaya_jabatan − iuran_pensiun          (tidak disetahunkan)
+PTKP         = ptkp.taxpayer + (K: ptkp.married) + min(tanggungan, ptkp.maxDependents) × ptkp.perDependent
+               status = status PTKP profil pada bulan pertama rentang
+PKP          = FLOOR(max(0, neto − PTKP) / pkpRoundingUnit) × pkpRoundingUnit
+PPh21_setahun = Σ lapisan brackets (Pasal 17) atas PKP, FLOOR ke rupiah
+TER_sebelumnya = Σ PPh21 TER bulanan rentang itu kecuali bulan terakhirnya (§7.2)
+PPh21_masa_terakhir = PPh21_setahun − TER_sebelumnya          (negatif = lebih potong, dikembalikan)
+```
+
+Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.000.000 × 12 → biaya jabatan Rp6.000.000, neto Rp114.000.000, PKP Rp60.000.000, PPh21 setahun Rp3.000.000; TER Januari–November Rp200.000 × 11 = Rp2.200.000; Desember Rp800.000. K/2 berhenti Juni, Rp8.000.000 × 6, JHT Rp100.000/bulan → biaya jabatan Rp2.400.000, neto Rp45.000.000 < PTKP Rp67.500.000, PPh21 setahun 0, lebih potong Rp600.000.
+
+**Penanda.** `OPEN` (masa pajak terakhir belum tiba; angka setahun belum dihitung dan bukti potong belum dapat dibuat), `PTKP_MISSING` (status awal rentang kosong atau bukan bentuk `TK/n`/`K/n`), `PRIOR_TAX_INCOMPLETE` (TER salah satu bulan sebelumnya tidak dapat dihitung — tabel TER belum dimuat atau PTKP bulan itu kosong — sehingga PPh21 masa terakhir kosong), `PERIOD_PENDING` (ada periode tahun itu sampai bulan terakhir rentang yang belum final — belum disahkan atau dibuka ulang — sehingga bulan itu hilang dari rentang; bukti potong ditolak `409 PPH21_A1_PERIOD_PENDING` dan tidak ditampilkan ke pegawai sampai periode itu final).
+
+**Baris 1721-A1.** Komponen `EARNING` dipetakan ke baris formulir: `BASIC` → 1 gaji; `TEACH_FEE`, `PJ_MEDIA` → 4 honorarium; `THR`, `BONUS` → 7 tantiem/bonus/THR; lainnya → 3 tunjangan lainnya dan lembur. Kebijakan dapat menimpa per kode (`lineByComponent`). Dengan faktor bayar, tiap baris dikali faktor dan dibulatkan ke bawah, dan sisa rupiahnya masuk ke baris terbesar, sehingga jumlah baris 1–7 selalu sama dengan bruto §5.3. Baris 2 (tunjangan PPh), 5 (premi asuransi), 6 (natura) dan 13 (neto masa sebelumnya) bernilai 0 di v1.
+
+**Keputusan `DRAFT` (default agent 2026-11-17, menunggu konfirmasi process owner):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| A1 | Bentuk kebijakan `PPH21_ANNUAL` | `{ source, ptkp: { taxpayer, married, perDependent, maxDependents }, positionCost: { rate, monthlyCap, annualCap }, brackets: [{ upTo, rate }], pkpRoundingUnit, pensionContributionComponents: [], lineByComponent: {}, withholder: { name, taxNumber } }`, divalidasi saat ditulis. Versi yang berlaku pada **31 Desember** tahun pajak dipakai. Ketiadaannya: `409 PPH21_ANNUAL_POLICY_MISSING`; tidak memblokir periode. Migration 0157 menambah kunci ini ke constraint `payroll_policy_versions`. |
+| A2 | Status PTKP | Dari profil kompensasi bulan pertama rentang (keadaan awal tahun pajak/awal masa kerja). Bentuk lain dari `TK/n`/`K/n` (mis. `K/I/n`) tidak ditebak. Belum ada field PTKP baru: `ptkp_status` profil sudah berlaku-efektif. |
+| A3 | Premi BPJS Kesehatan | Mengikuti dasar §5.3 (D9): `BPJS_KES_ALLOW` tidak masuk bruto dan baris 5 bernilai 0, karena efek bersihnya nol bagi pegawai. **Process owner perlu memastikan**: PMK 168/2023 memperlakukan premi yang dibayar pemberi kerja sebagai penghasilan; bila dikonfirmasi, kode itu dipindahkan ke baris 5 dan dasar §5.3 berubah bersamaan. |
+| A4 | Pembulatan | PKP ke bawah kelipatan `pkpRoundingUnit` (Rp1.000); biaya jabatan dan pajak `FLOOR` ke rupiah. |
+| A5 | Iuran pensiun/JHT | Belum ada komponen iuran JHT/JP pegawai di katalog v1, sehingga `pensionContributionComponents` default kosong. |
+| A6 | Pegawai melihat bukti potong | Lewat endpoint self, hanya rentang yang sudah ditutup dan periode masa terakhirnya `PUBLISHED`. Endpoint self mensyaratkan pegawai dan akun aktif; pegawai yang sudah berhenti menerima cetakan dari HC (batas yang sama dengan paklaring DOC-001). |
+| A7 | Nomor bukti potong | HCIS tidak menerbitkan nomor resmi; dokumen membawa referensi `HCIS-A1-<tahun>-<NIP>-<urut>`, nomor resmi berasal dari e-Bupot. |
+| A8 | Pemotong dan penanda tangan | Nama dan NPWP pemotong dari `withholder` kebijakan (data yayasan, bukan data pribadi). Penanda tangan diselesaikan seperti PAYSLIP-005 (Kepala HCM, cadangan Direktur, tanpa menandatangani milik sendiri). |
+| A9 | Pegawai tidak tetap | Selama P10 belum diputuskan, kontrak honorer/lepas dilaporkan TER bulanan 21-100-01 dan ikut rekap tahunan seperti pegawai tetap. |
+| A10 | Dokumen dihitung saat dibaca | 1721-A1 tidak disimpan sebagai snapshot; ia dihitung ulang dari hasil final setiap kali dibuka dan mencetak versi kebijakan yang dipakai. Membuka ulang periode yang sudah final mengubah angkanya — karena itu rentang dengan periode yang tidak final ditolak (`PERIOD_PENDING`). Snapshot saat penerbitan resmi adalah tindak lanjut bila process owner menghendakinya. |
+| A11 | Bulan sebelum HCIS | Bila payroll HCIS mulai di tengah tahun pajak, bulan yang dibayar lewat spreadsheet tidak ada di HCIS dan rentang terbaca seperti pegawai yang masuk di tengah tahun. Tahun pajak pertama HCIS karena itu dicocokkan manual dengan rekap legacy sebelum bukti potong diserahkan (baris 13 "neto masa sebelumnya" tetap 0 di v1). |
+| A12 | Nomor yang tidak terbuka | NIK/NPWP yang tidak dapat dibuka (baris rusak atau kunci server dirotasi) tampil kosong, disebut di `unreadable` dokumen dan dihitung di audit ekspor (`unreadable_count`), tanpa menggagalkan seluruh rekap. |
+
+**NIK dan NPWP (`DRAFT`).** Bukti potong wajib memuat NIK/NPWP penerima, dan HCIS sebelumnya tidak menyimpannya. Tabel `payroll_tax_identities` (migration 0157) menyimpan keduanya **tersegel** AES-256-GCM dengan kunci turunan HKDF dari kunci server dan label tersendiri; associated data mengikat nilai ke pegawai dan kolomnya. Hanya empat digit terakhir disimpan terbaca untuk tampilan tersamar. NIK 16 digit; NPWP 15 atau 16 digit. Ditulis lewat `PUT /payroll/employees/{id}/tax-identity` oleh pemegang `payroll.profiles.manage`, tidak atas dirinya sendiri (aturan konflik kepentingan §2); field yang tidak dikirim dibiarkan, `null` mengosongkan. Nilai utuh **hanya** dibuka untuk dokumen 1721-A1 dan rekap CSV e-Bupot; layar rekap JSON hanya menyebut ada/tidaknya. Rotasi kunci server membutuhkan penyegelan ulang (tindak lanjut operasional).
+
+**Endpoint dan izin.**
+
+| Endpoint | Pembaca | Audit (tanpa nominal, tanpa NIK/NPWP) |
+|---|---|---|
+| `GET /payroll/pph21/annual?year=` (`format=csv`) | pembaca angka per orang §7.3 | `payroll.report.read` scope `pph21_annual` / `pph21_annual_csv` (+`includes_tax_identity`) |
+| `GET /payroll/pph21/annual/{year}/employees/{employeeId}/a1/{index}` | pembaca angka per orang §7.3 | `payroll.a1.read` scope `pph21_a1` |
+| `GET /payroll/me/a1`, `GET /payroll/me/a1/{year}/{index}` | pegawai sendiri (aktif) | `payroll.a1.read` scope `pph21_a1_self` (dokumen saja) |
+| `GET`/`PUT /payroll/employees/{id}/tax-identity` | `payroll.profiles.manage` | `payroll.tax_identity.updated` (nama field dan yang dikosongkan) |
+
+**Pengecualian ENG-LIST-001 (`DRAFT`).** Rekap tahunan dibaca utuh tanpa halaman, sama seperti laporan PPh21 bulanan: satu tahun pajak dibatasi jumlah pegawai yayasan dan memang dibaca utuh untuk pelaporan. Bila jumlah baris melewati sekitar 1.000, rekap dipindahkan ke endpoint berhalaman.
+
+**Layar.** `/admin/payroll/pph21-annual` (menu **PPh21 Tahunan & 1721-A1**) terbuka bagi pembaca angka per orang: pilih tahun, rekap per rentang, unduh CSV e-Bupot, tombol **1721-A1** pada rentang yang sudah ditutup (pop-up A4, **Cetak / Simpan PDF**), dan tombol **NIK/NPWP** bagi pemegang `payroll.profiles.manage`. Pegawai melihat bukti potongnya di bawah slip gaji.
+
+**Rollback.** Migration 0157: `-- Down:` di berkasnya (menghapus tabel identitas — catat sumber dokumen sebelum menghapus — dan mengembalikan constraint kunci kebijakan). Kode: rilis ulang build sebelumnya; tidak ada data hasil payroll yang ditulis oleh fitur ini.
+
 ## 8. Privasi dan audit
 
 - **Dilarang** di application log dan payload audit: nominal **per orang**, nomor rekening, nama pemilik rekening, NIK, dan isi baris slip.
@@ -488,6 +549,7 @@ Angka per orang dipisahkan dari menjalankan periode dan dari membaca rekap. Sebe
 - Respons laporan dan slip memakai `Cache-Control: no-store`.
 - Laporan per orang dan ekspor dicatat sebagai akses sensitif.
 - Pengurus Yayasan tidak memiliki permission payroll di v1 (§2): tidak membaca laporan, input, maupun profil.
+- NIK dan NPWP disimpan tersegel (§7.4), tidak pernah ditulis ke log atau audit, dan hanya dibuka pada dokumen 1721-A1 dan rekap e-Bupot.
 
 ## 9. Migrasi dan verifikasi
 

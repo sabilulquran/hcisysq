@@ -908,4 +908,249 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect(await loanLine(employmentId)).toBe(0);
     });
   });
+
+  // REIMB-001 section 9 (specification section 3.6): reimbursements handed to
+  // payroll, paid outside the pay factor, settled on approval, carried through
+  // a reopen. Payroll June 2031, far from any other suite.
+  describe("REIMB-001 payroll handoff", () => {
+    let reimbursementPeriodId: string;
+    // Claims are global rows another suite's register test counts, so every
+    // claim this suite writes is removed again (append-only triggers stood down
+    // for the cleanup only, as the payroll cleanup does).
+    const ownClaims: string[] = [];
+
+    afterAll(async () => {
+      if (ownClaims.length === 0) return;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL session_replication_role = replica");
+        for (const table of ["reimbursement_payroll_handoffs", "reimbursement_payments", "reimbursement_events", "reimbursement_items"]) {
+          await client.query(`DELETE FROM ${table} WHERE claim_id = ANY($1::uuid[])`, [ownClaims]);
+        }
+        await client.query("DELETE FROM reimbursement_claims WHERE id = ANY($1::uuid[])", [ownClaims]);
+        await client.query("COMMIT");
+      } finally {
+        client.release();
+      }
+    });
+
+    const reimbursementPeriod = () => ({
+      id: reimbursementPeriodId,
+      legalEntityKey,
+      periodStart: "2031-06-01",
+      periodEnd: "2031-06-30",
+      payDate: "2031-06-25",
+    });
+
+    /** A VERIFIED claim of Rp250.000 handed to payroll June 2031, as the REIMB-001 route writes it. */
+    async function handedOffClaim(employeeId: string, amount = 250_000): Promise<{ claimId: string; handoffId: string }> {
+      const claimId = randomUUID();
+      const handoffId = randomUUID();
+      ownClaims.push(claimId);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO reimbursement_claims(id, employee_id, title, status, claimed_total, idempotency_key)
+           VALUES ($1, $2, 'Klaim uji sintetis', 'DRAFT', $3, $4)`,
+          [claimId, employeeId, amount, randomUUID()],
+        );
+        await client.query(
+          `INSERT INTO reimbursement_items(id, claim_id, line_no, category, expense_date, description, amount)
+           VALUES ($1, $2, 1, 'TRANSPORT', DATE '2031-05-10', 'Transport uji', $3)`,
+          [randomUUID(), claimId, amount],
+        );
+        await client.query(
+          // Dated in 2031: the register suite summarises today's claims across the shared database.
+          "UPDATE reimbursement_claims SET status = 'APPROVED', submitted_at = TIMESTAMPTZ '2031-05-12 03:00Z', final_decided_at = TIMESTAMPTZ '2031-05-13 03:00Z' WHERE id = $1",
+          [claimId],
+        );
+        await client.query("UPDATE reimbursement_items SET approved_amount = amount WHERE claim_id = $1", [claimId]);
+        await client.query(
+          `UPDATE reimbursement_claims SET status = 'VERIFIED', verified_total = $2,
+                  verified_by_account_id = $3, verified_at = TIMESTAMPTZ '2031-05-14 03:00Z' WHERE id = $1`,
+          [claimId, amount, actorAccountId],
+        );
+        await client.query(
+          `INSERT INTO reimbursement_payroll_handoffs(
+             id, claim_id, payroll_month, amount, status, idempotency_key, created_by_account_id)
+           VALUES ($1, $2, DATE '2031-06-01', $3, 'PENDING', $4, $5)`,
+          [handoffId, claimId, amount, randomUUID(), actorAccountId],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return { claimId, handoffId };
+    }
+
+    async function claimState(claimId: string) {
+      const claim = await pool.query<{ status: string }>("SELECT status FROM reimbursement_claims WHERE id = $1", [claimId]);
+      const payments = await pool.query<{ amount: string; method: string; payrollMonth: string }>(
+        `SELECT amount::text AS amount, method, to_char(payroll_month, 'YYYY-MM') AS "payrollMonth"
+         FROM reimbursement_payments WHERE claim_id = $1`,
+        [claimId],
+      );
+      const handoffs = await pool.query<{ status: string }>(
+        "SELECT status FROM reimbursement_payroll_handoffs WHERE claim_id = $1 ORDER BY created_at",
+        [claimId],
+      );
+      return {
+        status: claim.rows[0]!.status,
+        payments: payments.rows,
+        handoffs: handoffs.rows.map((row) => row.status),
+      };
+    }
+
+    async function latest(employmentId: string) {
+      const { rows } = await pool.query<{ payable: string; net: string; reimburse: string | null }>(
+        `SELECT r.payable::text AS payable, r.net::text AS net,
+                (SELECT l.amount::text FROM payroll_result_lines l
+                 WHERE l.result_id = r.id AND l.component_code = 'REIMBURSE') AS reimburse
+         FROM payroll_results r WHERE r.period_id = $1 AND r.employment_id = $2
+         ORDER BY r.revision DESC LIMIT 1`,
+        [reimbursementPeriodId, employmentId],
+      );
+      return rows[0]!;
+    }
+
+    async function transition(action: "approve" | "approve_reopen", nextState: "APPROVED" | "COLLECTING") {
+      const current = (await getPeriod(pool, reimbursementPeriodId))!;
+      return applyTransition(pool, {
+        periodId: reimbursementPeriodId,
+        action,
+        nextState,
+        auditAction: action === "approve" ? "payroll.period.approved" : "payroll.reopen.approved",
+        actorAccountId,
+        reason: null,
+        expectedVersion: current.version,
+        blockerCount: 0,
+        fromState: current.state,
+      });
+    }
+
+    async function recalculate(enabled = true) {
+      return calculatePeriod(
+        pool,
+        reimbursementPeriod(),
+        actorAccountId,
+        (await getPeriod(pool, reimbursementPeriodId))!.version,
+        enabled ? { reimbursementHandoff: true } : {},
+      );
+    }
+
+    beforeEach(async () => {
+      reimbursementPeriodId = randomUUID();
+      ownedPeriodIds.push(reimbursementPeriodId);
+      await pool.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+         VALUES ($1, $2, DATE '2031-06-01', DATE '2031-06-25', DATE '2031-06-01', DATE '2031-06-30',
+                 DATE '2031-05-23', DATE '2031-06-22', 'COLLECTING')`,
+        [reimbursementPeriodId, legalEntityKey],
+      );
+    });
+
+    it("switched off, a handed-off claim is not read and the result is unchanged", async () => {
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      const { claimId } = await handedOffClaim(employeeId);
+      await recalculate(false);
+      const result = await latest(employmentId);
+      expect(result.reimburse).toBeNull();
+      const snapshot = await pool.query<{ inputs: Record<string, unknown> }>(
+        "SELECT input_snapshot -> 'inputs' AS inputs FROM payroll_results WHERE period_id = $1",
+        [reimbursementPeriodId],
+      );
+      expect(Object.keys(snapshot.rows[0]!.inputs)).not.toContain("reimbursement");
+      expect((await claimState(claimId)).status).toBe("VERIFIED");
+    });
+
+    it("pays in full outside the early-service factor, settles once, survives a reopen", async () => {
+      // Started in May 2031: under two months of service, so the net is paid at 80 %.
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP", startedOn: "2031-05-01" });
+      const { claimId } = await handedOffClaim(employeeId);
+
+      await recalculate();
+      let result = await latest(employmentId);
+      expect(result.reimburse).toBe("250000");
+      // payable = ROUNDUP((net - 250000) x 0.8) + 250000, exactly.
+      expect(Number(result.payable)).toBe(Math.ceil((Number(result.net) - 250_000) * 0.8) + 250_000);
+
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      let state = await claimState(claimId);
+      expect(state).toEqual({
+        status: "PAID",
+        payments: [{ amount: "250000", method: "PAYROLL", payrollMonth: "2031-06" }],
+        handoffs: ["SETTLED"],
+      });
+
+      await pool.query(
+        "UPDATE payroll_periods SET state = 'REOPEN_REQUESTED', state_before_reopen_request = 'APPROVED' WHERE id = $1",
+        [reimbursementPeriodId],
+      );
+      expect((await transition("approve_reopen", "COLLECTING")).applied).toBe(true);
+      state = await claimState(claimId);
+      // The payment is immutable and stays; the handoff is reversed and carried forward.
+      expect(state.status).toBe("PAID");
+      expect(state.payments).toHaveLength(1);
+      expect(state.handoffs).toEqual(["REVERSED", "PENDING"]);
+
+      await recalculate();
+      result = await latest(employmentId);
+      expect(result.reimburse).toBe("250000");
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      state = await claimState(claimId);
+      expect(state.payments).toHaveLength(1);
+      expect(state.handoffs).toEqual(["REVERSED", "SETTLED"]);
+
+      const audit = await pool.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM payroll_audit_events WHERE period_id = $1 AND action = 'payroll.period.approved'`,
+        [reimbursementPeriodId],
+      );
+      expect(audit.rows.map((row) => row.payload.reimbursements_settled)).toEqual([1, 1]);
+      expect(JSON.stringify(audit.rows.map((row) => row.payload))).not.toContain("250000");
+    });
+
+    it("refuses approval when the slip and the handoffs disagree", async () => {
+      const { employeeId } = await newEmployment({ category: "TETAP" });
+      const { claimId, handoffId } = await handedOffClaim(employeeId);
+      await recalculate();
+      // Finance withdraws the claim after the calculation, as paying it in cash does.
+      await pool.query(
+        `UPDATE reimbursement_payroll_handoffs
+            SET status = 'WITHDRAWN', period_id = NULL, closed_at = now(),
+                closed_by_account_id = $2, close_reason = 'Dibayar di luar payroll oleh Keuangan.'
+          WHERE id = $1`,
+        [handoffId, actorAccountId],
+      );
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      const outcome = await transition("approve", "APPROVED");
+      expect(outcome.applied).toBe(false);
+      expect(outcome.refusal?.code).toBe("PAYROLL_REIMBURSEMENT_CHANGED");
+      expect((await claimState(claimId)).payments).toEqual([]);
+    });
+
+    it("releases a handoff when its employee leaves the run", async () => {
+      // Someone stays, so the second run writes results of its own.
+      await newEmployment({ category: "TETAP" });
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      const { handoffId } = await handedOffClaim(employeeId);
+      await recalculate();
+      await pool.query("UPDATE employments SET legal_entity_key = $2 WHERE id = $1", [employmentId, randomUUID()]);
+      await recalculate();
+      const bound = await pool.query<{ periodId: string | null }>(
+        `SELECT period_id AS "periodId" FROM reimbursement_payroll_handoffs WHERE id = $1`,
+        [handoffId],
+      );
+      expect(bound.rows[0]!.periodId).toBeNull();
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+    });
+  });
 });

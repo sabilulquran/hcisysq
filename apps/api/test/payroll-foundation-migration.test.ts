@@ -98,7 +98,7 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       expect(rows.map((row) => row.code)).toEqual([
         "ADJUST_DEDUCT", "ADJUST_EARN", "ARREARS", "BASIC", "BPJS_KES", "BPJS_KES_ALLOW",
         "BPJS_KES_EXTRA", "CHILD", "CHILD_EDU", "FUNC", "LOAN", "OTHER_INCOME", "OVERTIME",
-        "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
+        "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "REIMBURSE", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
         "TEACH_OVER", "TEACH_SHORT", "TRANSPORT",
       ]);
     });

@@ -12,6 +12,11 @@ import {
   reverseEmployeeLoanSettlements,
   settleEmployeeLoanDeductions,
 } from "./employee-loan-link.js";
+import {
+  ReimbursementSettlementRefusal,
+  reverseReimbursementHandoffs,
+  settleReimbursementHandoffs,
+} from "./reimbursement-link.js";
 import { defaultCutoffWindow, monthEnd, type PeriodAction, type PeriodState } from "./lifecycle.js";
 
 export type PeriodRow = {
@@ -381,12 +386,17 @@ export async function applyTransition(
       if (input.action === "approve") {
         const { settled } = await settleEmployeeLoanDeductions(client, settledPeriod, input.actorAccountId);
         loanCounts = settled > 0 ? { loan_payments_settled: settled } : {};
+        // REIMB-001 section 9: the same transaction settles handed-off reimbursements.
+        const reimbursed = await settleReimbursementHandoffs(client, settledPeriod, input.actorAccountId);
+        if (reimbursed.settled > 0) loanCounts = { ...loanCounts, reimbursements_settled: reimbursed.settled };
       } else if (input.action === "approve_reopen") {
         const { reversed } = await reverseEmployeeLoanSettlements(client, settledPeriod, input.actorAccountId);
         loanCounts = reversed > 0 ? { loan_payments_reversed: reversed } : {};
+        const reopened = await reverseReimbursementHandoffs(client, settledPeriod, input.actorAccountId);
+        if (reopened.reversed > 0) loanCounts = { ...loanCounts, reimbursement_handoffs_reversed: reopened.reversed };
       }
     } catch (error) {
-      if (error instanceof LoanSettlementRefusal) {
+      if (error instanceof LoanSettlementRefusal || error instanceof ReimbursementSettlementRefusal) {
         await client.query("ROLLBACK");
         return { applied: false, period: null, refusal: { code: error.code, message: error.message } };
       }

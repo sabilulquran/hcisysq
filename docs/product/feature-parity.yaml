@@ -808,8 +808,11 @@ features:
       with per-item limits, encrypted receipts, optional link to a TRIP-001 trip, APR-001 approval
       (direct manager then unit approver), Finance verification per item, Finance rejection,
       idempotent payment outside payroll, register, per-category summary, audited CSV export,
-      NOTIF-003 Finance digest. Payroll handoff stays behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0
-      (spec §9); PAY-001/PAY-002 untouched. Advances and per diem are not included.
+      NOTIF-003 Finance digest. The payroll side of the handoff is built 2026-11-17 (spec §9,
+      payroll-calculation-v1.md §3.6) behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0: a VERIFIED
+      claim handed to a payroll month becomes the non-taxable REIMBURSE line paid outside the pay
+      factor, the claim is PAID when the period is approved, a reopen reverses the handoff row
+      (never the immutable payment). PAY-001/PAY-002 untouched. Advances and per diem are not included.
     docs:
       - docs/domain/reimbursement.md
       - docs/api/reimbursements.openapi.yaml

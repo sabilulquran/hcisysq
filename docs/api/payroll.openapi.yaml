@@ -658,8 +658,11 @@ paths:
         a stale version is refused the same way rather than applied twice.
         LOAN-001 Package 2: approve records each deduction on a LOAN-001 loan as a
         PAYROLL_DEDUCTION payment in the same transaction and is refused with
-        PAYROLL_LOAN_BALANCE_CHANGED when a loan no longer has room for it (the
-        director returns the period); approve_reopen reverses those payments.
+        PAYROLL_LOAN_BALANCE_CHANGED when a loan no longer has room for it, and with
+        PAYROLL_REIMBURSEMENT_CHANGED when the slips' REIMBURSE lines and the
+        handed-off reimbursements disagree (the
+        director returns the period); approve_reopen reverses the loan payments and
+        the reimbursement handoff rows (the reimbursement payment itself is immutable).
       parameters:
         - name: periodId
           in: path
@@ -731,6 +734,7 @@ components:
             - PAYROLL_CALCULATION_STALE
             - PAYROLL_REOPEN_STATE_MISSING
             - PAYROLL_LOAN_BALANCE_CHANGED
+            - PAYROLL_REIMBURSEMENT_CHANGED
             - PAYROLL_PERIOD_EXISTS
             - PAYROLL_PERIOD_NOT_FOUND
             - PAYROLL_INVALID_PERIOD

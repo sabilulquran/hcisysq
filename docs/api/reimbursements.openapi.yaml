@@ -13,7 +13,9 @@ info:
     string is refused with 400, never rounded. The database caps every amount at
     1,000,000,000, far below 2^53. Payroll is not touched: method PAYROLL is refused with
     409 REIMBURSEMENT_PAYROLL_HANDOFF_DISABLED while REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0
-    (the default and the production setting, spec D-11).
+    (the default and the production setting, spec D-11). Switched on, PAYROLL hands the claim
+    to the PAY-003 period of payrollMonth (spec section 9): the claim stays VERIFIED and is
+    paid when that period is approved.
 
     Visibility: an employee sees only their own claims (another employee's claim is 404);
     drafts never appear in the register; an approver opens a claim only through a step of
@@ -634,7 +636,10 @@ paths:
       description: |
         Idempotent. The same key with the same date and method replays (200); the same key with
         other values is 409 IDEMPOTENCY_KEY_REUSED; another key on a paid claim is 409
-        REIMBURSEMENT_ALREADY_PAID. PAYROLL is refused while the D-11 switch is off.
+        REIMBURSEMENT_ALREADY_PAID. PAYROLL is refused while the D-11 switch is off; switched on,
+        it answers 201 with a handoffId and status VERIFIED (409 REIMBURSEMENT_ALREADY_HANDED_OFF,
+        409 REIMBURSEMENT_PAYROLL_PERIOD_CLOSED). CASH or TRANSFER on a handed-off claim withdraws
+        the handoff first (409 REIMBURSEMENT_IN_PAYROLL once its period is submitted).
       requestBody:
         required: true
         content:
@@ -867,7 +872,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         paymentId: { type: string, format: uuid }
-        status: { type: string, const: PAID }
+        handoffId:
+          type: string
+          format: uuid
+          description: Set instead of paymentId when method PAYROLL handed the claim to payroll (status VERIFIED).
+        status: { type: string, enum: [PAID, VERIFIED] }
         amount: { type: integer }
         idempotentReplay: { type: boolean }
   responses:
@@ -896,6 +905,7 @@ components:
         REIMBURSEMENT_APPROVED_EXCEEDS_CLAIM, REIMBURSEMENT_REDUCTION_NOTE_REQUIRED,
         REIMBURSEMENT_NOTHING_APPROVED, REIMBURSEMENT_NOT_PAYABLE, REIMBURSEMENT_PAYMENT_DATE,
         REIMBURSEMENT_PAYROLL_HANDOFF_DISABLED, REIMBURSEMENT_ALREADY_PAID, IDEMPOTENCY_KEY_REUSED,
+        REIMBURSEMENT_ALREADY_HANDED_OFF, REIMBURSEMENT_PAYROLL_PERIOD_CLOSED, REIMBURSEMENT_IN_PAYROLL,
         REIMBURSEMENT_NOT_REJECTABLE, REIMBURSEMENT_NOT_CANCELLABLE, REIMBURSEMENT_STATE_CONFLICT.
       content:
         application/json:

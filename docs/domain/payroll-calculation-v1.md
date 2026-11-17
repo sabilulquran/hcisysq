@@ -29,7 +29,7 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 
 ### 1.2 Di luar v1
 
-Penerima non-pegawai/pengabdian/honor lain, THR, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement, integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
+Penerima non-pegawai/pengabdian/honor lain, THR, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement (kecuali penyerahan REIMB-001 di balik saklar mati, §3.6), integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
 
 ## 2. Aktor dan permission
 
@@ -93,6 +93,7 @@ Komponen awal v1 (kode final saat implementasi):
 | `TEACH_SHORT` | Kekurangan jam | DEDUCTION | — |
 | `ADJUST_DEDUCT` | Penyesuaian gaji (potongan) | DEDUCTION | — |
 | `ADJUST_EARN` | Penyesuaian gaji (penambah) | EARNING | tidak |
+| `REIMBURSE` | Penggantian biaya (REIMB-001, §3.6; di luar dasar PPh21, di luar faktor bayar) | EARNING | tidak |
 | `PRORATA` | Faktor prorata masuk/keluar | — (faktor atas netto, §5.1) | — |
 | `PPH21_EMPLOYER` | PPh21 ditanggung yayasan | EMPLOYER_COST | — |
 
@@ -163,6 +164,25 @@ Audit: `payroll.period.calculated` menambah `employee_loan_deduction_enabled` da
 
 Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang sudah tercatat tetap fakta dan tetap dibalik bila periodenya dibuka ulang. Skema: `-- Down:` migration 0156.
 
+### 3.6 Penggantian biaya REIMB-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0157 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
+
+| Saat | Yang terjadi | Bergantung sakelar? |
+|---|---|---|
+| hitung | Penyerahan `PENDING` yang bulan payroll-nya sama dengan periode dan pegawainya dibayar periode itu diikat ke periode; jumlahnya per pegawai menjadi baris `REIMBURSE`. Penyerahan yang terikat tetapi pegawainya tidak lagi dibayar dilepas. | ya; saat mati hanya melepas ikatan periode itu sendiri, jadi periode tanpa penyerahan tidak tersentuh dan snapshot-nya identik |
+| sahkan | Baris `REIMBURSE` pada run terakhir harus sama, per pegawai, dengan penyerahan terikat; bila tidak, 409 `PAYROLL_REIMBURSEMENT_CHANGED`. Klaim `VERIFIED` → `PAID` dengan satu pembayaran `PAYROLL` immutable; penyerahan `SETTLED`. | tidak |
+| setujui buka ulang | Penyerahan `SETTLED` → `REVERSED`, satu `PENDING` baru membawa penggantian ke hitung ulang; pembayaran tetap. | tidak |
+
+Rumus: `REIMBURSE` masuk `BRUTO` dan `NETTO` tetapi tidak ikut faktor bayar, karena ia mengganti uang yang sudah dikeluarkan pegawai:
+
+```text
+DIBAYAR = ROUNDUP((NETTO − REIMBURSE) × faktor_bayar) + REIMBURSE      (faktor_bayar ≠ 1)
+DIBAYAR = NETTO                                                         (faktor_bayar = 1, termasuk PKWT)
+```
+
+`REIMBURSE` bukan tunjangan tetap (tidak masuk dasar BPJS) dan dikeluarkan dari bruto PPh21 (`PPH21_EXCLUDED_EARNINGS`). Audit: `payroll.period.calculated` menambah `reimbursement_handoff_enabled`/`reimbursement_employee_count`; transisi menambah `reimbursements_settled`/`reimbursement_handoffs_reversed` — hitungan saja. Keputusan `DRAFT` R1–R4: `reimbursement.md` §9.
+
 ## 4. Input periode
 
 | Input | Sumber v1 | Catatan |
@@ -220,7 +240,7 @@ BPJS_KES_EXTRA = ROUND(dasar_bpjs × kebijakan.tarif_anggota_tambahan × anggota
 BRUTO        = Σ EARNING
 POTONGAN     = LOAN + BPJS_KES + BPJS_KES_EXTRA + CHILD_EDU + TEACH_SHORT + ADJUST_DEDUCT
 NETTO        = BRUTO − POTONGAN
-DIBAYAR      = ROUNDUP(NETTO × faktor_bayar)
+DIBAYAR      = ROUNDUP(NETTO × faktor_bayar)        (dengan penggantian biaya: §3.6)
 ```
 
 **Faktor bayar: prorata dan masa kerja awal saling meniadakan** (`DRAFT`, perbaikan review 2026-10-27). Legacy memperlakukan prorata sebagai pengganti netto 80%, bukan tambahannya. v1 mengikuti itu:
@@ -348,7 +368,7 @@ DRAFT → COLLECTING → CALCULATED → SUBMITTED → APPROVED → PAYMENT_CONFI
 | hitung / hitung ulang | HC | COLLECTING atau CALCULATED | `payroll.period.calculated` (jumlah pegawai, total, blocker) |
 | ajukan | HC (`payroll.submit`) | CALCULATED, tanpa blocker, hasil terbaru | `payroll.period.submitted` |
 | kembalikan | Direktur | SUBMITTED, alasan wajib, tujuan COLLECTING | `payroll.period.returned` |
-| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED; potongan pinjaman LOAN-001 masih muat dalam sisanya (§3.5) | `payroll.period.approved` (+ `loan_payments_settled`) |
+| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED; potongan pinjaman LOAN-001 masih muat dalam sisanya (§3.5); penggantian biaya di slip sama dengan penyerahannya (§3.6) | `payroll.period.approved` (+ `loan_payments_settled`) |
 | konfirmasi bayar | Keuangan (`payroll.payments.confirm`) | APPROVED | `payroll.payment.confirmed` |
 | siapkan slip | HC (`payroll.periods.manage`) | PAYMENT_CONFIRMED atau PUBLISHED, tanpa blocker | `payroll.payslips.drafted` |
 | terbitkan slip | pemegang `payslips.publish` | ada draft dari periode ini | `payroll.payslips.published` |
@@ -497,6 +517,7 @@ Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payrol
 
 ### 9.3 Test minimum
 
+- Penggantian biaya REIMB-001 (§3.6): komponen di luar faktor bayar dan di luar PPh21/BPJS (`test/payroll-reimbursement-link.test.ts`); sakelar mati tanpa perubahan, sahkan sekali, buka ulang membalik penyerahan tanpa pembayaran kedua, slip berbeda menolak pengesahan, penyerahan dilepas saat pegawai keluar (`test/payroll-calculation.integration.test.ts`); route serahkan/replay/ambil kembali/bulan tertutup (`test/reimbursements.postgres.test.ts`).
 - Potongan LOAN-001 (§3.5): usulan cicilan eksak (bigint), sakelar mati tanpa cermin dan tanpa potongan, pengesahan mencatat sekali (idempoten), buka ulang membalik, pengesahan ulang mencatat lagi, pembayaran tunai dihitung lebih dulu, potongan `MANUAL` dan penundaan 0 dipertahankan, sisa berubah menolak pengesahan, route LOAN-001 menolak `PAYROLL_DEDUCTION` manual (`test/payroll-employee-loan-link.test.ts`, `test/payroll-calculation.integration.test.ts`, `test/loans.postgres.test.ts`).
 - Sambungan PERF-001 (§5.5): sakelar mati menghasilkan baris dan snapshot identik; pemetaan A–D tepat ke rupiah; urutan override > penilaian > profil; siklus terbuka, `UNRATED`, dan siklus ditutup setelah tanggal gajian tidak dibaca; predikat tanpa pemetaan memblokir (`test/payroll-performance-link.test.ts`, `test/payroll-calculation.integration.test.ts`).
 - Unit test fungsi perhitungan per komponen dengan kasus batas: MKG 0/27/28, jam 0/96/lebih/kurang, BPJS di bawah UMK dan di atas Rp12 juta, segmen PBI, anggota tambahan, masa kerja 1/2/3 bulan, kualifikasi khusus negatif, kasbon melebihi sisa.

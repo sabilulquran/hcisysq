@@ -537,4 +537,75 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
     actAs("requester");
     expect((await app.inject({ method: "GET", url: `/reimbursements/me/${second.id}` })).json().receipts[0]).not.toHaveProperty("duplicateClaims");
   });
+
+  it("REIMB-001 §9: with the switch on, PAYROLL hands the claim to payroll instead of paying it", async () => {
+    const config = {
+      NODE_ENV: "test",
+      AUTH_ENCRYPTION_KEY: "11".repeat(32),
+      AUTH_SESSION_TTL_HOURS: 8,
+      REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED: "1",
+    } as ApiConfig;
+    const auth = {
+      getSession: async () => ({ principal, expiresAt: "2099-01-01T00:00:00Z" }),
+      getAuthorizationContext: async () => ({ organizationPermissions: permissions }),
+    } as never;
+    const switched = Fastify({ logger: false });
+    await registerReimbursementRoutes(switched, savepointPool(client), config, auth);
+    const handOff = (id: string, extra: Record<string, unknown> = {}) => {
+      actAs("finance", FINANCE);
+      return switched.inject({
+        method: "POST", url: `/admin/reimbursements/${id}/pay`,
+        payload: { paidOn: today, method: "PAYROLL", payrollMonth: "2031-07", idempotencyKey: randomUUID(), ...extra },
+      });
+    };
+    try {
+      const claim = await approved();
+      expect((await verify(claim.id)).statusCode).toBe(200);
+
+      const key = randomUUID();
+      const handed = await handOff(claim.id, { idempotencyKey: key });
+      expect(handed.statusCode, handed.body).toBe(201);
+      expect(handed.json()).toMatchObject({ status: "VERIFIED", amount: 325_000, idempotentReplay: false });
+      // The claim waits for the payroll period; no payment exists yet.
+      expect((await detail(claim.id)).status).toBe("VERIFIED");
+      const payments = await client.query("SELECT 1 FROM reimbursement_payments WHERE claim_id = $1", [claim.id]);
+      expect(payments.rows).toHaveLength(0);
+      // A retry replays; a second handoff is refused.
+      expect((await handOff(claim.id, { idempotencyKey: key })).json()).toMatchObject({ idempotentReplay: true });
+      expect((await handOff(claim.id)).json().code).toBe("REIMBURSEMENT_ALREADY_HANDED_OFF");
+      const events = await client.query<{ metadata: Record<string, unknown> }>(
+        "SELECT metadata FROM reimbursement_events WHERE claim_id = $1 AND event_type = 'reimbursement.payroll_handed_off'",
+        [claim.id],
+      );
+      expect(events.rows).toHaveLength(1);
+      expect(JSON.stringify(events.rows[0]!.metadata)).not.toContain("325000");
+
+      // Paying by transfer instead takes it back from payroll before the period is submitted.
+      actAs("finance", FINANCE);
+      const transfer = await switched.inject({
+        method: "POST", url: `/admin/reimbursements/${claim.id}/pay`,
+        payload: { paidOn: today, method: "TRANSFER", idempotencyKey: randomUUID() },
+      });
+      expect(transfer.statusCode, transfer.body).toBe(201);
+      const handoffs = await client.query<{ status: string }>(
+        "SELECT status FROM reimbursement_payroll_handoffs WHERE claim_id = $1", [claim.id],
+      );
+      expect(handoffs.rows.map((row) => row.status)).toEqual(["WITHDRAWN"]);
+      await checkMoneyInvariants();
+
+      // A month whose payroll period is already submitted cannot take a handoff.
+      const other = await approved();
+      expect((await verify(other.id)).statusCode).toBe(200);
+      await client.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+         VALUES ($1, $2, DATE '2031-08-01', DATE '2031-08-25', DATE '2031-08-01', DATE '2031-08-31',
+                 DATE '2031-07-23', DATE '2031-08-22', 'SUBMITTED')`,
+        [randomUUID(), randomUUID()],
+      );
+      expect((await handOff(other.id, { payrollMonth: "2031-08" })).json().code).toBe("REIMBURSEMENT_PAYROLL_PERIOD_CLOSED");
+    } finally {
+      await switched.close();
+    }
+  });
 });

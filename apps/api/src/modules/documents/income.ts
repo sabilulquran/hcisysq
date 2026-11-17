@@ -40,11 +40,31 @@ export const INCOME_WINDOW_MONTHS = 3;
 export const GROSS_LABELS = ["total bruto gaji", "total bruto", "total penghasilan", "total pendapatan"] as const;
 export const NET_LABELS = ["gaji neto", "gaji netto", "gaji bersih"] as const;
 
+/**
+ * D-27 DRAFT: the line of the slip's block "Ditanggung yayasan" (`section: "employer"`) that
+ * carries the BPJS Kesehatan contribution the yayasan pays on the employee's behalf — the catalog
+ * display name of `BPJS_KES` (`payroll-calculation-v1.md` §7.6.3 S4). PPh21 the yayasan bears sits
+ * in the same block but is deliberately **not** read here: it is tax paid for the employee, not a
+ * contribution that used to be part of the slip's gross, and adding the two into one figure would
+ * make the letter irreconcilable with 1721-A1 line 5.
+ */
+export const EMPLOYER_PREMIUM_LABELS = ["iuran bpjs kesehatan"] as const;
+
 export interface PayslipLine {
   label: string;
   value: string;
   section?: string;
 }
+
+/**
+ * D-27 DRAFT: which definition of "total pendapatan" the slip of that month was written with.
+ * Read from the slip itself, never from the policy: `EMPLOYER_BLOCK` when the slip carries a block
+ * "Ditanggung yayasan" (`section: "employer"`), so its gross leaves the employer-borne BPJS
+ * Kesehatan contribution out; `LEGACY` otherwise. A slip drafted under the new layout for someone
+ * the yayasan pays nothing for carries no block and reads as `LEGACY`, which is right in substance:
+ * nothing was moved, so both definitions give the same gross.
+ */
+export type IncomeLayout = "EMPLOYER_BLOCK" | "LEGACY";
 
 export interface IncomeMonth {
   /** `YYYY-MM`. */
@@ -52,6 +72,9 @@ export interface IncomeMonth {
   /** Whole rupiah as a decimal string, or with two decimals when the slip had sen. */
   gross: string;
   net: string;
+  /** D-27: the BPJS Kesehatan contribution the yayasan bears, as the slip's block states it; "0" on a `LEGACY` slip. */
+  employerBorne: string;
+  layout: IncomeLayout;
 }
 
 export interface IncomeFacts {
@@ -59,6 +82,14 @@ export interface IncomeFacts {
   monthCount: number;
   averageGross: string;
   averageNet: string;
+  /** D-27: the average of `employerBorne`, over the same months as the other averages. */
+  averageEmployerBorne: string;
+  /**
+   * D-27: true when the window holds slips of both layouts, so the average gross adds up two
+   * presentations of the same pay. The letter then says so and names the months; it never averages
+   * two definitions in silence.
+   */
+  mixedLayout: boolean;
   /** The window searched, `YYYY-MM`, so the letter can say which months had no slip. */
   windowFrom: string;
   windowTo: string;
@@ -141,9 +172,38 @@ export function findFigure(lines: readonly PayslipLine[], labels: readonly strin
   return null;
 }
 
+/** D-27: does this slip carry the block "Ditanggung yayasan"? */
+export function slipLayout(lines: readonly PayslipLine[]): IncomeLayout {
+  return lines.some((line) => line.section === "employer") ? "EMPLOYER_BLOCK" : "LEGACY";
+}
+
+/**
+ * D-27: the employer-borne BPJS Kesehatan contribution of one slip, read from its block
+ * "Ditanggung yayasan" alone. 0 when the slip has no such line. `null` when the line is there but
+ * its amount is not a figure this letter can state, which refuses the letter rather than printing
+ * a zero that would read as "the yayasan pays nothing".
+ */
+export function findEmployerBorne(lines: readonly PayslipLine[]): bigint | null {
+  const wanted = lines.filter(
+    (line) => line.section === "employer" && EMPLOYER_PREMIUM_LABELS.includes(normalizeLabel(line.label) as never),
+  );
+  let total = 0n;
+  for (const line of wanted) {
+    const amount = parseRupiahToSen(line.value);
+    if (amount === null) return null;
+    total += amount;
+  }
+  return total;
+}
+
 /**
  * Pure assembly of the figures from the slips found in the window. Throws when a slip has no
  * readable gross or net figure: the letter would otherwise state a month without its income.
+ *
+ * D-27: each month also carries the layout its slip was written with and the employer-borne BPJS
+ * Kesehatan contribution the slip states, and the facts say whether the window mixes the two
+ * layouts. The average gross is still the average of what the employee was shown — the letter is
+ * read beside the payslips the employee attaches — but a mixed window is never silent.
  */
 export function buildIncomeFacts(
   window: readonly string[],
@@ -157,25 +217,35 @@ export function buildIncomeFacts(
     );
   }
   const unreadable: string[] = [];
-  const months: Array<{ period: string; gross: bigint; net: bigint }> = [];
+  const months: Array<{ period: string; gross: bigint; net: bigint; employerBorne: bigint; layout: IncomeLayout }> = [];
   for (const slip of slips) {
     const gross = findFigure(slip.lines, GROSS_LABELS);
     const net = findFigure(slip.lines, NET_LABELS);
-    if (gross === null || net === null) unreadable.push(slip.period);
-    else months.push({ period: slip.period, gross, net });
+    const employerBorne = findEmployerBorne(slip.lines);
+    if (gross === null || net === null || employerBorne === null) unreadable.push(slip.period);
+    else months.push({ period: slip.period, gross, net, employerBorne, layout: slipLayout(slip.lines) });
   }
   if (unreadable.length) {
     throw new DocumentError(
       409,
       "DOCUMENT_INCOME_UNREADABLE",
-      `Total bruto atau gaji neto tidak terbaca pada slip gaji periode ${unreadable.join(", ")}. Periksa slip tersebut sebelum menerbitkan surat.`,
+      `Total bruto, gaji neto, atau nilai blok "Ditanggung yayasan" tidak terbaca pada slip gaji periode ${unreadable.join(", ")}. Periksa slip tersebut sebelum menerbitkan surat.`,
     );
   }
   return {
-    months: months.map((month) => ({ period: month.period, gross: senToAmount(month.gross), net: senToAmount(month.net) })),
+    months: months.map((month) => ({
+      period: month.period,
+      gross: senToAmount(month.gross),
+      net: senToAmount(month.net),
+      employerBorne: senToAmount(month.employerBorne),
+      layout: month.layout,
+    })),
     monthCount: months.length,
     averageGross: senToAmount(averageSen(months.map((month) => month.gross))),
     averageNet: senToAmount(averageSen(months.map((month) => month.net))),
+    averageEmployerBorne: senToAmount(averageSen(months.map((month) => month.employerBorne))),
+    mixedLayout:
+      months.some((month) => month.layout === "EMPLOYER_BLOCK") && months.some((month) => month.layout === "LEGACY"),
     windowFrom: window[0]!,
     windowTo: window[window.length - 1]!,
     source: "PAYSLIP_PUBLISHED",

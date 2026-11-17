@@ -71,6 +71,16 @@ const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
 
 const NO_READ_ACCESS = { report: false, perPerson: false, transfers: false };
 
+/**
+ * PAY-003 §7.6: the PAYSLIP_LAYOUT version in force on this period's pay date does not parse.
+ * The rekap falls back to the earlier layout, but "Siapkan slip" refuses, so the screen says it
+ * here instead of letting HC find out at drafting time.
+ */
+export const payslipLayoutUnreadableNote =
+  "Kebijakan tata letak slip (PAYSLIP_LAYOUT) yang berlaku pada tanggal gajian periode ini tidak terbaca. "
+  + "Total di slip pada rekap ini memakai tata letak lama, dan Siapkan slip akan ditolak sampai isi kebijakan itu diperbaiki "
+  + "di /admin/payroll/reference → Kebijakan.";
+
 export function AdminPayrollPeriodPage() {
   const { periodId } = useParams({ from: "/admin/payroll/$periodId" });
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -365,6 +375,11 @@ export function AdminPayrollPeriodPage() {
                 Bruto dan potongan hasil perhitungan masih memuat tunjangan dan iuran BPJS Kesehatan yang ditanggung
                 yayasan. Slip periode ini menampilkannya di blok "Ditanggung yayasan", sehingga total di slip lebih
                 kecil sebesar iuran itu; netto dan nilai dibayar sama.
+              </p>
+            ) : null}
+            {report.payslipTotals?.layoutUnreadable ? (
+              <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                {payslipLayoutUnreadableNote}
               </p>
             ) : null}
           </section>

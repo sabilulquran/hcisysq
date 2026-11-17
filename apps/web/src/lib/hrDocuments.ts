@@ -43,12 +43,20 @@ export const INCOME_READER_PERMISSIONS = [
 
 /** D-24: amounts are rupiah decimal strings ("5116667" or "5250000.50"), never floats. */
 export interface IncomeFigures {
-  months: Array<{ period: string; gross: string; net: string }>;
+  months: Array<{ period: string; gross: string; net: string; employerBorne?: string; layout?: "EMPLOYER_BLOCK" | "LEGACY" }>;
   monthCount: number;
   averageGross: string;
   averageNet: string;
+  /** D-27; absent on letters issued before the block "Ditanggung yayasan" existed. */
+  averageEmployerBorne?: string;
+  mixedLayout?: boolean;
   windowFrom: string;
   windowTo: string;
+}
+
+/** D-27: is there an employer-borne figure worth a line of its own on this letter? */
+export function hasEmployerBorneIncome(income: IncomeFigures): boolean {
+  return income.months.some((month) => Boolean(month.employerBorne) && month.employerBorne !== "0");
 }
 
 export function incomeFigures(document: Pick<IssuedDocumentSummary, "contentSnapshot">): IncomeFigures | null {

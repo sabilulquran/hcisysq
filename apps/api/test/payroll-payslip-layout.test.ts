@@ -15,7 +15,7 @@ import {
   validatePolicyPayload,
 } from "../src/modules/payroll/policy.js";
 import { buildPayslipLines } from "../src/modules/payroll/publication.js";
-import { payslipTotalsOf } from "../src/modules/payroll/reports.js";
+import { payslipTotalsOf, payslipTotalsOfSlips } from "../src/modules/payroll/reports.js";
 import { buildIncomeFacts } from "../src/modules/documents/income.js";
 
 type Line = {
@@ -273,9 +273,16 @@ describe("slip lines", () => {
     ]);
   });
 
-  it("shows a final masa pajak that returns over-withheld tax as it is, and no zero line", () => {
+  it("names a final masa pajak that returns over-withheld tax, instead of printing a minus", () => {
+    // DRAFT S3, revised after review of PR #378: "-Rp600.000" under "Ditanggung yayasan" reads as
+    // an error to the pegawai holding the slip.
     const refund = buildPayslipLines(RESULT, [...LINES, { ...PPH21, amount: "-600000" }], PERIOD, { employerBlock: true });
-    expect(refund).toContainEqual({ label: "PPh21 ditanggung yayasan", value: "-Rp600.000", section: "employer" });
+    expect(refund).toContainEqual({
+      label: "Pengembalian kelebihan PPh21 ditanggung yayasan",
+      value: "Rp600.000",
+      section: "employer",
+    });
+    expect(refund.some((entry) => entry.value.startsWith("-"))).toBe(false);
     const zero = buildPayslipLines(RESULT, [...LINES, { ...PPH21, amount: "0" }], PERIOD, { employerBlock: true });
     expect(zero.filter((entry) => entry.section === "employer").map((entry) => entry.label)).toEqual(["Iuran BPJS Kesehatan"]);
   });
@@ -306,9 +313,28 @@ describe("slip lines", () => {
 describe("consumers of the slip totals", () => {
   it("gives the period report the totals as the slips state them", () => {
     const totals = { gross: "86100000", deductions: "9200000" };
-    expect(payslipTotalsOf(totals, false, "4100000")).toEqual({ employerBlock: false, gross: "86100000", deductions: "9200000" });
-    expect(payslipTotalsOf(totals, true, "4100000")).toEqual({ employerBlock: true, gross: "82000000", deductions: "5100000" });
-    expect(payslipTotalsOf(totals, true, "0")).toEqual({ employerBlock: true, gross: "86100000", deductions: "9200000" });
+    const derived = { source: "KEBIJAKAN", layoutUnreadable: false };
+    expect(payslipTotalsOf(totals, false, "4100000")).toEqual({ employerBlock: false, gross: "86100000", deductions: "9200000", ...derived });
+    expect(payslipTotalsOf(totals, true, "4100000")).toEqual({ employerBlock: true, gross: "82000000", deductions: "5100000", ...derived });
+    expect(payslipTotalsOf(totals, true, "0")).toEqual({ employerBlock: true, gross: "86100000", deductions: "9200000", ...derived });
+    // Review finding 1 of PR #378: an unreadable PAYSLIP_LAYOUT row is reported, not swallowed.
+    expect(payslipTotalsOf(totals, false, "0", true)).toMatchObject({ layoutUnreadable: true, source: "KEBIJAKAN" });
+  });
+
+  it("prefers the totals the drafted slips state, whatever the layout says today", () => {
+    // Review finding 2 of PR #378: a PAYSLIP_LAYOUT version backdated over a period whose slips
+    // are already published must not move the figure the report shows for those slips.
+    expect(payslipTotalsOfSlips({ gross: "82000000", deductions: "5100000" }, "86100000")).toEqual({
+      employerBlock: true,
+      gross: "82000000",
+      deductions: "5100000",
+      source: "SLIP",
+      layoutUnreadable: false,
+    });
+    expect(payslipTotalsOfSlips({ gross: "86100000", deductions: "9200000" }, "86100000")).toMatchObject({
+      employerBlock: false,
+      source: "SLIP",
+    });
   });
 
   it("lets the income certificate read the gross the employee was shown, with the same net", () => {
@@ -317,8 +343,21 @@ describe("consumers of the slip totals", () => {
     const block = buildIncomeFacts(window, [
       { period: "2026-12", lines: buildPayslipLines(RESULT, [...LINES, PPH21], PERIOD, { employerBlock: true }) },
     ]);
-    expect(earlier.months[0]).toEqual({ period: "2026-12", gross: "4305000", net: "3759000" });
+    expect(earlier.months[0]).toEqual({
+      period: "2026-12",
+      gross: "4305000",
+      net: "3759000",
+      employerBorne: "0",
+      layout: "LEGACY",
+    });
     // DOC-001 D-23: "Total pendapatan" of the published slip, now without the BPJS allowance.
-    expect(block.months[0]).toEqual({ period: "2026-12", gross: "4100000", net: "3759000" });
+    // D-27: and the contribution the yayasan bears, read from the slip's own block.
+    expect(block.months[0]).toEqual({
+      period: "2026-12",
+      gross: "4100000",
+      net: "3759000",
+      employerBorne: "205000",
+      layout: "EMPLOYER_BLOCK",
+    });
   });
 });

@@ -5,7 +5,22 @@
 
 import { createPortal } from "react-dom";
 
-import { formatRupiahAmount, incomeFigures, type IssuedDocumentSummary } from "@/lib/hrDocuments";
+import {
+  formatRupiahAmount,
+  hasEmployerBorneIncome,
+  incomeFigures,
+  type IssuedDocumentSummary,
+} from "@/lib/hrDocuments";
+
+/**
+ * DOC-001 D-27 (DRAFT, owner decision 2026-11-17): the letter states the gross the employee was
+ * shown on their slip, and names the BPJS Kesehatan contribution the yayasan pays on their behalf
+ * on a line of its own, so the letter reconciles with the 1721-A1 without inflating the headline
+ * gross a bank reads.
+ */
+export const incomeEmployerColumnTitle = "Ditanggung yayasan";
+export const incomeEmployerBorneNote =
+  "Kolom “Ditanggung yayasan” adalah iuran BPJS Kesehatan yang dibayarkan yayasan atas nama pegawai. Iuran tersebut dibayarkan langsung oleh yayasan, tidak diterima pegawai sebagai uang tunai, dan tidak termasuk dalam penghasilan bruto maupun penghasilan neto di atas.";
 
 /** Letter dates are on the Jakarta calendar, like the number (§9). */
 function letterDate(value: string, dateOnly = false) {
@@ -23,6 +38,13 @@ function monthLabel(period: string) {
 function monthsBetween(from: string, to: string) {
   const index = (period: string) => Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7));
   return index(to) - index(from) + 1;
+}
+
+/** D-27: the sentence a window that mixes the two slip layouts must carry, naming the months. */
+export function incomeMixedLayoutNote(legacyMonths: readonly string[]): string {
+  const months = legacyMonths.map(monthLabel);
+  const list = months.length > 1 ? `${months.slice(0, -1).join(", ")} dan ${months[months.length - 1]}` : months[0] ?? "";
+  return `Pada slip periode ${list} iuran tersebut masih tercantum di dalam penghasilan bruto, sehingga kolom “${incomeEmployerColumnTitle}” bulan itu dikosongkan dan rata-rata penghasilan bruto di atas menggabungkan dua cara penyajian slip.`;
 }
 
 function text(value: unknown): string | null {
@@ -45,6 +67,14 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
     ["Mulai bekerja", startedOn ? letterDate(startedOn, true) : null],
   ];
   const income = incomeFigures(document);
+  // D-27: the column only appears when a slip in the window actually states an employer-borne
+  // figure, so letters issued under the earlier slip layout read exactly as they did.
+  const showEmployerBorne = income ? hasEmployerBorneIncome(income) : false;
+  // Only when the column is there: a window whose block months state nothing employer-borne has
+  // one definition of gross after all, so there is nothing to warn a bank about.
+  const legacyMonths = income && income.mixedLayout && showEmployerBorne
+    ? income.months.filter((month) => month.layout !== "EMPLOYER_BLOCK").map((month) => month.period)
+    : [];
   const statement = document.documentCode === "PAKLARING"
     ? `telah bekerja di Yayasan Sabilul Qur'an sejak ${startedOn ? letterDate(startedOn, true) : "-"} sampai dengan ${endedOn ? letterDate(endedOn, true) : "-"}.`
     : income
@@ -72,7 +102,8 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               <tr className="border-b border-slate-400">
                 <th className="py-1 pr-2 font-semibold">Bulan</th>
                 <th className="py-1 pr-2 text-right font-semibold">Penghasilan bruto</th>
-                <th className="py-1 text-right font-semibold">Penghasilan neto</th>
+                <th className={`py-1 text-right font-semibold${showEmployerBorne ? " pr-2" : ""}`}>Penghasilan neto</th>
+                {showEmployerBorne ? <th className="py-1 text-right font-semibold">{incomeEmployerColumnTitle}</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -80,7 +111,12 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
                 <tr key={month.period} className="border-b border-slate-200">
                   <td className="py-1 pr-2">{monthLabel(month.period)}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(month.gross)}</td>
-                  <td className="py-1 text-right tabular-nums">{formatRupiahAmount(month.net)}</td>
+                  <td className={`py-1 text-right tabular-nums${showEmployerBorne ? " pr-2" : ""}`}>{formatRupiahAmount(month.net)}</td>
+                  {showEmployerBorne ? (
+                    <td className="py-1 text-right tabular-nums">
+                      {month.layout === "EMPLOYER_BLOCK" ? formatRupiahAmount(month.employerBorne ?? "0") : "—"}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -88,7 +124,10 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               <tr className="font-semibold">
                 <td className="py-1 pr-2">Rata-rata per bulan</td>
                 <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(income.averageGross)}</td>
-                <td className="py-1 text-right tabular-nums">{formatRupiahAmount(income.averageNet)}</td>
+                <td className={`py-1 text-right tabular-nums${showEmployerBorne ? " pr-2" : ""}`}>{formatRupiahAmount(income.averageNet)}</td>
+                {showEmployerBorne ? (
+                  <td className="py-1 text-right tabular-nums">{formatRupiahAmount(income.averageEmployerBorne ?? "0")}</td>
+                ) : null}
               </tr>
             </tfoot>
           </table>
@@ -98,6 +137,8 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               ? `; rata-rata dihitung dari ${income.monthCount} bulan yang memiliki slip gaji resmi.`
               : "."}
           </p>
+          {showEmployerBorne ? <p className="mt-2 text-xs">{incomeEmployerBorneNote}</p> : null}
+          {legacyMonths.length > 0 ? <p className="mt-2 text-xs">{incomeMixedLayoutNote(legacyMonths)}</p> : null}
         </>
       ) : null}
       {purpose ? <p className="mt-2">Surat keterangan ini dibuat untuk keperluan: {purpose}.</p> : null}

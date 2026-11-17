@@ -298,7 +298,13 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
     it("equals the calculation's totals while no PAYSLIP_LAYOUT version is in force", async () => {
       const report = await buildPeriodReport(pool, await seed("2026-09-01"));
       expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000", net: "8810000" });
-      expect(report.payslipTotals).toEqual({ employerBlock: false, gross: "9350000", deductions: "540000" });
+      expect(report.payslipTotals).toEqual({
+        employerBlock: false,
+        gross: "9350000",
+        deductions: "540000",
+        source: "KEBIJAKAN",
+        layoutUnreadable: false,
+      });
       expect(report.employerCostSummary.bpjsKesehatan).toBe("350000");
     });
 
@@ -312,11 +318,90 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       try {
         const report = await buildPeriodReport(pool, await seed("2033-05-01"));
         expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000", net: "8810000", payable: "8810000" });
-        expect(report.payslipTotals).toEqual({ employerBlock: true, gross: "9150000", deductions: "340000" });
+        expect(report.payslipTotals).toEqual({
+          employerBlock: true,
+          gross: "9150000",
+          deductions: "340000",
+          source: "KEBIJAKAN",
+          layoutUnreadable: false,
+        });
         expect(BigInt(report.payslipTotals.gross) - BigInt(report.payslipTotals.deductions)).toBe(BigInt(report.totals.net));
       } finally {
         await clearLayout();
       }
+    });
+
+    // Review finding 2 of PR #378: once the slips are drafted the report states what they say, so
+    // a PAYSLIP_LAYOUT version backdated over a period cannot move the figure beside slips that
+    // are already in the employees' hands.
+    it("reads the totals from the drafted slips once every result has one", async () => {
+      const periodId = await seed("2026-10-01");
+      const employees = await pool.query<{ employeeId: string }>(
+        `SELECT employment.employee_id AS "employeeId"
+           FROM payroll_results result
+           JOIN employments employment ON employment.id = result.employment_id
+          WHERE result.period_id = $1`,
+        [periodId],
+      );
+      // Slips written as publication.ts writes them: formatRupiah text, section "summary".
+      const slipTotals = [
+        { gross: "Rp4.000.000", deductions: "Rp40.000" },
+        { gross: "Rp3.150.000", deductions: "Rp100.000" },
+        { gross: "Rp2.000.000", deductions: "Rp200.000" },
+      ];
+      for (const [index, row] of employees.rows.entries()) {
+        await pool.query(
+          `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id, kind)
+           VALUES ($1, $2, DATE '2026-10-01', $3::jsonb, 'generic', $4, 'REGULAR')`,
+          [
+            randomUUID(),
+            row.employeeId,
+            JSON.stringify([
+              { label: "NIP", value: "x", section: "identity" },
+              { label: "Total pendapatan", value: slipTotals[index]!.gross, section: "summary" },
+              { label: "Total potongan", value: slipTotals[index]!.deductions, section: "summary" },
+            ]),
+            periodId,
+          ],
+        );
+      }
+      const report = await buildPeriodReport(pool, periodId);
+      // 4.000.000 + 3.150.000 + 2.000.000 and 40.000 + 100.000 + 200.000, read from the slips.
+      expect(report.payslipTotals).toEqual({
+        employerBlock: true,
+        gross: "9150000",
+        deductions: "340000",
+        source: "SLIP",
+        layoutUnreadable: false,
+      });
+      // The calculation's own totals are untouched by what the slips state.
+      expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000" });
+    });
+
+    it("falls back to the layout in force while only some of the slips are drafted", async () => {
+      const periodId = await seed("2026-11-01");
+      const one = await pool.query<{ employeeId: string }>(
+        `SELECT employment.employee_id AS "employeeId"
+           FROM payroll_results result
+           JOIN employments employment ON employment.id = result.employment_id
+          WHERE result.period_id = $1 LIMIT 1`,
+        [periodId],
+      );
+      await pool.query(
+        `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id, kind)
+         VALUES ($1, $2, DATE '2026-11-01', $3::jsonb, 'generic', $4, 'REGULAR')`,
+        [
+          randomUUID(),
+          one.rows[0]!.employeeId,
+          JSON.stringify([
+            { label: "Total pendapatan", value: "Rp4.000.000", section: "summary" },
+            { label: "Total potongan", value: "Rp40.000", section: "summary" },
+          ]),
+          periodId,
+        ],
+      );
+      const report = await buildPeriodReport(pool, periodId);
+      expect(report.payslipTotals).toMatchObject({ source: "KEBIJAKAN", gross: "9350000", deductions: "540000" });
     });
   });
 

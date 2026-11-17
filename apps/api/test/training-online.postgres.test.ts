@@ -252,8 +252,8 @@ describe.skipIf(!allowed)("TRAIN-001 R4 online modules", () => {
     expect(right.json()).toMatchObject({ score: 100, passed: true, best: 100, programCompleted: true });
     // Enrolling a finished participant again leaves them finished.
     actAs("hc", HC);
-    const again = await call("POST", `/admin/training/programs/${programId}/participants`, { employeeIds: [people.aisyah.employeeId] });
-    expect(again.json().alreadyEnrolled).toEqual([people.aisyah.employeeId]);
+    const reEnrolled = await call("POST", `/admin/training/programs/${programId}/participants`, { employeeIds: [people.aisyah.employeeId] });
+    expect(reEnrolled.json().alreadyEnrolled).toEqual([people.aisyah.employeeId]);
     actAs("aisyah");
 
     const record = await client.query(

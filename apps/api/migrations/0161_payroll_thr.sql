@@ -85,7 +85,7 @@ WHERE code IN ('BASIC', 'PERF', 'SPOUSE', 'CHILD', 'FUNC', 'POS', 'SPECIAL_QUAL'
 
 INSERT INTO payroll_components
   (code, display_name, category, is_fixed_allowance, in_pph21_base, display_order, is_thr_wage) VALUES
-  ('THR', 'Tunjangan Hari Raya', 'EARNING', false, true, 170, false)
+  ('THR', 'Tunjangan Hari Raya', 'EARNING', false, true, 175, false)
 ON CONFLICT (code) DO NOTHING;
 
 -- 3. Policy -----------------------------------------------------------------------------------

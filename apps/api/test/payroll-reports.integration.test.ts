@@ -334,8 +334,12 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
     // Review finding 2 of PR #378: once the slips are drafted the report states what they say, so
     // a PAYSLIP_LAYOUT version backdated over a period cannot move the figure beside slips that
     // are already in the employees' hands.
-    it("reads the totals from the drafted slips once every result has one", async () => {
-      const periodId = await seed("2026-10-01");
+    async function draftSlips(
+      periodId: string,
+      month: string,
+      slipTotals: ReadonlyArray<{ gross: string; deductions: string }>,
+      employerBlock: boolean,
+    ) {
       const employees = await pool.query<{ employeeId: string }>(
         `SELECT employment.employee_id AS "employeeId"
            FROM payroll_results result
@@ -343,16 +347,10 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
           WHERE result.period_id = $1`,
         [periodId],
       );
-      // Slips written as publication.ts writes them: formatRupiah text, section "summary".
-      const slipTotals = [
-        { gross: "Rp4.000.000", deductions: "Rp40.000" },
-        { gross: "Rp3.150.000", deductions: "Rp100.000" },
-        { gross: "Rp2.000.000", deductions: "Rp200.000" },
-      ];
       for (const [index, row] of employees.rows.entries()) {
         await pool.query(
           `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id, kind)
-           VALUES ($1, $2, DATE '2026-10-01', $3::jsonb, 'generic', $4, 'REGULAR')`,
+           VALUES ($1, $2, $5::date, $3::jsonb, 'generic', $4, 'REGULAR')`,
           [
             randomUUID(),
             row.employeeId,
@@ -360,11 +358,27 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
               { label: "NIP", value: "x", section: "identity" },
               { label: "Total pendapatan", value: slipTotals[index]!.gross, section: "summary" },
               { label: "Total potongan", value: slipTotals[index]!.deductions, section: "summary" },
+              // The block is what makes these the block layout; the gap against the calculation's
+              // totals is not evidence of it (review item 1).
+              ...(employerBlock ? [{ label: "Iuran BPJS Kesehatan", value: "Rp200.000", section: "employer" }] : []),
             ]),
             periodId,
+            month,
           ],
         );
       }
+    }
+
+    // Slips written as publication.ts writes them: formatRupiah text, section "summary".
+    const BLOCK_SLIPS = [
+      { gross: "Rp4.000.000", deductions: "Rp40.000" },
+      { gross: "Rp3.150.000", deductions: "Rp100.000" },
+      { gross: "Rp2.000.000", deductions: "Rp200.000" },
+    ];
+
+    it("reads the totals from the drafted slips once every result has one", async () => {
+      const periodId = await seed("2026-10-01");
+      await draftSlips(periodId, "2026-10-01", BLOCK_SLIPS, true);
       const report = await buildPeriodReport(pool, periodId);
       // 4.000.000 + 3.150.000 + 2.000.000 and 40.000 + 100.000 + 200.000, read from the slips.
       expect(report.payslipTotals).toEqual({
@@ -376,6 +390,26 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       });
       // The calculation's own totals are untouched by what the slips state.
       expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000" });
+    });
+
+    // Review item 1: slips that are complete but stale (the period was recalculated after they were
+    // drafted) differ from the calculation's totals without carrying a block.
+    it("does not call stale slips a block layout just because their totals differ", async () => {
+      const periodId = await seed("2026-12-01");
+      await draftSlips(periodId, "2026-12-01", BLOCK_SLIPS, false);
+      const report = await buildPeriodReport(pool, periodId);
+      expect(report.payslipTotals).toMatchObject({ employerBlock: false, gross: "9150000", source: "SLIP" });
+    });
+
+    it("falls back rather than failing the whole report on a slip whose totals are not figures", async () => {
+      const periodId = await seed("2027-01-01");
+      await draftSlips(periodId, "2027-01-01", [
+        { gross: "Rp4.000.000", deductions: "Rp40.000" },
+        { gross: "belum dihitung", deductions: "Rp100.000" },
+        { gross: "Rp2.000.000", deductions: "Rp200.000" },
+      ], false);
+      const report = await buildPeriodReport(pool, periodId);
+      expect(report.payslipTotals).toMatchObject({ source: "KEBIJAKAN", gross: "9350000" });
     });
 
     it("falls back to the layout in force while only some of the slips are drafted", async () => {

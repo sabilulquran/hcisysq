@@ -90,9 +90,9 @@ describe("DOC-001 D-24 income facts", () => {
     ]);
     expect(facts).toEqual({
       months: [
-        { period: "2026-08", gross: "5000000", net: "4500000", employerBorne: "0", layout: "LEGACY" },
-        { period: "2026-09", gross: "5250000", net: "4700000", employerBorne: "0", layout: "LEGACY" },
-        { period: "2026-10", gross: "5100000", net: "4600001", employerBorne: "0", layout: "LEGACY" },
+        { period: "2026-08", gross: "5000000", net: "4500000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: "2026-09", gross: "5250000", net: "4700000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: "2026-10", gross: "5100000", net: "4600001", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
       ],
       monthCount: 3,
       averageGross: "5116667",
@@ -149,6 +149,7 @@ describe("DOC-001 D-27 employer-borne contribution and mixed windows", () => {
     period,
     lines: [
       { label: "Tunjangan BPJS Kesehatan", value: "Rp205.000", section: "income" },
+      { label: "Iuran BPJS Kesehatan", value: "Rp205.000", section: "deduction" },
       { label: "Total pendapatan", value: gross, section: "summary" },
       { label: "Gaji bersih", value: net, section: "summary" },
     ],
@@ -185,6 +186,7 @@ describe("DOC-001 D-27 employer-borne contribution and mixed windows", () => {
       net: "3759000",
       employerBorne: "205000",
       layout: "EMPLOYER_BLOCK",
+      employerBorneInGross: null,
     });
     // 43.050 of PPh21 is in the same block and stays out of the figure.
     expect(facts).toMatchObject({ averageGross: "4100000", averageEmployerBorne: "205000", mixedLayout: false });
@@ -202,6 +204,101 @@ describe("DOC-001 D-27 employer-borne contribution and mixed windows", () => {
     expect(facts.months.map((month) => month.gross)).toEqual(["4305000", "4100000", "4100000"]);
     // (205.000 + 205.000) / 3 = 136.666,67 -> 136.667
     expect(facts.averageEmployerBorne).toBe("136667");
+  });
+
+  // B1 of the independent review: the block holds two kinds of line, and only the premium one
+  // decides which basis the gross is on.
+  it("reads a block that holds only PPh21 as the earlier basis, because nothing left the gross", () => {
+    const pph21Only = {
+      period: "2026-10",
+      lines: [
+        { label: "Total pendapatan", value: "Rp4.305.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.759.000", section: "summary" },
+        { label: "PPh21 ditanggung yayasan", value: "Rp43.050", section: "employer" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [legacy("2026-09", "Rp4.305.000", "Rp3.759.000"), pph21Only]);
+    expect(facts.months.map((month) => month.layout)).toEqual(["LEGACY", "LEGACY"]);
+    expect(facts).toMatchObject({ mixedLayout: false, averageEmployerBorne: "0" });
+  });
+
+  it("keeps a month whose BPJS pair was not recognised on the earlier basis, and says the window is mixed", () => {
+    // DRAFT S5: the pair was unequal, so the allowance stayed inside bruto even with the layout on;
+    // PPh21 still gives that slip a block. Reading it as the new basis would hide a 205.000 step.
+    const unrecognised = {
+      period: "2026-10",
+      lines: [
+        { label: "Tunjangan BPJS Kesehatan", value: "Rp205.000", section: "income" },
+        { label: "Iuran BPJS Kesehatan", value: "Rp246.000", section: "deduction" },
+        { label: "Total pendapatan", value: "Rp4.305.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.718.000", section: "summary" },
+        { label: "PPh21 ditanggung yayasan", value: "Rp43.050", section: "employer" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [block("2026-09", "Rp4.100.000", "Rp3.759.000"), unrecognised]);
+    expect(facts.months.map((month) => month.layout)).toEqual(["EMPLOYER_BLOCK", "LEGACY"]);
+    expect(facts.mixedLayout).toBe(true);
+    // Read from the slip's own allowance line, so the letter can name what sits inside that bruto.
+    expect(facts.months[1]!.employerBorneInGross).toBe("205000");
+  });
+
+  it("reads the contribution inside a legacy month's gross from that slip's own allowance line", () => {
+    const facts = buildIncomeFacts(window, [
+      legacy("2026-09", "Rp4.305.000", "Rp3.759.000"),
+      block("2026-10", "Rp4.100.000", "Rp3.759.000"),
+    ]);
+    expect(facts.months[0]!.employerBorneInGross).toBe("205000");
+    expect(facts.months[1]!.employerBorneInGross).toBeNull();
+  });
+
+  it("leaves the amount unnamed when the legacy slip does not state it the same way", () => {
+    // A PAY-001/PAY-002 import names it "Tunjangan BPJS" and lumps the extra family member in.
+    const imported = {
+      period: "2026-09",
+      lines: [
+        { label: "Tunjangan BPJS", value: "246.000", section: "income" },
+        { label: "Total Bruto Gaji", value: "5.000.000", section: "summary" },
+        { label: "Gaji Neto", value: "4.500.000", section: "summary" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [imported, block("2026-10", "Rp4.100.000", "Rp3.759.000")]);
+    expect(facts.months[0]!.employerBorneInGross).toBeNull();
+    expect(facts.mixedLayout).toBe(true);
+  });
+
+  it("refuses rather than states Rp0 when a block line carries a label it does not know", () => {
+    // Item 3 of the review: both label sets come from payroll_components.display_name, so a rename
+    // must refuse instead of quietly reporting that the yayasan paid nothing.
+    const renamed = {
+      period: "2026-09",
+      lines: [
+        { label: "Total pendapatan", value: "Rp4.100.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.759.000", section: "summary" },
+        { label: "Premi BPJS Kesehatan", value: "Rp205.000", section: "employer" },
+      ],
+    };
+    try {
+      buildIncomeFacts(window, [renamed]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toMatchObject({ statusCode: 409, code: "DOCUMENT_INCOME_UNREADABLE" });
+      expect((error as Error).message).toContain("2026-09");
+      expect((error as Error).message).not.toContain("205.000");
+    }
+  });
+
+  it("accepts the refund label the block uses on a final masa pajak", () => {
+    const refund = {
+      period: "2026-09",
+      lines: [
+        { label: "Total pendapatan", value: "Rp4.100.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.759.000", section: "summary" },
+        { label: "Iuran BPJS Kesehatan", value: "Rp205.000", section: "employer" },
+        { label: "Pengembalian kelebihan PPh21 ditanggung yayasan", value: "Rp600.000", section: "employer" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [refund]);
+    expect(facts.months[0]).toMatchObject({ employerBorne: "205000", layout: "EMPLOYER_BLOCK" });
   });
 
   it("is not a mixed window when the block states nothing employer-borne", () => {

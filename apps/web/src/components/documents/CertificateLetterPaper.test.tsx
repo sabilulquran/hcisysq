@@ -154,7 +154,7 @@ describe("DOC-001 D-20 certificate letter", () => {
   it("warns, and names the months, when the window mixes the two slip layouts", () => {
     const html = incomeLetter({
       months: [
-        { period: "2026-08", gross: "4305000", net: "3759000", employerBorne: "0", layout: "LEGACY" },
+        { period: "2026-08", gross: "4305000", net: "3759000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: "205000" },
         { period: "2026-09", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
         { period: "2026-10", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
       ],
@@ -166,13 +166,26 @@ describe("DOC-001 D-20 certificate letter", () => {
       windowFrom: "2026-08",
       windowTo: "2026-10",
     });
-    expect(html).toContain(incomeMixedLayoutNote(["2026-08"]));
-    expect(html).toContain("Agustus 2026");
-    expect(html).toContain("menggabungkan dua cara penyajian slip");
+    expect(html).toContain(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }]));
+    expect(html).toContain("Agustus 2026 (Rp205.000)");
+    expect(html).toContain("tidak disusun dengan cara yang sama");
+    // B2: the average would add a month that states the contribution to one that does not.
+    expect(html).not.toContain("Rp136.667");
   });
 
   it("names every month of a mixed window, not only the first", () => {
-    expect(incomeMixedLayoutNote(["2026-08", "2026-09"])).toContain("Agustus 2026 dan September 2026");
+    const note = incomeMixedLayoutNote([
+      { period: "2026-08", employerBorneInGross: "205000" },
+      { period: "2026-09", employerBorneInGross: null },
+    ]);
+    expect(note).toContain("Agustus 2026 (Rp205.000) dan September 2026");
+    expect(note).toContain("Nominal dalam kurung");
+  });
+
+  it("names no amount when no legacy slip in the window stated one", () => {
+    const note = incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: null }]);
+    expect(note).toContain("Agustus 2026 iuran tersebut masih tercantum");
+    expect(note).not.toContain("Nominal dalam kurung");
   });
 
   it("prints a letter issued before the block existed exactly as it did", () => {

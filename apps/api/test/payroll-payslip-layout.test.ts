@@ -324,15 +324,18 @@ describe("consumers of the slip totals", () => {
   it("prefers the totals the drafted slips state, whatever the layout says today", () => {
     // Review finding 2 of PR #378: a PAYSLIP_LAYOUT version backdated over a period whose slips
     // are already published must not move the figure the report shows for those slips.
-    expect(payslipTotalsOfSlips({ gross: "82000000", deductions: "5100000" }, "86100000")).toEqual({
+    expect(payslipTotalsOfSlips({ gross: "82000000", deductions: "5100000", employerBlock: true })).toEqual({
       employerBlock: true,
       gross: "82000000",
       deductions: "5100000",
       source: "SLIP",
       layoutUnreadable: false,
     });
-    expect(payslipTotalsOfSlips({ gross: "86100000", deductions: "9200000" }, "86100000")).toMatchObject({
+    // Observed on the slips, never inferred from the gap: a period recalculated after its slips
+    // were drafted has that gap too, and the block would be a false explanation of it.
+    expect(payslipTotalsOfSlips({ gross: "82000000", deductions: "5100000", employerBlock: false })).toMatchObject({
       employerBlock: false,
+      gross: "82000000",
       source: "SLIP",
     });
   });
@@ -349,6 +352,8 @@ describe("consumers of the slip totals", () => {
       net: "3759000",
       employerBorne: "0",
       layout: "LEGACY",
+      // D-27: read from the slip's own "Tunjangan BPJS Kesehatan" income line.
+      employerBorneInGross: "205000",
     });
     // DOC-001 D-23: "Total pendapatan" of the published slip, now without the BPJS allowance.
     // D-27: and the contribution the yayasan bears, read from the slip's own block.
@@ -358,6 +363,7 @@ describe("consumers of the slip totals", () => {
       net: "3759000",
       employerBorne: "205000",
       layout: "EMPLOYER_BLOCK",
+      employerBorneInGross: null,
     });
   });
 });

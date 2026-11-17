@@ -140,14 +140,15 @@ export function payslipTotalsOf(
  * slips of the period actually state, summed from their own summary lines.
  */
 export function payslipTotalsOfSlips(
-  slipTotals: { gross: string; deductions: string },
-  calculationGross: string,
+  slipTotals: { gross: string; deductions: string; employerBlock: boolean },
   layoutUnreadable = false,
 ): PeriodReport["payslipTotals"] {
   return {
-    // "The slips show the block": observed, not assumed — their gross is below
-    // the calculation's by the pairs they moved out.
-    employerBlock: BigInt(slipTotals.gross) !== BigInt(calculationGross),
+    // Observed on the slips themselves — do they carry a block? — never inferred
+    // from the gap against the calculation. A period reopened and recalculated
+    // without redrafting its slips has that gap too, and explaining it with the
+    // block would be a false explanation of a stale slip.
+    employerBlock: slipTotals.employerBlock,
     gross: slipTotals.gross,
     deductions: slipTotals.deductions,
     source: "SLIP",
@@ -245,20 +246,36 @@ async function buildPayslipTotals(
   const layoutUnreadable = lookup?.ok === false;
 
   // The summary lines are written by formatRupiah, so "Rp1.234.567" and nothing
-  // else: no sen, no stray text. Parsed here rather than in JavaScript so the
+  // else: no sen, no stray text. Read in SQL rather than in JavaScript so the
   // report does not load every slip of the period to add two numbers.
-  const slips = await pool.query<{ slipCount: number; gross: string | null; deductions: string | null }>(
+  //
+  // Hardened against a slip that is not shaped that way: the first matching line
+  // of each kind rather than a lexicographic max over several, and a regex guard
+  // before the cast, so one odd slip leaves `gross`/`deductions` null and the
+  // report falls back instead of failing the whole period with a cast error.
+  const AMOUNT = `(replace(replace(line.value ->> 'value', 'Rp', ''), '.', ''))`;
+  const slips = await pool.query<{
+    slipCount: number;
+    gross: string | null;
+    deductions: string | null;
+    employerBlock: boolean | null;
+  }>(
     `SELECT count(*)::int AS "slipCount",
             sum(summary.gross::bigint)::text AS gross,
-            sum(summary.deductions::bigint)::text AS deductions
+            sum(summary.deductions::bigint)::text AS deductions,
+            bool_or(summary."employerBlock") AS "employerBlock"
        FROM payslips slip
        JOIN LATERAL (
-         SELECT max(replace(replace(line.value ->> 'value', 'Rp', ''), '.', ''))
-                  FILTER (WHERE line.value ->> 'label' = 'Total pendapatan') AS gross,
-                max(replace(replace(line.value ->> 'value', 'Rp', ''), '.', ''))
-                  FILTER (WHERE line.value ->> 'label' = 'Total potongan') AS deductions
-           FROM jsonb_array_elements(slip.lines) AS line(value)
-          WHERE line.value ->> 'section' = 'summary'
+         SELECT (array_agg(${AMOUNT} ORDER BY line.ordinality)
+                   FILTER (WHERE line.value ->> 'section' = 'summary'
+                             AND line.value ->> 'label' = 'Total pendapatan'
+                             AND ${AMOUNT} ~ '^-?[0-9]+$'))[1] AS gross,
+                (array_agg(${AMOUNT} ORDER BY line.ordinality)
+                   FILTER (WHERE line.value ->> 'section' = 'summary'
+                             AND line.value ->> 'label' = 'Total potongan'
+                             AND ${AMOUNT} ~ '^-?[0-9]+$'))[1] AS deductions,
+                coalesce(bool_or(line.value ->> 'section' = 'employer'), false) AS "employerBlock"
+           FROM jsonb_array_elements(slip.lines) WITH ORDINALITY AS line(value, ordinality)
        ) summary ON true
       WHERE slip.source_period_id = $1
         AND slip.superseded_by_id IS NULL
@@ -275,8 +292,7 @@ async function buildPayslipTotals(
     && slipRow.deductions !== null
   ) {
     return payslipTotalsOfSlips(
-      { gross: slipRow.gross, deductions: slipRow.deductions },
-      periodTotals.gross,
+      { gross: slipRow.gross, deductions: slipRow.deductions, employerBlock: slipRow.employerBlock === true },
       layoutUnreadable,
     );
   }

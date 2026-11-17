@@ -48,7 +48,20 @@ export const NET_LABELS = ["gaji neto", "gaji netto", "gaji bersih"] as const;
  * contribution that used to be part of the slip's gross, and adding the two into one figure would
  * make the letter irreconcilable with 1721-A1 line 5.
  */
-export const EMPLOYER_PREMIUM_LABELS = ["iuran bpjs kesehatan"] as const;
+export const EMPLOYER_PREMIUM_LABELS: readonly string[] = ["iuran bpjs kesehatan"];
+
+/**
+ * D-27 DRAFT: the other lines the block may carry, which the letter deliberately leaves out — PPh21
+ * the yayasan bears, positive or as the refund of over-withheld TER on a final masa pajak
+ * (`payroll-calculation-v1.md` §7.6.6 S3). Listed rather than ignored: both label sets come from
+ * `payroll_components.display_name`, so a rename would otherwise make the letter state Rp0 for a
+ * contribution that was really paid. A block line matching neither list refuses the letter
+ * (`DOCUMENT_INCOME_UNREADABLE`) instead.
+ */
+export const EMPLOYER_OTHER_LABELS: readonly string[] = [
+  "pph21 ditanggung yayasan",
+  "pengembalian kelebihan pph21 ditanggung yayasan",
+];
 
 export interface PayslipLine {
   label: string;
@@ -58,11 +71,11 @@ export interface PayslipLine {
 
 /**
  * D-27 DRAFT: which definition of "total pendapatan" the slip of that month was written with.
- * Read from the slip itself, never from the policy: `EMPLOYER_BLOCK` when the slip carries a block
- * "Ditanggung yayasan" (`section: "employer"`), so its gross leaves the employer-borne BPJS
- * Kesehatan contribution out; `LEGACY` otherwise. A slip drafted under the new layout for someone
- * the yayasan pays nothing for carries no block and reads as `LEGACY`, which is right in substance:
- * nothing was moved, so both definitions give the same gross.
+ * Read from the slip itself, never from the policy: `EMPLOYER_BLOCK` when the slip states the
+ * employer-borne BPJS Kesehatan contribution on a line of its block "Ditanggung yayasan", so its
+ * gross leaves that contribution out; `LEGACY` otherwise. A slip whose block holds only PPh21 the
+ * yayasan bears — someone with no BPJS contribution, or one whose pair the layout could not
+ * recognise (DRAFT S5) — reads as `LEGACY`, which is right in substance: nothing left its gross.
  */
 export type IncomeLayout = "EMPLOYER_BLOCK" | "LEGACY";
 
@@ -75,6 +88,15 @@ export interface IncomeMonth {
   /** D-27: the BPJS Kesehatan contribution the yayasan bears, as the slip's block states it; "0" on a `LEGACY` slip. */
   employerBorne: string;
   layout: IncomeLayout;
+  /**
+   * D-27: on a `LEGACY` slip, the same contribution as it sits **inside** that month's gross — the
+   * slip's own "Tunjangan BPJS Kesehatan" income line, read, never derived. `null` when the slip
+   * does not carry that line (a PAY-001/PAY-002 import names it differently and lumps the extra
+   * family member in with it, so it is deliberately not matched) or its amount is not readable.
+   * Always `null` on an `EMPLOYER_BLOCK` slip, whose gross holds nothing of the kind. The letter
+   * uses it to let a bank reconcile the two bases of a mixed window.
+   */
+  employerBorneInGross: string | null;
 }
 
 export interface IncomeFacts {
@@ -82,7 +104,11 @@ export interface IncomeFacts {
   monthCount: number;
   averageGross: string;
   averageNet: string;
-  /** D-27: the average of `employerBorne`, over the same months as the other averages. */
+  /**
+   * D-27: the average of `employerBorne`, over the same months as the other averages. On a mixed
+   * window it averages months that state the contribution with months that do not, although the
+   * yayasan paid it in both, so the letter **does not print it** there (§7.6.6 S8).
+   */
   averageEmployerBorne: string;
   /**
    * D-27: true when the window holds slips of both layouts, so the average gross adds up two
@@ -172,28 +198,56 @@ export function findFigure(lines: readonly PayslipLine[], labels: readonly strin
   return null;
 }
 
-/** D-27: does this slip carry the block "Ditanggung yayasan"? */
+/**
+ * D-27: which basis the slip's "Total pendapatan" is on. Decided by the **premium line alone**, not
+ * by the presence of a block: the block also carries PPh21 the yayasan bears, which never was part
+ * of gross. A slip whose BPJS pair the layout could not recognise (DRAFT S5) keeps the allowance in
+ * its income list, so its gross is still on the legacy basis even though a PPh21 line gives it a
+ * block — reading it as `EMPLOYER_BLOCK` would hide a 5% step between two months of the letter.
+ */
 export function slipLayout(lines: readonly PayslipLine[]): IncomeLayout {
-  return lines.some((line) => line.section === "employer") ? "EMPLOYER_BLOCK" : "LEGACY";
+  return lines.some((line) => line.section === "employer" && EMPLOYER_PREMIUM_LABELS.includes(normalizeLabel(line.label)))
+    ? "EMPLOYER_BLOCK"
+    : "LEGACY";
 }
 
 /**
  * D-27: the employer-borne BPJS Kesehatan contribution of one slip, read from its block
- * "Ditanggung yayasan" alone. 0 when the slip has no such line. `null` when the line is there but
- * its amount is not a figure this letter can state, which refuses the letter rather than printing
- * a zero that would read as "the yayasan pays nothing".
+ * "Ditanggung yayasan" alone. 0 when the slip has no such line. `null` when a block line cannot be
+ * read — its amount is not a figure, or its label is one this letter does not know — which refuses
+ * the letter rather than printing a zero that would read as "the yayasan pays nothing".
  */
 export function findEmployerBorne(lines: readonly PayslipLine[]): bigint | null {
-  const wanted = lines.filter(
-    (line) => line.section === "employer" && EMPLOYER_PREMIUM_LABELS.includes(normalizeLabel(line.label) as never),
-  );
   let total = 0n;
-  for (const line of wanted) {
+  for (const line of lines) {
+    if (line.section !== "employer") continue;
+    const label = normalizeLabel(line.label);
+    if (EMPLOYER_OTHER_LABELS.includes(label)) continue;
+    if (!EMPLOYER_PREMIUM_LABELS.includes(label)) return null;
     const amount = parseRupiahToSen(line.value);
     if (amount === null) return null;
     total += amount;
   }
   return total;
+}
+
+/**
+ * D-27: the allowance line of a `LEGACY` slip that carries the employer-borne contribution inside
+ * the gross — `BPJS_KES_ALLOW`'s catalog display name, matched exactly so a PAY-001/PAY-002 import
+ * ("Tunjangan BPJS", which also holds the extra family member) is never read as this figure.
+ */
+export const LEGACY_PREMIUM_IN_GROSS_LABELS: readonly string[] = ["tunjangan bpjs kesehatan"];
+
+/**
+ * D-27: the contribution sitting inside a `LEGACY` month's gross, read from that slip's own income
+ * line. `null` when the slip does not state it readably; the letter then says the month is on the
+ * other basis without naming an amount, which is better than naming one it did not read.
+ */
+export function findEmployerBorneInGross(lines: readonly PayslipLine[]): bigint | null {
+  const line = lines.find(
+    (candidate) => candidate.section === "income" && LEGACY_PREMIUM_IN_GROSS_LABELS.includes(normalizeLabel(candidate.label)),
+  );
+  return line ? parseRupiahToSen(line.value) : null;
 }
 
 /**
@@ -217,13 +271,30 @@ export function buildIncomeFacts(
     );
   }
   const unreadable: string[] = [];
-  const months: Array<{ period: string; gross: bigint; net: bigint; employerBorne: bigint; layout: IncomeLayout }> = [];
+  const months: Array<{
+    period: string;
+    gross: bigint;
+    net: bigint;
+    employerBorne: bigint;
+    layout: IncomeLayout;
+    employerBorneInGross: bigint | null;
+  }> = [];
   for (const slip of slips) {
     const gross = findFigure(slip.lines, GROSS_LABELS);
     const net = findFigure(slip.lines, NET_LABELS);
     const employerBorne = findEmployerBorne(slip.lines);
     if (gross === null || net === null || employerBorne === null) unreadable.push(slip.period);
-    else months.push({ period: slip.period, gross, net, employerBorne, layout: slipLayout(slip.lines) });
+    else {
+      const layout = slipLayout(slip.lines);
+      months.push({
+        period: slip.period,
+        gross,
+        net,
+        employerBorne,
+        layout,
+        employerBorneInGross: layout === "LEGACY" ? findEmployerBorneInGross(slip.lines) : null,
+      });
+    }
   }
   if (unreadable.length) {
     throw new DocumentError(
@@ -239,6 +310,7 @@ export function buildIncomeFacts(
       net: senToAmount(month.net),
       employerBorne: senToAmount(month.employerBorne),
       layout: month.layout,
+      employerBorneInGross: month.employerBorneInGross === null ? null : senToAmount(month.employerBorneInGross),
     })),
     monthCount: months.length,
     averageGross: senToAmount(averageSen(months.map((month) => month.gross))),

@@ -402,9 +402,9 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(letter.json().contentSnapshot.income).toEqual({
       months: [
         // D-27: none of these slips carries a block "Ditanggung yayasan".
-        { period: months[0], gross: "5000000", net: "4500000", employerBorne: "0", layout: "LEGACY" },
-        { period: months[1], gross: "5250000", net: "4700000", employerBorne: "0", layout: "LEGACY" },
-        { period: months[2], gross: "5100000", net: "4600001", employerBorne: "0", layout: "LEGACY" },
+        { period: months[0], gross: "5000000", net: "4500000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: months[1], gross: "5250000", net: "4700000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: months[2], gross: "5100000", net: "4600001", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
       ],
       monthCount: 3,
       averageGross: "5116667",
@@ -452,6 +452,7 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
       net: "4500000",
       employerBorne: "0",
       layout: "LEGACY",
+      employerBorneInGross: null,
     });
   });
 

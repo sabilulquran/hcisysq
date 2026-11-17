@@ -43,7 +43,15 @@ export const INCOME_READER_PERMISSIONS = [
 
 /** D-24: amounts are rupiah decimal strings ("5116667" or "5250000.50"), never floats. */
 export interface IncomeFigures {
-  months: Array<{ period: string; gross: string; net: string; employerBorne?: string; layout?: "EMPLOYER_BLOCK" | "LEGACY" }>;
+  months: Array<{
+    period: string;
+    gross: string;
+    net: string;
+    employerBorne?: string;
+    layout?: "EMPLOYER_BLOCK" | "LEGACY";
+    /** D-27: on a LEGACY month, the contribution the slip shows inside that month's gross. */
+    employerBorneInGross?: string | null;
+  }>;
   monthCount: number;
   averageGross: string;
   averageNet: string;

@@ -89,13 +89,17 @@ describe("ORG-015-2 decision token", () => {
     await expect(decisionVerifier()(await sign(claims))).rejects.toMatchObject({ code, statusCode });
   });
 
-  it("refuses a token older than 60 seconds even though it has not expired", async () => {
-    const old = await sign({}, Math.floor(Date.now() / 1000) - 200);
-    await expect(decisionVerifier()(old)).rejects.toMatchObject({ code: "TOKEN_TOO_OLD", statusCode: 401 });
+  it("refuses a token 61 seconds old, even though it has not expired", async () => {
+    // The clock tolerance is not added to this window: with it the real limit would be 90
+    // seconds, which is half as long again as the one the specification states.
+    const stale = await sign({}, Math.floor(Date.now() / 1000) - 61);
+    await expect(decisionVerifier()(stale)).rejects.toMatchObject({ code: "TOKEN_TOO_OLD", statusCode: 401 });
+    const older = await sign({}, Math.floor(Date.now() / 1000) - 200);
+    await expect(decisionVerifier()(older)).rejects.toMatchObject({ code: "TOKEN_TOO_OLD", statusCode: 401 });
   });
 
-  it("accepts an age inside the window and the 30-second clock skew", async () => {
-    const recent = await sign({}, Math.floor(Date.now() / 1000) - 45);
+  it("accepts a token 59 seconds old", async () => {
+    const recent = await sign({}, Math.floor(Date.now() / 1000) - 59);
     await expect(decisionVerifier()(recent)).resolves.toMatchObject({ subject: "synthetic-subject" });
   });
 
@@ -157,6 +161,17 @@ describe("ORG-015-1 configuration", () => {
       ...base, ...oidc, ...governance, ORG_DIRECTORY_TOKEN_AUDIENCE: DECISION_AUDIENCE,
       GOVERNANCE_DECISIONS_ENABLED: "true", GOVERNANCE_DECISION_AUDIENCE: DECISION_AUDIENCE,
     })).toThrow(/must differ from ORG_DIRECTORY_TOKEN_AUDIENCE/);
+  });
+
+  // A decision token is issued to a person and carries no service-account marker, so sharing a
+  // name with the AUTH-014 actor audience would let it vouch for someone on the role channel.
+  it("refuses an audience shared with the AUTH-014 role-administration channel", () => {
+    for (const key of ["HCIS_ROLE_ADMIN_TOKEN_AUDIENCE", "HCIS_ROLE_ADMIN_ACTOR_AUDIENCE"] as const) {
+      expect(() => loadConfig({
+        ...base, ...oidc, ...governance, [key]: DECISION_AUDIENCE,
+        GOVERNANCE_DECISIONS_ENABLED: "true", GOVERNANCE_DECISION_AUDIENCE: DECISION_AUDIENCE,
+      })).toThrow(new RegExp(`must differ from ${key}`));
+    }
   });
 
   it("accepts a complete configuration", () => {
@@ -392,15 +407,24 @@ describe("ORG-015-3 POST /governance/decisions/:stepId", () => {
     expect(audits.at(-1)).toMatchObject({ eventType: "governance.decision.denied" });
   });
 
-  it("refuses a request with no bearer token and one with two Authorization headers", async () => {
+  it("refuses a request with no bearer token, and one carrying two Authorization headers", async () => {
     const app = await buildApp({ pool: fakePool().pool });
     const missing = await app.inject({
       method: "POST", url: `/governance/decisions/${STEP_ID}`,
       payload: { decision: "approve", requestId: ACTION_ID },
     });
+    // Two headers: one of them could be a token the caller is not supposed to hold, and
+    // which header a proxy keeps is not ours to decide. Neither is read.
+    const doubled = await app.inject({
+      method: "POST", url: `/governance/decisions/${STEP_ID}`,
+      headers: { authorization: ["Bearer first", "Bearer second"] as unknown as string },
+      payload: { decision: "approve", requestId: ACTION_ID },
+    });
     await app.close();
     expect(missing.statusCode).toBe(401);
     expect(missing.json().code).toBe("UNAUTHENTICATED");
+    expect(doubled.statusCode).toBe(401);
+    expect(doubled.json().code).toBe("UNAUTHENTICATED");
     expect(assertions.spend).not.toHaveBeenCalled();
   });
 
@@ -418,6 +442,8 @@ describe("ORG-015-3 GET /governance/decisions", () => {
   beforeEach(() => {
     leave.capability.mockReset();
     leave.capability.mockResolvedValue(undefined);
+    assertions.spend.mockReset();
+    assertions.spend.mockResolvedValue(undefined);
   });
 
   const step = {
@@ -470,6 +496,26 @@ describe("ORG-015-3 GET /governance/decisions", () => {
     // ORG-013-3: no other approver's note, and no approver named anywhere.
     expect(JSON.stringify(item)).not.toContain("decisionNote");
     expect(JSON.stringify(item.history)).not.toContain("Pegawai");
+  });
+
+  it("spends the token the list was read with, so it can never decide afterwards", async () => {
+    assertions.spend.mockReset();
+    assertions.spend.mockResolvedValue(undefined);
+    const response = await list({ pool: fakePool({ steps: [step] }).pool });
+    expect(response.statusCode).toBe(200);
+    expect(assertions.spend).toHaveBeenCalledOnce();
+    expect(assertions.spend.mock.calls[0]![2]).toMatchObject({ method: "GET", path: "/governance/decisions" });
+  });
+
+  it("refuses a list token that was already spent", async () => {
+    assertions.spend.mockReset();
+    assertions.spend.mockRejectedValue(new ActorAssertionError("ACTOR_ASSERTION_SPENT", "already used"));
+    const { pool, audits } = fakePool({ steps: [step] });
+    const response = await list({ pool });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("DECISION_TOKEN_SPENT");
+    expect(leave.capability).not.toHaveBeenCalled();
+    expect(audits.at(-1)).toMatchObject({ eventType: "governance.decision.denied", reasonCode: "DECISION_TOKEN_SPENT" });
   });
 
   it("answers an empty list rather than a refusal when nothing is waiting", async () => {

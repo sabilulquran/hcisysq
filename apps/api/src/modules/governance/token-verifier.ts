@@ -160,7 +160,12 @@ export function createGovernanceTokenVerifier(input: {
       if (payload.acr !== input.stepUp.acr) throw new GovernanceTokenError("STEP_UP_REQUIRED");
       // Step 4: age from `iat`, not from `exp`. Keycloak's own lifetime is minutes long; this is
       // the window in which a token captured in flight is still worth something.
-      if (payload.iat + input.stepUp.maxAgeSeconds < nowSeconds - CLOCK_SKEW_SECONDS) {
+      //
+      // The clock tolerance is deliberately NOT added here. Adding it would make the real window
+      // 90 seconds while the specification and its test say 61 seconds is already too old, and the
+      // portal exchanges a token immediately before each call, so the age in normal use is about
+      // zero. A token from the future is caught by the `iat` check above, which does allow skew.
+      if (payload.iat + input.stepUp.maxAgeSeconds < nowSeconds) {
         throw new GovernanceTokenError("TOKEN_TOO_OLD");
       }
       // Step 5: without a `jti` the token could not be spent, so it would stay replayable for its

@@ -38,7 +38,7 @@ Tidak termasuk:
 | `azp` yang diterima | Hanya client portal, yaitu `sq-organ` (`GOVERNANCE_DECISION_ALLOWED_CLIENTS`, bawaan `sq-organ`). `sq-hub` selalu ditolak |
 | Flag | `GOVERNANCE_DECISIONS_ENABLED`, bawaan `false`. Mati berarti kedua route menjawab `404` sebelum apa pun dibaca. Route tetap terdaftar agar tercakup gate route AUTH-011 |
 
-Audience ini milik client Keycloak tanpa alur login, dibuat hanya agar ada audience yang dapat dituju. Ia tidak pernah dipakai untuk masuk.
+Audience ini milik client Keycloak tanpa alur login, dibuat hanya agar ada audience yang dapat dituju. Ia tidak pernah dipakai untuk masuk. Konfigurasi ditolak saat start bila audience ini sama dengan audience lain yang diterima HCIS, termasuk audience actor assertion AUTH-014: token keputusan diterbitkan atas nama orang, sehingga bila namanya sama ia akan lolos sebagai actor assertion di kanal pemberian role.
 
 Token ringkasan tidak pernah diterima di sini, dan token keputusan tidak pernah diterima di `/governance/summary` atau `/governance/employees`, karena `aud` keduanya berbeda.
 
@@ -49,8 +49,10 @@ Selain seluruh pemeriksaan ORG-010 §3.2 (tanda tangan RS256, issuer, `exp`/`nbf
 1. **`aud`** memuat `hcis-organ-decision`; selain itu `403 FORBIDDEN_AUDIENCE`.
 2. **`azp`** ada di allowlist; selain itu `403 FORBIDDEN_CLIENT`.
 3. **`acr = "2"`** (`DRAFT`), yaitu Level of Authentication yang hanya dicapai dengan TOTP. Trusted device (HUB-IMPL-012) dan recovery code tidak memenuhinya. Tanpa itu `403 STEP_UP_REQUIRED`.
-4. **Umur** dari `iat` paling lama **60 detik**, diukur dengan toleransi jam yang sama. Lebih tua dari itu `401 TOKEN_TOO_OLD`, meskipun `exp`-nya belum lewat.
-5. **`jti`** ada dan **dibelanjakan sekali pakai**. Presentasi kedua dengan `jti` yang sama `409 DECISION_TOKEN_SPENT`.
+4. **Umur** dari `iat` paling lama **60 detik**. Lebih tua dari itu `401 TOKEN_TOO_OLD`, meskipun `exp`-nya belum lewat. Toleransi jam tidak ditambahkan di sini, karena menambahkannya membuat jendela sebenarnya 90 detik; portal menukar token tepat sebelum memanggil, sehingga umur token dalam pemakaian normal nyaris nol. Token bertanggal masa depan tetap ditolak oleh pemeriksaan `iat` ORG-010 yang memang memakai toleransi.
+5. **`jti`** ada dan **dibelanjakan sekali pakai**, **di kedua route**. Presentasi kedua dengan `jti` yang sama `409 DECISION_TOKEN_SPENT`.
+
+Daftar ikut membelanjakan token karena daftar dibaca dengan kelas token yang sama dengan yang bisa memutuskan. Bila token daftar dibiarkan utuh, siapa pun yang merekam satu permintaan daftar memegang token yang masih bisa menyetujui. Portal tidak dirugikan: ia memang menukar token per aksi (§4.2 langkah 3).
 
 Pembelanjaan `jti` memakai tabel `auth_actor_assertions` dan fungsi `spendActorAssertion` yang sudah ada (AUTH-014 §2.11), dengan binding method dan path route ini. Alasannya: mekanismenya sudah terbukti, penyapuan baris kedaluwarsa sudah benar, dan tidak ada tabel baru yang perlu dirawat. Satu token adalah satu percobaan: token tetap terbakar walaupun keputusannya kemudian ditolak.
 
@@ -98,7 +100,7 @@ Body:
 | Pemanggil kehilangan `leave.governance.approve` | `403 APPROVAL_FORBIDDEN`, kode yang sama dengan route sesi |
 | Pemohon adalah orang yang sama (ORG-013-1 butir 4) | `403 APPROVAL_SELF_FORBIDDEN` |
 | Langkah tidak ada | `404 APPROVAL_STEP_NOT_FOUND` |
-| Pengajuan sedang dikunci | `409 LEAVE_REQUEST_BUSY` |
+| Langkah belum aktif, atau pengajuan dibatalkan atau ditunda | `409 STEP_NOT_PENDING` / `409 REQUEST_NOT_REVIEWABLE`, sama persis dengan route sesi |
 
 ### Idempotency
 
@@ -109,6 +111,10 @@ Replay diputuskan dari kolom itu di dalam transaksi yang sama, setelah `FOR UPDA
 Replay tidak membutuhkan token yang sama: `jti` token pertama sudah terbakar, jadi portal mengirim ulang dengan token baru dan `requestId` lama. Inilah yang membuat kirim ulang aman ketika hasil permintaan pertama tidak sampai ke portal.
 
 Jawaban replay berisi keadaan langkah dan pengajuan itu sekarang, bukan rekaman jawaban pertama: itulah hasil keputusan tersebut. Dua field yang hanya bermakna pada saat keputusan dibuat, yaitu status tugas HC dan status telaah periode kritis, dikembalikan `null` dan tidak dihitung ulang.
+
+Replay hanya berlaku untuk langkah yang benar-benar sudah diputuskan (`approved` atau `rejected`). Langkah yang masih `waiting` di belakang langkah lain, atau pengajuan yang dibatalkan atau ditunda, jatuh ke mesin keputusan yang sama dengan route sesi dan mendapat kode yang sama.
+
+`requestId` yang sama tetapi dengan arah keputusan yang berbeda bukan kirim ulang, melainkan keputusan lain. Itu dijawab `409`, bukan `200`, supaya portal tidak diberi tahu bahwa penolakannya berhasil padahal yang berlaku adalah persetujuan. Catatan pada kirim ulang tidak menimpa catatan keputusan pertama.
 
 Replay sengaja diperiksa sebelum capability dan larangan self-approval. Keputusannya sudah terjadi dan sudah tercatat; membacanya ulang tidak boleh bergantung pada capability yang mungkin sudah dicabut sesudahnya.
 
@@ -142,11 +148,15 @@ Rollback: matikan `GOVERNANCE_DECISIONS_ENABLED`, lalu portal kembali menautkan 
 - token ringkasan (`aud` HCIS) ditolak `403` di route keputusan, dan token keputusan ditolak `403` di `/governance/summary` serta `/governance/employees`;
 - `azp = sq-hub` ditolak `403 FORBIDDEN_CLIENT`;
 - token tanpa `acr`, atau `acr` selain `"2"`, ditolak `403 STEP_UP_REQUIRED`;
-- token dengan `iat` 61 detik lalu ditolak `401 TOKEN_TOO_OLD` walaupun belum kedaluwarsa;
+- token dengan `iat` 61 detik lalu ditolak `401 TOKEN_TOO_OLD` walaupun belum kedaluwarsa, dan token berumur 59 detik diterima;
+- token daftar yang direkam lalu dipakai untuk memutuskan ditolak `409`, karena daftar sudah membelanjakannya;
 - token yang sama dipakai dua kali: yang kedua `409 DECISION_TOKEN_SPENT`, dan tidak ada keputusan kedua;
 - `jti` terbakar walaupun keputusannya berakhir `403` atau `404`;
 - `requestId` sama dikirim ulang dengan token baru mengembalikan hasil pertama, dengan satu audit event dan satu notifikasi;
 - `requestId` berbeda pada langkah yang sudah diputuskan mendapat `409`;
+- `requestId` sama dengan arah keputusan yang berbeda mendapat `409`, bukan `200`;
+- langkah `waiting` dan pengajuan yang dibatalkan mendapat kode yang sama seperti lewat route sesi, bukan `APPROVAL_STEP_DECIDED`;
+- dua header `Authorization` ditolak `401`;
 - langkah milik akun lain `403`; langkah milik pegawai `403`;
 - akun yang kehilangan `governance_leave_approver` mendapat `403` walaupun langkahnya masih miliknya;
 - self-approval lewat akun, `employee_id`, atau email yang sama ditolak saat keputusan;

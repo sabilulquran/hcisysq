@@ -355,10 +355,16 @@ const envSchema = z
       }
     }
     if (value.GOVERNANCE_DECISION_AUDIENCE) {
+      // Every audience this service accepts a bearer for, not only the governance ones. The actor
+      // audience matters most: a decision token is issued to a person, carries no service-account
+      // marker, and would therefore satisfy the AUTH-014 actor assertion if the two audiences were
+      // ever the same name — and ORG-015 spends its jti in that channel's own table.
       for (const key of [
         "GOVERNANCE_SUMMARY_AUDIENCE",
         "ORG_DIRECTORY_TOKEN_AUDIENCE",
         "STAFF_IDENTITY_TOKEN_AUDIENCE",
+        "HCIS_ROLE_ADMIN_TOKEN_AUDIENCE",
+        "HCIS_ROLE_ADMIN_ACTOR_AUDIENCE",
       ] as const) {
         if (value[key] !== value.GOVERNANCE_DECISION_AUDIENCE) continue;
         ctx.addIssue({

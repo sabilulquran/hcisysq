@@ -152,11 +152,17 @@ export function registerGovernanceDecisionRoutes(
   const dependencies = enabled ? (injected ?? productionDependencies(config)) : null;
 
   async function audit(request: FastifyRequest, eventType: string, accountId: string | null, reasonCode: string | null) {
-    await pool.query(
-      `INSERT INTO auth_audit_events (id, account_id, event_type, ip_address, user_agent, reason_code)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), accountId, eventType, request.ip ?? null, request.headers["user-agent"] ?? null, reasonCode],
-    );
+    try {
+      await pool.query(
+        `INSERT INTO auth_audit_events (id, account_id, event_type, ip_address, user_agent, reason_code)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [randomUUID(), accountId, eventType, request.ip ?? null, request.headers["user-agent"] ?? null, reasonCode],
+      );
+    } catch (error) {
+      // The audit row must never change the answer: a failed insert here would otherwise turn
+      // a clean 401 or 403 into a 500, and a decision that already committed into an error.
+      request.log.error({ errorName: (error as Error)?.name }, "governance decision audit failed");
+    }
   }
 
   async function deny(
@@ -165,6 +171,46 @@ export function registerGovernanceDecisionRoutes(
     await audit(request, "governance.decision.denied", accountId, code);
     reply.header("Cache-Control", "private, no-store");
     return reply.status(statusCode).send({ code, message: MESSAGES[code] ?? "Permintaan ditolak." });
+  }
+
+  /**
+   * ORG-015-2 step 5. Both routes spend the token, not only the one that mutates.
+   *
+   * The list is read with the same token class that can decide, so leaving it unspent would
+   * hand an attacker who captured a listing request a credential that still approves. Spending
+   * it here costs the portal nothing: it exchanges a token per action anyway (§4.2 step 3).
+   */
+  async function spend(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    identity: GovernanceIdentity,
+    account: ResolvedGovernanceAccount,
+    path: string,
+  ): Promise<boolean> {
+    if (!identity.jti || !identity.expiresAt) {
+      // Only a verifier without the step-up requirement can get here, which production never
+      // configures. Refusing beats inserting a row with no id to spend.
+      await deny(request, reply, 401, "INVALID_TOKEN", account.id);
+      return false;
+    }
+    try {
+      await spendActorAssertion(
+        pool,
+        {
+          issuer: identity.issuer,
+          subject: identity.subject,
+          authorizedParty: identity.client,
+          jti: identity.jti,
+          expiresAt: identity.expiresAt,
+        },
+        { method: request.method, path, actorAccountId: account.id },
+      );
+      return true;
+    } catch (error) {
+      if (!(error instanceof ActorAssertionError)) throw error;
+      await deny(request, reply, 409, "DECISION_TOKEN_SPENT", account.id);
+      return false;
+    }
   }
 
   /**
@@ -218,7 +264,8 @@ export function registerGovernanceDecisionRoutes(
     try {
       const authenticated = await authenticate(request, reply);
       if (!authenticated) return;
-      const { account } = authenticated;
+      const { identity, account } = authenticated;
+      if (!(await spend(request, reply, identity, account, "/governance/decisions"))) return;
 
       try {
         await assertGovernanceApprovalCapability(pool, account.id);
@@ -317,26 +364,7 @@ export function registerGovernanceDecisionRoutes(
         return await deny(request, reply, 400, "INVALID_APPROVAL_DECISION", account.id);
       }
 
-      try {
-        await spendActorAssertion(
-          pool,
-          {
-            issuer: identity.issuer,
-            subject: identity.subject,
-            authorizedParty: identity.client,
-            jti: identity.jti!,
-            expiresAt: identity.expiresAt!,
-          },
-          {
-            method: "POST",
-            path: `/governance/decisions/${params.data.stepId}`,
-            actorAccountId: account.id,
-          },
-        );
-      } catch (error) {
-        if (!(error instanceof ActorAssertionError)) throw error;
-        return await deny(request, reply, 409, "DECISION_TOKEN_SPENT", account.id);
-      }
+      if (!(await spend(request, reply, identity, account, `/governance/decisions/${params.data.stepId}`))) return;
 
       const client = await pool.connect();
       try {

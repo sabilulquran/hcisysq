@@ -1227,12 +1227,26 @@ export async function applyLeaveApprovalDecision(
   // one notification. The replay deliberately runs before the capability and self-approval checks:
   // the decision has already been made and recorded, and re-reading it must not depend on a
   // capability the account may have lost since.
-  if (input.decisionRequestId && current.status !== "pending") {
+  //
+  // Only a step that was actually decided takes this path. A step that is `waiting` behind an
+  // earlier one, or whose request was cancelled or postponed, falls through to
+  // decideLeaveApprovalStep, so both doors answer such a step with the same code and message.
+  const decidedStatus = current.status === "approved" || current.status === "rejected" ? current.status : null;
+  if (input.decisionRequestId && decidedStatus) {
     if (current.decisionRequestId !== input.decisionRequestId) {
       throw new EmployeeLeaveError(
         409,
         "APPROVAL_STEP_DECIDED",
         "Tahap approval ini sudah diputuskan.",
+      );
+    }
+    // The same id asking for the other decision is not a resend of this action. Answering 200
+    // would tell the portal its rejection landed when an approval is what stands.
+    if (decidedStatus !== (input.decision === "approve" ? "approved" : "rejected")) {
+      throw new EmployeeLeaveError(
+        409,
+        "APPROVAL_STEP_DECIDED",
+        "Tahap approval ini sudah diputuskan dengan keputusan yang berbeda.",
       );
     }
     const pending = await client.query<{ id: string }>(

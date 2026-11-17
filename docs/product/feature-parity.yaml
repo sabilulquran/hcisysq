@@ -779,7 +779,7 @@ features:
       since 2026-11-17 (spec §7.3, migration 0151), so payroll.periods.manage alone opens none.
       Annual PPh21 for the final masa pajak (Pasal 17, PP 58/2023, PMK 168/2023), bukti potong
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
-      sealed per employee (spec §7.4, migration 0156). Out of v1 by the spec (§1.2):
+      sealed per employee (spec §7.4, migration 0157). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.

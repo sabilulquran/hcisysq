@@ -57,16 +57,14 @@ ALTER TABLE payroll_period_inputs
     OR length(trim(coalesce(decision_reference, ''))) > 0
   );
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_period_inputs_thr_average_wage_whole') THEN
-    ALTER TABLE payroll_period_inputs
-      ADD CONSTRAINT payroll_period_inputs_thr_average_wage_whole CHECK (
-        input_key <> 'THR_AVERAGE_WAGE' OR (value > 0 AND value = trunc(value))
-      );
-  END IF;
-END;
-$$;
+-- Dropped and added like the three above rather than guarded by a pg_constraint lookup: that
+-- catalog is not schema-scoped, so a lookup by name would skip the constraint in any second schema
+-- of the same database (the recovery rehearsal migrates one).
+ALTER TABLE payroll_period_inputs DROP CONSTRAINT IF EXISTS payroll_period_inputs_thr_average_wage_whole;
+ALTER TABLE payroll_period_inputs
+  ADD CONSTRAINT payroll_period_inputs_thr_average_wage_whole CHECK (
+    input_key <> 'THR_AVERAGE_WAGE' OR (value > 0 AND value = trunc(value))
+  );
 
 -- 2. THR policy, second version --------------------------------------------------------------------
 DO $$

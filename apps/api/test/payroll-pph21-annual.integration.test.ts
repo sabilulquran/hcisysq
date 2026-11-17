@@ -67,7 +67,7 @@ describe.skipIf(!allowed)("PAY-003 annual PPh21 against PostgreSQL", () => {
     });
   });
 
-  it("accepts a PPH21_SETTINGS row (migration 0159) and reads it back as settings", async () => {
+  it("accepts a PPH21_SETTINGS row (migration 0160) and reads it back as settings", async () => {
     await inRollback(async (client) => {
       await client.query(
         `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)

@@ -28,7 +28,12 @@ import {
 } from "./policy.js";
 
 /** Earnings that do not count towards the PPh21 base (section 3.1). */
-export const PPH21_EXCLUDED_EARNINGS: readonly string[] = ["BPJS_KES_ALLOW"];
+export const PPH21_EXCLUDED_EARNINGS: readonly string[] = [
+  "BPJS_KES_ALLOW",
+  // Penggantian biaya repays an expense the employee already paid; it is not
+  // income (section 3.6, REIMB-001 section 9).
+  "REIMBURSE",
+];
 
 /**
  * Terms paid per attendance and per teaching hour (section 5.2). Whether their

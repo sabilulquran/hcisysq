@@ -36,7 +36,7 @@ Termasuk (Paket 1):
 | --- | --- |
 | Uang muka (advance) perjalanan dan penyelesaiannya | Butuh aturan pertanggungjawaban yang belum ada. Klaim Paket 1 selalu pengganti biaya yang sudah dikeluarkan. TBD owner. |
 | Uang harian/per diem dan tarif standar per golongan | Belum ada tabel tarif. Pegawai mengklaim biaya nyata dengan bukti. |
-| Pembayaran otomatis lewat payroll | Jalur slip resmi tetap PAY-001/PAY-002 (AGENTS.md §5). Penyerahan ke periode payroll hanya ada di balik saklar `DRAFT` yang mati (D-11). Tidak ada tabel `payroll_*` yang dibaca atau ditulis. |
+| Pembayaran otomatis lewat payroll | Jalur slip resmi tetap PAY-001/PAY-002 (AGENTS.md §5). Penyerahan ke periode PAY-003 dibangun (§9) di balik saklar `DRAFT` yang mati (D-11). Route reimbursement hanya membaca `payroll_periods` (bulan yang sudah diajukan) dan menulis tabel penyerahannya sendiri. |
 | Koreksi/pembatalan pembayaran yang sudah dicatat | D-18. Satu klaim satu pembayaran; kesalahan dicatat Keuangan di luar HCIS sampai ada keputusan. |
 | Ambang nominal legacy (Kabid > Rp1 jt, Direktur > Rp3 jt, Finance Head sebagai tahap) | Resolver APR-001 tidak boleh membaca teks jabatan (D-01). |
 | Migrasi klaim legacy | Arsip saja, sama dengan LOAN-001 D5 (§11). |
@@ -56,7 +56,7 @@ Termasuk (Paket 1):
 | D-08 | **Pembatalan oleh pegawai** saat `IN_REVIEW` atau `APPROVED` (sebelum Keuangan memverifikasi), alasan 5–500 karakter. Setelah diverifikasi pegawai tidak dapat membatalkan; Keuangan menolaknya bila perlu. | DRAFT |
 | D-09 | **Verifikasi Keuangan** dari `APPROVED`: per baris nominal disetujui 0 sampai nominal klaim. Bila ada baris yang dikurangi, catatan 10–500 karakter wajib. Total disetujui harus > 0; klaim yang tidak layak sama sekali ditolak. **Penolakan Keuangan** dari `APPROVED` atau `VERIFIED`, alasan 10–500. | DRAFT |
 | D-10 | **Pembayaran** dicatat Keuangan dari `VERIFIED`: nominal selalu = total disetujui (tidak diketik), tanggal antara tanggal verifikasi dan hari ini, cara `CASH` atau `TRANSFER` **di luar payroll (bawaan)**, nomor bukti ≤ 200, catatan ≤ 500, kunci idempotensi. Kunci yang sama dengan tanggal, cara, bulan payroll, nomor bukti, dan catatan yang sama = replay (200); kunci yang sama dengan nilai lain = 409 `IDEMPOTENCY_KEY_REUSED`; klaim yang sudah dibayar dengan kunci lain = 409 `REIMBURSEMENT_ALREADY_PAID`. Satu klaim tepat satu pembayaran (unik di database). | DRAFT |
-| D-11 | **Penyerahan ke payroll** hanya di balik saklar `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`, **tetap mati**). Selama `0`, cara `PAYROLL` ditolak 409 `REIMBURSEMENT_PAYROLL_HANDOFF_DISABLED`. Bila suatu saat `1`, Keuangan dapat mencatat cara `PAYROLL` dengan `payrollMonth` (`YYYY-MM`) — itu hanya catatan bahwa penggantian ikut dibayarkan pada gaji bulan itu dan diinput manual oleh Keuangan; Paket 1 tidak menulis tabel `payroll_*`. Kontrak otomatisnya §9. | DRAFT |
+| D-11 | **Penyerahan ke payroll** hanya di balik saklar `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`, **tetap mati**). Selama `0`, cara `PAYROLL` ditolak 409 `REIMBURSEMENT_PAYROLL_HANDOFF_DISABLED`. Bila `1`, cara `PAYROLL` dengan `payrollMonth` (`YYYY-MM`) **menyerahkan** klaim ke periode PAY-003 bulan itu (klaim tetap `VERIFIED`); klaim menjadi `PAID` saat periode disahkan (§9). | DRAFT |
 | D-12 | `reimbursements.read` dan `reimbursements.manage` dibawa **`finance_officer`**; `human_capital_admin` hanya `reimbursements.read` (HC membaca, tidak memproses). Keduanya berscope organisasi; Super Admin tidak menerimanya lewat kompatibilitas legacy. | DRAFT |
 | D-13 | **Pemisahan tugas:** pemegang `reimbursements.manage` tidak dapat memverifikasi, menolak, atau membayar klaimnya sendiri (403 `REIMBURSEMENT_SELF_ACTION_FORBIDDEN`). Approver dalam rantai klaim itu tidak dapat memverifikasi atau membayarnya (403 `REIMBURSEMENT_APPROVER_CANNOT_PROCESS`). Penolakan Keuangan oleh approver klaim tetap boleh (tidak mengeluarkan uang). Pemverifikasi boleh orang yang sama dengan pencatat pembayaran (tim Keuangan kecil). | DRAFT |
 | D-14 | **Nominal tidak pernah muncul di log, notifikasi, pengingat, atau metadata riwayat.** Nominal hanya ada di kolom uang dan di respons kepada orang yang berhak melihatnya (§6). | ACCEPTED |
@@ -169,15 +169,29 @@ NOTIF-003:
 - `approval.pending_digest` ikut menghitung tahap reimbursement `pending`;
 - aturan baru `reimbursement.finance_queue_digest`: Senin–Sabtu 07.00 WIB, bila ada klaim `APPROVED` (menunggu verifikasi) atau `VERIFIED` (menunggu pembayaran), satu ringkasan per pemegang `reimbursements.manage`, berisi jumlah klaim saja; WhatsApp bawaan nyala (tetap tunduk `WHATSAPP_RECIPIENT_MODE=allowlist`); tautan `/admin/reimbursements`.
 
-## 9. Kontrak penyerahan ke payroll (ditunda)
+## 9. Penyerahan ke payroll (dibangun 2026-11-17, sakelar default MATI)
 
-Status: **ditunda**, sama alasannya dengan LOAN-001 §9 — menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
+Status: sisi payroll **sudah dibangun** di balik saklar D-11 `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`), pola yang sama dengan potongan LOAN-001 (`payroll-calculation-v1.md` §3.5–§3.6, migration 0159). **Menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi**; mengubahnya adalah perubahan konfigurasi production yang wajib dilaporkan. Selama `0`, perilaku Paket 1 tidak berubah sama sekali.
 
-Pemeriksaan 2026-11-17: sisi payroll dari sakelar D-11 **belum dibangun**. Selama saklar `1`, cara `PAYROLL` hanya mencatat klaim `PAID` dengan `payrollMonth`; tidak ada yang memasukkannya ke periode PAY-003. Potongan pinjaman LOAN-001 sudah dibangun dengan pola sakelar mati (`payroll-calculation-v1.md` §3.5); penyerahan reimbursement mengikuti pola yang sama di perubahan tersendiri.
+1. **Serahkan.** Saklar `1`: cara `PAYROLL` dengan `payrollMonth` menulis satu baris `reimbursement_payroll_handoffs` `PENDING` sebesar `verified_total`; klaim tetap `VERIFIED`, belum ada pembayaran. Satu penyerahan hidup per klaim (indeks unik parsial); kunci idempoten yang sama di-replay. Bulan yang periode PAY-003-nya sudah diajukan atau disahkan ditolak 409 `REIMBURSEMENT_PAYROLL_PERIOD_CLOSED`. Audit `reimbursement.payroll_handed_off` (bulan, tanpa nominal).
+2. **Hitung.** Penyerahan `PENDING` bulan periode milik pegawai yang dibayar periode itu diikat ke periode dan menjadi komponen non-pajak `REIMBURSE` "Penggantian biaya", dibayar penuh di luar faktor prorata/masa kerja awal (`payroll-calculation-v1.md` §3.6). Penyerahan pegawai yang keluar dari periode dilepas lagi.
+3. **Sahkan.** Dalam transaksi pengesahan, klaim menjadi `PAID` dengan satu-satunya pembayaran `PAYROLL` (immutable, D-10) dan penyerahan `SETTLED`. Bila slip dan penyerahan tidak sama (klaim dibayar tunai atau ditolak setelah hitung) pengesahan ditolak 409 `PAYROLL_REIMBURSEMENT_CHANGED`.
+4. **Buka ulang.** Pembayaran **tidak** dibalik — pembayaran reimbursement append-only, dan buka ulang payroll tidak membatalkan pembayaran yang sudah terjadi (`payroll-calculation-v1.md` §6). Yang dibalik adalah baris penyerahan (`REVERSED`, alasan otomatis) dan satu baris `PENDING` baru membawa penggantian itu ke hitung ulang; pengesahan ulang menandainya `SETTLED` pada pembayaran yang sama tanpa pembayaran kedua. Penyerahan terbitan ulang ini tetap terikat ke periodenya (juga bila saklar sudah dimatikan); bila hitung ulang tidak lagi memuatnya, pengesahan ditolak. **Ini menyimpang dari kontrak awal** ("reopen mengembalikan ke `VERIFIED`"), yang tidak dapat dipenuhi tanpa menghapus pembayaran immutable (`DRAFT` R3).
+5. **Ambil kembali.** Membayar tunai/transfer klaim yang masih `PENDING` menutup penyerahannya (`WITHDRAWN`, audit `reimbursement.payroll_withdrawn`) selama periodenya masih dapat dihitung ulang; setelah periode diajukan ditolak 409 `REIMBURSEMENT_IN_PAYROLL`.
+6. Uang tetap `bigint`; riwayat penyerahan append-only (trigger). Rollback: saklar `0`; skema lewat `-- Down:` migration 0159.
 
-1. Saklar D-11 tetap `0` sampai keputusan itu ada; mengubahnya adalah perubahan konfigurasi production yang wajib dilaporkan.
-2. Bila dibangun: klaim `VERIFIED` yang diserahkan ke bulan payroll menjadi input komponen non-pajak "Penggantian biaya" pada periode PAY-003 bulan itu, dengan sumber `(period_id, claim_id)` unik; periode `APPROVED` menandai klaim `PAID` dengan cara `PAYROLL`; `reopen` periode mengembalikannya ke `VERIFIED`.
-3. Uang tetap `bigint`; perubahan itu menyentuh payroll dan migration, jadi wajib review independen.
+**Keputusan `DRAFT` (default agent 2026-11-17):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| R1 | Tanggal pembayaran `PAYROLL` | Tanggal gajian periode, tidak pernah setelah hari pengesahan (WIB). |
+| R2 | Pajak dan BPJS | Penggantian biaya bukan penghasilan: di luar dasar PPh21 dan bukan tunjangan tetap BPJS. |
+| R3 | Buka ulang | Klaim tetap `PAID`; baris penyerahan dibalik dan diterbitkan ulang (butir 4). Mengeluarkan penggantian dari periode yang dibuka ulang tidak didukung; koreksinya lewat penyesuaian periode berikutnya. |
+| R4 | Dua employment satu orang | Penggantian dibayar sekali, pada employment pertama (urut id). |
+| R5 | Perekam pembayaran `PAYROLL` | Akun Keuangan yang menyerahkan klaim (sudah lolos cek klaim sendiri dan bukan approver), bukan pengesah periode. |
+| R6 | Penyerahan yang tidak masuk slip | Penyerahan bulan periode yang belum terikat — dibuat setelah hitung terakhir untuk pegawai yang dibayar periode itu, atau diterbitkan ulang oleh buka ulang untuk klaim yang sudah dibayar lewat bulan itu — menolak pengesahan (`PAYROLL_REIMBURSEMENT_CHANGED`) sampai periode dihitung ulang. |
+| R7 | Netto negatif | Penggantian tidak menutup potongan yang melebihi gaji: `NEGATIVE_NET` diperiksa pada bagian upah (netto − penggantian). |
+| R8 | Penolakan Keuangan | Menolak klaim yang masih diserahkan menutup penyerahannya (`WITHDRAWN`) selama periodenya masih dapat dihitung ulang; setelah diajukan ditolak `REIMBURSEMENT_IN_PAYROLL`. |
 
 ## 10. Penyimpanan
 

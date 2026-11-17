@@ -28,6 +28,9 @@ export const EARNING_CODES = [
   "TEACH_FEE",
   "OTHER_INCOME",
   "ADJUST_EARN",
+  // REIMB-001 section 9: a reimbursement handed to payroll. Not taxable, not a
+  // fixed allowance, and paid outside the pay factor (section 3.6).
+  "REIMBURSE",
 ] as const;
 
 export const DEDUCTION_CODES = [
@@ -236,6 +239,13 @@ export type PeriodInputs = {
    */
   annualPerformanceRateFromReview?: number | null;
   monthlyPerformanceRateFromReview?: number | null;
+  /**
+   * REIMB-001 reimbursements handed to this period (section 3.6), whole rupiah.
+   * Present only while REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED is on and there is
+   * something to pay. Paid in full: neither proration nor the early-service
+   * rate touches it, because it repays money the employee already spent.
+   */
+  reimbursement?: Rupiah;
 };
 
 export type EmployeePayrollInput = {
@@ -645,6 +655,8 @@ function computePermanent(input: EmployeePayrollInput): EmployeePayrollResult {
     pushLine(lines, { code: "ADJUST_EARN", category: "EARNING", amount: inputs.adjustment });
   }
 
+  pushLine(lines, { code: "REIMBURSE", category: "EARNING", amount: inputs.reimbursement ?? 0 });
+
   pushLine(lines, { code: "LOAN", category: "DEDUCTION", amount: inputs.loanDeduction });
   pushLine(lines, { code: "BPJS_KES", category: "DEDUCTION", amount: bpjsContribution });
   pushLine(lines, { code: "BPJS_KES_EXTRA", category: "DEDUCTION", amount: bpjsExtra });
@@ -682,6 +694,8 @@ function computeContract(input: EmployeePayrollInput): EmployeePayrollResult {
   if (inputs.adjustment > 0) {
     pushLine(lines, { code: "ADJUST_EARN", category: "EARNING", amount: inputs.adjustment });
   }
+
+  pushLine(lines, { code: "REIMBURSE", category: "EARNING", amount: inputs.reimbursement ?? 0 });
 
   pushLine(lines, { code: "LOAN", category: "DEDUCTION", amount: inputs.loanDeduction });
   pushLine(lines, { code: "CHILD_EDU", category: "DEDUCTION", amount: inputs.childEducationDeduction });
@@ -747,7 +761,9 @@ function finalize(args: {
 
   const months = monthsOfService(profile.serviceStartDate, payDate);
   const { factor, reason } = resolvePayFactor(input, months, payFactorApplies);
-  const payable = factor === 1 ? net : roundUpRupiah(net * factor);
+  // A reimbursement repays an expense; the pay factor applies to pay, not to it.
+  const reimbursement = inputs.reimbursement ?? 0;
+  const payable = factor === 1 ? net : roundUpRupiah((net - reimbursement) * factor) + reimbursement;
 
   for (const [name, value] of [
     ["jam lembur", inputs.overtimeHours],
@@ -759,10 +775,14 @@ function finalize(args: {
     ["rapel", inputs.arrears],
     ["insentif Pj. Media", inputs.pjMediaIncentive],
     ["pemasukan lain", inputs.otherIncome],
+    ["penggantian biaya", inputs.reimbursement ?? 0],
   ] as const) {
     if (value < 0 || !Number.isFinite(value)) {
       blockers.push({ code: "INPUT_INVALID", message: `Input ${name} bernilai tidak sah (${value}).` });
     }
+  }
+  if (inputs.reimbursement !== undefined && !Number.isInteger(inputs.reimbursement)) {
+    blockers.push({ code: "INPUT_INVALID", message: "Penggantian biaya harus rupiah bulat." });
   }
   if (!Number.isInteger(inputs.adjustment)) {
     blockers.push({ code: "INPUT_INVALID", message: "Penyesuaian gaji harus rupiah bulat." });
@@ -799,7 +819,9 @@ function finalize(args: {
   if (inputs.loanDeduction > inputs.loanOutstanding) {
     blockers.push({ code: "LOAN_EXCEEDS_BALANCE", message: "Potongan kasbon melebihi sisa pinjaman." });
   }
-  if (net < 0) {
+  // A reimbursement repays an expense; it must not cover deductions that exceed
+  // pay, so the pay part alone is checked (section 3.6).
+  if (net - (inputs.reimbursement ?? 0) < 0) {
     blockers.push({ code: "NEGATIVE_NET", message: "Netto bernilai negatif." });
   }
   if (payable < 0) {

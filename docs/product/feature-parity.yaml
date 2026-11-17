@@ -781,7 +781,7 @@ features:
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
       sealed per employee (spec §7.4, migration 0157). PPh21 borne by the yayasan (PPH21_EMPLOYER line
       and the employer-cost summary) and daily TER 21-100-03 for honorer/lepas are built behind
-      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0159). Out of v1 by the spec (§1.2):
+      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0160). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
@@ -814,8 +814,11 @@ features:
       with per-item limits, encrypted receipts, optional link to a TRIP-001 trip, APR-001 approval
       (direct manager then unit approver), Finance verification per item, Finance rejection,
       idempotent payment outside payroll, register, per-category summary, audited CSV export,
-      NOTIF-003 Finance digest. Payroll handoff stays behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0
-      (spec §9); PAY-001/PAY-002 untouched. Advances and per diem are not included.
+      NOTIF-003 Finance digest. The payroll side of the handoff is built 2026-11-17 (spec §9,
+      payroll-calculation-v1.md §3.6) behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0: a VERIFIED
+      claim handed to a payroll month becomes the non-taxable REIMBURSE line paid outside the pay
+      factor, the claim is PAID when the period is approved, a reopen reverses the handoff row
+      (never the immutable payment). PAY-001/PAY-002 untouched. Advances and per diem are not included.
     docs:
       - docs/domain/reimbursement.md
       - docs/api/reimbursements.openapi.yaml

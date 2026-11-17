@@ -1005,7 +1005,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         },
         actor.accountId,
         period.version,
-        { employeeLoanDeduction: config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1" },
+        {
+          employeeLoanDeduction: config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1",
+          reimbursementHandoff: config.REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED === "1",
+        },
       );
       if (outcome.conflict) {
         return send(reply, 409, {

@@ -1234,6 +1234,28 @@
       "reason": "Laporan PPh21 TER satu masa pajak, dibatasi jumlah pegawai aktif; ekspor CSV."
     },
     {
+      "url": "/payroll/pph21/annual",
+      "list": "export",
+      "reason": "Rekap PPh21 tahunan satu tahun pajak (satu baris per masa kerja pegawai), dibatasi jumlah pegawai yayasan; ekspor CSV e-Bupot 1721-A1."
+    },
+    {
+      "url": "/payroll/pph21/annual/:year/employees/:employeeId/a1/:index",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/employees/:employeeId/tax-identity",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/me/a1",
+      "list": "bounded",
+      "reason": "Bukti potong milik pegawai sendiri: paling banyak beberapa per tahun pajak, tanpa angka."
+    },
+    {
+      "url": "/payroll/me/a1/:year/:index",
+      "list": "single"
+    },
+    {
       "url": "/payroll/periods/:periodId/results",
       "list": "bounded",
       "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."

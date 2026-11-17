@@ -240,6 +240,7 @@ describe("PAY-003 PPh21 report", () => {
       ptkpMissingCount: 0,
       annualCalculationCount: 0,
       nonPermanentCount: 0,
+      dailyCount: 0,
       skippedBlockedCount: 0,
     });
   });

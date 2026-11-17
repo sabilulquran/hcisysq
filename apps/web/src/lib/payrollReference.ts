@@ -156,6 +156,7 @@ const POLICY_LABELS: Record<string, string> = {
   BPJS_KETENAGAKERJAAN: "BPJS Ketenagakerjaan",
   PPH21_TER: "PPh21 TER",
   PPH21_ANNUAL: "PPh21 tahunan (Pasal 17)",
+  PPH21_SETTINGS: "PPh21: ditanggung yayasan & pegawai tidak tetap",
   OVERTIME: "Lembur",
   EARLY_SERVICE: "Masa kerja awal",
   MKG_SCALE: "Skala masa kerja golongan",

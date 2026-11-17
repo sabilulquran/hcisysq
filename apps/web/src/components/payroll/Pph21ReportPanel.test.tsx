@@ -116,7 +116,22 @@ describe("PAY-003 Laporan PPh21 panel", () => {
     expect(html).toContain("Pasal 17");
   });
 
-  it("says how many honorer or lepas people await the owner's rule", () => {
+  it("says when the gross includes the BPJS Kesehatan premium the yayasan pays", () => {
+    const base = report();
+    const without = render({ kind: "ready", report: base });
+    expect(without).not.toContain("iuran BPJS Kesehatan yang dibayar yayasan");
+    const html = render({
+      kind: "ready",
+      report: report({
+        settings: { versionId: "s1", employerHealthPremiumTaxable: true },
+        totals: { ...base.totals, gross: "4750000", employerHealthPremium: "150000" },
+      }),
+    });
+    expect(html).toContain("termasuk iuran BPJS Kesehatan yang dibayar yayasan");
+    expect(html).toContain("150.000");
+  });
+
+  it("says honorer and lepas people are on monthly TER by the owner's decision", () => {
     const base = report();
     const html = render({
       kind: "ready",
@@ -127,6 +142,8 @@ describe("PAY-003 Laporan PPh21 panel", () => {
     });
     expect(html).toContain("1 pegawai kontrak honorer/lepas");
     expect(html).toContain("Honorer/lepas");
+    expect(html).toContain("keputusan pemilik proses");
+    expect(html).not.toContain("menunggu konfirmasi");
   });
 
   it("answers an empty period plainly, with nothing to download", () => {

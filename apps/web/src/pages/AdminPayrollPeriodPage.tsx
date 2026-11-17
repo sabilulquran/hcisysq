@@ -348,7 +348,26 @@ export function AdminPayrollPeriodPage() {
                   </div>
                 </>
               ) : null}
+              {report.payslipTotals?.employerBlock ? (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground">Total pendapatan di slip</dt>
+                    <dd className="font-medium">{formatRupiah(report.payslipTotals.gross)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Total potongan di slip</dt>
+                    <dd className="font-medium">{formatRupiah(report.payslipTotals.deductions)}</dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
+            {report.payslipTotals?.employerBlock ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Bruto dan potongan hasil perhitungan masih memuat tunjangan dan iuran BPJS Kesehatan yang ditanggung
+                yayasan. Slip periode ini menampilkannya di blok "Ditanggung yayasan", sehingga total di slip lebih
+                kecil sebesar iuran itu; netto dan nilai dibayar sama.
+              </p>
+            ) : null}
           </section>
         ) : null}
 

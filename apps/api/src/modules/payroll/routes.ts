@@ -950,15 +950,23 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
           effectiveFrom: lookup.effectiveFrom,
           source: lookup.policy.source,
         },
+        // Section 7.6: whether the employer-paid BPJS Kesehatan premium is part of
+        // the gross of this masa pajak, and under which PPH21_SETTINGS version.
+        settings: {
+          versionId: settings.versionId,
+          employerHealthPremiumTaxable: settings.settings.employerHealthPremiumTaxable,
+        },
         totals: {
           ...report.totals,
           gross: String(report.totals.gross),
           tax: String(report.totals.tax),
+          employerHealthPremium: String(report.totals.employerHealthPremium),
         },
         rows: report.rows.map((row) => ({
           ...row,
           gross: String(row.gross),
           tax: row.tax === null ? null : String(row.tax),
+          employerHealthPremium: String(row.employerHealthPremium),
           note: pph21RowNote(row),
         })),
       },
@@ -1036,7 +1044,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
             ? `Periode masih memiliki ${outcome.blockerCount} blocker; slip tidak disiapkan.`
             : outcome.code === "PAYROLL_STATE_CONFLICT"
               ? `Periode berubah menjadi ${outcome.state} saat slip disiapkan; muat ulang lalu coba lagi.`
-              : "Periode belum memiliki hasil yang dapat dijadikan slip.",
+              : outcome.code === "PAYSLIP_LAYOUT_POLICY_INVALID"
+                ? `Isi kebijakan PAYSLIP_LAYOUT yang berlaku tidak sesuai bentuk yang dibutuhkan: ${outcome.message}. Slip tidak disiapkan.`
+                : "Periode belum memiliki hasil yang dapat dijadikan slip.",
       });
     }
 

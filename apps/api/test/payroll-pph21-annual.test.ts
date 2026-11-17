@@ -20,8 +20,15 @@ import {
   type AnnualMonth,
 } from "../src/modules/payroll/pph21-annual.js";
 import { annualRecapToCsv, openedTaxIdentity } from "../src/modules/payroll/pph21-annual-store.js";
-import type { Pph21SourceRow } from "../src/modules/payroll/pph21.js";
-import { parsePph21AnnualPolicy, validatePolicyPayload, type Pph21AnnualPolicy } from "../src/modules/payroll/policy.js";
+import { reportableGross, type Pph21SourceRow } from "../src/modules/payroll/pph21.js";
+import {
+  A1_LINE_KEYS,
+  DEFAULT_PPH21_SETTINGS,
+  parsePph21AnnualPolicy,
+  validatePolicyPayload,
+  type Pph21AnnualPolicy,
+  type Pph21Settings,
+} from "../src/modules/payroll/policy.js";
 import {
   maskTaxNumber,
   normalizeTaxNumber,
@@ -288,6 +295,127 @@ describe("months from one period", () => {
     expect(annualMonthsOfPeriod({ period, rows: [row({ excluded: true })], terTaxByEmployee: null, policy: policy() })).toEqual([]);
     expect(annualMonthsOfPeriod({ period, rows: [row({ blockerCount: 1 })], terTaxByEmployee: null, policy: policy() })).toEqual([]);
     expect(annualMonthsOfPeriod({ period, rows: [row()], terTaxByEmployee: null, policy: policy() })[0]!.terTax).toBeNull();
+  });
+});
+
+// Owner decision 2026-11-17 (specification sections 7.4 A3 and 7.6): the BPJS
+// Kesehatan premium the yayasan pays is income, printed on line 5 of the 1721-A1,
+// in the months whose PPH21_SETTINGS says so.
+describe("employer-paid BPJS Kesehatan premium on the 1721-A1", () => {
+  const TAXABLE: Pph21Settings = { ...DEFAULT_PPH21_SETTINGS, employerHealthPremiumTaxable: true };
+  const sumOfLines = (lines: Record<string, number>) => A1_LINE_KEYS.reduce((total, key) => total + lines[key]!, 0);
+  function salaried(overrides: Partial<Pph21SourceRow> = {}): Pph21SourceRow {
+    return {
+      employmentId: "employment-1",
+      employeeId: "person-1",
+      employeeNumber: "2016001",
+      fullName: "Pegawai Uji",
+      ptkpStatus: "TK/0",
+      excluded: false,
+      exclusionReason: null,
+      payFactor: 1,
+      blockerCount: 0,
+      serviceEndDate: null,
+      hasContinuingEmployment: true,
+      termCategory: "TETAP",
+      // Rp10.000.000 with a 5% contribution of Rp500.000 borne by the yayasan.
+      earnings: [{ code: "BASIC", amount: 10_000_000 }, { code: "BPJS_KES_ALLOW", amount: 500_000 }],
+      deductions: [{ code: "BPJS_KES", amount: 500_000 }, { code: "BPJS_KES_EXTRA", amount: 100_000 }],
+      ...overrides,
+    };
+  }
+  /** One person's year: TER as the monthly report would compute it is given, the rest is derived. */
+  function yearOf(taxableFrom: number, terTax: (taxable: boolean) => number) {
+    return Array.from({ length: 12 }, (_, index) => {
+      const monthNumber = index + 1;
+      const mm = String(monthNumber).padStart(2, "0");
+      const taxable = monthNumber >= taxableFrom;
+      return annualMonthsOfPeriod({
+        period: { periodMonth: `2026-${mm}-01`, periodStart: `2026-${mm}-01`, periodEnd: `2026-${mm}-28` },
+        rows: [salaried()],
+        terTaxByEmployee: new Map([["person-1", terTax(taxable)]]),
+        policy: policy(),
+        settings: taxable ? TAXABLE : DEFAULT_PPH21_SETTINGS,
+      })[0]!;
+    });
+  }
+
+  it("puts the premium on line 5 only when the setting is in force, and the lines still add up to the gross", () => {
+    const off = a1LinesOf(salaried());
+    expect(off).toMatchObject({ salary: 10_000_000, insurancePremium: 0 });
+    expect(sumOfLines(off)).toBe(reportableGross(salaried()));
+
+    const on = a1LinesOf(salaried(), {}, TAXABLE);
+    expect(on).toMatchObject({ salary: 10_000_000, insurancePremium: 500_000, otherAllowances: 0 });
+    expect(sumOfLines(on)).toBe(10_500_000);
+    expect(sumOfLines(on)).toBe(reportableGross(salaried(), TAXABLE));
+  });
+
+  it("keeps the premium whole under a pay factor, and the rounding remainder off line 5", () => {
+    const row = {
+      payFactor: 0.8,
+      earnings: [
+        { code: "BASIC", amount: 3_000_001 },
+        { code: "PERF", amount: 1_000_001 },
+        { code: "TEACH_FEE", amount: 500_001 },
+        { code: "BPJS_KES_ALLOW", amount: 150_000 },
+      ],
+    };
+    const lines = a1LinesOf(row, {}, TAXABLE);
+    // The scaled lines are exactly those of the earlier test (3.600.003); the premium is added whole.
+    expect(lines).toMatchObject({ salary: 2_400_003, otherAllowances: 800_000, honorarium: 400_000, insurancePremium: 150_000 });
+    expect(sumOfLines(lines)).toBe(3_750_003);
+    expect(sumOfLines(lines)).toBe(reportableGross(row, TAXABLE));
+  });
+
+  it("lets the policy map the premium to another line", () => {
+    const lines = a1LinesOf(salaried(), { BPJS_KES_ALLOW: "otherAllowances" }, TAXABLE);
+    expect(lines).toMatchObject({ insurancePremium: 0, otherAllowances: 500_000 });
+    expect(sumOfLines(lines)).toBe(10_500_000);
+  });
+
+  it("builds a month with and without the premium", () => {
+    const base = { period: { periodMonth: "2026-06-01", periodStart: "2026-06-01", periodEnd: "2026-06-30" }, rows: [salaried()], terTaxByEmployee: null, policy: policy() };
+    expect(annualMonthsOfPeriod(base)[0]).toMatchObject({ gross: 10_000_000, lines: expect.objectContaining({ insurancePremium: 0 }) });
+    expect(annualMonthsOfPeriod({ ...base, settings: TAXABLE })[0]).toMatchObject({
+      gross: 10_500_000,
+      lines: expect.objectContaining({ salary: 10_000_000, insurancePremium: 500_000 }),
+    });
+  });
+
+  it("Desember, TK/0, 10 jt + premi 500 rb × 12: bruto 126 jt, neto 120 jt, PKP 66 jt, PPh21 setahun 3,9 jt", () => {
+    // Biaya jabatan 5% × 126 jt = 6,3 jt, capped at 6 jt. PKP 120 jt − 54 jt = 66 jt.
+    // Pasal 17: 60 jt × 5% + 6 jt × 15% = 3.000.000 + 900.000.
+    const [segment] = buildAnnualSegments(policy(), yearOf(1, () => 210_000));
+    expect(segment).toMatchObject({
+      closed: true,
+      gross: 126_000_000,
+      positionCost: 6_000_000,
+      net: 120_000_000,
+      pkp: 66_000_000,
+      annualTax: 3_900_000,
+      terWithheld: 2_310_000,
+      finalMasaTax: 1_590_000,
+    });
+    expect(segment!.lines).toMatchObject({ salary: 120_000_000, insurancePremium: 6_000_000 });
+    expect(sumOfLines(segment!.lines)).toBe(segment!.gross);
+  });
+
+  it("counts the premium only in the months paid under the setting: on from July, bruto 123 jt, PPh21 setahun 3,45 jt", () => {
+    // January-June keep the base they were taxed on (10 jt), July-December carry the premium.
+    // Neto 123 jt − 6 jt = 117 jt, PKP 63 jt, 3.000.000 + 3 jt × 15%.
+    const [segment] = buildAnnualSegments(policy(), yearOf(7, (taxable) => (taxable ? 210_000 : 200_000)));
+    expect(segment).toMatchObject({ gross: 123_000_000, net: 117_000_000, pkp: 63_000_000, annualTax: 3_450_000 });
+    expect(segment!.lines).toMatchObject({ salary: 120_000_000, insurancePremium: 3_000_000 });
+    expect(sumOfLines(segment!.lines)).toBe(segment!.gross);
+    // TER withheld January-November: 6 × 200.000 + 5 × 210.000.
+    expect(segment).toMatchObject({ terWithheld: 2_250_000, finalMasaTax: 1_200_000 });
+  });
+
+  it("leaves a year without the setting exactly as it was: line 5 stays 0", () => {
+    const [segment] = buildAnnualSegments(policy(), yearOf(13, () => 200_000));
+    expect(segment).toMatchObject({ gross: 120_000_000, annualTax: 3_000_000, finalMasaTax: 800_000 });
+    expect(segment!.lines.insurancePremium).toBe(0);
   });
 });
 

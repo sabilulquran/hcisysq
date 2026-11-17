@@ -124,6 +124,13 @@ function Pph21ReportBody({ report }: { report: PayrollPph21Report }) {
         </div>
       </dl>
 
+      {report.settings?.employerHealthPremiumTaxable ? (
+        <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          Penghasilan bruto masa pajak ini termasuk iuran BPJS Kesehatan yang dibayar yayasan
+          {totals.employerHealthPremium ? ` (${formatRupiah(totals.employerHealthPremium)})` : ""}.
+        </p>
+      ) : null}
+
       {totals.ptkpMissingCount > 0 ||
       totals.annualCalculationCount > 0 ||
       totals.nonPermanentCount > 0 ||
@@ -141,8 +148,8 @@ function Pph21ReportBody({ report }: { report: PayrollPph21Report }) {
           ) : null}
           {totals.nonPermanentCount > 0 ? (
             <li>
-              {totals.nonPermanentCount} pegawai kontrak honorer/lepas dilaporkan dengan TER bulanan 21-100-01; aturan
-              pegawai tidak tetap masih menunggu konfirmasi pemilik proses.
+              {totals.nonPermanentCount} pegawai kontrak honorer/lepas dilaporkan dengan TER bulanan 21-100-01, sesuai
+              keputusan pemilik proses 17 November 2026.
             </li>
           ) : null}
           {totals.excludedCount > 0 ? (

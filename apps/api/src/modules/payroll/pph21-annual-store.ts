@@ -186,6 +186,9 @@ export async function loadAnnualMonths(
         terTaxByEmployee,
         dailyEmployeeIds: dailyTaxedEmployees(rows, effective),
         policy,
+        // Each month keeps the base it was taxed on: the premium counts only in a
+        // month whose own pay date falls under the setting (section 7.6, DRAFT S2).
+        settings: effective,
       }),
     );
   }

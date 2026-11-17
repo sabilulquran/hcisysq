@@ -175,6 +175,12 @@ export interface PayrollReport {
   }>;
   /** BPJS Kesehatan and PPh21 the yayasan bears (§7, §7.5); optional for older servers. */
   employerCostSummary?: { bpjsKesehatan: string; pph21: string; total: string };
+  /**
+   * Total pendapatan and total potongan as this period's payslips state them (§7.6).
+   * With `employerBlock` the slips leave the employer-borne BPJS Kesehatan pair out,
+   * so both are lower than `totals` by that amount; optional for older servers.
+   */
+  payslipTotals?: { employerBlock: boolean; gross: string; deductions: string };
 }
 
 export interface PayrollTransferRow {
@@ -217,6 +223,8 @@ export interface PayrollPph21Row {
   /** 21-100-01, or 21-100-03 for daily TER (§7.5); absent from older servers. */
   objectCode?: string;
   attendanceDays?: number | null;
+  /** Employer-paid BPJS Kesehatan premium inside `gross` (§7.6); absent from older servers. */
+  employerHealthPremium?: string;
   /** What the flags mean, in the same words as the CSV. */
   note: string;
 }
@@ -226,10 +234,14 @@ export interface PayrollPph21Report {
   taxPeriod: string;
   objectCode: string;
   policy: { versionId: string; effectiveFrom: string; source: string };
+  /** Whether the employer-paid BPJS Kesehatan premium is in the gross (§7.6); absent from older servers. */
+  settings?: { versionId: string | null; employerHealthPremiumTaxable: boolean };
   totals: {
     employeeCount: number;
     gross: string;
     tax: string;
+    /** Employer-paid BPJS Kesehatan premium inside `gross`; absent from older servers. */
+    employerHealthPremium?: string;
     excludedCount: number;
     ptkpMissingCount: number;
     annualCalculationCount: number;
@@ -414,7 +426,7 @@ const PPH21_FLAG_LABELS: Record<PayrollPph21Flag, string> = {
   PTKP_CONFLICT: "PTKP berbeda antar-employment",
   EXCLUDED: "Dikecualikan",
   ANNUAL_CALCULATION_REQUIRED: "Masa pajak terakhir — bukan angka final",
-  NON_PERMANENT_TERMS: "Honorer/lepas — aturan menunggu konfirmasi",
+  NON_PERMANENT_TERMS: "Honorer/lepas — TER bulanan",
   DAILY_DAYS_MISSING: "TER harian — hari hadir kosong",
   DAILY_ABOVE_CEILING: "TER harian — di atas batas harian",
   MIXED_TERMS: "Campuran tetap dan tidak tetap — TER bulanan",

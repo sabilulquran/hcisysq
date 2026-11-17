@@ -68,7 +68,8 @@ const bulkImportRowExcludeSchema = z.object({
 type QueryTarget = Pool | PoolClient;
 
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
-export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+// "employer" is written only by PAY-003 publication (payroll-calculation-v1.md section 7.6); imports never carry it.
+export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "employer" | "other";
 export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 interface ImportedLine {

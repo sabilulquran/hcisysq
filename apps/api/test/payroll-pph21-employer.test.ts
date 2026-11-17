@@ -94,7 +94,12 @@ const HONORER = row({
 
 describe("PPH21_SETTINGS policy", () => {
   it("defaults both switches off and needs the daily table when P10 is on", () => {
-    expect(settings({})).toMatchObject({ employerBorne: false, nonPermanentDailyTer: false, daily: null });
+    expect(settings({})).toMatchObject({
+      employerBorne: false,
+      employerHealthPremiumTaxable: false,
+      nonPermanentDailyTer: false,
+      daily: null,
+    });
     expect(validatePolicyPayload("PPH21_SETTINGS", { source: "uji", nonPermanentDailyTer: true }).ok).toBe(false);
     expect(validatePolicyPayload("PPH21_SETTINGS", { source: "uji", nonPermanentDailyTer: true, daily: DAILY }).ok).toBe(true);
     expect(DEFAULT_PPH21_SETTINGS.employerBorne).toBe(false);
@@ -216,6 +221,71 @@ describe("PPH21_EMPLOYER (P6)", () => {
   it("falls back to the TER figure and says so when the annual policy is missing", () => {
     const lines = employerPph21Lines({ period: DECEMBER, terPolicy: TER, settings: settings({ employerBorne: true }), rows: [row()], annual: null });
     expect(lines.get("employment-1")).toEqual({ amount: 200_000, basis: "TER; perhitungan tahunan belum lengkap" });
+  });
+
+  // Owner decision 2026-11-17 (section 7.6): the borne tax is computed on the gross
+  // of the monthly report, premium included when its own switch is on.
+  const WITH_PREMIUM = [{ code: "BASIC", amount: 10_000_000 }, { code: "BPJS_KES_ALLOW", amount: 500_000 }];
+
+  it("ignores the BPJS Kesehatan allowance while the premium is not taxable: still 200.000", () => {
+    const lines = employerPph21Lines({
+      period: JUNE,
+      terPolicy: TER,
+      settings: settings({ employerBorne: true }),
+      rows: [row({ earnings: WITH_PREMIUM })],
+      annual: null,
+    });
+    expect(lines.get("employment-1")).toEqual({ amount: 200_000, basis: "TER 21-100-01" });
+  });
+
+  it("bears the tax on the premium too once it is taxable: 10,5 jt x 2% = 210.000", () => {
+    const lines = employerPph21Lines({
+      period: JUNE,
+      terPolicy: TER,
+      settings: settings({ employerBorne: true, employerHealthPremiumTaxable: true }),
+      rows: [row({ earnings: WITH_PREMIUM })],
+      annual: null,
+    });
+    expect(lines.get("employment-1")).toEqual({ amount: 210_000, basis: "TER 21-100-01" });
+  });
+
+  it("writes no line for a taxable premium alone: the yayasan must also bear the tax", () => {
+    const lines = employerPph21Lines({
+      period: JUNE,
+      terPolicy: TER,
+      settings: settings({ employerHealthPremiumTaxable: true }),
+      rows: [row({ earnings: WITH_PREMIUM })],
+      annual: null,
+    });
+    expect(lines.size).toBe(0);
+  });
+
+  it("settles December on the gross with the premium: 3.900.000 - TER 11 x 210.000 = 1.590.000", () => {
+    // 126 jt gross, biaya jabatan capped at 6 jt, neto 120 jt, PKP 66 jt, Pasal 17 3,9 jt.
+    const prior: AnnualMonth[] = Array.from({ length: 11 }, (_, i) => ({
+      taxPeriod: `2026-${String(i + 1).padStart(2, "0")}`,
+      employeeId: "person-1",
+      employeeNumber: "2016001",
+      fullName: "Pegawai Uji",
+      ptkpStatus: "TK/0",
+      lines: { ...emptyA1Lines(), salary: 10_000_000, insurancePremium: 500_000 },
+      gross: 10_500_000,
+      pensionContribution: 0,
+      terTax: 210_000,
+      final: false,
+    }));
+    const lines = employerPph21Lines({
+      period: DECEMBER,
+      terPolicy: TER,
+      settings: settings({ employerBorne: true, employerHealthPremiumTaxable: true }),
+      rows: [row({ earnings: WITH_PREMIUM })],
+      annual: { policy: ANNUAL, priorMonths: prior },
+    });
+    expect(lines.get("employment-1")).toEqual({ amount: 1_590_000, basis: "Pasal 17 masa pajak terakhir" });
+    // Same figure, and the same line 5, as the 1721-A1 of that year.
+    const [segment] = buildAnnualSegments(ANNUAL, [...prior, { ...prior[0]!, taxPeriod: "2026-12", final: true }]);
+    expect(segment).toMatchObject({ gross: 126_000_000, annualTax: 3_900_000, finalMasaTax: 1_590_000 });
+    expect(segment!.lines.insurancePremium).toBe(6_000_000);
   });
 
   it("skips excluded people and people without a computable tax", () => {

@@ -20,6 +20,7 @@ describe("PAY-003 reference data vocabulary", () => {
   it("names a policy key the way an operator reads it", () => {
     expect(policyLabel("BPJS_KESEHATAN")).toBe("BPJS Kesehatan");
     expect(policyLabel("EARLY_SERVICE")).toBe("Masa kerja awal");
+    expect(policyLabel("PAYSLIP_LAYOUT")).toBe("Tata letak slip (blok Ditanggung yayasan)");
   });
 
   it("shows a key it does not know rather than hiding it", () => {

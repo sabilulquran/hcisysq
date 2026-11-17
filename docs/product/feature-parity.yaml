@@ -781,7 +781,16 @@ features:
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
       sealed per employee (spec §7.4, migration 0157). PPh21 borne by the yayasan (PPH21_EMPLOYER line
       and the employer-cost summary) and daily TER 21-100-03 for honorer/lepas are built behind
-      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0161). THR is built as its
+      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0161). Owner decisions
+      of 2026-11-17 (spec §7.6): PPh21 is borne by the yayasan (P6) and honorer/lepas stay on
+      monthly TER (P10); the BPJS Kesehatan premium the yayasan pays counts as taxable income
+      (monthly report, PPH21_EMPLOYER, Pasal 17, 1721-A1 line 5) behind
+      PPH21_SETTINGS.employerHealthPremiumTaxable; the PAY-003 payslip shows BPJS Kesehatan and
+      PPH21_EMPLOYER in a block "Ditanggung yayasan" instead of as income and deduction, behind
+      the PAYSLIP_LAYOUT policy (migration 0165), with net pay unchanged. Result lines are not
+      changed, so approved periods and the parallel run do not move; none of the versions is
+      opened in production yet, and imported PAY-001/PAY-002 slips keep the spreadsheet layout.
+      THR is built as its
       own period kind PAY-003-THR (docs/domain/payroll-thr.md, migration 0164, DRAFT T1-T14):
       Permenaker 6/2016 one month of wages (basic + fixed allowances flagged is_thr_wage),
       proportional below 12 months, paid at least 7 days before the holiday, same lifecycle, THR

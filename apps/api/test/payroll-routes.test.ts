@@ -159,7 +159,13 @@ function periodRow(overrides: PeriodOverrides = {}) {
 function createPool(
   persona: Persona,
   overrides: PeriodOverrides,
-  options: { versionRace?: boolean; policyComplete?: boolean; hasPreviousPeriod?: boolean } = {},
+  options: {
+    versionRace?: boolean;
+    policyComplete?: boolean;
+    hasPreviousPeriod?: boolean;
+    /** The PAYSLIP_LAYOUT payload in force on the pay date; absent means no version (section 7.6). */
+    payslipLayout?: unknown;
+  } = {},
 ) {
   const audits: string[] = [];
   const updates: string[] = [];
@@ -226,6 +232,19 @@ function createPool(
         }],
         rowCount: 1,
       };
+    }
+    // Section 7.6: the slip totals of the period report. Answered before the
+    // generic policy and result branches below, which would otherwise take them.
+    if (sql.includes("policy_key = 'PAYSLIP_LAYOUT'")) {
+      return options.payslipLayout === undefined
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ id: "99999999-9999-4999-8999-999999999999", payload: options.payslipLayout }], rowCount: 1 };
+    }
+    if (sql.includes('AS "payDate" FROM payroll_periods WHERE id = $1')) {
+      return { rows: [{ payDate: "2026-09-25" }], rowCount: 1 };
+    }
+    if (sql.includes("pair.allowance")) {
+      return { rows: [{ amount: "300000" }], rowCount: 1 };
     }
     if (sql.includes("coalesce(sum(latest.gross)")) {
       return {
@@ -457,12 +476,14 @@ async function call(
     versionRace?: boolean;
     policyComplete?: boolean;
     hasPreviousPeriod?: boolean;
+    payslipLayout?: unknown;
   } = {},
 ) {
   const { pool, audits, updates, transitions, inputWrites, deletes } = createPool(persona, options.period ?? {}, {
     ...(options.versionRace === undefined ? {} : { versionRace: options.versionRace }),
     ...(options.policyComplete === undefined ? {} : { policyComplete: options.policyComplete }),
     ...(options.hasPreviousPeriod === undefined ? {} : { hasPreviousPeriod: options.hasPreviousPeriod }),
+    ...(options.payslipLayout === undefined ? {} : { payslipLayout: options.payslipLayout }),
   });
   const app = Fastify({ logger: false });
   await registerPayrollRoutes(app, pool, config);
@@ -1354,6 +1375,36 @@ describe("PAY-003 period report", () => {
   it("still shows it to the people running the period", async () => {
     const { response } = await call("hc", "GET", url, { period: { state: "CALCULATED" } });
     expect(response.statusCode).toBe(200);
+  });
+
+  // Section 7.6: the calculation's totals stay as they are; the totals the slips
+  // state are given beside them.
+  it("states the slip totals as the calculation's own while no PAYSLIP_LAYOUT version is in force", async () => {
+    const { response } = await call("director", "GET", url, { period: { state: "APPROVED" } });
+    const { report } = response.json();
+    expect(report.totals).toMatchObject({ gross: "6000000", deductions: "400000", net: "5600000" });
+    expect(report.payslipTotals).toEqual({ employerBlock: false, gross: "6000000", deductions: "400000" });
+  });
+
+  it("states the slip totals without the employer-borne BPJS Kesehatan pair under the block layout", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      payslipLayout: { source: "Keputusan owner uji", employerBlock: true },
+    });
+    const { report } = response.json();
+    // The calculation's totals do not move; both slip totals drop by the same 300.000, so net is equal.
+    expect(report.totals).toMatchObject({ gross: "6000000", deductions: "400000", net: "5600000", payable: "5600000" });
+    expect(report.payslipTotals).toEqual({ employerBlock: true, gross: "5700000", deductions: "100000" });
+    expect(BigInt(report.payslipTotals.gross) - BigInt(report.payslipTotals.deductions)).toBe(BigInt(report.totals.net));
+  });
+
+  it("reads an unreadable layout version as the earlier layout on the report", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      payslipLayout: { employerBlock: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().report.payslipTotals).toEqual({ employerBlock: false, gross: "6000000", deductions: "400000" });
   });
 
   it("is closed to the board and to anyone without a payroll permission", async () => {

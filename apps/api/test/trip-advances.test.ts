@@ -56,6 +56,9 @@ describe("TRIP-002 domain", () => {
     expect(settle({ ...base, perDiemDays: 2, note: "Pulang sehari lebih awal" }).perDiemAmount).toBe(300_000n);
     expect(code(() => settle({ ...base, dailyRate: null, perDiemDays: 3 }))).toBe("TRIP_PER_DIEM_RATE_MISSING");
     expect(settle({ ...base, maxDays: 0, dailyRate: null, perDiemDays: 0 }).perDiemAmount).toBe(0n);
+    // The stored columns stop at Rp1.000.000.000: a larger total is a 409, never a database error.
+    expect(code(() => settle({ ...base, claims: [600_000_000n, 400_000_001n], perDiemDays: 3 }))).toBe("TRIP_ADVANCE_SETTLEMENT_TOO_LARGE");
+    expect(settle({ ...base, claims: [600_000_000n, 400_000_000n], perDiemDays: 0, maxDays: 0 }).claimsTotal).toBe(1_000_000_000n);
   });
 
   it("keeps refunds within what is owed (D-12) and dates within their window", () => {

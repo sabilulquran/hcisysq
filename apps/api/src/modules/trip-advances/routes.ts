@@ -35,6 +35,7 @@ import {
   assertTransactionDate,
   canEmployeeCancel,
   canSubmitSettlement,
+  CANCELLED_ON_SQL,
   DUE_ON_SQL,
   ENDED_TRIP_STATUSES,
   exportWindowOk,
@@ -207,8 +208,7 @@ interface TripRow {
 
 const TRIP_COLUMNS = `trip.id, trip.employee_id AS "employeeId", trip.status, trip.destination,
   to_char(trip.start_on, 'YYYY-MM-DD') AS "startOn", to_char(trip.end_on, 'YYYY-MM-DD') AS "endOn",
-  CASE WHEN trip.status = 'CANCELLED'
-       THEN to_char((trip.updated_at AT TIME ZONE 'Asia/Jakarta')::date, 'YYYY-MM-DD') END AS "cancelledOn"`;
+  CASE WHEN trip.status = 'CANCELLED' THEN to_char(${CANCELLED_ON_SQL}, 'YYYY-MM-DD') END AS "cancelledOn"`;
 
 async function loadTrip(db: Queryable, tripId: string, lock: "" | "FOR SHARE" = "") {
   const found = await db.query<TripRow>(`SELECT ${TRIP_COLUMNS} FROM business_trip_requests trip WHERE trip.id = $1 ${lock}`, [tripId]);

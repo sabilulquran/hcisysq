@@ -3493,7 +3493,7 @@ paths:
                     description: As /documents/me/issued/{id}, including `income` for an income letter.
                     additionalProperties: true
         '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.read, or documents.manage for an income letter' }
+        '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.read, or documents.manage for an income letter; DOCUMENT_INCOME_FORBIDDEN: an income letter also needs payroll.results.read.organization, payroll.calculate or payroll.inputs.manage (D-26)' }
         '404': { description: 'DOCUMENT_NOT_FOUND: no such certificate (malformed id included)' }
   /admin/documents/issued/{id}/revoke:
     post:

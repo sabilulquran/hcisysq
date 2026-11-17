@@ -15,6 +15,16 @@ type QueryTarget = Pool | PoolClient;
 
 export const INCOME_DOCUMENT_CODE = "KETERANGAN_PENGHASILAN";
 
+/**
+ * D-26 (DRAFT): who may issue an income letter or read its content for someone else, besides
+ * documents.manage — the same set that opens per-person payroll figures (PAY-003 §7.3).
+ */
+export const INCOME_READER_PERMISSIONS: readonly string[] = [
+  "payroll.results.read.organization",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
+
 /** D-22 DRAFT: the three full calendar months before the month of issue. */
 export const INCOME_WINDOW_MONTHS = 3;
 

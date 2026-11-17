@@ -18,6 +18,7 @@ import type { AuthSession } from "@/types/hcis";
 import {
   HrDocumentApiError,
   INCOME_DOCUMENT_CODE,
+  INCOME_READER_PERMISSIONS,
   approveDocumentRequest,
   documentStatusLabel,
   getDisciplinaryLetters,
@@ -73,10 +74,12 @@ export function AdminDocumentsPage() {
   const [revokeTarget, setRevokeTarget] = useState<RegisterEntry | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   // D-25: "Lihat surat" opens one issued certificate as a pop-up named in the URL (?surat=<id>).
-  // An income letter carries pay figures, so it is offered only with documents.manage; the API
-  // checks the same on every read and audits each one.
+  // An income letter carries pay figures, so it is offered only with documents.manage plus a
+  // permission that opens per-person payroll figures (D-26); the API checks the same on every
+  // read and audits each one.
   const canManage = hasPermission(session, "documents.manage");
-  const canViewLetter = (entry: RegisterEntry) => entry.documentCode !== INCOME_DOCUMENT_CODE || canManage;
+  const canReadIncome = canManage && INCOME_READER_PERMISSIONS.some((permission) => hasPermission(session, permission));
+  const canViewLetter = (entry: RegisterEntry) => entry.documentCode !== INCOME_DOCUMENT_CODE || canReadIncome;
   const [letterId, showLetter, closeLetter] = useDialogParam("surat");
   const [opened, setOpened] = useState<(IssuedDocumentSummary & { revokedAt: string | null }) | null>(null);
   const [letterError, setLetterError] = useState<string | null>(null);
@@ -258,7 +261,8 @@ export function AdminDocumentsPage() {
                           </button>
                         </>
                       ) : null}
-                      {request.status === "APPROVED" ? (
+                      {/* D-26: an income letter is issued only by an account that also reads payroll figures. */}
+                      {request.status === "APPROVED" && (request.documentCode !== INCOME_DOCUMENT_CODE || canReadIncome) ? (
                         <button type="button" disabled={busy}
                           onClick={() => void run(() => issueDocumentRequest(request.id), "Surat terbit.")}
                           className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">

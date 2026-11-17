@@ -34,6 +34,13 @@ export interface IssuedDocumentSummary {
 /** DOC-001 Package 2: the surat keterangan penghasilan, whose snapshot carries pay figures. */
 export const INCOME_DOCUMENT_CODE = "KETERANGAN_PENGHASILAN";
 
+/** D-26: besides documents.manage, any of these opens an income letter of someone else (mirrors the API). */
+export const INCOME_READER_PERMISSIONS = [
+  "payroll.results.read.organization",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+] as const;
+
 /** D-24: amounts are rupiah decimal strings ("5116667" or "5250000.50"), never floats. */
 export interface IncomeFigures {
   months: Array<{ period: string; gross: string; net: string }>;

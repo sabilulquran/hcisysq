@@ -154,6 +154,67 @@ export function parsePph21TerPolicy(
   return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
 }
 
+/**
+ * Lines of the bukti potong 1721-A1 that earnings are summed into (PER-2/PJ/2024
+ * layout, specification section 7.4). Insurance premiums and benefits in kind
+ * are on the form but v1 pays neither (DRAFT).
+ */
+export const A1_LINE_KEYS = [
+  "salary",
+  "taxAllowance",
+  "otherAllowances",
+  "honorarium",
+  "insurancePremium",
+  "inKind",
+  "bonusThr",
+] as const;
+export type A1LineKey = (typeof A1_LINE_KEYS)[number];
+
+/**
+ * The annual Pasal 17 calculation of the final masa pajak (PP 58/2023, PMK
+ * 168/2023; specification section 7.4). Like PPH21_TER, no statutory value is
+ * written in code: PTKP, biaya jabatan, the Pasal 17 layers and the rounding
+ * unit are the policy row the process owner loads and verifies.
+ */
+const PPH21_ANNUAL_SCHEMA = z.object({
+  source: z.string().trim().min(3).max(500),
+  ptkp: z.object({
+    taxpayer: rupiah.nonnegative(),
+    married: rupiah.nonnegative(),
+    perDependent: rupiah.nonnegative(),
+    maxDependents: z.number().int().min(0).max(10),
+  }),
+  positionCost: z.object({
+    rate: z.number().min(0).max(1),
+    monthlyCap: rupiah.nonnegative(),
+    annualCap: rupiah.nonnegative(),
+  }),
+  brackets: terTable,
+  /** PKP is rounded down to a whole multiple of this (Rp1.000 under the law). */
+  pkpRoundingUnit: z.number().int().min(1),
+  /** DEDUCTION components that are the employee's own pension / JHT contribution. */
+  pensionContributionComponents: z.array(z.string().trim().min(1)).default([]),
+  /** Overrides of the default A1 line per EARNING component (pph21-annual.ts). */
+  lineByComponent: z.record(z.string().trim().min(1), z.enum(A1_LINE_KEYS)).default({}),
+  /** The pemotong printed on the 1721-A1; its NPWP is the yayasan's, not personal data. */
+  withholder: z
+    .object({ name: z.string().trim().min(1).max(200), taxNumber: z.string().trim().max(30).nullable().default(null) })
+    .default({ name: "Yayasan Sabilul Qur'an", taxNumber: null }),
+});
+
+export type Pph21AnnualPolicy = z.infer<typeof PPH21_ANNUAL_SCHEMA>;
+
+/** Reads a stored PPH21_ANNUAL payload, or says why it cannot be used. */
+export function parsePph21AnnualPolicy(
+  payload: unknown,
+): { ok: true; policy: Pph21AnnualPolicy } | { ok: false; message: string } {
+  const result = PPH21_ANNUAL_SCHEMA.safeParse(payload);
+  if (result.success) return { ok: true, policy: result.data };
+  const issue = result.error.issues[0];
+  const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
+}
+
 const PAYLOAD_SCHEMAS = {
   SALARY_SCALE: z.object({
     // The legacy scale is chained percentage rises, so its entries are not whole
@@ -207,6 +268,8 @@ const PAYLOAD_SCHEMAS = {
   PERFORMANCE_PERCENT: PERFORMANCE_PERCENT_SCHEMA,
   // Not read by the engine: the PPh21 report reads it (reports.ts, pph21.ts).
   PPH21_TER: PPH21_TER_SCHEMA,
+  // Read by the annual calculation and the 1721-A1 (pph21-annual.ts).
+  PPH21_ANNUAL: PPH21_ANNUAL_SCHEMA,
 } as const;
 
 /**

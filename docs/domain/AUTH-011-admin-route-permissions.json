@@ -3189,6 +3189,62 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "GET",
+    "url": "/payroll/pph21/annual",
+    "permissions": [
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "GET",
+    "url": "/payroll/pph21/annual/:year/employees/:employeeId/a1/:index",
+    "permissions": [
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "GET",
+    "url": "/payroll/employees/:employeeId/tax-identity",
+    "permissions": [
+      "payroll.profiles.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "PUT",
+    "url": "/payroll/employees/:employeeId/tax-identity",
+    "permissions": [
+      "payroll.profiles.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "GET",
+    "url": "/payroll/me/a1",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/payroll/pph21-annual-routes.ts",
+    "method": "GET",
+    "url": "/payroll/me/a1/:year/:index",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
     "file": "apps/api/src/modules/payroll/routes.ts",
     "method": "GET",
     "url": "/payroll/periods/:periodId/transfers",

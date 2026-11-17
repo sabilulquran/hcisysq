@@ -77,6 +77,7 @@ import { AdminEmployeeCardsPage } from "@/pages/AdminEmployeeCardsPage";
 import { AdminCommitteesPage } from "@/pages/AdminCommitteesPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
+import { AdminPayrollPph21AnnualPage } from "@/pages/AdminPayrollPph21AnnualPage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { AdminServicesPage } from "@/pages/AdminServicesPage";
@@ -763,6 +764,14 @@ const adminPayrollReferenceRoute = createRoute({
   component: AdminPayrollReferencePage,
 });
 
+// Also declared before the $periodId route.
+const adminPayrollPph21AnnualRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/payroll/pph21-annual",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/payroll/pph21-annual"),
+  component: AdminPayrollPph21AnnualPage,
+});
+
 const adminPayrollPeriodRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/payroll/$periodId",
@@ -997,6 +1006,7 @@ const routeTree = rootRoute.addChildren([
   adminLeaveCriticalPeriodsRoute,
   adminPayrollRoute,
   adminPayrollReferenceRoute,
+  adminPayrollPph21AnnualRoute,
   adminPayrollPeriodRoute,
   adminPayslipsRoute,
   adminDocumentsRoute,

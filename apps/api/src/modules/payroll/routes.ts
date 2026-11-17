@@ -163,7 +163,7 @@ const FIGURE_BUILDER_PERMISSIONS: readonly string[] = ["payroll.calculate", "pay
  * report (specification section 7.3, AUTH-011 manifest). payroll.reports.read.organization alone
  * opens the aggregate report only.
  */
-const PER_PERSON_READER_PERMISSIONS: readonly string[] = [
+export const PER_PERSON_READER_PERMISSIONS: readonly string[] = [
   "payroll.results.read.organization",
   ...FIGURE_BUILDER_PERMISSIONS,
 ];

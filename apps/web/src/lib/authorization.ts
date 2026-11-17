@@ -70,6 +70,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "employee_documents.read",
     // ORG-012: committees.read opens its own screen even for an account holding nothing else.
     "committees.read",
+    // REWARD-001: the Kepala HCM holds reward.read without any other screen's permission.
+    "reward.read",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which
@@ -165,6 +167,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/loans") return hasPermission(session, "loans.read");
   // REIMB-001: Finance and HC only; Super Admin legacy compatibility never carries reimbursements.*.
   if (path === "/admin/reimbursements") return hasPermission(session, "reimbursements.read");
+  // REWARD-001: HC-only; Super Admin legacy compatibility never carries reward.*.
+  if (path === "/admin/rewards") return hasPermission(session, "reward.read");
   // TRIP-002: Finance and HC only; the rate table alone opens the page for trip_per_diem.manage.
   if (path === "/admin/trip-advances") return hasPermission(session, "trip_advances.read") || hasPermission(session, "trip_per_diem.manage");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.

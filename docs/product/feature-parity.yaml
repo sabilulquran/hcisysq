@@ -1232,17 +1232,27 @@ features:
     legacy_evidence: >-
       None. New capability decided by the Product Owner on 2026-11-13 together with the SQ Hub
       Al-Qur'an module (ADR-0013, QURAN-001).
-    target_status: specified
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
       Monthly award rounds whose candidates come only from the Al-Qur'an monthly scoreboard
       snapshot (top 3 foundation-wide, top 1 per unit); the Kepala HCM decides, publication sends
       notifications, an announcement and a certificate. Not an input to PERF-001 and not a payroll
-      component. Implementation waits for Al-Qur'an R1 (QURAN-IMPL-001). Listed under the
-      performance module only as the HR area it belongs to; it is not part of PERF-001.
+      component. Listed under the performance module only as the HR area it belongs to; it is not
+      part of PERF-001.
+    notes: >-
+      Package 1 implemented 2026-11-17 (docs/domain/rewards.md §13): rounds, candidates (R-03,
+      R-07, R-11), Kepala HCM decisions with the R-09 path, next rank from the same snapshot,
+      publication through an outbox (notification, NOTIF-002 announcement, PDF certificate with a
+      public check), revocation, history, recipients list, permissions reward.read/manage/import,
+      and the "Al-Qur'an" menu as a link. The Al-Qur'an source is read through a port with
+      NOT_CONFIGURED/UNAVAILABLE/AVAILABLE status; until Al-Qur'an R1 (QURAN-IMPL-001) builds the
+      snapshot contract of rewards.md §12 the screens say "sumber belum tersedia" and HC may
+      import a CSV snapshot (R-14 DRAFT).
     docs:
       - docs/domain/rewards.md
+      - docs/api/rewards.openapi.yaml
 
   - id: MIG-001
     module: migration

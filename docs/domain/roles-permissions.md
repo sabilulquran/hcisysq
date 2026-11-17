@@ -163,6 +163,18 @@ Migration `0149_reimbursement_permissions.sql`, berscope organisasi (`docs/domai
 
 Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan klaim dan tahap snapshot APR-001. `reimbursements.*`, `loans.*`, dan `payroll.*` tidak saling membuka. Super Admin tidak memperoleh `reimbursements.*` lewat kompatibilitas legacy.
 
+### Penghargaan (REWARD-001)
+
+Migration `0163_reward_permissions.sql`, berscope organisasi (`docs/domain/rewards.md` §7, DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `reward.read` | HC Admin (`human_capital_admin`), Kepala HC (`human_capital_lead`) | putaran, kandidat, status sumber, jejak audit |
+| `reward.import` | HC Admin (`human_capital_admin`) | impor snapshot CSV hanya selama sumber Al-Qur'an belum dikonfigurasi; pengimpor tidak memutuskan kandidat snapshot itu (R-14) |
+| `reward.manage` | Kepala HC (`human_capital_lead`) | susun ulang, tetapkan, tidak tetapkan, peringkat berikutnya, terbitkan, batalkan, cabut, kirim ulang; tidak atas dirinya sendiri |
+
+Jalur R-09: pemegang role `human_capital_admin` boleh memutuskan kandidat yang merupakan Kepala HCM, hanya kandidat itu. Pegawai tidak memerlukan permission untuk daftar penerima, riwayat, dan sertifikatnya. Super Admin tidak memperoleh `reward.*` lewat kompatibilitas legacy.
+
 ### Uang muka dan uang harian dinas (TRIP-002)
 
 Migration `0160_trip_advances.sql`, berscope organisasi (`docs/domain/trip-advance-per-diem.md` D-15 DRAFT).

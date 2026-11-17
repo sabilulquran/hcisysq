@@ -127,6 +127,8 @@ describe("SEC-09 request log URL", () => {
     expect(logUrl("/auth/me")).toBe("/auth/me");
     expect(logUrl("/public/employee-cards/7Q2M9XPA4K")).toBe("/public/employee-cards/[code]");
     expect(logUrl("/public/employee-cards/7Q2M9XPA4K/photo?x=1")).toBe("/public/employee-cards/[code]/photo");
+    // REWARD-001 §9: the certificate check code stays out of the log too.
+    expect(logUrl("/public/rewards/verify/0123456789ABCDEFGHJKMNPQRS")).toBe("/public/rewards/verify/[code]");
     expect(logUrl("/iclock/cdata?SN=ABC&table=ATTLOG")).toBe("/iclock/cdata?SN=ABC&table=ATTLOG");
   });
 });

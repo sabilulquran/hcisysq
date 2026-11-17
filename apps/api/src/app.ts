@@ -72,6 +72,7 @@ import { registerTripRoutes } from "./modules/trips/routes.js";
 import { registerPerformanceRoutes } from "./modules/performance/routes.js";
 import { registerLoanRoutes } from "./modules/loans/routes.js";
 import { registerReimbursementRoutes } from "./modules/reimbursements/routes.js";
+import { registerRewardRoutes, registerRewardScheduler } from "./modules/rewards/routes.js";
 import { registerTripAdvanceRoutes } from "./modules/trip-advances/routes.js";
 import { registerMeetingRoutes } from "./modules/meetings/routes.js";
 import { registerMeetingRunner } from "./modules/meetings/runner.js";
@@ -100,7 +101,10 @@ const LOG_REDACT_PATHS = [
 export function logUrl(url: string) {
   if (url.startsWith("/iclock/")) return url;
   const path = url.split("?")[0]!;
-  return path.replace(/^\/public\/employee-cards\/[^/]+/, "/public/employee-cards/[code]");
+  // REWARD-001 §9: a certificate's verification code is a bearer of its public check, too.
+  return path
+    .replace(/^\/public\/employee-cards\/[^/]+/, "/public/employee-cards/[code]")
+    .replace(/^\/public\/rewards\/verify\/[^/]+/, "/public/rewards/verify/[code]");
 }
 
 const INTERNAL_ERROR_BODY = {
@@ -239,6 +243,8 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPerformanceRoutes(app, pool, config);
   await registerLoanRoutes(app, pool, config);
   await registerReimbursementRoutes(app, pool, config);
+  // REWARD-001: award rounds from the Al-Qur'an scoreboard, and the monthly scheduler (not in tests).
+  registerRewardScheduler(app, config, await registerRewardRoutes(app, pool, config));
   await registerTripAdvanceRoutes(app, pool, config);
   await registerTrainingRoutes(app, pool, config);
   await registerReportRoutes(app, pool, config);

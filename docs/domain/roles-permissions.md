@@ -165,7 +165,7 @@ Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan
 
 ### Penghargaan (REWARD-001)
 
-Migration `0162_reward_permissions.sql`, berscope organisasi (`docs/domain/rewards.md` §7, DRAFT).
+Migration `0163_reward_permissions.sql`, berscope organisasi (`docs/domain/rewards.md` §7, DRAFT).
 
 | Permission | Pemegang | Catatan |
 |---|---|---|

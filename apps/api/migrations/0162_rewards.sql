@@ -14,7 +14,7 @@
 --   DROP TABLE IF EXISTS reward_snapshot_imports;
 --   DROP TABLE IF EXISTS reward_fetch_attempts;
 --   DROP TABLE IF EXISTS reward_programs;
---   DELETE FROM schema_migrations WHERE name = '0161_rewards.sql';
+--   DELETE FROM schema_migrations WHERE name = '0162_rewards.sql';
 
 CREATE TABLE IF NOT EXISTS reward_programs (
   id uuid PRIMARY KEY,

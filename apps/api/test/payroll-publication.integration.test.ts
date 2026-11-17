@@ -15,6 +15,7 @@ import {
   draftPayslipsFromPeriod,
   publishPayslipsOfPeriod,
 } from "../src/modules/payroll/publication.js";
+import { createSyntheticActor } from "./support/synthetic-actor.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -110,21 +111,9 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     // Only this suite's own rows: test files run in parallel against one database.
     await clearOwnPeriods(pool, ownedPeriodIds);
     ownedPeriodIds = [];
-    // Always a fresh actor: borrowing "any account" could pick another suite's actor running in
-    // parallel (payroll-initial-load counts the audit events of its own actor).
-    {
-      const employeeId = randomUUID();
-      actorAccountId = randomUUID();
-      await pool.query(
-        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Actor', 'active')",
-        [employeeId, `EMP-PUB-ACTOR-${employeeId}`],
-      );
-      await pool.query(
-        `INSERT INTO accounts(id, employee_id, email, principal_type, status)
-         VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
-        [actorAccountId, employeeId, `pub-${actorAccountId}@example.invalid`],
-      );
-    }
+    // A fresh actor of this suite: a borrowed account could be another suite's
+    // (see support/synthetic-actor.ts).
+    actorAccountId = await createSyntheticActor(pool, "PUB");
   });
 
   async function newEmployee() {

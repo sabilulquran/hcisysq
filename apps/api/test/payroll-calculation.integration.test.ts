@@ -14,6 +14,7 @@ import { setLoanDeductions } from "../src/modules/payroll/admin-store.js";
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
 import { settleEmployeeLoanDeductions } from "../src/modules/payroll/employee-loan-link.js";
 import { applyTransition, getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
+import { createSyntheticActor } from "./support/synthetic-actor.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -161,22 +162,9 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       [periodId, PAY_DATE, legalEntityKey],
     );
 
-    const { rows } = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
-    if (rows[0]) {
-      actorAccountId = rows[0].id;
-    } else {
-      const employeeId = randomUUID();
-      actorAccountId = randomUUID();
-      await pool.query(
-        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Actor', 'active')",
-        [employeeId, `EMP-ACTOR-${employeeId}`],
-      );
-      await pool.query(
-        `INSERT INTO accounts(id, employee_id, email, principal_type, status)
-         VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
-        [actorAccountId, employeeId, `calc-${actorAccountId}@example.invalid`],
-      );
-    }
+    // A fresh actor of this suite: a borrowed account could be another suite's
+    // (see support/synthetic-actor.ts).
+    actorAccountId = await createSyntheticActor(pool, "CALC");
   });
 
   const period = () => ({

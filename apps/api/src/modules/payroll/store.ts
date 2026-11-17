@@ -18,6 +18,7 @@ import {
   settleReimbursementHandoffs,
 } from "./reimbursement-link.js";
 import { defaultCutoffWindow, monthEnd, type PeriodAction, type PeriodState } from "./lifecycle.js";
+import { assertThrWageSourcesStand, ThrAverageWageRefusal } from "./thr-wage-source.js";
 
 /** PAY-003-THR T1: a monthly payroll period or a THR period. */
 export type PeriodKind = "REGULAR" | "THR";
@@ -311,7 +312,7 @@ export type ApplyTransitionInput = {
 export type ApplyTransitionResult = {
   applied: boolean;
   period: PeriodRow | null;
-  /** Set when the transition was refused by work it carries (LOAN-001 settlement). */
+  /** Set when the transition was refused by work it carries (LOAN-001 settlement, THR wage sources). */
   refusal?: { code: string; message: string };
 };
 
@@ -404,6 +405,9 @@ export async function applyTransition(
     let loanCounts: Record<string, number> = {};
     try {
       if (input.action === "approve") {
+        // PAY-003-THR section 2.1 H10: a THR average taken from salary periods is approved only
+        // while those periods still stand as they were read.
+        if (settledPeriod.kind === "THR") await assertThrWageSourcesStand(client, settledPeriod.id);
         const { settled } = await settleEmployeeLoanDeductions(client, settledPeriod, input.actorAccountId);
         loanCounts = settled > 0 ? { loan_payments_settled: settled } : {};
         // REIMB-001 section 9: the same transaction settles handed-off reimbursements.
@@ -416,7 +420,11 @@ export async function applyTransition(
         if (reopened.reversed > 0) loanCounts = { ...loanCounts, reimbursement_handoffs_reversed: reopened.reversed };
       }
     } catch (error) {
-      if (error instanceof LoanSettlementRefusal || error instanceof ReimbursementSettlementRefusal) {
+      if (
+        error instanceof LoanSettlementRefusal ||
+        error instanceof ReimbursementSettlementRefusal ||
+        error instanceof ThrAverageWageRefusal
+      ) {
         await client.query("ROLLBACK");
         return { applied: false, period: null, refusal: { code: error.code, message: error.message } };
       }

@@ -179,6 +179,33 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       );
     });
 
+    it("supersedes the first THR version from the owner decision date (migration 0167, T5)", async () => {
+      const { rows } = await client.query<{
+        effectiveFrom: string;
+        effectiveTo: string | null;
+        payload: { eligibleTermCategories: string[]; averageWageComponents?: string[]; terminationGraceTermCategories: string[] };
+      }>(
+        `SELECT to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+                to_char(effective_to, 'YYYY-MM-DD') AS "effectiveTo", payload
+         FROM payroll_policy_versions
+         WHERE id IN ('7a0f3c2e-5b1d-4e8a-9c41-0d2b6e8f1a52', '3c1e9b7a-64f2-4d0b-8a55-2f7d1c9e0b43')
+         ORDER BY effective_from`,
+      );
+      expect(rows.map((row) => [row.effectiveFrom, row.effectiveTo])).toEqual([
+        ["2026-01-01", "2026-11-16"],
+        ["2026-11-17", null],
+      ]);
+      // The version a THR period paid before the decision reads is untouched.
+      expect(rows[0]!.payload.eligibleTermCategories).toEqual(["TETAP", "PERCOBAAN", "KONTRAK"]);
+      expect(rows[0]!.payload.averageWageComponents).toBeUndefined();
+      expect(rows[1]!.payload.eligibleTermCategories).toEqual([
+        "TETAP", "PERCOBAAN", "KONTRAK", "KONTRAK_HONORER", "LEPAS",
+      ]);
+      expect(rows[1]!.payload.averageWageComponents).toEqual(["TRANSPORT", "TEACH_FEE", "PJ_MEDIA", "OTHER_INCOME"]);
+      // The termination grace stays with PKWTT (section 2.1 H7).
+      expect(rows[1]!.payload.terminationGraceTermCategories).toEqual(["TETAP", "PERCOBAAN"]);
+    });
+
     it("requires a source for every policy version", async () => {
       await expectSqlError(
         `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, payload, source)
@@ -353,6 +380,20 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
          VALUES ($1, $2, $3, 'ADJUSTMENT', -500000, 'MANUAL', 'koreksi kualifikasi khusus', 'SK-UJI-001')`,
         [randomUUID(), periodId, employmentId],
       );
+    });
+
+    it("holds a THR average wage only with its reason and decision, as a positive whole rupiah (migration 0167)", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      const insert = `INSERT INTO payroll_period_inputs(
+          id, period_id, employment_id, input_key, value, origin, reason, decision_reference)
+        VALUES ($1, $2, $3, 'THR_AVERAGE_WAGE', $4, 'MANUAL', $5, $6)`;
+      await expectSqlError(insert, [randomUUID(), periodId, employmentId, 1_250_000, null, "Rekap honor uji"], "23514");
+      await expectSqlError(insert, [randomUUID(), periodId, employmentId, 1_250_000, "cakupan parsial", null], "23514");
+      await expectSqlError(insert, [randomUUID(), periodId, employmentId, 1_250_000, "cakupan parsial", "  "], "23514");
+      for (const value of [0, -1_250_000, 1_250_000.5]) {
+        await expectSqlError(insert, [randomUUID(), periodId, employmentId, value, "cakupan parsial", "Rekap honor uji"], "23514");
+      }
+      await client.query(insert, [randomUUID(), periodId, employmentId, 1_250_000, "cakupan parsial", "Rekap honor uji"]);
     });
 
     it("refuses a proration factor outside the allowed range", async () => {

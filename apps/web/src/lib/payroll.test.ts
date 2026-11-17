@@ -5,6 +5,8 @@ import {
   formatRupiah,
   payrollInputLabel,
   payrollInputValue,
+  thrAverageWageNote,
+  type PayrollThrAverageWage,
   payrollActionLabel,
   payrollOperationLabel,
   payrollStateLabel,
@@ -111,5 +113,64 @@ describe("PAY-003 how an input value reads", () => {
     expect(payrollInputValue("PRORATION_FACTOR", "0.5000")).toBe("0.5");
     expect(payrollInputValue("CONTRACT_TEACHING_HOURS", "18.0000")).toBe("18");
     expect(payrollInputValue("PJ_MEDIA", "3")).toBe("3");
+  });
+});
+
+// PAY-003-THR T5 (payroll-thr.md section 2.1): the honorarium average wage on the period screen.
+describe("THR average wage of an honorarium worker", () => {
+  const base: PayrollThrAverageWage = {
+    source: "SYSTEM",
+    windowStart: "2026-03",
+    windowEnd: "2027-02",
+    requiredMonths: 12,
+    coveredMonths: 12,
+    monthsWithPay: 12,
+    systemTotal: 11_920_000,
+    systemAverage: 993_334,
+    partialAverage: 993_334,
+    monthlyWage: 993_334,
+    hcInput: null,
+  };
+
+  it("labels the input and reads its value as rupiah", () => {
+    expect(payrollInputLabel("THR_AVERAGE_WAGE")).toBe("Rata-rata upah THR (honorer/lepas)");
+    expect(payrollInputValue("THR_AVERAGE_WAGE", "1250000.0000")).toBe("Rp1.250.000");
+  });
+
+  it("says the system covered the whole window", () => {
+    expect(thrAverageWageNote(base)).toBe(
+      "Rata-rata upah Rp993.334 dari sistem. Sistem mencakup 12 dari 12 bulan (2026-03 s.d. 2027-02).",
+    );
+  });
+
+  it("shows the partial system figure beside a typed one", () => {
+    expect(
+      thrAverageWageNote({
+        ...base,
+        source: "HC_INPUT",
+        coveredMonths: 3,
+        systemAverage: null,
+        partialAverage: 1_070_000,
+        monthlyWage: 1_000_000,
+        hcInput: 1_000_000,
+      }),
+    ).toBe(
+      "Rata-rata upah Rp1.000.000 dari input HC. Sistem mencakup 3 dari 12 bulan (2026-03 s.d. 2027-02); rata-rata 3 bulan itu Rp1.070.000 (pembanding).",
+    );
+  });
+
+  it("asks for the input when neither the system nor human capital established a wage", () => {
+    expect(
+      thrAverageWageNote({ ...base, source: "NONE", coveredMonths: 0, systemAverage: null, partialAverage: null, monthlyWage: 0 }),
+    ).toBe(
+      "Sistem mencakup 0 dari 12 bulan (2026-03 s.d. 2027-02); belum ada angka sistem. Isi input “Rata-rata upah THR” untuk pegawai ini.",
+    );
+    // No month before the THR month lies in the service at all: there is no window to name.
+    expect(
+      thrAverageWageNote({
+        ...base, source: "NONE", windowStart: null, windowEnd: null, requiredMonths: 0, coveredMonths: 0,
+        systemAverage: null, partialAverage: null, monthlyWage: 0,
+      }),
+    ).toBe("Sistem mencakup 0 dari 0 bulan; belum ada angka sistem. Isi input “Rata-rata upah THR” untuk pegawai ini.");
   });
 });

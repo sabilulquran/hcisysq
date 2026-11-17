@@ -23,6 +23,7 @@ import {
   payrollTransfersCsvUrl,
   publishPayrollPayslips,
   resolvePayrollAttendanceInputs,
+  thrAverageWageNote,
   transitionPayrollPeriod,
   PayrollApiError,
   type PayrollEmployeeIdentity,
@@ -414,6 +415,18 @@ export function AdminPayrollPeriodPage() {
                         ) : result.payFactorReason !== "none" ? (
                           <span className="text-muted-foreground">
                             {result.payFactorReason === "proration" ? "Prorata" : "Masa kerja awal"}
+                          </span>
+                        ) : null}
+                        {/* PAY-003-THR T5: an honorarium worker's THR rests on an average wage; the
+                            row says where it came from and what the system covers. A blocked row
+                            also says, in words, what is missing. */}
+                        {result.thrAverageWage ? (
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            {result.blockers
+                              .filter((blocker) => blocker.code === "THR_AVERAGE_WAGE_INCOMPLETE")
+                              .map((blocker) => blocker.message)
+                              .concat(thrAverageWageNote(result.thrAverageWage))
+                              .join(" ")}
                           </span>
                         ) : null}
                       </td>

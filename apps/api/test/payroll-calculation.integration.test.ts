@@ -13,8 +13,9 @@ import { clearOwnPeriods } from "./support/payroll-cleanup.js";
 import { setLoanDeductions } from "../src/modules/payroll/admin-store.js";
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
 import { settleEmployeeLoanDeductions } from "../src/modules/payroll/employee-loan-link.js";
+import { listResults } from "../src/modules/payroll/inputs-store.js";
 import { draftPayslipsFromPeriod } from "../src/modules/payroll/publication.js";
-import { loadPph21MonthSources } from "../src/modules/payroll/reports.js";
+import { buildTransferList, loadPph21MonthSources } from "../src/modules/payroll/reports.js";
 import { applyTransition, getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
 import { createSyntheticActor } from "./support/synthetic-actor.js";
 
@@ -1385,6 +1386,321 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect(month.periods.map((entry) => entry.kind)).toEqual(["REGULAR", "THR"]);
       const mine = month.rows.filter((row) => row.employeeId === employeeId);
       expect(mine.map((row) => row.periodKind).sort()).toEqual(["REGULAR", "THR"]);
+    });
+
+    // T5, section 2.1 (owner decision 2026-11-17): honorarium and daily workers are paid THR on
+    // the average of what the approved salary periods actually paid them. These tests pay a THR
+    // in March 2027, so they read the policy version migration 0167 opened.
+    describe("honorarium and daily workers (T5)", () => {
+      const HOLIDAY_2027 = "2027-03-10";
+      const THR_PAY_DATE_2027 = "2027-03-01";
+      /** The twelve months before the THR month. */
+      const WINDOW = [
+        "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
+        "2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02",
+      ];
+      let thr2027Id: string;
+
+      const monthEndOf = (month: string) => {
+        const [year, monthNumber] = month.split("-").map(Number) as [number, number];
+        return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+      };
+
+      /**
+       * One salary period of the month, really calculated from PKWT attendance days and teaching
+       * hours (15 000 per day, 15 400 per hour on the synthetic rates), then put in `state`.
+       */
+      async function salaryMonth(
+        month: string,
+        pay: ReadonlyArray<{ employmentId: string; days: number; hours?: number }>,
+        state = "APPROVED",
+      ): Promise<string> {
+        // The suite's own September 2026 period sits in the window; it is this month's period.
+        let id = periodId;
+        if (month !== "2026-09") {
+          id = randomUUID();
+          ownedPeriodIds.push(id);
+          await pool.query(
+            `INSERT INTO payroll_periods(
+               id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+             VALUES ($1, $2, $3::date, ($3::date + 24), $3::date, $4::date, $3::date, ($3::date + 21), 'COLLECTING')`,
+            [id, legalEntityKey, `${month}-01`, monthEndOf(month)],
+          );
+        }
+        for (const row of pay) {
+          await pool.query(
+            `INSERT INTO payroll_period_inputs(id, period_id, employment_id, input_key, value, origin)
+             VALUES ($1, $3, $4, 'CONTRACT_ATTENDANCE_DAYS', $5, 'ATTENDANCE'),
+                    ($2, $3, $4, 'CONTRACT_TEACHING_HOURS', $6, 'MANUAL')`,
+            [randomUUID(), randomUUID(), id, row.employmentId, row.days, row.hours ?? 0],
+          );
+        }
+        const outcome = await calculatePeriod(
+          pool,
+          { id, legalEntityKey, periodStart: `${month}-01`, periodEnd: monthEndOf(month), payDate: `${month}-25` },
+          actorAccountId,
+          0,
+        );
+        expect(outcome.policyProblems).toEqual([]);
+        expect(outcome.blockerCount).toBe(0);
+        await pool.query("UPDATE payroll_periods SET state = $2 WHERE id = $1", [id, state]);
+        return id;
+      }
+
+      const thr2027 = () => ({
+        id: thr2027Id,
+        legalEntityKey,
+        periodStart: "2027-03-01",
+        periodEnd: "2027-03-31",
+        payDate: THR_PAY_DATE_2027,
+        kind: "THR" as const,
+        holidayDate: HOLIDAY_2027,
+      });
+
+      async function calculateThr2027() {
+        return calculatePeriod(pool, thr2027(), actorAccountId, (await getPeriod(pool, thr2027Id))!.version);
+      }
+
+      type ThrRow = {
+        employmentId: string;
+        payable: string;
+        blockers: Array<{ code: string; message: string }>;
+        averageWage: Record<string, unknown> | null;
+        lineCodes: string[];
+      };
+
+      async function thrRows(): Promise<Map<string, ThrRow>> {
+        const { rows } = await pool.query<ThrRow>(
+          `SELECT DISTINCT ON (r.employment_id)
+                  r.employment_id AS "employmentId", r.payable::text, r.blockers,
+                  r.input_snapshot -> 'thr_average_wage' AS "averageWage",
+                  coalesce((SELECT array_agg(l.component_code ORDER BY l.display_order)
+                            FROM payroll_result_lines l WHERE l.result_id = r.id), ARRAY[]::text[]) AS "lineCodes"
+           FROM payroll_results r WHERE r.period_id = $1
+           ORDER BY r.employment_id, r.revision DESC`,
+          [thr2027Id],
+        );
+        return new Map(rows.map((row) => [row.employmentId, row]));
+      }
+
+      async function typeAverageWage(employmentId: string, value: number) {
+        await pool.query(
+          `INSERT INTO payroll_period_inputs(
+             id, period_id, employment_id, input_key, value, origin, reason, decision_reference, recorded_by_account_id)
+           VALUES ($1, $2, $3, 'THR_AVERAGE_WAGE', $4, 'MANUAL', 'HCIS belum mencakup 12 bulan', 'Rekap honor uji', $5)`,
+          [randomUUID(), thr2027Id, employmentId, value, actorAccountId],
+        );
+      }
+
+      beforeEach(async () => {
+        thr2027Id = randomUUID();
+        ownedPeriodIds.push(thr2027Id);
+        await pool.query(
+          `INSERT INTO payroll_periods(
+             id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state,
+             period_kind, holiday_date, holiday_name)
+           VALUES ($1, $2, DATE '2027-03-01', $3::date, DATE '2027-03-01', DATE '2027-03-31',
+                   DATE '2027-03-01', DATE '2027-03-31', 'COLLECTING', 'THR', $4::date, 'Idul Fitri Uji')`,
+          [thr2027Id, legalEntityKey, THR_PAY_DATE_2027, HOLIDAY_2027],
+        );
+      });
+
+      it("pays the average of the approved months: twelve of them, or the months in service", async () => {
+        const permanent = await newEmployment({ category: "TETAP" });
+        const honorarium = await newEmployment({ category: "KONTRAK_HONORER" });
+        // TMT 20 December 2026: two whole months at the holiday; December to February are averaged.
+        const daily = await newEmployment({ category: "LEPAS", startedOn: "2026-12-20" });
+        // Ended before the holiday: the grace days are for PKWTT only (H7).
+        const dailyLeft = await newEmployment({
+          category: "LEPAS", startedOn: "2026-01-05", endedOn: "2027-03-05", endBasis: "RECORDED",
+        });
+
+        const dailyDays: Record<string, number> = { "2026-12": 8, "2027-01": 22, "2027-02": 20 };
+        for (const month of WINDOW) {
+          await salaryMonth(month, [
+            // 20 days and 50 hours pay 1 070 000; July pays 10 days only, 150 000.
+            month === "2026-07"
+              ? { employmentId: honorarium.employmentId, days: 10 }
+              : { employmentId: honorarium.employmentId, days: 20, hours: 50 },
+            ...(dailyDays[month] ? [{ employmentId: daily.employmentId, days: dailyDays[month]! }] : []),
+          ]);
+        }
+
+        const outcome = await calculateThr2027();
+        expect(outcome.policyProblems).toEqual([]);
+        expect(outcome.blockerCount).toBe(0);
+        expect(outcome.employeeCount).toBe(3);
+
+        const rows = await thrRows();
+        expect([...rows.keys()].sort()).toEqual(
+          [permanent.employmentId, honorarium.employmentId, daily.employmentId].sort(),
+        );
+        expect(rows.has(dailyLeft.employmentId)).toBe(false);
+        // Permanent staff are untouched by the decision: the 3 000 000 basic salary of MKG 10.
+        expect(rows.get(permanent.employmentId)).toMatchObject({ payable: "3000000", averageWage: null });
+        // (11 x 1 070 000 + 150 000) / 12 = 993 333.33, rounded up.
+        expect(rows.get(honorarium.employmentId)).toMatchObject({ payable: "993334", lineCodes: ["THR"] });
+        expect(rows.get(honorarium.employmentId)!.averageWage).toMatchObject({
+          source: "SYSTEM",
+          windowStart: "2026-03",
+          windowEnd: "2027-02",
+          requiredMonths: 12,
+          coveredMonths: 12,
+          monthsWithPay: 12,
+          systemTotal: 11_920_000,
+          systemAverage: 993_334,
+          monthlyWage: 993_334,
+          hcInput: null,
+        });
+        expect((rows.get(honorarium.employmentId)!.averageWage!.periods as unknown[]).length).toBe(12);
+        // (120 000 + 330 000 + 300 000) / 3 = 250 000; x 2 / 12 = 41 666.67, rounded up.
+        expect(rows.get(daily.employmentId)).toMatchObject({ payable: "41667" });
+        expect(rows.get(daily.employmentId)!.averageWage).toMatchObject({
+          source: "SYSTEM", windowStart: "2026-12", requiredMonths: 3, coveredMonths: 3, systemAverage: 250_000,
+        });
+
+        // Aggregates only on the audit trail.
+        const audit = await pool.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM payroll_audit_events WHERE period_id = $1 AND action = 'payroll.period.calculated'",
+          [thr2027Id],
+        );
+        expect(audit.rows[0]!.payload).toMatchObject({
+          period_kind: "THR",
+          thr_average_wage_count: 2,
+          thr_average_wage_hc_input_count: 0,
+          thr_average_wage_incomplete_count: 0,
+        });
+
+        // The results route reads the trace beside each row; a salaried row carries none.
+        const listed = await listResults(pool, thr2027Id);
+        const listedByEmployment = new Map(listed.results.map((row) => [row.employmentId, row]));
+        expect(listedByEmployment.get(honorarium.employmentId)!.thrAverageWage).toMatchObject({ source: "SYSTEM" });
+        expect(listedByEmployment.get(permanent.employmentId)!.thrAverageWage).toBeNull();
+
+        // Slip, transfer list and the PPh21 sources work for them as for everyone else.
+        await pool.query("UPDATE payroll_periods SET state = 'PAYMENT_CONFIRMED' WHERE id = $1", [thr2027Id]);
+        expect(await draftPayslipsFromPeriod(pool, thr2027Id, actorAccountId)).toMatchObject({ ok: true, drafted: 3 });
+        const slip = await pool.query<{ kind: string; lines: Array<{ label: string; value: string }> }>(
+          "SELECT kind, lines FROM payslips WHERE employee_id = $1 AND source_period_id = $2",
+          [honorarium.employeeId, thr2027Id],
+        );
+        expect(slip.rows[0]!.kind).toBe("THR");
+        expect(slip.rows[0]!.lines).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ label: "Jenis", value: "THR Idul Fitri Uji" }),
+            expect.objectContaining({ label: "Masa kerja", value: "128 bulan" }),
+            expect.objectContaining({ label: "Tunjangan Hari Raya" }),
+          ]),
+        );
+        const transfers = await buildTransferList(pool, thr2027Id);
+        expect(transfers.map((row) => row.payable).sort()).toEqual(["3000000", "41667", "993334"]);
+        const sources = await loadPph21MonthSources(pool, thr2027Id);
+        expect(sources.rows.find((row) => row.employmentId === honorarium.employmentId)).toMatchObject({
+          periodKind: "THR",
+          termCategory: "KONTRAK_HONORER",
+          blockerCount: 0,
+          earnings: [{ code: "THR", amount: 993_334 }],
+        });
+      }, 60_000);
+
+      it("blocks a partly covered window instead of guessing, then takes the figure human capital typed", async () => {
+        const permanent = await newEmployment({ category: "TETAP" });
+        const honorarium = await newEmployment({ category: "KONTRAK_HONORER" });
+        const pay = [{ employmentId: honorarium.employmentId, days: 20, hours: 50 }];
+        for (const month of ["2026-12", "2027-01", "2027-02"]) await salaryMonth(month, pay);
+        // Calculated but never approved: its figures are not facts, so the month is not covered.
+        await salaryMonth("2026-11", [{ employmentId: honorarium.employmentId, days: 25, hours: 99 }], "CALCULATED");
+
+        const blocked = await calculateThr2027();
+        expect(blocked.blockerCount).toBe(1);
+        let rows = await thrRows();
+        expect(rows.get(honorarium.employmentId)).toMatchObject({ payable: "0", lineCodes: [] });
+        expect(rows.get(honorarium.employmentId)!.blockers).toEqual([
+          {
+            code: "THR_AVERAGE_WAGE_INCOMPLETE",
+            message:
+              "Rata-rata upah belum lengkap: sistem mencakup 3 dari 12 bulan yang diminta; isi input rata-rata upah THR pegawai ini.",
+          },
+        ]);
+        // The partial figure is stored as a reference for the screen, not used.
+        expect(rows.get(honorarium.employmentId)!.averageWage).toMatchObject({
+          source: "NONE",
+          requiredMonths: 12,
+          coveredMonths: 3,
+          systemTotal: 3_210_000,
+          systemAverage: null,
+          partialAverage: 1_070_000,
+          monthlyWage: 0,
+        });
+        expect(rows.get(permanent.employmentId)).toMatchObject({ payable: "3000000" });
+
+        await typeAverageWage(honorarium.employmentId, 1_000_000);
+        const typed = await calculateThr2027();
+        expect(typed.blockerCount).toBe(0);
+        rows = await thrRows();
+        expect(rows.get(honorarium.employmentId)).toMatchObject({ payable: "1000000", blockers: [], lineCodes: ["THR"] });
+        expect(rows.get(honorarium.employmentId)!.averageWage).toMatchObject({
+          source: "HC_INPUT", hcInput: 1_000_000, coveredMonths: 3, partialAverage: 1_070_000, monthlyWage: 1_000_000,
+        });
+        const audit = await pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM payroll_audit_events
+           WHERE period_id = $1 AND action = 'payroll.period.calculated' ORDER BY occurred_at DESC LIMIT 1`,
+          [thr2027Id],
+        );
+        expect(audit.rows[0]!.payload).toMatchObject({
+          thr_average_wage_count: 1, thr_average_wage_hc_input_count: 1, thr_average_wage_incomplete_count: 0,
+        });
+
+        // Typed for someone paid a salary: refused, not left unused on the period.
+        await typeAverageWage(permanent.employmentId, 2_000_000);
+        await calculateThr2027();
+        rows = await thrRows();
+        expect(rows.get(permanent.employmentId)!.blockers.map((blocker) => blocker.code)).toEqual(["INPUT_INVALID"]);
+      }, 60_000);
+
+      it("refuses to approve a THR whose average rests on a salary period reopened since", async () => {
+        const honorarium = await newEmployment({ category: "KONTRAK_HONORER", startedOn: "2026-12-01" });
+        const sourceIds: string[] = [];
+        for (const month of ["2026-12", "2027-01", "2027-02"]) {
+          sourceIds.push(await salaryMonth(month, [{ employmentId: honorarium.employmentId, days: 20 }]));
+        }
+        expect((await calculateThr2027()).blockerCount).toBe(0);
+        // Three whole months of service on an average of 300 000: 300 000 x 3 / 12.
+        expect((await thrRows()).get(honorarium.employmentId)).toMatchObject({ payable: "75000" });
+
+        const approve = async () => {
+          const current = (await getPeriod(pool, thr2027Id))!;
+          return applyTransition(pool, {
+            periodId: thr2027Id,
+            action: "approve",
+            nextState: "APPROVED",
+            auditAction: "payroll.period.approved",
+            actorAccountId,
+            reason: null,
+            expectedVersion: current.version,
+            blockerCount: 0,
+            fromState: current.state,
+          });
+        };
+
+        await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [thr2027Id]);
+        // January is reopened and approved again: its figures may no longer be the ones read.
+        await pool.query(
+          "UPDATE payroll_periods SET reopen_count = reopen_count + 1 WHERE id = $1",
+          [sourceIds[1]],
+        );
+        const refused = await approve();
+        expect(refused.applied).toBe(false);
+        expect(refused.refusal?.code).toBe("PAYROLL_THR_AVERAGE_WAGE_STALE");
+        expect((await getPeriod(pool, thr2027Id))!.state).toBe("SUBMITTED");
+
+        // Recalculated against the periods as they stand now, the same THR is approved.
+        await pool.query("UPDATE payroll_periods SET state = 'CALCULATED' WHERE id = $1", [thr2027Id]);
+        expect((await calculateThr2027()).blockerCount).toBe(0);
+        await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [thr2027Id]);
+        expect((await approve()).applied).toBe(true);
+        expect((await getPeriod(pool, thr2027Id))!.state).toBe("APPROVED");
+      }, 60_000);
     });
   });
 });

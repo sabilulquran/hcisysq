@@ -57,6 +57,8 @@ import {
   INPUT_KEYS,
   MANUAL_INPUT_KEYS,
   REASON_REQUIRED_INPUT_KEYS,
+  THR_MANUAL_INPUT_KEYS,
+  THR_ONLY_INPUT_KEYS,
   INPUT_ORIGINS,
   listInputs,
   listResults,
@@ -81,9 +83,6 @@ const createBody = z.object({
   holidayDate: isoDate.optional(),
   holidayName: z.string().trim().min(1).max(120).optional(),
 });
-
-/** PAY-003-THR T8: the one input typed on a THR period. */
-const THR_MANUAL_INPUT_KEYS: readonly string[] = ["ADJUSTMENT"];
 
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -137,6 +136,15 @@ const inputsBody = z.object({
             code: z.ZodIssueCode.custom,
             path: [index, "value"],
             message: `Input ${input.inputKey} tidak boleh bernilai negatif.`,
+          });
+        }
+        // Mirrors payroll_period_inputs_thr_average_wage_whole in migration 0167: an average wage
+        // is a positive whole rupiah (payroll-thr.md section 2.1 H8).
+        if (input.inputKey === "THR_AVERAGE_WAGE" && !(Number.isSafeInteger(input.value) && input.value > 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: "Rata-rata upah THR harus rupiah bulat lebih dari nol.",
           });
         }
       }
@@ -597,17 +605,28 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // The resolver owns its two keys: it writes them and clears them. A hand
     // written value would be thrown away by the next resolve, so this route
     // refuses what it does not publish as manual.
-    // PAY-003-THR T8: a THR period pays one month of wages and takes only an adjustment.
+    // PAY-003-THR T8: a THR period pays one month of wages; it takes an adjustment and, for an
+    // honorarium worker, the average wage human capital established (T5).
     if (period.kind === "THR") {
       const foreign = body.data.inputs.find((input) => !THR_MANUAL_INPUT_KEYS.includes(input.inputKey));
       if (foreign) {
         return send(reply, 409, {
           code: "PAYROLL_INPUT_NOT_FOR_THR",
-          message: `Input ${foreign.inputKey} tidak berlaku untuk periode THR; hanya penyesuaian yang dapat dicatat.`,
+          message: `Input ${foreign.inputKey} tidak berlaku untuk periode THR; hanya penyesuaian dan rata-rata upah THR yang dapat dicatat.`,
+        });
+      }
+    } else {
+      const thrOnly = body.data.inputs.find((input) => THR_ONLY_INPUT_KEYS.includes(input.inputKey));
+      if (thrOnly) {
+        return send(reply, 409, {
+          code: "PAYROLL_INPUT_ONLY_FOR_THR",
+          message: `Input ${thrOnly.inputKey} hanya berlaku untuk periode THR.`,
         });
       }
     }
-    const resolverOwned = body.data.inputs.find((input) => !MANUAL_INPUT_KEYS.includes(input.inputKey));
+    const resolverOwned = body.data.inputs.find(
+      (input) => !MANUAL_INPUT_KEYS.includes(input.inputKey) && !THR_ONLY_INPUT_KEYS.includes(input.inputKey),
+    );
     if (resolverOwned) {
       return send(reply, 409, {
         code: "PAYROLL_INPUT_RESOLVER_OWNED",
@@ -632,7 +651,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (missingDecision) {
       return send(reply, 400, {
         code: "PAYROLL_DECISION_REQUIRED",
-        message: "Penyesuaian gaji membutuhkan referensi keputusan.",
+        message:
+          missingDecision.inputKey === "THR_AVERAGE_WAGE"
+            ? "Rata-rata upah THR membutuhkan referensi keputusan."
+            : "Penyesuaian gaji membutuhkan referensi keputusan.",
       });
     }
 

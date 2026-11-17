@@ -25,9 +25,18 @@ export const INPUT_KEYS = [
   "TEACHING_HOURS_PER_WEEK_OVERRIDE",
   "ANNUAL_PERFORMANCE_OVERRIDE",
   "MONTHLY_PERFORMANCE_OVERRIDE",
+  // PAY-003-THR T5 (payroll-thr.md section 2.1 H8): the average monthly wage of an honorarium
+  // worker, typed on a THR period when the system does not cover the months the rule asks for.
+  "THR_AVERAGE_WAGE",
 ] as const;
 
 export type InputKey = (typeof INPUT_KEYS)[number];
+
+/** Keys that exist on a THR period only; a monthly period refuses them. */
+export const THR_ONLY_INPUT_KEYS: readonly InputKey[] = ["THR_AVERAGE_WAGE"];
+
+/** PAY-003-THR T8: what an operator types on a THR period. */
+export const THR_MANUAL_INPUT_KEYS: readonly InputKey[] = ["ADJUSTMENT", "THR_AVERAGE_WAGE"];
 
 /**
  * The two keys the attendance resolver owns. It writes them and clears them,
@@ -41,7 +50,7 @@ export const ATTENDANCE_INPUT_KEYS: readonly InputKey[] = ["OVERTIME_HOURS", "CO
  * from the screen that offers them.
  */
 export const MANUAL_INPUT_KEYS: readonly InputKey[] = INPUT_KEYS.filter(
-  (key) => !ATTENDANCE_INPUT_KEYS.includes(key),
+  (key) => !ATTENDANCE_INPUT_KEYS.includes(key) && !THR_ONLY_INPUT_KEYS.includes(key),
 );
 
 /** Section 4: these change pay by hand, so they carry a reason. */
@@ -50,10 +59,11 @@ export const REASON_REQUIRED_INPUT_KEYS: readonly InputKey[] = [
   "ARREARS",
   "PRORATION_FACTOR",
   "FULL_PAY_DESPITE_LEAVING",
+  "THR_AVERAGE_WAGE",
 ];
 
-/** A salary adjustment also names the decision it comes from. */
-export const DECISION_REQUIRED_INPUT_KEYS: readonly InputKey[] = ["ADJUSTMENT"];
+/** A salary adjustment also names the decision it comes from; so does a typed THR average wage. */
+export const DECISION_REQUIRED_INPUT_KEYS: readonly InputKey[] = ["ADJUSTMENT", "THR_AVERAGE_WAGE"];
 
 export const INPUT_ORIGINS = ["ATTENDANCE", "MANUAL", "IMPORT"] as const;
 export type InputOrigin = (typeof INPUT_ORIGINS)[number];
@@ -210,6 +220,11 @@ export type ResultRow = {
   bpjsBase: string;
   blockers: unknown;
   calculatedAt: string;
+  /**
+   * PAY-003-THR section 2.1 H10: how an honorarium worker's month of wages was arrived at. Null on
+   * a monthly period and for a salaried employee. A per-person figure, read like the result.
+   */
+  thrAverageWage: unknown;
 };
 
 export type ResultLineRow = {
@@ -230,7 +245,8 @@ export async function listResults(
     `SELECT latest.employment_id AS "employmentId", latest.revision, latest.gross, latest.deductions,
             latest.net, latest.payable, latest.employer_cost AS "employerCost",
             latest.pay_factor AS "payFactor", latest.pay_factor_reason AS "payFactorReason",
-            latest.bpjs_base AS "bpjsBase", latest.blockers, latest.calculated_at AS "calculatedAt"
+            latest.bpjs_base AS "bpjsBase", latest.blockers, latest.calculated_at AS "calculatedAt",
+            latest.input_snapshot -> 'thr_average_wage' AS "thrAverageWage"
      FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      ORDER BY latest.employment_id`,
     [periodId],

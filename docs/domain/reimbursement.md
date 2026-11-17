@@ -4,7 +4,7 @@
 **Spesifikasi:** REIMB-001
 **Tanggal:** 2026-11-13
 **Keputusan produk:** instruksi owner 2026-11-11 "selesaikan dulu semua PRD HCIS" memindahkan REIMB-001 dari pasca-MVP (`deferred`) ke lingkup yang dibangun sekarang. AGENTS.md §5 dan `docs/product/mvp.md` diperbarui dalam perubahan yang sama.
-**Terkait:** APR-001, ORG-002, ORG-004, TRIP-001, LOAN-001, EMP-011, NOTIF-003, NOTIF-004, PAY-001, PAY-002, PAY-003, AUTH-011, ENG-LIST-001, HELP-001
+**Terkait:** APR-001, ORG-002, ORG-004, TRIP-001, TRIP-002, LOAN-001, EMP-011, NOTIF-003, NOTIF-004, PAY-001, PAY-002, PAY-003, AUTH-011, ENG-LIST-001, HELP-001
 
 ## 1. Tujuan
 
@@ -34,8 +34,8 @@ Termasuk (Paket 1):
 
 | Di luar lingkup | Alasan |
 | --- | --- |
-| Uang muka (advance) perjalanan dan penyelesaiannya | Butuh aturan pertanggungjawaban yang belum ada. Klaim Paket 1 selalu pengganti biaya yang sudah dikeluarkan. TBD owner. |
-| Uang harian/per diem dan tarif standar per golongan | Belum ada tabel tarif. Pegawai mengklaim biaya nyata dengan bukti. |
+| Uang muka (advance) perjalanan dan penyelesaiannya | Dibangun sebagai **TRIP-002** (`docs/domain/trip-advance-per-diem.md`). Klaim REIMB-001 tetap pengganti biaya yang sudah dikeluarkan; klaim yang tertaut ke perjalanan dengan uang muka **diperhitungkan** saat penyelesaian uang muka (cara bayar `ADVANCE`, D-19) alih-alih dibayar sendiri. |
+| Uang harian/per diem | Dibangun sebagai **TRIP-002**: tarif berversi per zona, dihitung saat penyelesaian uang muka. Tarif per golongan belum ada. Klaim REIMB-001 tetap biaya nyata dengan bukti. |
 | Pembayaran otomatis lewat payroll | Jalur slip resmi tetap PAY-001/PAY-002 (AGENTS.md §5). Penyerahan ke periode PAY-003 dibangun (§9) di balik saklar `DRAFT` yang mati (D-11). Route reimbursement hanya membaca `payroll_periods` (bulan yang sudah diajukan) dan menulis tabel penyerahannya sendiri. |
 | Koreksi/pembatalan pembayaran yang sudah dicatat | D-18. Satu klaim satu pembayaran; kesalahan dicatat Keuangan di luar HCIS sampai ada keputusan. |
 | Ambang nominal legacy (Kabid > Rp1 jt, Direktur > Rp3 jt, Finance Head sebagai tahap) | Resolver APR-001 tidak boleh membaca teks jabatan (D-01). |
@@ -64,6 +64,7 @@ Termasuk (Paket 1):
 | D-16 | **Sinyal bukti ganda:** detail Keuangan menandai bukti yang SHA-256-nya juga dipakai klaim lain yang sudah dikirim dan tidak dibatalkan (draf pegawai lain tidak pernah dihitung). Hanya peringatan, bukan penolakan otomatis. | DRAFT |
 | D-17 | **Laporan:** ringkasan per kategori dan per status dalam rentang tanggal pengajuan; ekspor CSV klaim dengan rentang ≤ 366 hari dan ≤ 20.000 baris (lebih dari itu 422, tidak dipotong). Setiap ekspor dicatat sebagai audit event. | DRAFT |
 | D-18 | Pembayaran yang sudah dicatat tidak dapat dikoreksi di Paket 1. | DRAFT |
+| D-19 | **Pertanggungjawaban uang muka (TRIP-002).** Selama perjalanan tertaut punya uang muka yang belum diselesaikan (`IN_REVIEW`, `APPROVED`, `DISBURSED`, `SETTLEMENT_SUBMITTED`), `pay` menjawab 409 `REIMBURSEMENT_SETTLED_THROUGH_ADVANCE`; Keuangan menyelesaikan uang muka, dan setiap klaim `VERIFIED` tertaut menjadi `PAID` dengan cara `ADVANCE` sebesar total disetujui. Perjalanan yang dibatalkan sesudah uang mukanya dicairkan tetap dapat ditautkan (perluasan D-06). | DRAFT |
 
 ## 4. Actor
 

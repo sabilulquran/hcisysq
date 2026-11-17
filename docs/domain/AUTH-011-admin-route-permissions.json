@@ -5910,6 +5910,184 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/trip-advances/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/trip-advances/me/trips",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/trip-advances/me/estimate",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/trip-advances/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/trip-advances/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/trip-advances/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/trip-advances/me/:id/settlement",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/trip-advances/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/trip-advances/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-advances",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-advances/claimants",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-advances/export.csv",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-advances/:id",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-advances/:id/reject",
+    "permissions": [
+      "trip_advances.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-advances/:id/disburse",
+    "permissions": [
+      "trip_advances.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-advances/:id/settle",
+    "permissions": [
+      "trip_advances.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-advances/:id/top-up",
+    "permissions": [
+      "trip_advances.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-advances/:id/refunds",
+    "permissions": [
+      "trip_advances.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-per-diem-rates",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "POST",
+    "url": "/admin/trip-per-diem-rates",
+    "permissions": [
+      "trip_per_diem.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/rewards/routes.ts",
     "method": "GET",
     "url": "/admin/rewards/source",

@@ -6,6 +6,7 @@ import type { Pool, PoolClient } from "pg";
 
 import { DOCUMENT_TYPE_RULES, type DocumentType } from "../employee-documents/domain.js";
 import { getRolloutMode } from "../employment/infrastructure/postgres-employment-store.js";
+import { DUE_ON_SQL as TRIP_ADVANCE_DUE_ON_SQL } from "../trip-advances/domain.js";
 import { daysBetween, dueLabel, formatJakartaDate, thresholdReached } from "./domain.js";
 
 type Db = Pool | PoolClient;
@@ -106,7 +107,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
   {
     key: "approval.pending_digest",
     label: "Persetujuan menunggu",
-    description: "Ringkasan pagi bila ada pengajuan cuti, dinas, pinjaman, reimbursement, atau tugas luar/WFH yang menunggu persetujuan Anda.",
+    description: "Ringkasan pagi bila ada pengajuan cuti, dinas, pinjaman, reimbursement, uang muka dinas, atau tugas luar/WFH yang menunggu persetujuan Anda.",
     defaultWhatsApp: true,
     fireHour: 7,
     weekdays: MONDAY_TO_SATURDAY,
@@ -127,6 +128,10 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         UNION ALL
         SELECT step.approver_employee_id, NULL::uuid
           FROM reimbursement_approval_steps step JOIN reimbursement_claims request ON request.id = step.claim_id
+         WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
+        UNION ALL
+        SELECT step.approver_employee_id, NULL::uuid
+          FROM trip_advance_approval_steps step JOIN trip_advances request ON request.id = step.advance_id
          WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
         UNION ALL
         SELECT step.approver_employee_id, NULL::uuid
@@ -155,7 +160,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         accountId: row.accountId,
         employeeId: row.employeeId,
         title: `${row.pending} persetujuan menunggu Anda`,
-        body: "Pengajuan cuti, perjalanan dinas, pinjaman, reimbursement, atau tugas luar/WFH menunggu keputusan Anda.",
+        body: "Pengajuan cuti, perjalanan dinas, pinjaman, reimbursement, uang muka dinas, atau tugas luar/WFH menunggu keputusan Anda.",
         href: "/app/approvals",
         whatsappText: `HCIS: ${row.pending} pengajuan menunggu persetujuan Anda. Buka menu Persetujuan di HCIS.`,
       }));
@@ -231,6 +236,68 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         href: "/admin/reimbursements",
         whatsappText: `HCIS: ${toVerify} klaim reimbursement menunggu verifikasi dan ${toPay} menunggu pembayaran Keuangan.`,
       });
+    },
+  },
+  {
+    key: "trip_advance.finance_queue_digest",
+    label: "Uang muka dinas menunggu Keuangan",
+    description: "Ringkasan pagi bila ada uang muka dinas yang menunggu pencairan, penyelesaian, pembayaran selisih, pengembalian, atau terlambat dipertanggungjawabkan.",
+    defaultWhatsApp: true,
+    fireHour: 7,
+    weekdays: MONDAY_TO_SATURDAY,
+    async generate(db, { today }) {
+      // TRIP-002 §8: counts only, never a name or an amount (D-17).
+      const count = await db.query<{ toDisburse: number; toSettle: number; toTopUp: number; toRefund: number; overdue: number }>(
+        `SELECT count(*) FILTER (WHERE advance.status = 'APPROVED' AND advance.amount > 0)::int AS "toDisburse",
+                count(*) FILTER (WHERE advance.status = 'SETTLEMENT_SUBMITTED')::int AS "toSettle",
+                count(*) FILTER (WHERE advance.status = 'AWAITING_TOP_UP')::int AS "toTopUp",
+                count(*) FILTER (WHERE advance.status = 'AWAITING_REFUND')::int AS "toRefund",
+                count(*) FILTER (WHERE advance.status = 'DISBURSED' AND $1::date > ${TRIP_ADVANCE_DUE_ON_SQL})::int AS overdue
+           FROM trip_advances advance JOIN business_trip_requests trip ON trip.id = advance.business_trip_id
+          WHERE advance.status IN ('APPROVED', 'DISBURSED', 'SETTLEMENT_SUBMITTED', 'AWAITING_TOP_UP', 'AWAITING_REFUND')`,
+        [today],
+      );
+      const row = count.rows[0] ?? { toDisburse: 0, toSettle: 0, toTopUp: 0, toRefund: 0, overdue: 0 };
+      const total = row.toDisburse + row.toSettle + row.toTopUp + row.toRefund + row.overdue;
+      if (!total) return [];
+      const summary = `${row.toDisburse} menunggu pencairan, ${row.toSettle} menunggu penyelesaian, `
+        + `${row.toTopUp} menunggu pembayaran selisih, ${row.toRefund} menunggu pengembalian, ${row.overdue} terlambat dipertanggungjawabkan`;
+      return digestToHolders(await accountsWithPermission(db, ["trip_advances.manage"], today), {
+        today,
+        title: `${total} uang muka dinas perlu tindakan Keuangan`,
+        body: `Uang muka dinas: ${summary}.`,
+        href: "/admin/trip-advances",
+        whatsappText: `HCIS uang muka dinas: ${summary}.`,
+      });
+    },
+  },
+  {
+    key: "trip_advance.settlement_overdue",
+    label: "Pertanggungjawaban uang muka terlambat",
+    description: "Pengingat seminggu sekali bila uang muka dinas Anda belum dipertanggungjawabkan setelah tenggat.",
+    defaultWhatsApp: true,
+    fireHour: 7,
+    async generate(db, { today }) {
+      // TRIP-002 D-09: one reminder per advance per week of delay, never an amount.
+      const due = await db.query<{ advanceId: string; accountId: string; employeeId: string; daysLate: number }>(
+        `SELECT advance.id AS "advanceId", recipient_account.id AS "accountId", recipient.id AS "employeeId",
+                ($1::date - ${TRIP_ADVANCE_DUE_ON_SQL})::int AS "daysLate"
+           FROM trip_advances advance
+           JOIN business_trip_requests trip ON trip.id = advance.business_trip_id
+           ${employeeAccountJoin("advance.employee_id")}
+          WHERE advance.status = 'DISBURSED' AND $1::date > ${TRIP_ADVANCE_DUE_ON_SQL}
+          ORDER BY advance.id`,
+        [today],
+      );
+      return due.rows.map((row) => ({
+        occurrenceKey: `${row.advanceId}:w${Math.floor((row.daysLate - 1) / 7)}`,
+        accountId: row.accountId,
+        employeeId: row.employeeId,
+        title: "Uang muka dinas belum dipertanggungjawabkan",
+        body: "Tenggat pertanggungjawaban uang muka dinas Anda sudah lewat. Kirim klaim biaya lalu ajukan pertanggungjawaban.",
+        href: `/app/trip-advances?uangmuka=${row.advanceId}`,
+        whatsappText: "HCIS: uang muka dinas Anda belum dipertanggungjawabkan. Buka menu Uang Muka Dinas di HCIS.",
+      }));
     },
   },
   {

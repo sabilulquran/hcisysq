@@ -191,11 +191,11 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
     // 475 on main + 4 PAY-003 §7.4 routes (annual recap, 1721-A1, tax identity GET/PUT).
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(505); // + 13 TRAIN-001 R4 HC routes, + 13 REWARD-001 admin routes
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(516); // + 13 TRAIN-001 R4 HC routes, + 11 TRIP-002 admin routes, + 13 REWARD-001 admin routes
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
     // 155 on main + the two own-1721-A1 routes.
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(167); // + 7 TRAIN-001 R4 employee routes, + 3 REWARD-001 self-service routes
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(176); // + 7 TRAIN-001 R4 employee routes, + 9 TRIP-002 employee routes, + 3 REWARD-001 self-service routes
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(2);
     // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still
@@ -717,7 +717,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         WHERE r.role_key = 'finance_officer' ORDER BY 1`,
     )).rows.map((row) => row.key);
     // REIMB-001 (migration 0149) added the reimbursement register to the role.
-    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage", "reimbursements.manage", "reimbursements.read"]);
+    expect(finance).toEqual([
+      "loans.manage", "loans.read", "payroll.loans.manage", "reimbursements.manage", "reimbursements.read",
+      "trip_advances.manage", "trip_advances.read", "trip_per_diem.manage",
+    ]);
     expect(await permissionsOf("employee")).toEqual(finance);
     expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(true);
     expect((await pool.query(

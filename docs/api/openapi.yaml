@@ -31,6 +31,7 @@ tags:
   - name: Employment
   - name: HR Documents
   - name: Business Travel
+  - name: Trip Advances
   - name: Work Arrangements
   - name: Performance
   - name: Employee Loans
@@ -543,6 +544,42 @@ paths:
     $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1reject'
   /admin/reimbursements/{id}/pay:
     $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1pay'
+  /trip-advances/me:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me'
+  /trip-advances/me/trips:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me~1trips'
+  /trip-advances/me/estimate:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me~1estimate'
+  /trip-advances/me/{id}:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me~1{id}'
+  /trip-advances/me/{id}/cancel:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me~1{id}~1cancel'
+  /trip-advances/me/{id}/settlement:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1me~1{id}~1settlement'
+  /trip-advances/approvals:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1approvals'
+  /trip-advances/approvals/{stepId}/decision:
+    $ref: './trip-advances.openapi.yaml#/paths/~1trip-advances~1approvals~1{stepId}~1decision'
+  /admin/trip-advances:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances'
+  /admin/trip-advances/claimants:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1claimants'
+  /admin/trip-advances/export.csv:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1export.csv'
+  /admin/trip-advances/{id}:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}'
+  /admin/trip-advances/{id}/reject:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}~1reject'
+  /admin/trip-advances/{id}/disburse:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}~1disburse'
+  /admin/trip-advances/{id}/settle:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}~1settle'
+  /admin/trip-advances/{id}/top-up:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}~1top-up'
+  /admin/trip-advances/{id}/refunds:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-advances~1{id}~1refunds'
+  /admin/trip-per-diem-rates:
+    $ref: './trip-advances.openapi.yaml#/paths/~1admin~1trip-per-diem-rates'
   /training/me/summary:
     $ref: './training.openapi.yaml#/paths/~1training~1me~1summary'
   /training/me/records:

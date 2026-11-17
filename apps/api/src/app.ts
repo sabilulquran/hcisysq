@@ -73,6 +73,7 @@ import { registerPerformanceRoutes } from "./modules/performance/routes.js";
 import { registerLoanRoutes } from "./modules/loans/routes.js";
 import { registerReimbursementRoutes } from "./modules/reimbursements/routes.js";
 import { registerRewardRoutes, registerRewardScheduler } from "./modules/rewards/routes.js";
+import { registerTripAdvanceRoutes } from "./modules/trip-advances/routes.js";
 import { registerMeetingRoutes } from "./modules/meetings/routes.js";
 import { registerMeetingRunner } from "./modules/meetings/runner.js";
 import { registerReminderEngine } from "./modules/reminders/engine.js";
@@ -244,6 +245,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerReimbursementRoutes(app, pool, config);
   // REWARD-001: award rounds from the Al-Qur'an scoreboard, and the monthly scheduler (not in tests).
   registerRewardScheduler(app, config, await registerRewardRoutes(app, pool, config));
+  await registerTripAdvanceRoutes(app, pool, config);
   await registerTrainingRoutes(app, pool, config);
   await registerReportRoutes(app, pool, config);
   await registerHelpRoutes(app, pool, config);

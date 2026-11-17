@@ -165,7 +165,7 @@ Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan
 
 ### Penghargaan (REWARD-001)
 
-Migration `0161_reward_permissions.sql`, berscope organisasi (`docs/domain/rewards.md` §7, DRAFT).
+Migration `0162_reward_permissions.sql`, berscope organisasi (`docs/domain/rewards.md` §7, DRAFT).
 
 | Permission | Pemegang | Catatan |
 |---|---|---|
@@ -174,6 +174,18 @@ Migration `0161_reward_permissions.sql`, berscope organisasi (`docs/domain/rewar
 | `reward.manage` | Kepala HC (`human_capital_lead`) | susun ulang, tetapkan, tidak tetapkan, peringkat berikutnya, terbitkan, batalkan, cabut, kirim ulang; tidak atas dirinya sendiri |
 
 Jalur R-09: pemegang role `human_capital_admin` boleh memutuskan kandidat yang merupakan Kepala HCM, hanya kandidat itu. Pegawai tidak memerlukan permission untuk daftar penerima, riwayat, dan sertifikatnya. Super Admin tidak memperoleh `reward.*` lewat kompatibilitas legacy.
+
+### Uang muka dan uang harian dinas (TRIP-002)
+
+Migration `0160_trip_advances.sql`, berscope organisasi (`docs/domain/trip-advance-per-diem.md` D-15 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `trip_advances.read` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | register, detail, ekspor CSV (dicatat), typeahead pengaju, membaca tarif |
+| `trip_advances.manage` | Keuangan (`finance_officer`) | tolak, cairkan, selesaikan, bayar kekurangan, catat pengembalian; tidak atas uang muka sendiri; approver uang muka itu tidak mencairkan, menyelesaikan, atau membayar kekurangannya |
+| `trip_per_diem.manage` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | mencatat versi tarif uang harian; juga membaca tarif |
+
+Pegawai dan approver tidak memerlukan permission. `trip_advances.*`, `reimbursements.*`, dan `payroll.*` tidak saling membuka. Super Admin tidak memperoleh izin ini lewat kompatibilitas legacy.
 
 ### Pusat Bantuan (HELP-001)
 

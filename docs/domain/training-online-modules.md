@@ -73,7 +73,7 @@ Pemutar web: tanpa kontrol bawaan untuk maju; posisi yang melewati batas terkred
 
 `training.module.created`, `training.module.updated`, `training.module.published`, `training.module.archived`, `training.material.created`, `training.material.removed`, `training.material.video_uploaded`, `training.material.completed` (metadata `via`: `WATCHED`/`READ`/`HC_MANUAL`; alasan sebagai `note` untuk manual), `training.quiz.attempted` (skor, lulus; tanpa jawaban), `training.quiz.attempt_granted` (alasan sebagai `note`), `training.record.created` (penyelesaian program daring). Detak tidak diaudit per detak.
 
-## 9. Penyimpanan (migrasi `0156`)
+## 9. Penyimpanan (migrasi `0157`)
 
 ```text
 training_programs.delivery          kolom baru, bawaan CLASSROOM

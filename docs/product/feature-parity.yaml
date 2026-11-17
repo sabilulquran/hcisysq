@@ -781,7 +781,7 @@ features:
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
       sealed per employee (spec §7.4, migration 0157). PPh21 borne by the yayasan (PPH21_EMPLOYER line
       and the employer-cost summary) and daily TER 21-100-03 for honorer/lepas are built behind
-      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0158). Out of v1 by the spec (§1.2):
+      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0159). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.

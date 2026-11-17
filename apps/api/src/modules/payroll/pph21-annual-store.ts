@@ -129,35 +129,49 @@ export async function loadAnnualMonths(
     periodEnd: string;
     payDate: string;
     state: string;
+    kind: "REGULAR" | "THR";
   }>(
     `SELECT id,
             to_char(period_month, 'YYYY-MM-DD') AS "periodMonth",
             to_char(period_start, 'YYYY-MM-DD') AS "periodStart",
             to_char(period_end, 'YYYY-MM-DD') AS "periodEnd",
             to_char(pay_date, 'YYYY-MM-DD') AS "payDate",
-            state
+            state,
+            period_kind AS kind
      FROM payroll_periods
      WHERE extract(year FROM period_month)::int = $1
-     ORDER BY period_month`,
+     ORDER BY period_month, period_kind`,
     [year],
   );
 
   const months: AnnualMonth[] = [];
   const pendingPeriods: AnnualYear["pendingPeriods"] = [];
   const periodsWithoutTer: string[] = [];
+  // PAY-003-THR T10: a masa pajak is a month, and a THR paid in it joins that month's gross. The
+  // final periods of one month (salary and THR) are therefore read together, as one month, with
+  // the TER policy of the latest pay date among them, exactly like the monthly report.
+  const finalByMonth = new Map<string, typeof periods.rows>();
   for (const period of periods.rows) {
     if (options.beforeMonth !== undefined && period.periodMonth.slice(0, 7) >= options.beforeMonth) continue;
     if (!FINAL_STATES.includes(period.state)) {
       pendingPeriods.push({ periodMonth: period.periodMonth.slice(0, 7), state: period.state });
       continue;
     }
+    finalByMonth.set(period.periodMonth, [...(finalByMonth.get(period.periodMonth) ?? []), period]);
+  }
+  for (const monthPeriods of finalByMonth.values()) {
+    const period = monthPeriods.find((entry) => entry.kind === "REGULAR") ?? monthPeriods[0]!;
+    const payDate = monthPeriods.reduce((latest, entry) => (entry.payDate > latest ? entry.payDate : latest), period.payDate);
     // Filtered in SQL: a self read never loads the whole organisation's rows.
-    const rows = await loadPph21SourceRows(pool, period.id, employeeId);
+    const rows: Awaited<ReturnType<typeof loadPph21SourceRows>> = [];
+    for (const entry of monthPeriods) {
+      for (const row of await loadPph21SourceRows(pool, entry.id, employeeId)) rows.push({ ...row, periodKind: entry.kind });
+    }
     if (rows.length === 0) continue;
-    const settings = await findPph21Settings(pool, period.payDate);
+    const settings = await findPph21Settings(pool, payDate);
     // An unreadable settings row is treated as off here; the monthly report refuses it loudly.
     const effective = settings.ok ? settings.settings : DEFAULT_PPH21_SETTINGS;
-    const ter = await findPph21Policy(pool, period.payDate);
+    const ter = await findPph21Policy(pool, payDate);
     let terTaxByEmployee: Map<string, number | null> | null = null;
     if (ter.ok) {
       const report = buildPph21Report({ period, policy: ter.policy, rows, settings: effective });

@@ -53,7 +53,9 @@ export type Pph21Flag =
   /** Average daily gross above the policy ceiling: the Pasal 17 rule applies, not computed in v1. */
   | "DAILY_ABOVE_CEILING"
   /** Daily TER is on, but the person also has a permanent employment this month: monthly TER for the whole gross. */
-  | "MIXED_TERMS";
+  | "MIXED_TERMS"
+  // PAY-003-THR T10: the month's gross includes a THR paid in it.
+  | "INCLUDES_THR";
 
 /** One employment's latest result of the period, as the report needs it. */
 export type Pph21SourceRow = {
@@ -77,6 +79,8 @@ export type Pph21SourceRow = {
   deductions?: ReadonlyArray<{ code: string; amount: number }>;
   /** CONTRACT_ATTENDANCE_DAYS of the period, the divisor of daily TER (section 7.5). */
   attendanceDays?: number | null;
+  /** PAY-003-THR T10: which period of the masa pajak the row comes from. Absent means REGULAR. */
+  periodKind?: "REGULAR" | "THR";
 };
 
 /** One person on the report. */
@@ -273,10 +277,14 @@ export function buildPph21Report(input: {
       flags.push("ANNUAL_CALCULATION_REQUIRED");
     }
     if (nonPermanent) flags.push("NON_PERMANENT_TERMS");
+    if (paid.some((source) => source.periodKind === "THR")) {
+      flags.push("INCLUDES_THR");
+    }
 
     rows.push({
       employeeId,
-      employmentIds: paid.map((source) => source.employmentId),
+      // One employment appears twice when its salary and its THR share the masa pajak.
+      employmentIds: [...new Set(paid.map((source) => source.employmentId))],
       employeeNumber: first.employeeNumber,
       fullName: first.fullName,
       ptkpStatus,

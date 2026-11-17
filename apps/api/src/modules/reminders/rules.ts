@@ -493,6 +493,8 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         `SELECT id, to_char(period_month, 'YYYY-MM') AS month, to_char(cutoff_end, 'YYYY-MM-DD') AS "cutoffEnd"
            FROM payroll_periods
           WHERE state IN ('DRAFT', 'COLLECTING') AND cutoff_end BETWEEN $1::date AND $1::date + 3
+            -- PAY-003-THR: a THR period has no overtime or attendance input to close.
+            AND period_kind = 'REGULAR'
           ORDER BY id`,
         [today],
       );

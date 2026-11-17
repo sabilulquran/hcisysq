@@ -42,11 +42,16 @@ export function payslipEmploymentStatusLabel(value: string | null | undefined) {
   return normalized ? normalized : null;
 }
 
+/** The period, prefixed with THR for a THR slip so it never reads as a second salary slip. */
+export function payslipPeriodLabel(item: Pick<PayslipSummary, "period" | "kind">) {
+  return item.kind === "THR" ? `THR · ${formatPayslipPeriod(item.period)}` : formatPayslipPeriod(item.period);
+}
+
 export function payslipOptionLabel(item: PayslipSummary) {
   const status = payslipEmploymentStatusLabel(item.employmentStatus);
   return status
-    ? `${formatPayslipPeriod(item.period)} · ${status}`
-    : formatPayslipPeriod(item.period);
+    ? `${payslipPeriodLabel(item)} · ${status}`
+    : payslipPeriodLabel(item);
 }
 
 export function filterPayslipOptions(items: PayslipSummary[], query: string) {
@@ -145,7 +150,9 @@ function PayslipPaper({
           alt="Yayasan Sabilul Qur'an"
           className="mx-auto h-[5.5rem] w-auto max-w-[26rem] object-contain"
         />
-        <h2 className="mt-3 text-[12pt] font-extrabold tracking-[0.12em]">SLIP GAJI</h2>
+        <h2 className="mt-3 text-[12pt] font-extrabold tracking-[0.12em]">
+          {payslip.kind === "THR" ? "SLIP THR" : "SLIP GAJI"}
+        </h2>
         <p className="mt-1 text-[9pt] text-white/85">Periode {formatPayslipPeriod(payslip.period)}</p>
         {employmentStatus ? (
           <span className="mt-2 inline-flex rounded-full bg-white/15 px-2.5 py-0.5 text-[8pt] font-bold">
@@ -424,7 +431,7 @@ export function EmployeePayslipsPage() {
                               }}
                               className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-normal hover:bg-surface"
                             >
-                              <span className="font-semibold text-brand-heading">{formatPayslipPeriod(item.period)}</span>
+                              <span className="font-semibold text-brand-heading">{payslipPeriodLabel(item)}</span>
                               {status ? <span className="text-xs text-muted-foreground">{status}</span> : null}
                             </button>
                           );

@@ -87,3 +87,21 @@ describe.each([
     expect(source).not.toMatch(/\bprocess\.env\b/);
   });
 });
+
+/** PAY-003-THR: the THR rule is held to the same rule, and leans on the engine only. */
+const thrPath = fileURLToPath(new URL("../src/modules/payroll/thr.ts", import.meta.url));
+const thrSource = readFileSync(thrPath, "utf8");
+
+describe("PAY-003-THR purity", () => {
+  it("imports only the engine", () => {
+    const sources = [...thrSource.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map((match) => match[1]);
+    expect([...new Set(sources)]).toEqual(["./engine.js"]);
+  });
+
+  it("reaches for no ambient state", () => {
+    expect(thrSource).not.toMatch(/\bnew Date\s*\(/);
+    expect(thrSource).not.toMatch(/\bDate\.now\s*\(/);
+    expect(thrSource).not.toMatch(/\bMath\.random\s*\(/);
+    expect(thrSource).not.toMatch(/\bprocess\.env\b/);
+  });
+});

@@ -28,6 +28,10 @@ export type PayrollPeriodOperation = "resolve_attendance" | "draft_payslips" | "
 export interface PayrollPeriod {
   id: string;
   legalEntityKey: string | null;
+  /** PAY-003-THR: a monthly period or a THR period. Optional only for an older API build. */
+  kind?: "REGULAR" | "THR";
+  holidayDate?: string | null;
+  holidayName?: string | null;
   periodMonth: string;
   payDate: string;
   periodStart: string;
@@ -243,6 +247,12 @@ export interface PayrollPeriodInput {
   recordedAt: string;
 }
 
+/** How a period is named on screen: the month, or THR and its holiday. */
+export function payrollPeriodTitle(period: Pick<PayrollPeriod, "kind" | "holidayName" | "periodMonth">): string {
+  if (period.kind === "THR") return `THR ${period.holidayName ?? ""}`.trim();
+  return `Payroll ${period.periodMonth.slice(0, 7)}`;
+}
+
 export class PayrollApiError extends Error {
   readonly code: string;
 
@@ -287,6 +297,9 @@ export function createPayrollPeriod(body: {
   payDate?: string;
   cutoffStart?: string;
   cutoffEnd?: string;
+  kind?: "REGULAR" | "THR";
+  holidayDate?: string;
+  holidayName?: string;
 }) {
   return request<{ period: PayrollPeriod }>("/api/payroll/periods", {
     method: "POST",

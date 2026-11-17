@@ -31,6 +31,8 @@ export const EARNING_CODES = [
   // REIMB-001 section 9: a reimbursement handed to payroll. Not taxable, not a
   // fixed allowance, and paid outside the pay factor (section 3.6).
   "REIMBURSE",
+  // PAY-003-THR: the only line of a THR period besides an adjustment (payroll-thr.md T8).
+  "THR",
 ] as const;
 
 export const DEDUCTION_CODES = [
@@ -98,7 +100,9 @@ export type PayrollBlockerCode =
   | "BANK_ACCOUNT_MISSING"
   // Raised by the PERF-001 link (performance-link.ts): a finalized review
   // carries a predicate the PERFORMANCE_PERCENT policy does not map.
-  | "PERFORMANCE_PREDICATE_UNMAPPED";
+  | "PERFORMANCE_PREDICATE_UNMAPPED"
+  // PAY-003-THR T5: an honorarium term listed as THR-eligible has no monthly wage to take.
+  | "THR_WAGE_BASIS_UNSUPPORTED";
 
 export type PayrollBlocker = { code: PayrollBlockerCode; message: string };
 

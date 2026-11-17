@@ -163,6 +163,8 @@ export const TRANSITIONS: Readonly<Record<PeriodAction, TransitionRule>> = {
 };
 
 export type PeriodSnapshot = {
+  /** PAY-003-THR: a THR period has no attendance-derived input. Absent means REGULAR. */
+  kind?: "REGULAR" | "THR";
   state: PeriodState;
   stateBeforeReopenRequest: PeriodState | null;
   submittedByAccountId: string | null;
@@ -305,6 +307,8 @@ const OPERATION_RULES: Readonly<Record<PeriodOperation, { from: readonly PeriodS
 export function availableOperations(period: PeriodSnapshot, actor: TransitionActor): PeriodOperation[] {
   return PERIOD_OPERATIONS.filter((operation) => {
     const rule = OPERATION_RULES[operation];
+    // THR pays one month of wages, not overtime or attendance (payroll-thr.md T8, T11).
+    if (operation === "resolve_attendance" && period.kind === "THR") return false;
     return rule.from.includes(period.state) && actor.organizationPermissions.includes(rule.permission);
   });
 }

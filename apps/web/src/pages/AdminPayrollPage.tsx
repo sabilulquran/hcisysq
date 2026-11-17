@@ -43,6 +43,12 @@ export function AdminPayrollPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newMonth, setNewMonth] = useState("");
+  // PAY-003-THR T1: a THR period names its holiday and is paid on a chosen date before it.
+  const [newKind, setNewKind] = useState<"REGULAR" | "THR">("REGULAR");
+  const [thrPayDate, setThrPayDate] = useState("");
+  const [holidayDate, setHolidayDate] = useState("");
+  const [holidayName, setHolidayName] = useState("");
+  const thrReady = thrPayDate !== "" && holidayDate !== "" && holidayName.trim() !== "";
 
   const canManagePeriods = hasPermission(session, "payroll.periods.manage");
   const canOpenReference = canAccessAdminPath(session, "/admin/payroll/reference");
@@ -77,12 +83,23 @@ export function AdminPayrollPage() {
   }, [load]);
 
   async function handleCreate() {
-    if (!newMonth) return;
+    if (newKind === "REGULAR" ? !newMonth : !thrReady) return;
     setCreating(true);
     setError(null);
     try {
-      // The month input gives YYYY-MM; a period is named by its first day.
-      const { period } = await createPayrollPeriod({ periodMonth: `${newMonth}-01` });
+      // The month input gives YYYY-MM; a period is named by its first day. A THR period belongs to
+      // the month it is paid in.
+      const { period } = await createPayrollPeriod(
+        newKind === "THR"
+          ? {
+              periodMonth: `${thrPayDate.slice(0, 7)}-01`,
+              kind: "THR",
+              payDate: thrPayDate,
+              holidayDate,
+              holidayName: holidayName.trim(),
+            }
+          : { periodMonth: `${newMonth}-01` },
+      );
       await navigate({ to: "/admin/payroll/$periodId", params: { periodId: period.id } });
     } catch (cause) {
       setError(cause instanceof PayrollApiError ? cause.message : "Periode gagal dibuat.");
@@ -111,21 +128,67 @@ export function AdminPayrollPage() {
             <h2 className="text-sm font-semibold">Buat periode</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Jendela cutoff dan tanggal gajian memakai default kebijakan; keduanya dapat diubah setelah periode dibuat.
+              THR dibayar paling lambat sesuai kebijakan THR sebelum hari raya; batasnya diperiksa saat dihitung.
             </p>
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <label className="text-sm">
-                <span className="mb-1 block text-muted-foreground">Bulan periode</span>
-                <input
-                  type="month"
-                  value={newMonth}
-                  onChange={(event) => setNewMonth(event.target.value)}
+                <span className="mb-1 block text-muted-foreground">Jenis</span>
+                <select
+                  value={newKind}
+                  onChange={(event) => setNewKind(event.target.value === "THR" ? "THR" : "REGULAR")}
                   className="h-9 rounded-md border bg-background px-3 text-sm"
-                />
+                >
+                  <option value="REGULAR">Gaji bulanan</option>
+                  <option value="THR">THR (Tunjangan Hari Raya)</option>
+                </select>
               </label>
+              {newKind === "REGULAR" ? (
+                <label className="text-sm">
+                  <span className="mb-1 block text-muted-foreground">Bulan periode</span>
+                  <input
+                    type="month"
+                    value={newMonth}
+                    onChange={(event) => setNewMonth(event.target.value)}
+                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                  />
+                </label>
+              ) : (
+                <>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">Nama hari raya</span>
+                    <input
+                      type="text"
+                      value={holidayName}
+                      maxLength={120}
+                      placeholder="Idul Fitri 1448 H"
+                      onChange={(event) => setHolidayName(event.target.value)}
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">Tanggal hari raya</span>
+                    <input
+                      type="date"
+                      value={holidayDate}
+                      onChange={(event) => setHolidayDate(event.target.value)}
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">Tanggal bayar</span>
+                    <input
+                      type="date"
+                      value={thrPayDate}
+                      onChange={(event) => setThrPayDate(event.target.value)}
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                    />
+                  </label>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => void handleCreate()}
-                disabled={creating || !newMonth}
+                disabled={creating || (newKind === "REGULAR" ? !newMonth : !thrReady)}
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <CalendarPlus className="h-4 w-4" aria-hidden />}
@@ -156,9 +219,15 @@ export function AdminPayrollPage() {
                     className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <span>
-                      <span className="block text-sm font-medium">{monthLabel(period.periodMonth)}</span>
+                      <span className="block text-sm font-medium">
+                        {period.kind === "THR"
+                          ? `THR ${period.holidayName ?? ""} · ${monthLabel(period.periodMonth)}`
+                          : monthLabel(period.periodMonth)}
+                      </span>
                       <span className="block text-xs text-muted-foreground">
-                        Tanggal gajian {period.payDate} · cutoff {period.cutoffStart} s.d. {period.cutoffEnd}
+                        {period.kind === "THR"
+                          ? `Tanggal bayar ${period.payDate} · hari raya ${period.holidayDate ?? "—"}`
+                          : `Tanggal gajian ${period.payDate} · cutoff ${period.cutoffStart} s.d. ${period.cutoffEnd}`}
                       </span>
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-xs">

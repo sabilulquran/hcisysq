@@ -41,6 +41,7 @@ type ResultRow = {
 type LineRow = {
   resultId: string;
   componentCode: string;
+  basis?: string | null;
   displayName: string;
   category: string;
   amount: string;
@@ -55,10 +56,14 @@ type LineRow = {
 export function buildPayslipLines(
   result: ResultRow,
   lines: readonly LineRow[],
-  period: { periodMonth: string; payDate: string },
+  period: { periodMonth: string; payDate: string; kind?: string; holidayDate?: string | null; holidayName?: string | null },
   options: { revision?: boolean } = {},
 ): PayslipLine[] {
+  const thr = period.kind === "THR";
   const earnings = lines.filter((line) => line.category === "EARNING");
+  const serviceMonths = thr
+    ? /masa kerja (\d+) bulan/.exec(lines.find((line) => line.componentCode === "THR")?.basis ?? "")?.[1]
+    : undefined;
   const deductions = lines.filter((line) => line.category === "DEDUCTION");
 
   const payslip: PayslipLine[] = [
@@ -67,8 +72,16 @@ export function buildPayslipLines(
     ...(options.revision ? [{ label: "Status", value: "Revisi", section: "identity" as const }] : []),
     { label: "NIP", value: result.employeeNumber, section: "identity" },
     { label: "Nama", value: result.fullName, section: "identity" },
+    // PAY-003-THR T13: a THR slip says what it is and which holiday it is for.
+    ...(thr
+      ? [
+          { label: "Jenis", value: `THR ${period.holidayName ?? ""}`.trim(), section: "identity" as const },
+          { label: "Hari raya", value: period.holidayDate ?? "", section: "identity" as const },
+          ...(serviceMonths ? [{ label: "Masa kerja", value: `${serviceMonths} bulan`, section: "identity" as const }] : []),
+        ]
+      : []),
     { label: "Periode", value: period.periodMonth.slice(0, 7), section: "identity" },
-    { label: "Tanggal gajian", value: period.payDate, section: "identity" },
+    { label: thr ? "Tanggal bayar" : "Tanggal gajian", value: period.payDate, section: "identity" },
   ];
 
   for (const line of earnings) {
@@ -81,7 +94,7 @@ export function buildPayslipLines(
   payslip.push(
     { label: "Total pendapatan", value: formatRupiah(result.gross), section: "summary" },
     { label: "Total potongan", value: formatRupiah(result.deductions), section: "summary" },
-    { label: "Gaji bersih", value: formatRupiah(result.net), section: "summary" },
+    { label: thr ? "THR bersih" : "Gaji bersih", value: formatRupiah(result.net), section: "summary" },
   );
 
   // The factor only appears when it actually changed the amount, so an ordinary
@@ -130,10 +143,20 @@ export async function draftPayslipsFromPeriod(
   try {
     await client.query("BEGIN");
 
-    const period = await client.query<{ periodMonth: string; payDate: string; state: string }>(
+    const period = await client.query<{
+      periodMonth: string;
+      payDate: string;
+      state: string;
+      kind: string;
+      holidayDate: string | null;
+      holidayName: string | null;
+    }>(
       `SELECT to_char(period_month, 'YYYY-MM-DD') AS "periodMonth",
               to_char(pay_date, 'YYYY-MM-DD') AS "payDate",
-              state
+              state,
+              period_kind AS kind,
+              to_char(holiday_date, 'YYYY-MM-DD') AS "holidayDate",
+              holiday_name AS "holidayName"
        FROM payroll_periods WHERE id = $1 FOR UPDATE`,
       [periodId],
     );
@@ -193,17 +216,18 @@ export async function draftPayslipsFromPeriod(
         `SELECT id, published_at AS "publishedAt", source_batch_id AS "sourceBatchId",
                 (lines = $3::jsonb OR lines = $4::jsonb) AS "sameLines"
          FROM payslips
-         WHERE employee_id = $1 AND period = $2::date AND superseded_by_id IS NULL
+         WHERE employee_id = $1 AND period = $2::date AND kind = $5 AND superseded_by_id IS NULL
          FOR UPDATE`,
-        [result.employeeId, periodRow.periodMonth, serialized, JSON.stringify(revisionLines)],
+        // T13: one current slip per employee, month and kind; a THR slip never meets the salary slip.
+        [result.employeeId, periodRow.periodMonth, serialized, JSON.stringify(revisionLines), periodRow.kind],
       );
       const current = existing.rows[0];
 
       if (!current) {
         await client.query(
-          `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_batch_id, source_period_id)
-           VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5)`,
-          [randomUUID(), result.employeeId, periodRow.periodMonth, serialized, periodId],
+          `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_batch_id, source_period_id, kind)
+           VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5, $6)`,
+          [randomUUID(), result.employeeId, periodRow.periodMonth, serialized, periodId, periodRow.kind],
         );
         drafted += 1;
         continue;
@@ -241,8 +265,8 @@ export async function draftPayslipsFromPeriod(
       await client.query("UPDATE payslips SET superseded_by_id = $2 WHERE id = $1", [current.id, revisionId]);
       await client.query(
         `INSERT INTO payslips(
-           id, employee_id, period, lines, source_format, source_batch_id, source_period_id, revision_of)
-         VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5, $6)`,
+           id, employee_id, period, lines, source_format, source_batch_id, source_period_id, revision_of, kind)
+         VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5, $6, $7)`,
         [
           revisionId,
           result.employeeId,
@@ -250,6 +274,7 @@ export async function draftPayslipsFromPeriod(
           JSON.stringify(revisionLines),
           periodId,
           current.id,
+          periodRow.kind,
         ],
       );
       revised += 1;
@@ -303,8 +328,8 @@ export async function publishPayslipsOfPeriod(
   try {
     await client.query("BEGIN");
 
-    const period = await client.query<{ state: string; periodMonth: string }>(
-      `SELECT state, to_char(period_month, 'YYYY-MM') AS "periodMonth"
+    const period = await client.query<{ state: string; periodMonth: string; kind: string }>(
+      `SELECT state, to_char(period_month, 'YYYY-MM') AS "periodMonth", period_kind AS kind
        FROM payroll_periods WHERE id = $1 FOR UPDATE`,
       [periodId],
     );
@@ -337,8 +362,11 @@ export async function publishPayslipsOfPeriod(
       await notifyEmployee(client, slip.employeeId, {
         eventKey: `payslip:${slip.id}:published`,
         category: "payslip",
-        title: "Slip gaji tersedia",
-        body: `Slip gaji periode ${periodRow.periodMonth} sudah dipublikasikan.`,
+        title: periodRow.kind === "THR" ? "Slip THR tersedia" : "Slip gaji tersedia",
+        body:
+          periodRow.kind === "THR"
+            ? `Slip THR periode ${periodRow.periodMonth} sudah dipublikasikan.`
+            : `Slip gaji periode ${periodRow.periodMonth} sudah dipublikasikan.`,
         href: "/app/payslips",
         actorAccountId,
         metadata: { payslipId: slip.id, period: periodRow.periodMonth },
@@ -409,6 +437,7 @@ async function loadLines(client: PoolClient, periodId: string): Promise<LineRow[
             c.display_name AS "displayName",
             l.category,
             l.amount::text AS amount,
+            l.basis,
             l.display_order AS "displayOrder"
      FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      JOIN payroll_result_lines l ON l.result_id = latest.id

@@ -472,6 +472,10 @@ components:
           type: string
           pattern: '^\d{4}-(0[1-9]|1[0-2])$'
         sourceFormat: { $ref: '#/components/schemas/PayslipSourceFormat' }
+        kind:
+          type: string
+          enum: [REGULAR, THR]
+          description: PAY-003-THR T13. A THR slip sits beside the salary slip of the same month.
         employmentStatus:
           type: [string, 'null']
           description: Current employee-master STATUS KEPEGAWAIAN; never derived from sourceFormat.

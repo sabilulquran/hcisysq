@@ -165,6 +165,8 @@ async function revalidateImportRow(
          FROM payslips
         WHERE employee_id = $1
           AND period = $2::date
+          -- PAY-003-THR T13: an imported salary slip only collides with a salary slip.
+          AND kind = 'REGULAR'
         LIMIT 1`,
       [employeeId, period],
     );
@@ -1350,6 +1352,8 @@ export async function registerPayslipRoutes(
              JOIN payslips payslip
                ON payslip.employee_id = imported.employee_id
               AND payslip.period = imported.period
+              -- PAY-003-THR T13: a THR slip of the same month is no conflict.
+              AND payslip.kind = 'REGULAR'
             WHERE imported.batch_id = $1
               AND imported.resolution_status = 'pending'
               AND jsonb_array_length(imported.validation_errors) = 0
@@ -1623,6 +1627,7 @@ export async function registerPayslipRoutes(
     const result = await pool.query(
       `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
               payslip.source_format AS "sourceFormat",
+              payslip.kind,
               employee.employment_status AS "employmentStatus",
               payslip.published_at AS "publishedAt",
               (payslip.revision_of IS NOT NULL) AS "isRevision"
@@ -1630,7 +1635,7 @@ export async function registerPayslipRoutes(
          JOIN employees employee ON employee.id = payslip.employee_id
         WHERE ${visible}
           AND extract(year FROM payslip.period) = $2
-        ORDER BY payslip.period DESC, payslip.id DESC`,
+        ORDER BY payslip.period DESC, payslip.kind, payslip.id DESC`,
       [self.employeeId, year],
     );
     reply.header("Cache-Control", "private, no-store");
@@ -1653,12 +1658,14 @@ export async function registerPayslipRoutes(
       period: string;
       lines: ImportedLine[];
       sourceFormat: PayslipSourceFormat;
+      kind: "REGULAR" | "THR";
       employmentStatus: string | null;
       publishedAt: Date;
     }>(
       `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
               payslip.lines,
               payslip.source_format AS "sourceFormat",
+              payslip.kind,
               employee.employment_status AS "employmentStatus",
               payslip.published_at AS "publishedAt"
          FROM payslips payslip

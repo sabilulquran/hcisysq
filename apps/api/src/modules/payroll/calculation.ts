@@ -861,7 +861,8 @@ export async function calculatePeriod(
         needsAnnualCalculation(reportPeriod, [source.serviceEndDate], source.hasContinuingEmployment),
       );
       let annual: Parameters<typeof employerPph21Lines>[0]["annual"] = null;
-      if (settling.length > 0) {
+      // PAY-003-THR: the annual settlement stays with the monthly period of the month.
+      if (settling.length > 0 && !isThr) {
         const annualPolicy = await findPph21AnnualPolicy(client, year);
         if (annualPolicy.ok) {
           const earlier = await loadAnnualMonths(client, year, annualPolicy.policy, {
@@ -880,13 +881,56 @@ export async function calculatePeriod(
           }
         }
       }
-      const employerLines = employerPph21Lines({
-        period: reportPeriod,
-        terPolicy,
-        settings: pph21Settings,
-        rows: pph21Sources,
-        annual,
-      });
+      // PAY-003-THR T10: THR shares the masa pajak with the salary of its month, so its borne PPh21
+      // is the increment: TER on the month's salary and THR together, less TER on the salary alone
+      // (the salary period's own line). The annual settlement stays with the salary period (DRAFT).
+      const thrEmployerLines = async (): Promise<Map<string, { amount: number; basis: string }>> => {
+        const salaryPeriods = await client.query<{ id: string }>(
+          `SELECT other.id FROM payroll_periods other
+           WHERE other.period_kind = 'REGULAR'
+             AND other.period_month = $1::date
+             AND coalesce(other.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                 = coalesce($2::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
+          [period.periodStart, period.legalEntityKey],
+        );
+        const salaryRows: Pph21SourceRow[] = [];
+        for (const salary of salaryPeriods.rows) {
+          for (const row of await loadPph21SourceRows(client, salary.id)) salaryRows.push({ ...row, periodKind: "REGULAR" });
+        }
+        const thrRows: Pph21SourceRow[] = pph21Sources.map((source) => ({ ...source, periodKind: "THR" }));
+        const employeeOf = new Map([...salaryRows, ...thrRows].map((row) => [row.employmentId, row.employeeId]));
+        const perEmployee = (lines: Map<string, { amount: number }>) => {
+          const totals = new Map<string, number>();
+          for (const [employmentId, line] of lines) {
+            const employeeId = employeeOf.get(employmentId);
+            if (employeeId) totals.set(employeeId, (totals.get(employeeId) ?? 0) + line.amount);
+          }
+          return totals;
+        };
+        const base = { period: reportPeriod, terPolicy, settings: pph21Settings, annual: null };
+        const withThr = perEmployee(employerPph21Lines({ ...base, rows: [...salaryRows, ...thrRows] }));
+        const salaryOnly = perEmployee(employerPph21Lines({ ...base, rows: salaryRows }));
+        const increments = new Map<string, { amount: number; basis: string }>();
+        const placed = new Set<string>();
+        for (const source of thrRows) {
+          if (placed.has(source.employeeId) || !resultByEmployment.has(source.employmentId)) continue;
+          placed.add(source.employeeId);
+          const amount = (withThr.get(source.employeeId) ?? 0) - (salaryOnly.get(source.employeeId) ?? 0);
+          if (amount !== 0) {
+            increments.set(source.employmentId, { amount, basis: "TER gaji + THR bulan ini dikurangi TER gaji" });
+          }
+        }
+        return increments;
+      };
+      const employerLines = isThr
+        ? await thrEmployerLines()
+        : employerPph21Lines({
+            period: reportPeriod,
+            terPolicy,
+            settings: pph21Settings,
+            rows: pph21Sources,
+            annual,
+          });
       // The results record every policy row the line was computed from (ADR-0003).
       if (settingsRow) pph21VersionIds.push(settingsRow.id);
       if (terRow) pph21VersionIds.push(terRow.id);

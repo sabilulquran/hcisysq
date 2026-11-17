@@ -1285,6 +1285,72 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect(audit.rows[0]!.payload).toMatchObject({ period_kind: "THR", not_eligible_count: 1, employee_count: 2 });
     });
 
+    it("bears the THR's PPh21 as the increment over the salary of the same month (T10, PPH21_SETTINGS on)", async () => {
+      // A month of its own, with TER and the switch effective only in it, so no other suite's
+      // PPH21_TER or PPH21_SETTINGS rows overlap.
+      const month = "2035-05";
+      const policyIds = [randomUUID(), randomUUID()];
+      await pool.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PPH21_TER', DATE '2035-05-01', DATE '2035-05-31', $3::jsonb, 'uji sintetis'),
+                ($2, 'PPH21_SETTINGS', DATE '2035-05-01', DATE '2035-05-31', $4::jsonb, 'uji sintetis')`,
+        [
+          policyIds[0],
+          policyIds[1],
+          JSON.stringify({
+            source: "Tabel uji sintetis",
+            objectCode: "21-100-01",
+            ptkpCategory: { "TK/0": "A" },
+            categories: {
+              A: [{ upTo: 5_000_000, rate: 0.01 }, { upTo: null, rate: 0.1 }],
+              B: [{ upTo: null, rate: 0.02 }],
+              C: [{ upTo: null, rate: 0.03 }],
+            },
+          }),
+          JSON.stringify({ source: "uji", employerBorne: true }),
+        ],
+      );
+      try {
+        const { employmentId } = await newEmployment({ category: "TETAP" });
+        await pool.query("UPDATE payroll_compensation_profiles SET ptkp_status = 'TK/0' WHERE employment_id = $1", [
+          employmentId,
+        ]);
+        const salaryId = randomUUID();
+        const thrId = randomUUID();
+        ownedPeriodIds.push(salaryId, thrId);
+        await pool.query(
+          `INSERT INTO payroll_periods(id, legal_entity_key, period_month, pay_date, period_start, period_end,
+             cutoff_start, cutoff_end, state, period_kind, holiday_date, holiday_name)
+           VALUES ($1, $3, DATE '2035-05-01', DATE '2035-05-25', DATE '2035-05-01', DATE '2035-05-31',
+                   DATE '2035-04-23', DATE '2035-05-22', 'COLLECTING', 'REGULAR', NULL, NULL),
+                  ($2, $3, DATE '2035-05-01', DATE '2035-05-20', DATE '2035-05-01', DATE '2035-05-31',
+                   DATE '2035-05-01', DATE '2035-05-31', 'COLLECTING', 'THR', DATE '2035-05-30', 'Hari Raya Uji')`,
+          [salaryId, thrId, legalEntityKey],
+        );
+        const base = { legalEntityKey, periodStart: `${month}-01`, periodEnd: `${month}-31` };
+        await calculatePeriod(pool, { ...base, id: salaryId, payDate: `${month}-25` }, actorAccountId, 0);
+        await calculatePeriod(
+          pool,
+          { ...base, id: thrId, payDate: `${month}-20`, kind: "THR", holidayDate: `${month}-30` },
+          actorAccountId,
+          0,
+        );
+        const line = async (periodId: string) =>
+          (await pool.query<{ amount: string }>(
+            `SELECT l.amount::text AS amount FROM payroll_result_lines l
+             JOIN payroll_results r ON r.id = l.result_id
+             WHERE r.period_id = $1 AND l.component_code = 'PPH21_EMPLOYER'`,
+            [periodId],
+          )).rows[0]?.amount;
+        // MKG 18: salary 3 800 000 alone is 1% (38 000). With the 3 800 000 THR the month is
+        // 7 600 000 at 10% (760 000); the THR period bears the difference.
+        expect(await line(salaryId)).toBe("38000");
+        expect(await line(thrId)).toBe("722000");
+      } finally {
+        await pool.query("DELETE FROM payroll_policy_versions WHERE id = ANY($1::uuid[])", [policyIds]);
+      }
+    });
+
     it("refuses a pay date later than the policy allows before the holiday", async () => {
       await pool.query("UPDATE payroll_periods SET pay_date = DATE '2026-09-25' WHERE id = $1", [thrPeriodId]);
       const outcome = await calculatePeriod(pool, thrPeriod(thrPeriodId, "2026-09-25"), actorAccountId, 0);

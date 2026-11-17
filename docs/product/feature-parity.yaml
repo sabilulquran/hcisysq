@@ -794,7 +794,16 @@ features:
       own period kind PAY-003-THR (docs/domain/payroll-thr.md, migration 0164, DRAFT T1-T14):
       Permenaker 6/2016 one month of wages (basic + fixed allowances flagged is_thr_wage),
       proportional below 12 months, paid at least 7 days before the holiday, same lifecycle, THR
-      slips beside the salary slip, PPh21 TER on the month's combined gross. Out of v1 by the spec (§1.2):
+      slips beside the salary slip, PPh21 TER on the month's combined gross. Owner decisions
+      2026-11-17: the THR wage includes the performance allowance (T6), and honorer/lepas receive
+      THR on the average wage of the whole months of service in the 12 months before the THR month
+      (T5, Permenaker 6/2016 Pasal 3 ayat (3); migration 0167 opens the THR policy version
+      effective 2026-11-17). The average is read from approved salary periods; where they do not
+      cover the window HC types THR_AVERAGE_WAGE per employee with a reason and a decision
+      reference, and a row with neither is blocked (THR_AVERAGE_WAGE_INCOMPLETE), as is a row
+      whose covered months paid no wage at all (THR_AVERAGE_WAGE_NO_PAID_MONTH) rather than
+      paying a silent Rp0. Details of the average (window, components, rounding, and the two
+      readings of "bulan") are DRAFT in payroll-thr.md §2.1 and §2.2. Out of v1 by the spec (§1.2):
       bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.

@@ -122,10 +122,18 @@ export function PeriodInputsPanel({
     <section className="rounded-lg border bg-card">
       <header className="border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Input periode</h2>
-        <p className="text-xs text-muted-foreground">
-          Rapel, penyesuaian, prorata, dan override yang diketik operator. Lembur dan kehadiran PKWT datang dari
-          kehadiran lewat tombol “Ambil lembur &amp; kehadiran”, dan ditimpa setiap kali tombol itu dijalankan.
-        </p>
+        {period.kind === "THR" ? (
+          <p className="text-xs text-muted-foreground">
+            Penyesuaian THR, dan rata-rata upah per bulan untuk honorer atau pekerja lepas yang penggajiannya belum
+            tercakup penuh di sistem. Keduanya wajib disertai alasan dan referensi keputusan; angka pembanding dari
+            sistem tampil di tabel hasil setelah periode dihitung.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Rapel, penyesuaian, prorata, dan override yang diketik operator. Lembur dan kehadiran PKWT datang dari
+            kehadiran lewat tombol “Ambil lembur &amp; kehadiran”, dan ditimpa setiap kali tombol itu dijalankan.
+          </p>
+        )}
       </header>
 
       <div className="space-y-3 px-4 py-3">

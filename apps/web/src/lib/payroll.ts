@@ -106,6 +106,36 @@ export interface PayrollEmployeeIdentity {
   fullName: string;
 }
 
+/**
+ * PAY-003-THR T5 (payroll-thr.md section 2.1): how an honorarium worker's month of wages for a
+ * THR was arrived at. Every figure is the server's; the screen only words it.
+ */
+export interface PayrollThrAverageWage {
+  /** SYSTEM: approved salary periods; HC_INPUT: the typed figure; NONE: neither, the row is blocked. */
+  source: "SYSTEM" | "HC_INPUT" | "NONE";
+  /** First and last month the rule asks for, YYYY-MM. */
+  windowStart: string | null;
+  windowEnd: string | null;
+  requiredMonths: number;
+  /** Required months the system holds an approved salary period for. */
+  coveredMonths: number;
+  monthsWithPay: number;
+  systemTotal: number;
+  /** Null unless every required month is covered. */
+  systemAverage: number | null;
+  /** The average over the covered months only: a reference, never the basis. */
+  partialAverage: number | null;
+  /** The month of wages the THR was taken from; 0 when blocked. */
+  monthlyWage: number;
+  hcInput: number | null;
+  /**
+   * The approved salary periods the system figure read, with the reopen count they were read at.
+   * Optional only for an older API build; the screen shows no figure from it, but a reviewer
+   * reading the row in the network tab can tell which months it rests on.
+   */
+  periods?: Array<{ id: string; month: string; reopenCount: number }>;
+}
+
 export interface PayrollResult {
   employmentId: string;
   revision: number;
@@ -119,6 +149,8 @@ export interface PayrollResult {
   bpjsBase: string;
   blockers: PayrollBlocker[];
   calculatedAt: string;
+  /** Set on a THR period for an honorarium or daily worker; absent from an older API build. */
+  thrAverageWage?: PayrollThrAverageWage | null;
 }
 
 export interface PayrollResultLine {
@@ -255,7 +287,8 @@ export type PayrollInputKey =
   | "OTHER_INCOME"
   | "TEACHING_HOURS_PER_WEEK_OVERRIDE"
   | "ANNUAL_PERFORMANCE_OVERRIDE"
-  | "MONTHLY_PERFORMANCE_OVERRIDE";
+  | "MONTHLY_PERFORMANCE_OVERRIDE"
+  | "THR_AVERAGE_WAGE";
 
 export interface PayrollPeriodInput {
   employmentId: string;
@@ -585,6 +618,7 @@ const INPUT_LABELS: Record<PayrollInputKey, string> = {
   TEACHING_HOURS_PER_WEEK_OVERRIDE: "Override jam mengajar/minggu",
   ANNUAL_PERFORMANCE_OVERRIDE: "Override kinerja tahunan",
   MONTHLY_PERFORMANCE_OVERRIDE: "Override kinerja bulanan",
+  THR_AVERAGE_WAGE: "Rata-rata upah THR (honorer/lepas)",
 };
 
 export function payrollInputLabel(key: PayrollInputKey): string {
@@ -597,6 +631,7 @@ const RUPIAH_INPUT_KEYS: readonly PayrollInputKey[] = [
   "ARREARS",
   "ADJUSTMENT",
   "OTHER_INCOME",
+  "THR_AVERAGE_WAGE",
 ];
 
 /** One input's value as an operator reads it: rupiah where it is rupiah. */
@@ -605,4 +640,39 @@ export function payrollInputValue(key: PayrollInputKey, value: string): string {
   // A trailing numeric scale is noise on a factor or an hour count.
   const trimmed = value.includes(".") ? value.replace(/\.?0+$/, "") : value;
   return trimmed === "" ? "0" : trimmed;
+}
+
+/**
+ * One sentence on where an honorarium worker's THR wage came from and how much of the window the
+ * system covers (payroll-thr.md section 5). It words the server's figures and computes none.
+ */
+export function thrAverageWageNote(wage: PayrollThrAverageWage): string {
+  const window =
+    wage.windowStart && wage.windowEnd
+      ? wage.windowStart === wage.windowEnd
+        ? ` (${wage.windowStart})`
+        : ` (${wage.windowStart} s.d. ${wage.windowEnd})`
+      : "";
+  const coverage =
+    `Sistem mencakup ${wage.coveredMonths} dari ${wage.requiredMonths} bulan${window}`
+    + `, berisi upah pada ${wage.monthsWithPay} bulan`;
+  // Covered months that paid nothing are the reason a figure can look complete and still be too
+  // low, so the gap is said out loud rather than left to be read off two numbers.
+  const gap =
+    wage.monthsWithPay < wage.coveredMonths
+      ? " Periksa bulan tanpa upah bila pegawai ini dibayar di luar HCIS."
+      : "";
+  const reference =
+    wage.systemAverage !== null
+      ? `rata-rata sistem ${formatRupiah(String(wage.systemAverage))}`
+      : wage.partialAverage !== null
+        ? `rata-rata ${wage.coveredMonths} bulan itu ${formatRupiah(String(wage.partialAverage))} (pembanding)`
+        : "belum ada angka sistem";
+  if (wage.source === "SYSTEM") {
+    return `Rata-rata upah ${formatRupiah(String(wage.monthlyWage))} dari sistem. ${coverage}.${gap}`;
+  }
+  if (wage.source === "HC_INPUT") {
+    return `Rata-rata upah ${formatRupiah(String(wage.monthlyWage))} dari input HC. ${coverage}; ${reference}.`;
+  }
+  return `${coverage}; ${reference}. Isi input “Rata-rata upah THR” untuk pegawai ini.`;
 }

@@ -43,7 +43,14 @@ import { employerPph21Lines } from "./pph21-employer.js";
 import { loadPph21SourceRows } from "./reports.js";
 import { bindReimbursementHandoffs } from "./reimbursement-link.js";
 import { writeAudit } from "./store.js";
-import { calculateEmployeeThr, thrEligibility } from "./thr.js";
+import {
+  calculateEmployeeThr,
+  thrAverageWageMonths,
+  thrEligibility,
+  type ThrAverageWage,
+  type ThrAverageWageSource,
+} from "./thr.js";
+import { loadThrPaidWages, type ThrWageSourcePeriod } from "./thr-wage-source.js";
 import type { ComponentCode } from "./engine.js";
 
 /** The engine cannot be called without a profile, a category and a start date. */
@@ -617,6 +624,65 @@ export async function calculatePeriod(
       inputsByEmployment.set(row.employmentId, [...(inputsByEmployment.get(row.employmentId) ?? []), row]);
     }
 
+    // PAY-003-THR T5 (payroll-thr.md section 2.1): an honorarium worker's month of wages is the
+    // average of what the approved salary periods before the THR month actually paid, or the
+    // figure human capital typed for this THR period. Read once for the whole period.
+    const thrWageSources = new Map<string, { source: ThrAverageWageSource; periods: ThrWageSourcePeriod[] }>();
+    if (isThr && thrPolicy) {
+      const typedAverage = (employmentId: string): number | null => {
+        const row = (inputsByEmployment.get(employmentId) ?? []).find(
+          (candidate) => candidate.inputKey === "THR_AVERAGE_WAGE",
+        );
+        return row ? Number(row.value) : null;
+      };
+      const honorarium = employments.filter(
+        (row) =>
+          row.serviceStartDate !== null &&
+          row.termCategory !== null &&
+          CATEGORY_BY_TERM[row.termCategory] === "HONORARIUM",
+      );
+      const honorariumIds = new Set(honorarium.map((row) => row.employmentId));
+      const paidWages =
+        honorarium.length > 0
+          ? await loadThrPaidWages(client, {
+              legalEntityKey: period.legalEntityKey,
+              payDate: period.payDate,
+              windowLength: thrPolicy.fullServiceMonths,
+              employmentIds: [...honorariumIds],
+            })
+          : { periods: [], paidByEmployment: new Map() };
+      for (const employment of honorarium) {
+        const requiredMonths = thrAverageWageMonths(
+          period.payDate,
+          employment.serviceStartDate!,
+          thrPolicy.fullServiceMonths,
+        );
+        const periods = paidWages.periods.filter((source) => requiredMonths.includes(source.month));
+        thrWageSources.set(employment.employmentId, {
+          source: {
+            requiredMonths,
+            coveredMonths: periods.map((source) => source.month),
+            paid: paidWages.paidByEmployment.get(employment.employmentId) ?? [],
+            hcInput: typedAverage(employment.employmentId),
+          },
+          periods,
+        });
+      }
+      // A figure typed for someone paid a salary is handed to the engine too, which refuses it
+      // (INPUT_INVALID) instead of letting it sit unused on the period.
+      for (const employment of employments) {
+        if (honorariumIds.has(employment.employmentId)) continue;
+        const hcInput = typedAverage(employment.employmentId);
+        if (hcInput !== null) {
+          thrWageSources.set(employment.employmentId, {
+            source: { requiredMonths: [], coveredMonths: [], paid: [], hcInput },
+            periods: [],
+          });
+        }
+      }
+    }
+    const thrAverageCounts = { rows: 0, hcInput: 0, incomplete: 0 };
+
     // The fingerprint the lifecycle compares against to notice a changed or
     // deleted input after this run. It is derived from the very rows that were
     // calculated, not from a second query: another statement would see a newer
@@ -742,7 +808,8 @@ export async function calculatePeriod(
       // Someone without a usable profile still gets a result row, carrying the
       // blocker and nothing else. Leaving them out would hide them from the
       // period's blocker count and let an incomplete period be submitted.
-      const calculated: EmployeePayrollResult | null = profile && isThr && thrPolicy && period.holidayDate
+      const thrWageSource = thrWageSources.get(employment.employmentId);
+      const thrResult = profile && isThr && thrPolicy && period.holidayDate
         ? calculateEmployeeThr({
             profile,
             payDate:
@@ -754,7 +821,23 @@ export async function calculatePeriod(
             thrPolicy,
             wageComponents,
             adjustment: employmentInputs.adjustment,
+            averageWage: thrWageSource?.source,
           })
+        : null;
+      // Section 2.1 H10: how the month of wages was arrived at is stored with the result, with
+      // the salary periods it read, so the figure can be explained and the approval can tell
+      // whether one of them has been reopened since.
+      const thrAverageWage: (ThrAverageWage & { hcInput: number | null; periods: ThrWageSourcePeriod[] }) | null =
+        thrResult?.averageWage && thrWageSource
+          ? { ...thrResult.averageWage, hcInput: thrWageSource.source.hcInput, periods: thrWageSource.periods }
+          : null;
+      if (thrAverageWage) {
+        thrAverageCounts.rows += 1;
+        if (thrAverageWage.source === "HC_INPUT") thrAverageCounts.hcInput += 1;
+        if (thrAverageWage.source === "NONE") thrAverageCounts.incomplete += 1;
+      }
+      const calculated: EmployeePayrollResult | null = thrResult
+        ? thrResult
         : profile
         ? calculateEmployeePayroll({
             profile,
@@ -810,9 +893,16 @@ export async function calculatePeriod(
         // the figure can be audited again later (performance-review.md
         // section 11 item 5). Absent while the link is switched off, so a
         // switched-off period stores exactly what it stored before.
-        input_snapshot: performanceTrace
-          ? { period_fingerprint: periodFingerprint, inputs: employmentInputs, performance_link: performanceTrace }
-          : { period_fingerprint: periodFingerprint, inputs: employmentInputs },
+        // Each trace is present only when there is one, so a period with neither stores exactly
+        // what it stored before the links were built. They are spread rather than branched: a row
+        // that ever carries both must keep both, since the THR approval guard keys on
+        // thr_average_wage and would silently stop guarding if a branch dropped it.
+        input_snapshot: {
+          period_fingerprint: periodFingerprint,
+          inputs: employmentInputs,
+          ...(performanceTrace ? { performance_link: performanceTrace } : {}),
+          ...(thrAverageWage ? { thr_average_wage: thrAverageWage } : {}),
+        },
       });
 
       for (const [index, line] of result.lines.entries()) {
@@ -1011,6 +1101,15 @@ export async function calculatePeriod(
           ? { reimbursement_handoff_enabled: true, reimbursement_employee_count: reimbursedEmployees.size }
           : {}),
         ...(isThr ? { period_kind: "THR", not_eligible_count: notEligibleCount } : {}),
+        // Counts only (payroll-thr.md section 6): how many rows rest on an average wage, how many
+        // of those on a figure human capital typed, and how many are blocked for want of either.
+        ...(isThr && thrAverageCounts.rows > 0
+          ? {
+              thr_average_wage_count: thrAverageCounts.rows,
+              thr_average_wage_hc_input_count: thrAverageCounts.hcInput,
+              thr_average_wage_incomplete_count: thrAverageCounts.incomplete,
+            }
+          : {}),
       },
     });
 

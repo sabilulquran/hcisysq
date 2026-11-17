@@ -101,8 +101,12 @@ export type PayrollBlockerCode =
   // Raised by the PERF-001 link (performance-link.ts): a finalized review
   // carries a predicate the PERFORMANCE_PERCENT policy does not map.
   | "PERFORMANCE_PREDICATE_UNMAPPED"
-  // PAY-003-THR T5: an honorarium term listed as THR-eligible has no monthly wage to take.
-  | "THR_WAGE_BASIS_UNSUPPORTED";
+  // PAY-003-THR T5 (section 2.1): an honorarium worker's average wage is neither covered by the
+  // system for every month the rule asks for nor typed by human capital.
+  | "THR_AVERAGE_WAGE_INCOMPLETE"
+  // PAY-003-THR T5 (section 2.1 H5): every month the rule asks for is covered, but not one of
+  // them paid this person a counted wage, so the average would be a silent Rp0 THR.
+  | "THR_AVERAGE_WAGE_NO_PAID_MONTH";
 
 export type PayrollBlocker = { code: PayrollBlockerCode; message: string };
 

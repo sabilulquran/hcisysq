@@ -442,7 +442,12 @@ export function AdminPayrollPeriodPage() {
                         {result.thrAverageWage ? (
                           <span className="mt-1 block text-xs text-muted-foreground">
                             {result.blockers
-                              .filter((blocker) => blocker.code === "THR_AVERAGE_WAGE_INCOMPLETE")
+                              .filter((blocker) =>
+                                [
+                                  "THR_AVERAGE_WAGE_INCOMPLETE",
+                                  "THR_AVERAGE_WAGE_NO_PAID_MONTH",
+                                ].includes(blocker.code),
+                              )
                               .map((blocker) => blocker.message)
                               .concat(thrAverageWageNote(result.thrAverageWage))
                               .join(" ")}

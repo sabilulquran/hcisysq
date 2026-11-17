@@ -40,10 +40,15 @@ export type ThrPaidWages = {
  *
  * Deliberately takes no row lock. A FOR SHARE here would be held for the whole calculate
  * transaction (minutes on a phone, for a few hundred employees) and would block a reopen or an
- * approval of any of the twelve salary periods for that long. It buys nothing: this read and the
- * reopen_count it records come from one snapshot, so they are consistent with each other, and a
- * reopen that commits afterwards is caught where it matters — assertThrWageSourcesStand refuses
- * to approve the THR period whose figures it would have changed.
+ * approval of any of the twelve salary periods for that long. It buys nothing, though not because
+ * of snapshot consistency: the transaction runs at READ COMMITTED and this read is two statements,
+ * so the periods and their lines come from two snapshots. The guarantee is structural instead. A
+ * period in a readable state (APPROVED and beyond) cannot have its results rewritten — the only
+ * writer of payroll_results runs for working periods only — and the only way out of those states
+ * is a reopen, which increments reopen_count monotonically. Because reopen_count is read first,
+ * any reopen that commits afterwards leaves the recorded count stale-low, and the mismatch is
+ * caught where it matters: assertThrWageSourcesStand refuses to approve the THR period whose
+ * figures it would have changed.
  */
 export async function loadThrPaidWages(
   client: Pick<PoolClient, "query">,

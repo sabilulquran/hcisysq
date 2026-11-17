@@ -9,6 +9,12 @@
  * A published slip is never edited. When an approved reopen changes what someone
  * was paid, publishing again writes a revision that points at the slip it
  * replaces, and the earlier slip stays readable.
+ *
+ * How the lines are laid out follows the PAYSLIP_LAYOUT policy in force on the
+ * period's pay date (section 7.6, owner decision 2026-11-17). Dated, not a code
+ * default: drafting an older period again builds the lines it built before, so
+ * no slip that was already issued is replaced by a revision that differs only
+ * in layout.
  */
 
 import { randomUUID } from "node:crypto";
@@ -16,13 +22,19 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 
 import { notifyEmployee } from "../notifications/service.js";
-import { formatRupiah } from "./reports.js";
+import { EMPLOYER_PPH21_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT, presentPayslip } from "./payslip-layout.js";
+import { findPayslipLayout, formatRupiah } from "./reports.js";
 import { LATEST_RESULTS_OF_PERIOD, writeAudit } from "./store.js";
 
 /** Drafting is only sensible while the period is paid and not reopened. */
 const DRAFTABLE_STATES = ["PAYMENT_CONFIRMED", "PUBLISHED"];
 
-type PayslipLine = { label: string; value: string; section: "identity" | "income" | "deduction" | "summary" };
+type PayslipLine = {
+  label: string;
+  value: string;
+  /** "employer" is the block "Ditanggung yayasan" of the PAYSLIP_LAYOUT.employerBlock layout. */
+  section: "identity" | "income" | "deduction" | "summary" | "employer";
+};
 
 type ResultRow = {
   resultId: string;
@@ -52,19 +64,26 @@ type LineRow = {
  * Builds one employee's slip lines from their result. The order is the component
  * catalog's display order, which is the order the legacy slip used, with the
  * identity and the summary around it.
+ *
+ * With `employerBlock` (section 7.6) the BPJS Kesehatan contribution the yayasan
+ * bears is no longer listed as income and as a deduction: it moves, with PPh21
+ * the yayasan bears, to lines of section "employer" after the summary, and the
+ * two totals drop by the same amount. Net pay and the payable are the result's
+ * own figures on both layouts. Without it the lines are exactly the earlier ones.
  */
 export function buildPayslipLines(
   result: ResultRow,
   lines: readonly LineRow[],
   period: { periodMonth: string; payDate: string; kind?: string; holidayDate?: string | null; holidayName?: string | null },
-  options: { revision?: boolean } = {},
+  options: { revision?: boolean; employerBlock?: boolean } = {},
 ): PayslipLine[] {
   const thr = period.kind === "THR";
-  const earnings = lines.filter((line) => line.category === "EARNING");
+  const shown = presentPayslip(result, lines, { employerBlock: options.employerBlock === true });
+  const earnings = shown.income;
   const serviceMonths = thr
     ? /masa kerja (\d+) bulan/.exec(lines.find((line) => line.componentCode === "THR")?.basis ?? "")?.[1]
     : undefined;
-  const deductions = lines.filter((line) => line.category === "DEDUCTION");
+  const deductions = shown.deductions;
 
   const payslip: PayslipLine[] = [
     // Section 10 item 8: a revised slip says so, so the employee can tell which
@@ -92,8 +111,8 @@ export function buildPayslipLines(
   }
 
   payslip.push(
-    { label: "Total pendapatan", value: formatRupiah(result.gross), section: "summary" },
-    { label: "Total potongan", value: formatRupiah(result.deductions), section: "summary" },
+    { label: "Total pendapatan", value: formatRupiah(shown.gross.toString()), section: "summary" },
+    { label: "Total potongan", value: formatRupiah(shown.deductionTotal.toString()), section: "summary" },
     { label: thr ? "THR bersih" : "Gaji bersih", value: formatRupiah(result.net), section: "summary" },
   );
 
@@ -110,6 +129,25 @@ export function buildPayslipLines(
   }
   payslip.push({ label: "Nominal dibayar", value: formatRupiah(result.payable), section: "summary" });
 
+  // Section 7.6: what the yayasan pays on the employee's behalf, beside the pay
+  // and never inside it. Labels are the catalog's; a zero is not a line.
+  const nameOf = (componentCode: string, fallback: string) =>
+    lines.find((line) => line.componentCode === componentCode)?.displayName ?? fallback;
+  if (shown.employerHealthContribution !== 0n) {
+    payslip.push({
+      label: nameOf(HEALTH_CONTRIBUTION_COMPONENT, "Iuran BPJS Kesehatan"),
+      value: formatRupiah(shown.employerHealthContribution.toString()),
+      section: "employer",
+    });
+  }
+  if (shown.employerPph21 !== 0n) {
+    payslip.push({
+      label: nameOf(EMPLOYER_PPH21_COMPONENT, "PPh21 ditanggung yayasan"),
+      value: formatRupiah(shown.employerPph21.toString()),
+      section: "employer",
+    });
+  }
+
   return payslip;
 }
 
@@ -124,9 +162,14 @@ export type PublicationOutcome =
     }
   | {
       ok: false;
-      code: "PAYROLL_BLOCKERS_PRESENT" | "PAYROLL_NOTHING_TO_PUBLISH" | "PAYROLL_STATE_CONFLICT";
+      code:
+        | "PAYROLL_BLOCKERS_PRESENT"
+        | "PAYROLL_NOTHING_TO_PUBLISH"
+        | "PAYROLL_STATE_CONFLICT"
+        | "PAYSLIP_LAYOUT_POLICY_INVALID";
       blockerCount?: number;
       state?: string;
+      message?: string;
     };
 
 /**
@@ -187,6 +230,16 @@ export async function draftPayslipsFromPeriod(
       return { ok: false, code: "PAYROLL_BLOCKERS_PRESENT", blockerCount };
     }
 
+    // The layout in force on the pay date, so the same period always drafts the
+    // same lines (section 7.6). An unreadable row stops the drafting: a slip in
+    // the wrong layout would have to be revised in front of every employee.
+    const layoutLookup = await findPayslipLayout(client, periodRow.payDate);
+    if (!layoutLookup.ok) {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYSLIP_LAYOUT_POLICY_INVALID", message: layoutLookup.message };
+    }
+    const employerBlock = layoutLookup.layout.employerBlock;
+
     const lines = await loadLines(client, periodId);
     const linesByResult = new Map<string, LineRow[]>();
     for (const line of lines) {
@@ -201,9 +254,12 @@ export async function draftPayslipsFromPeriod(
     for (const result of results) {
       // Built twice because a revision carries one more line than a first draft,
       // and the comparison below has to be against the shape that would be stored.
-      const draftLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow);
+      const draftLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow, {
+        employerBlock,
+      });
       const revisionLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow, {
         revision: true,
+        employerBlock,
       });
       const serialized = JSON.stringify(draftLines);
 
@@ -289,6 +345,9 @@ export async function draftPayslipsFromPeriod(
         revised,
         already_current: alreadyCurrent,
         import_conflicts: importConflicts.length,
+        // Which layout the lines were built with; no amount (section 8).
+        employer_block: employerBlock,
+        layout_policy_version_id: layoutLookup.versionId,
       },
     });
     // The payslip module keeps its own trail, and a slip written from payroll

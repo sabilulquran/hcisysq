@@ -43,7 +43,12 @@ paths:
       description: >-
         Requires payroll.policies.manage. The version it supersedes is closed the
         day before, so the two never overlap and no past period changes. A source
-        is mandatory: a statutory value has to say where it comes from.
+        is mandatory: a statutory value has to say where it comes from. Two keys
+        are switches rather than tables (PAY-003 sections 7.5 and 7.6):
+        PPH21_SETTINGS `{ source, employerBorne, employerHealthPremiumTaxable,
+        nonPermanentDailyTer, daily }` and PAYSLIP_LAYOUT `{ source,
+        employerBlock }`. Without a version of either, calculation, reports and
+        payslips behave as they did before the key existed.
       requestBody:
         required: true
         content:

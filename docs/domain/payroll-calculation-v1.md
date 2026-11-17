@@ -636,6 +636,8 @@ Bawaan kode sengaja tidak diubah. Laporan PPh21 dan 1721-A1 dihitung saat dibaca
 
 Dua sakelar, bukan satu: dasar pajak dan tata letak slip adalah dua hal berbeda dengan risiko berbeda (yang pertama mengubah angka pajak, yang kedua hanya penyajian), dan O3 masih menunggu konfirmasi konsultan pajak sementara O4 tidak.
 
+Kolom katalog `payroll_components.in_pph21_base` tidak dibaca kode dan tidak diubah (`BPJS_KES_ALLOW` tetap `false` di sana): keanggotaan komponen itu pada dasar pajak kini bergantung tanggal gajian, yang tidak dapat dinyatakan satu penanda statis tanpa mengubah masa pajak lampau.
+
 ### 7.6.3 Tata letak slip `employerBlock`
 
 ```text

@@ -1174,6 +1174,103 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     });
   });
 
+  // PAY-003 section 7.6 (owner decision 2026-11-17). In this file for the same reason as THR
+  // below: the monthly policy rows are this suite's. November 2037 is a month of its own, with
+  // PPH21_TER and PPH21_SETTINGS effective only in it, so no other test calculates under them.
+  describe("employer-paid BPJS Kesehatan premium in the PPh21 the yayasan bears (section 7.6)", () => {
+    const MONTH = "2037-11";
+
+    async function runMonth(settings: Record<string, unknown>) {
+      const policyIds = [randomUUID(), randomUUID()];
+      await pool.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PPH21_TER', DATE '2037-11-01', DATE '2037-11-30', $3::jsonb, 'uji sintetis'),
+                ($2, 'PPH21_SETTINGS', DATE '2037-11-01', DATE '2037-11-30', $4::jsonb, 'uji sintetis')`,
+        [
+          policyIds[0],
+          policyIds[1],
+          JSON.stringify({
+            source: "Tabel uji sintetis",
+            objectCode: "21-100-01",
+            ptkpCategory: { "TK/0": "A" },
+            // 4.100.000 of pay is in the first layer; with the 205.000 premium the gross is not.
+            categories: {
+              A: [{ upTo: 4_200_000, rate: 0.01 }, { upTo: null, rate: 0.1 }],
+              B: [{ upTo: null, rate: 0.02 }],
+              C: [{ upTo: null, rate: 0.03 }],
+            },
+          }),
+          JSON.stringify({ source: "uji sintetis", ...settings }),
+        ],
+      );
+      try {
+        const { employmentId } = await newEmployment({ category: "TETAP" });
+        await pool.query(
+          `UPDATE payroll_compensation_profiles
+              SET ptkp_status = 'TK/0', bpjs_segment = 'PPU_YAYASAN', bpjs_active_from = DATE '2016-07-01'
+            WHERE employment_id = $1`,
+          [employmentId],
+        );
+        const monthPeriodId = randomUUID();
+        ownedPeriodIds.push(monthPeriodId);
+        await pool.query(
+          `INSERT INTO payroll_periods(id, legal_entity_key, period_month, pay_date, period_start, period_end,
+             cutoff_start, cutoff_end, state)
+           VALUES ($1, $2, DATE '2037-11-01', DATE '2037-11-25', DATE '2037-11-01', DATE '2037-11-30',
+                   DATE '2037-10-23', DATE '2037-11-22', 'COLLECTING')`,
+          [monthPeriodId, legalEntityKey],
+        );
+        const outcome = await calculatePeriod(
+          pool,
+          { id: monthPeriodId, legalEntityKey, periodStart: `${MONTH}-01`, periodEnd: `${MONTH}-30`, payDate: `${MONTH}-25` },
+          actorAccountId,
+          0,
+        );
+        expect(outcome.policyProblems ?? []).toEqual([]);
+        const result = await pool.query<{ gross: string; deductions: string; net: string; payable: string; employerCost: string }>(
+          `SELECT gross::text, deductions::text, net::text, payable::text, employer_cost::text AS "employerCost"
+           FROM payroll_results WHERE period_id = $1`,
+          [monthPeriodId],
+        );
+        const lines = await pool.query<{ code: string; category: string; amount: string }>(
+          `SELECT l.component_code AS code, l.category, l.amount::text AS amount
+           FROM payroll_result_lines l JOIN payroll_results r ON r.id = l.result_id
+           WHERE r.period_id = $1 ORDER BY l.display_order`,
+          [monthPeriodId],
+        );
+        return { result: result.rows[0]!, lines: lines.rows };
+      } finally {
+        await pool.query("DELETE FROM payroll_policy_versions WHERE id = ANY($1::uuid[])", [policyIds]);
+      }
+    }
+
+    // MKG 21 on the synthetic scale: gaji pokok 4.100.000, iuran 5% = 205.000 borne by the yayasan.
+    const PAY_LINES = [
+      { code: "BASIC", category: "EARNING", amount: "4100000" },
+      { code: "BPJS_KES_ALLOW", category: "EARNING", amount: "205000" },
+      { code: "BPJS_KES", category: "DEDUCTION", amount: "205000" },
+    ];
+
+    it("bears TER on the pay alone while the premium is not taxable: 4.100.000 x 1% = 41.000", async () => {
+      const { result, lines } = await runMonth({ employerBorne: true });
+      expect(lines).toEqual([...PAY_LINES, { code: "PPH21_EMPLOYER", category: "EMPLOYER_COST", amount: "41000" }]);
+      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "41000" });
+    });
+
+    it("bears TER on the pay and the premium once it is taxable: 4.305.000 x 10% = 430.500, pay untouched", async () => {
+      const { result, lines } = await runMonth({ employerBorne: true, employerHealthPremiumTaxable: true });
+      // The employee's lines, gross, deductions, net and payable are exactly those of the test above.
+      expect(lines).toEqual([...PAY_LINES, { code: "PPH21_EMPLOYER", category: "EMPLOYER_COST", amount: "430500" }]);
+      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "430500" });
+    });
+
+    it("writes no employer line for a taxable premium alone, and changes nothing the employee is paid", async () => {
+      const { result, lines } = await runMonth({ employerHealthPremiumTaxable: true });
+      expect(lines).toEqual(PAY_LINES);
+      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "0" });
+    });
+  });
+
   // PAY-003-THR (docs/domain/payroll-thr.md). In this file rather than one of its own because the
   // monthly policy rows it needs are this suite's, and two files writing them would collide.
   describe("PAY-003-THR", () => {

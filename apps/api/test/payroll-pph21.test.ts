@@ -7,14 +7,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildPph21Report,
+  employerHealthPremium,
   needsAnnualCalculation,
+  paidEarnings,
   reportableGross,
   terCategoryFor,
   terRate,
   terTax,
   type Pph21SourceRow,
 } from "../src/modules/payroll/pph21.js";
-import { parsePph21TerPolicy, validatePolicyPayload, type Pph21TerPolicy } from "../src/modules/payroll/policy.js";
+import {
+  DEFAULT_PPH21_SETTINGS,
+  parsePph21Settings,
+  parsePph21TerPolicy,
+  validatePolicyPayload,
+  type Pph21Settings,
+  type Pph21TerPolicy,
+} from "../src/modules/payroll/policy.js";
 import { pph21ExclusionFor } from "../src/modules/payroll/initial-load.js";
 import { formatTerRate, pph21ReportToCsv, pph21RowNote } from "../src/modules/payroll/reports.js";
 
@@ -241,6 +250,7 @@ describe("PAY-003 PPh21 report", () => {
       annualCalculationCount: 0,
       nonPermanentCount: 0,
       dailyCount: 0,
+      employerHealthPremium: 0,
       skippedBlockedCount: 0,
     });
   });
@@ -472,6 +482,122 @@ describe("PAY-003 PPh21 CSV", () => {
       exclusionReason: null,
     });
     expect(note).toContain("Pasal 17");
+  });
+});
+
+// Owner decision 2026-11-17 (specification sections 5.3 and 7.6): the BPJS
+// Kesehatan premium the yayasan pays is taxable income, from the pay date a
+// PPH21_SETTINGS version with employerHealthPremiumTaxable is in force.
+describe("PAY-003 PPh21 base with the employer-paid BPJS Kesehatan premium", () => {
+  const TAXABLE: Pph21Settings = { ...DEFAULT_PPH21_SETTINGS, employerHealthPremiumTaxable: true };
+  const salaried = (overrides: Partial<Pph21SourceRow> = {}) =>
+    source({
+      earnings: [
+        { code: "BASIC", amount: 4_000_000 },
+        { code: "PERF", amount: 100_000 },
+        { code: "BPJS_KES_ALLOW", amount: 205_000 },
+        { code: "REIMBURSE", amount: 50_000 },
+      ],
+      deductions: [
+        { code: "BPJS_KES", amount: 205_000 },
+        { code: "BPJS_KES_EXTRA", amount: 41_000 },
+      ],
+      ...overrides,
+    });
+
+  it("parses the switch, off unless a version says otherwise", () => {
+    expect(DEFAULT_PPH21_SETTINGS.employerHealthPremiumTaxable).toBe(false);
+    const withoutField = parsePph21Settings({ source: "uji sintetis", employerBorne: true });
+    expect(withoutField).toMatchObject({ ok: true, settings: { employerHealthPremiumTaxable: false } });
+    const on = parsePph21Settings({ source: "Keputusan owner uji", employerHealthPremiumTaxable: true });
+    expect(on).toMatchObject({ ok: true, settings: { employerHealthPremiumTaxable: true, employerBorne: false } });
+    expect(validatePolicyPayload("PPH21_SETTINGS", { source: "uji sintetis", employerHealthPremiumTaxable: "ya" }).ok).toBe(false);
+  });
+
+  it("keeps the allowance out of the gross without the setting, exactly as before", () => {
+    const row = salaried();
+    expect(reportableGross(row)).toBe(4_100_000);
+    expect(reportableGross(row, DEFAULT_PPH21_SETTINGS)).toBe(4_100_000);
+    expect(employerHealthPremium(row)).toBe(0);
+    const report = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [row] });
+    expect(report.rows[0]).toMatchObject({ gross: 4_100_000, rate: 0.01, tax: 41_000, employerHealthPremium: 0 });
+    expect(pph21RowNote(report.rows[0]!)).not.toContain("BPJS");
+  });
+
+  it("adds the whole premium the yayasan pays with the setting, and nothing else", () => {
+    const row = salaried();
+    // 4.000.000 + 100.000 pay, + 205.000 premium. The reimbursement is not income and
+    // the extra-family 1% (a real deduction from the employee) is not an employer premium.
+    expect(paidEarnings(row)).toBe(4_100_000);
+    expect(employerHealthPremium(row, TAXABLE)).toBe(205_000);
+    expect(reportableGross(row, TAXABLE)).toBe(4_305_000);
+    const report = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [row], settings: TAXABLE });
+    expect(report.rows[0]).toMatchObject({ gross: 4_305_000, rate: 0.01, tax: 43_050, employerHealthPremium: 205_000 });
+    expect(report.totals).toMatchObject({ gross: 4_305_000, tax: 43_050, employerHealthPremium: 205_000 });
+  });
+
+  it("looks the TER layer up on the gross with the premium", () => {
+    // 4.900.000 alone is in the 1% layer (up to 5.000.000); with the 245.000 premium it is not.
+    const row = source({
+      earnings: [
+        { code: "BASIC", amount: 4_900_000 },
+        { code: "BPJS_KES_ALLOW", amount: 245_000 },
+      ],
+    });
+    const off = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [row] });
+    expect(off.rows[0]).toMatchObject({ gross: 4_900_000, rate: 0.01, tax: 49_000 });
+    const on = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [row], settings: TAXABLE });
+    expect(on.rows[0]).toMatchObject({ gross: 5_145_000, rate: 0.1, tax: 514_500 });
+  });
+
+  it("counts the premium whole when the pay goes through a pay factor", () => {
+    // Pay 4.100.000 x 0,8 = 3.280.000; the yayasan still pays the full month's 205.000.
+    const row = salaried({ payFactor: 0.8 });
+    expect(reportableGross(row)).toBe(3_280_000);
+    expect(reportableGross(row, TAXABLE)).toBe(3_485_000);
+  });
+
+  it("adds the premium of each paid employment of one person, and of none that is blocked", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      settings: TAXABLE,
+      rows: [
+        source({ employmentId: "a", employeeId: "p", earnings: [{ code: "BASIC", amount: 1_000_000 }, { code: "BPJS_KES_ALLOW", amount: 100_000 }] }),
+        source({ employmentId: "b", employeeId: "p", earnings: [{ code: "BASIC", amount: 2_000_000 }, { code: "BPJS_KES_ALLOW", amount: 150_000 }] }),
+        source({ employmentId: "c", employeeId: "p", blockerCount: 1, earnings: [{ code: "BASIC", amount: 9_000_000 }, { code: "BPJS_KES_ALLOW", amount: 450_000 }] }),
+      ],
+    });
+    expect(report.rows[0]).toMatchObject({ gross: 3_250_000, employerHealthPremium: 250_000 });
+  });
+
+  it("leaves a person without the allowance, an honorer for one, unchanged", () => {
+    const row = source({ termCategory: "KONTRAK_HONORER", earnings: [{ code: "TEACH_FEE", amount: 1_500_000 }] });
+    const on = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [row], settings: TAXABLE });
+    expect(on.rows[0]).toMatchObject({ gross: 1_500_000, employerHealthPremium: 0, objectCode: "21-100-01" });
+  });
+
+  it("says in the note and the CSV how much of the gross is the premium", () => {
+    const report = buildPph21Report({ period: SEPTEMBER, policy: policy(), rows: [salaried()], settings: TAXABLE });
+    expect(pph21RowNote(report.rows[0]!)).toContain("iuran BPJS Kesehatan yang dibayar yayasan Rp205.000");
+    const csv = pph21ReportToCsv(report);
+    expect(csv).toContain("4305000");
+    expect(csv).toContain("iuran BPJS Kesehatan yang dibayar yayasan Rp205.000");
+    // P8: the columns themselves do not change.
+    expect(csv.split("\r\n")[0]).toContain("Penghasilan bruto");
+    expect(csv.split("\r\n")[0]!.split(",")).toHaveLength(10);
+  });
+
+  it("reports honorer and lepas on monthly TER as decided, no longer as pending", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [source({ termCategory: "LEPAS" })],
+    });
+    const note = pph21RowNote(report.rows[0]!);
+    expect(note).toContain("TER bulanan 21-100-01");
+    expect(note).toContain("keputusan owner 2026-11-17");
+    expect(note).not.toContain("menunggu konfirmasi");
   });
 });
 

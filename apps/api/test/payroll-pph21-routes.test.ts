@@ -333,6 +333,60 @@ describe("PAY-003 PPh21 settings (section 7.5)", () => {
   });
 });
 
+// Owner decision 2026-11-17 (sections 5.3 and 7.6): the BPJS Kesehatan premium the
+// yayasan pays joins the gross once a PPH21_SETTINGS version says so.
+describe("PAY-003 PPh21 report with the employer-paid BPJS Kesehatan premium (section 7.6)", () => {
+  type Row = { employeeNumber: string; gross: string; tax: string | null; employerHealthPremium: string; note: string };
+  const permanent = (report: { rows: Row[] }) => report.rows.find((row) => row.employeeNumber === "0016001")!;
+
+  it("leaves the allowance out and says so while no version makes it taxable", async () => {
+    const { response } = await call("director", URL);
+    const { report } = response.json();
+    expect(report.settings).toEqual({ versionId: null, employerHealthPremiumTaxable: false });
+    expect(permanent(report)).toMatchObject({ gross: "3000000", tax: "30000", employerHealthPremium: "0" });
+    expect(report.totals).toMatchObject({ gross: "4600000", employerHealthPremium: "0" });
+  });
+
+  it("stays off under a settings version that only makes the yayasan bear the tax", async () => {
+    const { response } = await call("director", URL, { settings: { source: "uji sintetis", employerBorne: true } });
+    const { report } = response.json();
+    expect(report.settings.employerHealthPremiumTaxable).toBe(false);
+    expect(permanent(report)).toMatchObject({ gross: "3000000", tax: "30000", employerHealthPremium: "0" });
+  });
+
+  it("adds the premium to the gross, the tax and the totals, as text, and names the version", async () => {
+    const { response } = await call("director", URL, {
+      settings: { source: "Keputusan owner uji", employerBorne: true, employerHealthPremiumTaxable: true },
+    });
+    expect(response.statusCode).toBe(200);
+    const { report } = response.json();
+    expect(report.settings).toEqual({
+      versionId: "70000000-0000-4000-8000-000000000009",
+      employerHealthPremiumTaxable: true,
+    });
+    // 3.000.000 + 150.000 premium at 1%; the honorer has no allowance and does not move.
+    expect(permanent(report)).toMatchObject({ gross: "3150000", tax: "31500", employerHealthPremium: "150000" });
+    expect(permanent(report).note).toContain("iuran BPJS Kesehatan yang dibayar yayasan Rp150.000");
+    expect(report.rows.find((row: Row) => row.employeeNumber === "2016002")).toMatchObject({
+      gross: "1600000",
+      employerHealthPremium: "0",
+    });
+    expect(report.totals).toMatchObject({ gross: "4750000", tax: "31500", employerHealthPremium: "150000" });
+  });
+
+  it("carries the same gross into the CSV without changing its columns", async () => {
+    const { response } = await call("director", `${URL}?format=csv`, {
+      settings: { source: "Keputusan owner uji", employerHealthPremiumTaxable: true },
+    });
+    expect(response.statusCode).toBe(200);
+    const [header, first] = response.body.replace(/^\uFEFF/, "").split("\r\n");
+    expect(header!.split(",")).toHaveLength(10);
+    expect(first).toContain("3150000");
+    expect(first).toContain("31500");
+    expect(first).toContain("iuran BPJS Kesehatan yang dibayar yayasan Rp150.000");
+  });
+});
+
 describe("PAY-003 PPh21 report content", () => {
   it("reports rows, totals and the policy source, figures as text, no-store", async () => {
     const { response } = await call("director", URL);

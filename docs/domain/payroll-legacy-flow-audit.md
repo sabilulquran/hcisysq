@@ -246,6 +246,17 @@ Keputusan terbuka: cakupan non-pegawai di fase 1 (§6.3 butir 1), aturan tarif, 
 | D10 | Pengesahan | **Kepala HCM mengajukan finalisasi, Direktur mengesahkan**; buka ulang periode final juga lewat persetujuan Direktur. | Dua tahap: `SUBMITTED` (HCM) → `APPROVED/FINALIZED` (Direktur). Reopen butuh persetujuan Direktur + alasan, tercatat audit. Laporan baru tampil ke Keuangan/Direktur/Pengurus setelah disahkan. |
 | D11 | Dasar iuran BPJS Kesehatan (A6) | **Sesuai peraturan:** gaji pokok + tunjangan tetap, batas bawah UMK, batas atas Rp12.000.000. | Kebijakan statutori berversi; klasifikasi "tunjangan tetap" per komponen di katalog komponen. Nilai iuran akan berubah dibanding spreadsheet → wajib dijelaskan saat paralel run. |
 
+### 6.2b Diputuskan 2026-11-17
+
+Rincian, mekanisme, dan langkah mengaktifkan: `payroll-calculation-v1.md` §7.5 dan §7.6. Keempatnya berlaku lewat versi kebijakan bertanggal dan **belum diaktifkan di production**.
+
+| # | Topik | Keputusan | Dampak desain HCIS |
+|---|---|---|---|
+| D12 | PPh21 (mengukuhkan D6) | **Ditanggung yayasan.** | Baris `PPH21_EMPLOYER` (biaya pemberi kerja) ditulis sejak versi `PPH21_SETTINGS.employerBorne` berlaku; tanpa versi itu periode yang sudah disahkan dan parallel run tidak berubah. |
+| D13 | PPh21 honorer dan pekerja lepas | **Tetap TER bulanan** (kode objek 21-100-01). | `PPH21_SETTINGS.nonPermanentDailyTer` tetap mati; aturan TER harian 21-100-03 ada di kode tetapi tidak dipakai. |
+| D14 | Iuran BPJS Kesehatan yang dibayar yayasan (A8) | **Ikut dihitung sebagai penghasilan kena pajak.** Seluruh iuran 5% yang dibayar yayasan; iuran 1% anggota keluarga tambahan yang dipotong dari pegawai bukan premi pemberi kerja. | Masuk bruto laporan PPh21 bulanan, `PPH21_EMPLOYER`, perhitungan Pasal 17, dan 1721-A1 baris 5, sejak versi `PPH21_SETTINGS.employerHealthPremiumTaxable` berlaku. Pembacaan PMK 168/2023 ini belum dikonfirmasi konsultan pajak. |
+| D15 | Tata letak slip | BPJS Kesehatan **tidak lagi tampil sebagai pendapatan sekaligus potongan**; BPJS Kesehatan dan PPh21 yang ditanggung yayasan tampil di blok **Ditanggung yayasan**. Gaji bersih tidak berubah. | Hasil perhitungan tetap menyimpan pasangan baris seperti spreadsheet (agar parallel run sebanding); slip PAY-003 memakai tata letak baru sejak versi `PAYSLIP_LAYOUT.employerBlock` berlaku. Slip impor PAY-001/PAY-002 tidak diubah: baris "BPJS" spreadsheet memuat iuran tambahan 1%, sehingga pasangannya tidak dapat dipisahkan dengan aman (§3.1). |
+
 ### 6.3 Masih terbuka
 
 1. **Cakupan versi pertama** — owner belum memilih. **Usulan default:** pegawai tetap + PKWT/honorer + insentif Pj. Media untuk pegawai aktif; non-pegawai/pengabdian dan THR menyusul di versi berikutnya.

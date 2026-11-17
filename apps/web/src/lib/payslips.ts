@@ -1,5 +1,9 @@
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
-export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+/**
+ * "employer" is the block "Ditanggung yayasan" of a PAY-003 slip (PAY-003 §7.6):
+ * what the yayasan pays on the employee's behalf, outside the pay itself.
+ */
+export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "employer" | "other";
 export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 export interface PayslipSummary {

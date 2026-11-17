@@ -13,6 +13,10 @@
  * settlement (annual tax less the TER of the earlier months, negative when TER
  * took too much). The line sits on the person's first paid employment. Borne
  * tax is not grossed up into the employee's income (DRAFT).
+ *
+ * The gross is the monthly report's, so the BPJS Kesehatan premium the yayasan
+ * pays is in it whenever PPH21_SETTINGS.employerHealthPremiumTaxable is in force
+ * (owner decision 2026-11-17, section 7.6).
  */
 
 import { buildPph21Report, type Pph21SourceRow } from "./pph21.js";
@@ -56,6 +60,8 @@ export function employerPph21Lines(input: {
           rows: own,
           terTaxByEmployee: new Map([[row.employeeId, row.tax]]),
           policy: input.annual.policy,
+          // The settling month counts the premium exactly as its TER did above.
+          settings: input.settings,
         });
         const prior = input.annual.priorMonths.filter((month) => month.employeeId === row.employeeId);
         const segments = buildAnnualSegments(input.annual.policy, [...prior, ...current]);

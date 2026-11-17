@@ -33,6 +33,9 @@ export const INCOME_WINDOW_MONTHS = 3;
  * spacing ignored), in priority order. Covers the PAYSLIP-002 `tetap` and `honorer` imports and
  * the PAY-003 publication (`publication.ts`). "Gaji Neto 80%", "Gaji Prorata" and "Nominal
  * dibayar" are deliberately not matched: they are the amount paid after a pay factor, not income.
+ * On a PAY-003 slip drafted with the block "Ditanggung yayasan" (PAY-003 section 7.6) "Total
+ * pendapatan" no longer carries the employer-borne BPJS Kesehatan allowance, so the letter states
+ * the gross the employee was shown; "Gaji bersih" is the same on both layouts.
  */
 export const GROSS_LABELS = ["total bruto gaji", "total bruto", "total penghasilan", "total pendapatan"] as const;
 export const NET_LABELS = ["gaji neto", "gaji netto", "gaji bersih"] as const;

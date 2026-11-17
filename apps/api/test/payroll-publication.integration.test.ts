@@ -352,7 +352,15 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
       [periodId],
     );
     expect(rows.map((row) => row.action)).toEqual(["payroll.payslips.drafted"]);
-    expect(rows[0]!.payload).toEqual({ drafted: 1, revised: 0, already_current: 0, import_conflicts: 0 });
+    // Section 7.6: the audit names the layout the lines were built with, never an amount.
+    expect(rows[0]!.payload).toEqual({
+      drafted: 1,
+      revised: 0,
+      already_current: 0,
+      import_conflicts: 0,
+      employer_block: false,
+      layout_policy_version_id: null,
+    });
   });
 
   it("refuses to draft for a period that has gone back to being worked on", async () => {
@@ -566,5 +574,196 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
         [randomUUID(), employee.employeeId],
       ),
     ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  // PAY-003 section 7.6 (owner decision 2026-11-17): the block "Ditanggung yayasan",
+  // switched on by a dated PAYSLIP_LAYOUT version (migration 0165). The version below
+  // covers one month far from every other suite's periods, so no other test drafts
+  // under it, and it is removed again whatever happens.
+  describe("PAYSLIP_LAYOUT.employerBlock (section 7.6)", () => {
+    const LAYOUT_FROM = "2033-03-01";
+    const LAYOUT_TO = "2033-03-31";
+
+    async function clearLayout() {
+      await pool.query(
+        "DELETE FROM payroll_policy_versions WHERE policy_key = 'PAYSLIP_LAYOUT' AND effective_from = $1::date",
+        [LAYOUT_FROM],
+      );
+    }
+
+    async function openLayout(payload: unknown): Promise<string> {
+      await clearLayout();
+      const id = randomUUID();
+      await pool.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PAYSLIP_LAYOUT', $2::date, $3::date, $4::jsonb, 'uji sintetis')`,
+        [id, LAYOUT_FROM, LAYOUT_TO, JSON.stringify(payload)],
+      );
+      return id;
+    }
+
+    /** A period of March 2033 (under the layout version) or of September 2026 (before it). */
+    async function periodIn(month: "2033-03" | "2026-09", state: string) {
+      const periodId = randomUUID();
+      ownedPeriodIds.push(periodId);
+      await pool.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+         VALUES ($1, $2, $3::date, ($3::date + 24), $3::date, ($3::date + 29), ($3::date - 9), ($3::date + 21), $4)`,
+        [periodId, legalEntityKey, `${month}-01`, state],
+      );
+      return periodId;
+    }
+
+    /**
+     * Gaji pokok 4.000.000; iuran BPJS Kesehatan 200.000 ditanggung yayasan (pendapatan
+     * sekaligus potongan); anggota keluarga tambahan 40.000 dipotong; PPh21 50.000 ditanggung.
+     * Bruto 4.200.000, potongan 240.000, netto dan dibayar 3.960.000.
+     */
+    async function writeBpjsResult(periodId: string, employmentId: string, runAt = RUN_AT) {
+      const resultId = randomUUID();
+      await pool.query(
+        `INSERT INTO payroll_results(
+           id, period_id, employment_id, revision, gross, deductions, net, payable, employer_cost,
+           blockers, input_snapshot, policy_version_ids, calculated_at)
+         VALUES ($1, $2, $3, 1, 4200000, 240000, 3960000, 3960000, 50000,
+                 '[]'::jsonb, '{}'::jsonb, '["v1"]'::jsonb, $4::timestamptz)`,
+        [resultId, periodId, employmentId, runAt],
+      );
+      const lines: Array<[string, string, number, number]> = [
+        ["BASIC", "EARNING", 4_000_000, 10],
+        ["BPJS_KES_ALLOW", "EARNING", 200_000, 20],
+        ["BPJS_KES", "DEDUCTION", 200_000, 30],
+        ["BPJS_KES_EXTRA", "DEDUCTION", 40_000, 40],
+        ["PPH21_EMPLOYER", "EMPLOYER_COST", 50_000, 3000],
+      ];
+      for (const [code, category, amount, order] of lines) {
+        await pool.query(
+          `INSERT INTO payroll_result_lines(id, result_id, component_code, category, amount, display_order)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [randomUUID(), resultId, code, category, amount, order],
+        );
+      }
+    }
+
+    const valueOf = (lines: Array<{ label: string; value: string }>, label: string) =>
+      lines.find((line) => line.label === label)?.value;
+
+    afterAll(async () => {
+      if (allowed) await clearLayout();
+    });
+
+    it("drafts the earlier layout for a period paid before the version, the block for one paid under it", async () => {
+      const versionId = await openLayout({ source: "Keputusan owner uji", employerBlock: true });
+      try {
+        const before = await newEmployee();
+        const under = await newEmployee();
+        const earlierPeriod = await periodIn("2026-09", "PAYMENT_CONFIRMED");
+        const blockPeriod = await periodIn("2033-03", "PAYMENT_CONFIRMED");
+        await writeBpjsResult(earlierPeriod, before.employmentId);
+        await writeBpjsResult(blockPeriod, under.employmentId);
+
+        expect(await draftPayslipsFromPeriod(pool, earlierPeriod, actorAccountId)).toMatchObject({ ok: true, drafted: 1 });
+        expect(await draftPayslipsFromPeriod(pool, blockPeriod, actorAccountId)).toMatchObject({ ok: true, drafted: 1 });
+
+        const earlier = (await slipsOf(before.employeeId))[0]!.lines as Array<{ label: string; value: string; section: string }>;
+        expect(earlier).toContainEqual({ label: "Tunjangan BPJS Kesehatan", value: "Rp200.000", section: "income" });
+        expect(earlier).toContainEqual({ label: "Iuran BPJS Kesehatan", value: "Rp200.000", section: "deduction" });
+        expect(valueOf(earlier, "Total pendapatan")).toBe("Rp4.200.000");
+        expect(valueOf(earlier, "Total potongan")).toBe("Rp240.000");
+        expect(earlier.some((line) => line.section === "employer")).toBe(false);
+
+        const block = (await slipsOf(under.employeeId))[0]!.lines as Array<{ label: string; value: string; section: string }>;
+        expect(block.some((line) => line.label === "Tunjangan BPJS Kesehatan")).toBe(false);
+        expect(block.filter((line) => line.section === "income")).toEqual([
+          { label: "Gaji pokok", value: "Rp4.000.000", section: "income" },
+        ]);
+        expect(block.filter((line) => line.section === "deduction")).toEqual([
+          { label: "Iuran anggota keluarga tambahan", value: "Rp40.000", section: "deduction" },
+        ]);
+        expect(valueOf(block, "Total pendapatan")).toBe("Rp4.000.000");
+        expect(valueOf(block, "Total potongan")).toBe("Rp40.000");
+        expect(block.filter((line) => line.section === "employer")).toEqual([
+          { label: "Iuran BPJS Kesehatan", value: "Rp200.000", section: "employer" },
+          { label: "PPh21 ditanggung yayasan", value: "Rp50.000", section: "employer" },
+        ]);
+        // Net pay and the payable are the same on both slips, to the rupiah.
+        for (const label of ["Gaji bersih", "Nominal dibayar"]) {
+          expect(valueOf(block, label)).toBe("Rp3.960.000");
+          expect(valueOf(earlier, label)).toBe("Rp3.960.000");
+        }
+
+        const audit = await pool.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM payroll_audit_events WHERE period_id = $1 AND action = 'payroll.payslips.drafted'",
+          [blockPeriod],
+        );
+        expect(audit.rows[0]!.payload).toMatchObject({ employer_block: true, layout_policy_version_id: versionId });
+      } finally {
+        await clearLayout();
+      }
+    });
+
+    it("does not revise a published slip when the same period is drafted again", async () => {
+      await openLayout({ source: "Keputusan owner uji", employerBlock: true });
+      try {
+        const employee = await newEmployee();
+        const periodId = await periodIn("2033-03", "PAYMENT_CONFIRMED");
+        await writeBpjsResult(periodId, employee.employmentId);
+        await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+        expect(await publishPayslipsOfPeriod(pool, periodId, actorAccountId)).toEqual({ ok: true, published: 1 });
+
+        expect(await draftPayslipsFromPeriod(pool, periodId, actorAccountId)).toEqual({
+          ok: true,
+          drafted: 0,
+          revised: 0,
+          alreadyCurrent: 1,
+          importConflicts: [],
+        });
+        expect(await slipsOf(employee.employeeId)).toHaveLength(1);
+      } finally {
+        await clearLayout();
+      }
+    });
+
+    it("leaves a slip issued in the earlier layout alone when a later version does not reach its pay date", async () => {
+      // September 2026 is drafted and published first, with no version in force.
+      await clearLayout();
+      const employee = await newEmployee();
+      const periodId = await periodIn("2026-09", "PAYMENT_CONFIRMED");
+      await writeBpjsResult(periodId, employee.employmentId);
+      await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+      await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+      const issued = (await slipsOf(employee.employeeId))[0]!;
+
+      // The owner then opens the block layout from March 2033: the issued slip is not touched.
+      await openLayout({ source: "Keputusan owner uji", employerBlock: true });
+      try {
+        expect(await draftPayslipsFromPeriod(pool, periodId, actorAccountId)).toMatchObject({
+          ok: true,
+          revised: 0,
+          alreadyCurrent: 1,
+        });
+        const slips = await slipsOf(employee.employeeId);
+        expect(slips).toHaveLength(1);
+        expect(slips[0]!.lines).toEqual(issued.lines);
+      } finally {
+        await clearLayout();
+      }
+    });
+
+    it("refuses to draft under a layout version that does not parse", async () => {
+      // No source inside the payload: written around the route, which would have refused it.
+      await openLayout({ employerBlock: true });
+      try {
+        const employee = await newEmployee();
+        const periodId = await periodIn("2033-03", "PAYMENT_CONFIRMED");
+        await writeBpjsResult(periodId, employee.employmentId);
+        const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+        expect(outcome).toMatchObject({ ok: false, code: "PAYSLIP_LAYOUT_POLICY_INVALID" });
+        expect(await slipsOf(employee.employeeId)).toEqual([]);
+      } finally {
+        await clearLayout();
+      }
+    });
   });
 });

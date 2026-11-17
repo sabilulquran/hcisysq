@@ -208,9 +208,13 @@ export type Pph21AnnualPolicy = z.infer<typeof PPH21_ANNUAL_SCHEMA>;
 export const PPH21_NON_PERMANENT_OBJECT_CODE = "21-100-03";
 
 /**
- * PPh21 switches (specification section 7.5, decisions P6 and P10). Both are off
- * by default, and a missing row means off: the yayasan does not bear the tax and
+ * PPh21 switches (specification sections 7.5 and 7.6, decisions P6, P10 and A3).
+ * All are off by default, and a missing row means off: the yayasan does not bear
+ * the tax, the BPJS Kesehatan premium it pays stays out of the PPh21 base, and
  * honorer/lepas stay on monthly TER under 21-100-01, which is what v1 did before.
+ * The owner decided P6 and A3 on 2026-11-17; they take effect through a dated
+ * version of this row, never through a changed default, so a masa pajak already
+ * approved keeps reading as it was calculated (ADR-0003).
  * The daily TER table is policy like every other table, never code.
  */
 const PPH21_SETTINGS_SCHEMA = z
@@ -218,6 +222,11 @@ const PPH21_SETTINGS_SCHEMA = z
     source: z.string().trim().min(3).max(500),
     /** P6: the yayasan bears PPh21, written as a PPH21_EMPLOYER line on each result. */
     employerBorne: z.boolean().default(false),
+    /**
+     * A3 / section 5.3: the BPJS Kesehatan premium the yayasan pays for the employee
+     * (BPJS_KES_ALLOW) is taxable income, reported on 1721-A1 line 5.
+     */
+    employerHealthPremiumTaxable: z.boolean().default(false),
     /** P10: KONTRAK_HONORER and LEPAS are taxed with daily TER under 21-100-03. */
     nonPermanentDailyTer: z.boolean().default(false),
     daily: z
@@ -246,10 +255,11 @@ const PPH21_SETTINGS_SCHEMA = z
 
 export type Pph21Settings = z.infer<typeof PPH21_SETTINGS_SCHEMA>;
 
-/** Off/off: the behaviour without a PPH21_SETTINGS row. */
+/** Everything off: the behaviour without a PPH21_SETTINGS row. */
 export const DEFAULT_PPH21_SETTINGS: Pph21Settings = {
   source: "bawaan",
   employerBorne: false,
+  employerHealthPremiumTaxable: false,
   nonPermanentDailyTer: false,
   daily: null,
 };
@@ -259,6 +269,33 @@ export function parsePph21Settings(
 ): { ok: true; settings: Pph21Settings } | { ok: false; message: string } {
   const result = PPH21_SETTINGS_SCHEMA.safeParse(payload);
   if (result.success) return { ok: true, settings: result.data };
+  const issue = result.error.issues[0];
+  const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
+}
+
+/**
+ * How a PAY-003 payslip is laid out (specification section 7.6, owner decision
+ * 2026-11-17). With employerBlock the BPJS Kesehatan contribution the yayasan
+ * bears and PPh21 it bears leave the income and deduction lists for a block of
+ * their own; net pay is the same either way. A missing row means the earlier
+ * layout, so a slip of a period paid before the version reads as it was issued.
+ */
+const PAYSLIP_LAYOUT_SCHEMA = z.object({
+  source: z.string().trim().min(3).max(500),
+  employerBlock: z.boolean().default(false),
+});
+
+export type PayslipLayoutPolicy = z.infer<typeof PAYSLIP_LAYOUT_SCHEMA>;
+
+/** The layout without a PAYSLIP_LAYOUT row: BPJS Kesehatan as income and deduction. */
+export const DEFAULT_PAYSLIP_LAYOUT: PayslipLayoutPolicy = { source: "bawaan", employerBlock: false };
+
+export function parsePayslipLayoutPolicy(
+  payload: unknown,
+): { ok: true; layout: PayslipLayoutPolicy } | { ok: false; message: string } {
+  const result = PAYSLIP_LAYOUT_SCHEMA.safeParse(payload);
+  if (result.success) return { ok: true, layout: result.data };
   const issue = result.error.issues[0];
   const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
   return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
@@ -383,6 +420,8 @@ const PAYLOAD_SCHEMAS = {
   PPH21_ANNUAL: PPH21_ANNUAL_SCHEMA,
   // Read by the PPh21 report, the annual calculation and the calculation (section 7.5).
   PPH21_SETTINGS: PPH21_SETTINGS_SCHEMA,
+  // Read when a period's payslips are drafted (publication.ts, section 7.6); never by the engine.
+  PAYSLIP_LAYOUT: PAYSLIP_LAYOUT_SCHEMA,
   // Not read by the monthly engine: only a THR period's calculation reads it (thr.ts).
   THR: THR_SCHEMA,
 } as const;

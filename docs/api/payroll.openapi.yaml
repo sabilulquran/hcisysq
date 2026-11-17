@@ -448,8 +448,13 @@ paths:
         PAY-003 sections 5.3 and 7.2. One row per person (two employments of one
         person in the period are added up before the bracket lookup) from the
         latest calculation run: gross actually paid (every EARNING line except
-        BPJS_KES_ALLOW, through the pay factor and rounded up like the payable),
-        the TER category mapped
+        BPJS_KES_ALLOW and REIMBURSE, through the pay factor and rounded up like
+        the payable), plus the BPJS Kesehatan premium the yayasan pays
+        (BPJS_KES_ALLOW, whole, outside the pay factor) when
+        PPH21_SETTINGS.employerHealthPremiumTaxable is in force on the masa
+        pajak's pay date (owner decision 2026-11-17, section 7.6; `settings`
+        says whether it is, and `employerHealthPremium` how much of the gross it
+        is), the TER category mapped
         from the PTKP status, the rate of the first bracket whose upper bound
         reaches the gross, and PPh21 = floor(gross x rate). Results with a blocker
         are not reported. Flags: PTKP_MISSING (no or unmapped status, tax null),
@@ -458,8 +463,8 @@ paths:
         last), ANNUAL_CALCULATION_REQUIRED (December, or service ending inside the
         period with no employment continuing past it; the TER figure is shown but
         is not final), NON_PERMANENT_TERMS (KONTRAK_HONORER or LEPAS on the pay
-        date; still monthly TER under 21-100-01 pending the process owner's
-        decision), INCLUDES_THR (the month's gross includes an approved THR
+        date; monthly TER under 21-100-01 by the owner decision of 2026-11-17),
+        INCLUDES_THR (the month's gross includes an approved THR
         period of the same month, PAY-003-THR T10). The masa pajak is the period
         month, and the report reads every approved period of that month and legal
         entity, salary and THR together; `periods` names them and
@@ -776,7 +781,13 @@ paths:
         one is never edited, and a correction after an approved reopen becomes a
         revision beside it with the earlier slip still readable. Running it again
         when nothing moved changes nothing. A standing blocker refuses the whole
-        run.
+        run. The lines follow the PAYSLIP_LAYOUT policy in force on the period's
+        pay date (section 7.6): with `employerBlock` the BPJS Kesehatan
+        contribution the yayasan bears is listed neither as income nor as a
+        deduction, "Total pendapatan" and "Total potongan" leave it out, and it
+        is written with PPH21_EMPLOYER as lines of section `employer`; net pay
+        and the payable are unchanged. Without a version the earlier layout is
+        written.
       parameters:
         - name: periodId
           in: path
@@ -807,8 +818,9 @@ paths:
         '404': { $ref: '#/components/responses/PayrollNotFound' }
         '409':
           description: >-
-            The payment is not confirmed yet, a blocker stands, or the period has
-            no result to draft from.
+            The payment is not confirmed yet, a blocker stands, the period has
+            no result to draft from, or PAYSLIP_LAYOUT_POLICY_INVALID: the
+            PAYSLIP_LAYOUT version in force on the pay date does not parse.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
@@ -961,6 +973,8 @@ components:
             - PAYROLL_NOTHING_TO_PUBLISH
             - PPH21_TER_POLICY_MISSING
             - PPH21_TER_POLICY_INVALID
+            - PPH21_SETTINGS_POLICY_INVALID
+            - PAYSLIP_LAYOUT_POLICY_INVALID
             - UNAUTHENTICATED
         message: { type: string }
         problems:
@@ -1076,6 +1090,21 @@ components:
             bpjsKesehatan: { type: string }
             pph21: { type: string }
             total: { type: string }
+        payslipTotals:
+          type: object
+          required: [employerBlock, gross, deductions]
+          description: >-
+            "Total pendapatan" and "Total potongan" as the payslips of this period
+            state them (section 7.6); period aggregates. `totals.gross` and
+            `totals.deductions` are the calculation's own and still carry the
+            BPJS Kesehatan allowance and its equal deduction. With
+            PAYSLIP_LAYOUT.employerBlock in force on the pay date the slips leave
+            that pair out, so both figures here are lower by it; otherwise they
+            equal the totals. Net and payable are the same either way.
+          properties:
+            employerBlock: { type: boolean, description: Whether the slips of this period use the block layout. }
+            gross: { type: string }
+            deductions: { type: string }
 
     PayrollTransferRow:
       type: object
@@ -1223,12 +1252,20 @@ components:
             versionId: { type: string, format: uuid }
             effectiveFrom: { type: string, format: date }
             source: { type: string, description: Legal reference stored in the PPH21_TER payload. }
+        settings:
+          type: object
+          required: [versionId, employerHealthPremiumTaxable]
+          description: The PPH21_SETTINGS in force on the masa pajak's pay date, as far as it shapes the gross (section 7.6).
+          properties:
+            versionId: { type: [string, 'null'], format: uuid, description: Null when no PPH21_SETTINGS version is in force. }
+            employerHealthPremiumTaxable: { type: boolean, description: Whether the employer-paid BPJS Kesehatan premium (BPJS_KES_ALLOW) is part of the gross. }
         totals:
           type: object
           required: [employeeCount, gross, tax, excludedCount, ptkpMissingCount, annualCalculationCount, nonPermanentCount, skippedBlockedCount]
           properties:
             employeeCount: { type: integer, description: 'Rows reported, that is every row not excluded.' }
             gross: { type: string }
+            employerHealthPremium: { type: string, description: "Employer-paid BPJS Kesehatan premium inside `gross`; \"0\" while the setting is off." }
             tax: { type: string, description: Sum of the rows whose tax could be determined. }
             excludedCount: { type: integer }
             ptkpMissingCount: { type: integer }
@@ -1261,6 +1298,7 @@ components:
           items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS, DAILY_DAYS_MISSING, DAILY_ABOVE_CEILING, MIXED_TERMS, INCLUDES_THR] }
         objectCode: { type: string, description: "21-100-01, or 21-100-03 when taxed with daily TER (PAY-003 §7.5, PPH21_SETTINGS.nonPermanentDailyTer)." }
         attendanceDays: { type: [number, 'null'], description: "Attendance days daily TER averaged over; null on monthly TER." }
+        employerHealthPremium: { type: string, description: "Employer-paid BPJS Kesehatan premium inside `gross` (section 7.6); \"0\" while PPH21_SETTINGS.employerHealthPremiumTaxable is off." }
         exclusionReason: { type: [string, 'null'] }
         note: { type: string, description: 'The flags in words, identical to the CSV note column.' }
 

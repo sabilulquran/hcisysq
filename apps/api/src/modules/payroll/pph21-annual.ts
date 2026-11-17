@@ -19,7 +19,16 @@
 
 import type { A1LineKey, Pph21AnnualPolicy } from "./policy.js";
 import { A1_LINE_KEYS, normalizePtkpStatus } from "./policy.js";
-import { needsAnnualCalculation, PPH21_EXCLUDED_EARNINGS, reportableGross, type Pph21SourceRow } from "./pph21.js";
+import {
+  EMPLOYER_HEALTH_PREMIUM_COMPONENT,
+  employerHealthPremium,
+  needsAnnualCalculation,
+  paidEarnings,
+  PPH21_EXCLUDED_EARNINGS,
+  reportableGross,
+  type Pph21BaseOptions,
+  type Pph21SourceRow,
+} from "./pph21.js";
 
 /**
  * Default A1 line per EARNING component (DRAFT). Unlisted earnings are
@@ -31,6 +40,9 @@ export const DEFAULT_A1_LINE_BY_COMPONENT: Readonly<Record<string, A1LineKey>> =
   PJ_MEDIA: "honorarium",
   THR: "bonusThr",
   BONUS: "bonusThr",
+  // Line 5, "premi asuransi yang dibayar pemberi kerja": only counted in a month
+  // whose PPH21_SETTINGS makes the premium taxable (section 7.4 A3).
+  [EMPLOYER_HEALTH_PREMIUM_COMPONENT]: "insurancePremium",
 };
 
 export type A1Lines = Record<A1LineKey, number>;
@@ -47,24 +59,30 @@ function clean(value: number): number {
 /**
  * One employment's paid earnings split into A1 lines. The lines add up to
  * exactly reportableGross: with a pay factor each line is scaled and rounded
- * down, and the rupiah the rounding leaves goes to the largest line.
+ * down, and the rupiah the rounding leaves goes to the largest line. The
+ * employer-paid BPJS Kesehatan premium, when taxable that month, is added whole
+ * afterwards (it is outside the pay factor), on line 5 unless the policy maps
+ * its component elsewhere.
  */
 export function a1LinesOf(
   row: Pick<Pph21SourceRow, "earnings" | "payFactor">,
   lineByComponent: Readonly<Record<string, A1LineKey>> = {},
+  options?: Pph21BaseOptions,
 ): A1Lines {
+  const lineOf = (code: string): A1LineKey =>
+    lineByComponent[code] ?? DEFAULT_A1_LINE_BY_COMPONENT[code] ?? "otherAllowances";
   const lines = emptyA1Lines();
   for (const earning of row.earnings) {
     if (PPH21_EXCLUDED_EARNINGS.includes(earning.code)) continue;
-    const line = lineByComponent[earning.code] ?? DEFAULT_A1_LINE_BY_COMPONENT[earning.code] ?? "otherAllowances";
-    lines[line] += row.payFactor === 1 ? earning.amount : Math.floor(clean(earning.amount * row.payFactor));
+    lines[lineOf(earning.code)] += row.payFactor === 1 ? earning.amount : Math.floor(clean(earning.amount * row.payFactor));
   }
-  const target = reportableGross(row);
+  const target = paidEarnings(row);
   const sum = A1_LINE_KEYS.reduce((total, key) => total + lines[key], 0);
   if (sum !== target) {
     const largest = A1_LINE_KEYS.reduce((best, key) => (lines[key] > lines[best] ? key : best), A1_LINE_KEYS[0]);
     lines[largest] += target - sum;
   }
+  lines[lineOf(EMPLOYER_HEALTH_PREMIUM_COMPONENT)] += employerHealthPremium(row, options);
   return lines;
 }
 
@@ -289,6 +307,12 @@ export function annualMonthsOfPeriod(input: {
   /** People taxed with daily TER under 21-100-03 that month: no annual settlement (section 7.5). */
   dailyEmployeeIds?: ReadonlySet<string>;
   policy: Pick<Pph21AnnualPolicy, "lineByComponent" | "pensionContributionComponents">;
+  /**
+   * PPH21_SETTINGS in force for that masa pajak: whether the employer-paid BPJS
+   * Kesehatan premium is part of the month's gross (section 7.6). Omitted means
+   * not, which is every month paid before the setting.
+   */
+  settings?: Pph21BaseOptions;
 }): AnnualMonth[] {
   const people = new Map<string, Pph21SourceRow[]>();
   for (const row of input.rows) people.set(row.employeeId, [...(people.get(row.employeeId) ?? []), row]);
@@ -302,9 +326,9 @@ export function annualMonthsOfPeriod(input: {
     let gross = 0;
     let pension = 0;
     for (const row of paid) {
-      const own = a1LinesOf(row, input.policy.lineByComponent);
+      const own = a1LinesOf(row, input.policy.lineByComponent, input.settings);
       for (const key of A1_LINE_KEYS) lines[key] += own[key];
-      gross += reportableGross(row);
+      gross += reportableGross(row, input.settings);
       pension += pensionContributionOf(row.deductions ?? [], input.policy.pensionContributionComponents, row.payFactor);
     }
     const statuses = new Set(

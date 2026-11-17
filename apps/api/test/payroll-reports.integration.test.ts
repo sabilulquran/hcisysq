@@ -246,6 +246,80 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
     });
   });
 
+  // PAY-003 section 7.6: the totals the slips of the period state, beside the
+  // calculation's own. May 2033 is this suite's month for a PAYSLIP_LAYOUT version.
+  describe("the slip totals on the payroll report (section 7.6)", () => {
+    const LAYOUT_FROM = "2033-05-01";
+
+    async function clearLayout() {
+      await pool.query(
+        "DELETE FROM payroll_policy_versions WHERE policy_key = 'PAYSLIP_LAYOUT' AND effective_from = $1::date",
+        [LAYOUT_FROM],
+      );
+    }
+
+    async function seed(month: string) {
+      const periodId = await newPeriod(month, "APPROVED");
+      const paired = await newEmployee(unitPusat);
+      const unpaired = await newEmployee(unitPusat);
+      const plain = await newEmployee(unitPusat);
+      // The pair is there and equal: 200.000 moves out of both slip totals.
+      await writeResult(periodId, paired.employmentId, {
+        profileId: paired.profileId,
+        payable: 3_960_000,
+        lines: [
+          { code: "BASIC", category: "EARNING", amount: 4_000_000 },
+          { code: "BPJS_KES_ALLOW", category: "EARNING", amount: 200_000 },
+          { code: "BPJS_KES", category: "DEDUCTION", amount: 200_000 },
+          { code: "BPJS_KES_EXTRA", category: "DEDUCTION", amount: 40_000 },
+        ],
+      });
+      // An allowance without its equal deduction is not a pair: that slip keeps both lines.
+      await writeResult(periodId, unpaired.employmentId, {
+        profileId: unpaired.profileId,
+        payable: 3_050_000,
+        lines: [
+          { code: "BASIC", category: "EARNING", amount: 3_000_000 },
+          { code: "BPJS_KES_ALLOW", category: "EARNING", amount: 150_000 },
+          { code: "BPJS_KES", category: "DEDUCTION", amount: 100_000 },
+        ],
+      });
+      await writeResult(periodId, plain.employmentId, {
+        profileId: plain.profileId,
+        payable: 1_800_000,
+        lines: [
+          { code: "TEACH_FEE", category: "EARNING", amount: 2_000_000 },
+          { code: "LOAN", category: "DEDUCTION", amount: 200_000 },
+        ],
+      });
+      return periodId;
+    }
+
+    it("equals the calculation's totals while no PAYSLIP_LAYOUT version is in force", async () => {
+      const report = await buildPeriodReport(pool, await seed("2026-09-01"));
+      expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000", net: "8810000" });
+      expect(report.payslipTotals).toEqual({ employerBlock: false, gross: "9350000", deductions: "540000" });
+      expect(report.employerCostSummary.bpjsKesehatan).toBe("350000");
+    });
+
+    it("leaves the recognised pairs out of both slip totals under the block layout, and the totals alone", async () => {
+      await clearLayout();
+      await pool.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PAYSLIP_LAYOUT', $2::date, DATE '2033-05-31', $3::jsonb, 'uji sintetis')`,
+        [randomUUID(), LAYOUT_FROM, JSON.stringify({ source: "Keputusan owner uji", employerBlock: true })],
+      );
+      try {
+        const report = await buildPeriodReport(pool, await seed("2033-05-01"));
+        expect(report.totals).toMatchObject({ gross: "9350000", deductions: "540000", net: "8810000", payable: "8810000" });
+        expect(report.payslipTotals).toEqual({ employerBlock: true, gross: "9150000", deductions: "340000" });
+        expect(BigInt(report.payslipTotals.gross) - BigInt(report.payslipTotals.deductions)).toBe(BigInt(report.totals.net));
+      } finally {
+        await clearLayout();
+      }
+    });
+  });
+
   describe("who a result belongs to", () => {
     it("names the employee behind every employment in the period", async () => {
       const periodId = await newPeriod("2026-09-01", "CALCULATED");

@@ -21,12 +21,16 @@
 import type { Pool } from "pg";
 
 import { quoteCsvCell } from "../../lib/csv.js";
+import { HEALTH_ALLOWANCE_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT } from "./payslip-layout.js";
 import type { Pph21Report, Pph21Row, Pph21SourceRow } from "./pph21.js";
 import {
+  DEFAULT_PAYSLIP_LAYOUT,
   DEFAULT_PPH21_SETTINGS,
+  parsePayslipLayoutPolicy,
   parsePph21Settings,
   parsePph21TerPolicy,
   PPH21_NON_PERMANENT_OBJECT_CODE,
+  type PayslipLayoutPolicy,
   type Pph21Settings,
   type Pph21TerPolicy,
 } from "./policy.js";
@@ -82,7 +86,60 @@ export type PeriodReport = {
    * bears (PPH21_EMPLOYER, only when PPH21_SETTINGS.employerBorne is on, section 7.5).
    */
   employerCostSummary: { bpjsKesehatan: string; pph21: string; total: string };
+  /**
+   * "Total pendapatan" and "Total potongan" as the payslips of this period state
+   * them (section 7.6). `totals.gross` and `totals.deductions` are the
+   * calculation's own and still carry the BPJS Kesehatan allowance and its equal
+   * deduction, which is what the legacy spreadsheet is compared against; with
+   * PAYSLIP_LAYOUT.employerBlock in force on the pay date the slips leave that
+   * pair out. Without it the two figures equal the totals.
+   */
+  payslipTotals: { employerBlock: boolean; gross: string; deductions: string };
 };
+
+export type PayslipLayoutLookup =
+  | { ok: true; versionId: string | null; layout: PayslipLayoutPolicy }
+  | { ok: false; message: string };
+
+/**
+ * PAYSLIP_LAYOUT in force on a pay date. No row means the earlier layout, which
+ * is what every slip before the owner decision of 2026-11-17 was drafted with; a
+ * row that does not parse is refused rather than silently read as the earlier
+ * layout, like PPH21_SETTINGS.
+ */
+export async function findPayslipLayout(db: Pick<Pool, "query">, payDate: string): Promise<PayslipLayoutLookup> {
+  const { rows } = await db.query<{ id: string; payload: unknown }>(
+    `SELECT id, payload FROM payroll_policy_versions
+     WHERE policy_key = 'PAYSLIP_LAYOUT'
+       AND effective_from <= $1::date
+       AND (effective_to IS NULL OR effective_to >= $1::date)
+     ORDER BY effective_from DESC
+     LIMIT 1`,
+    [payDate],
+  );
+  const row = rows[0];
+  if (!row) return { ok: true, versionId: null, layout: DEFAULT_PAYSLIP_LAYOUT };
+  const parsed = parsePayslipLayoutPolicy(row.payload);
+  if (!parsed.ok) return { ok: false, message: parsed.message };
+  return { ok: true, versionId: row.id, layout: parsed.layout };
+}
+
+/**
+ * The slip totals of a period from the calculation's totals: with the block
+ * layout, less the BPJS Kesehatan pairs the slips move out (payslip-layout.ts).
+ */
+export function payslipTotalsOf(
+  totals: Pick<PeriodReport["totals"], "gross" | "deductions">,
+  employerBlock: boolean,
+  movedPairTotal: string,
+): PeriodReport["payslipTotals"] {
+  const moved = employerBlock ? BigInt(movedPairTotal) : 0n;
+  return {
+    employerBlock,
+    gross: String(BigInt(totals.gross) - moved),
+    deductions: String(BigInt(totals.deductions) - moved),
+  };
+}
 
 /** The yayasan's costs beyond net pay, from the component totals of the period. */
 export function employerCostSummary(
@@ -134,19 +191,48 @@ export async function buildPeriodReport(pool: Pool, periodId: string): Promise<P
     [periodId],
   );
 
+  // Section 7.6: what the slips of this period state as their totals. The pair is
+  // recognised per result exactly as payslip-layout.ts does: both sides present
+  // and equal. An unreadable layout row reads as the earlier layout here; drafting
+  // the slips refuses it loudly.
+  const periodDates = await pool.query<{ payDate: string }>(
+    `SELECT to_char(pay_date, 'YYYY-MM-DD') AS "payDate" FROM payroll_periods WHERE id = $1`,
+    [periodId],
+  );
+  const payDate = periodDates.rows[0]?.payDate;
+  const lookup = payDate ? await findPayslipLayout(pool, payDate) : null;
+  const employerBlock = lookup?.ok === true && lookup.layout.employerBlock;
+  const movedPairs = employerBlock
+    ? await pool.query<{ amount: string }>(
+        `SELECT coalesce(sum(pair.allowance), 0)::text AS amount
+         FROM (${LATEST_RESULTS_OF_PERIOD}) latest
+         JOIN LATERAL (
+           SELECT coalesce(sum(l.amount) FILTER (
+                    WHERE l.component_code = $2 AND l.category = 'EARNING'), 0) AS allowance,
+                  coalesce(sum(l.amount) FILTER (
+                    WHERE l.component_code = $3 AND l.category = 'DEDUCTION'), 0) AS contribution
+           FROM payroll_result_lines l
+           WHERE l.result_id = latest.id
+         ) pair ON pair.allowance > 0 AND pair.allowance = pair.contribution`,
+        [periodId, HEALTH_ALLOWANCE_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT],
+      )
+    : null;
+
+  const periodTotals = totals.rows[0] ?? {
+    employeeCount: 0,
+    gross: "0",
+    deductions: "0",
+    net: "0",
+    payable: "0",
+    employerCost: "0",
+    blockerCount: 0,
+  };
   return {
-    totals: totals.rows[0] ?? {
-      employeeCount: 0,
-      gross: "0",
-      deductions: "0",
-      net: "0",
-      payable: "0",
-      employerCost: "0",
-      blockerCount: 0,
-    },
+    totals: periodTotals,
     byUnit: byUnit.rows,
     byComponent: byComponent.rows,
     employerCostSummary: employerCostSummary(byComponent.rows),
+    payslipTotals: payslipTotalsOf(periodTotals, employerBlock, movedPairs?.rows[0]?.amount ?? "0"),
   };
 }
 
@@ -586,7 +672,12 @@ export function pph21RowNote(row: Pph21Row): string {
     notes.push(
       row.objectCode === PPH21_NON_PERMANENT_OBJECT_CODE
         ? `Pegawai tidak tetap: TER harian 21-100-03 atas rata-rata bruto per hari hadir (${row.attendanceDays ?? 0} hari)`
-        : "Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap",
+        : "Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (keputusan owner 2026-11-17)",
+    );
+  }
+  if (row.employerHealthPremium > 0) {
+    notes.push(
+      `Bruto termasuk iuran BPJS Kesehatan yang dibayar yayasan ${formatRupiah(row.employerHealthPremium)}`,
     );
   }
   if (row.flags.includes("MIXED_TERMS")) {

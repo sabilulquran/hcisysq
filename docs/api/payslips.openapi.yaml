@@ -370,7 +370,13 @@ components:
           description: Opaque imported display value. HCIS does not parse or calculate it.
         section:
           type: string
-          enum: [identity, income, deduction, summary, other]
+          enum: [identity, income, deduction, summary, employer, other]
+          description: >-
+            `employer` marks the block "Ditanggung yayasan" of a slip drafted from
+            a PAY-003 period under PAYSLIP_LAYOUT.employerBlock (PAY-003 section
+            7.6): the BPJS Kesehatan contribution and the PPh21 the yayasan bears,
+            shown beside the pay and counted in neither total. Imported slips
+            never carry it.
 
     PayslipImportBatch:
       type: object

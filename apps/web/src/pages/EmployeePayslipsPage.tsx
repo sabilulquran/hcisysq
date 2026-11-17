@@ -21,6 +21,11 @@ import {
 export const payslipInitialSelectorValue = "";
 export const payslipAutomaticNote = "Dibuat otomatis oleh HCIS Sabilul Qur'an.";
 
+/** PAY-003 §7.6: the block is information beside the pay, never part of it. */
+export const payslipEmployerBlockTitle = "Ditanggung yayasan";
+export const payslipEmployerBlockNote =
+  "Dibayar yayasan atas nama pegawai. Tidak menambah dan tidak mengurangi gaji bersih.";
+
 export const payslipConfidentialityNotes = [
   "Dokumen ini bersifat RAHASIA dan PRIBADI.",
   "Dilarang menyebarluaskan atau menunjukkan isi dokumen ini kepada pihak yang tidak berwenang.",
@@ -68,10 +73,17 @@ export function groupPayslipLines(lines: PayslipLine[]) {
     income: [],
     deduction: [],
     summary: [],
+    employer: [],
     other: [],
   };
-  for (const line of lines) grouped[line.section ?? "other"].push(line);
+  // A section this build does not know is shown with the unsectioned lines rather than dropped.
+  for (const line of lines) (grouped[line.section ?? "other"] ?? grouped.other).push(line);
   return grouped;
+}
+
+/** The lines of a slip listed as its detail: everything but the "Ditanggung yayasan" block. */
+export function payslipDetailLines(lines: PayslipLine[]) {
+  return lines.filter((line) => line.section !== "employer");
 }
 
 function GenericPairLines({ lines }: { lines: PayslipLine[] }) {
@@ -131,7 +143,7 @@ function PayrollColumn({
   );
 }
 
-function PayslipPaper({
+export function PayslipPaper({
   payslip,
   employee,
 }: {
@@ -196,7 +208,27 @@ function PayslipPaper({
         ) : payslip.lines.length > 0 ? (
           <section className="payslip-section mt-4">
             <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-slate-600">Rincian Slip</h3>
-            <GenericPairLines lines={payslip.lines} />
+            <GenericPairLines lines={payslipDetailLines(payslip.lines)} />
+          </section>
+        ) : null}
+
+        {grouped.employer.length > 0 ? (
+          <section className="payslip-section payslip-employer-block mt-4">
+            <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-slate-600">
+              {payslipEmployerBlockTitle}
+            </h3>
+            <div className="divide-y divide-slate-200 border border-slate-300 bg-slate-50">
+              {grouped.employer.map((line) => (
+                <div
+                  key={line.label}
+                  className="payslip-detail-row grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-1.5 text-[9pt]"
+                >
+                  <span className="text-slate-600">{line.label}</span>
+                  <strong className="max-w-48 break-words text-right text-slate-950">{line.value}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-[7.5pt] leading-4 text-slate-500">{payslipEmployerBlockNote}</p>
           </section>
         ) : null}
 

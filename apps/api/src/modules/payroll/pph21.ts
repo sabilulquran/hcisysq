@@ -5,8 +5,12 @@
  * report goes out, and nothing here touches a database, a clock or a request.
  *
  * What it reports is what was actually paid (decision D9): the earnings of the
- * final result, less the BPJS Kesehatan allowance whose net effect is nil,
- * scaled by the same pay factor and rounded the same way as the payable. TER is
+ * final result, scaled by the same pay factor and rounded the same way as the
+ * payable. The BPJS Kesehatan allowance nets to nil for the employee and is the
+ * premium the yayasan pays for them: it stays out of the base unless
+ * PPH21_SETTINGS.employerHealthPremiumTaxable is in force for the masa pajak
+ * (owner decision 2026-11-17, sections 5.3 and 7.6), and then it joins the gross
+ * whole, outside the pay factor, because the yayasan pays the full month. TER is
  * a rate on a person's monthly gross, so one person with two employments in the
  * period is one row whose gross is the sum of both. The rate comes from the
  * category the PTKP status maps to; no table value is written here, they all
@@ -27,9 +31,19 @@ import {
   type TerCategory,
 } from "./policy.js";
 
-/** Earnings that do not count towards the PPh21 base (section 3.1). */
+/**
+ * The earning that is the BPJS Kesehatan premium the yayasan pays for the
+ * employee. The extra-family 1% (BPJS_KES_EXTRA) is deducted from the employee
+ * for real, so it is not an employer-paid premium and is not part of this.
+ */
+export const EMPLOYER_HEALTH_PREMIUM_COMPONENT = "BPJS_KES_ALLOW";
+
+/**
+ * Earnings that are not pay scaled by the pay factor (section 3.1). The premium
+ * is counted separately, by employerHealthPremium, when the setting says so.
+ */
 export const PPH21_EXCLUDED_EARNINGS: readonly string[] = [
-  "BPJS_KES_ALLOW",
+  EMPLOYER_HEALTH_PREMIUM_COMPONENT,
   // Penggantian biaya repays an expense the employee already paid; it is not
   // income (section 3.6, REIMB-001 section 9).
   "REIMBURSE",
@@ -100,6 +114,11 @@ export type Pph21Row = {
   objectCode: string;
   /** Attendance days the daily TER averaged over, null on monthly TER. */
   attendanceDays: number | null;
+  /**
+   * The employer-paid BPJS Kesehatan premium inside `gross`; 0 while
+   * PPH21_SETTINGS.employerHealthPremiumTaxable is not in force (section 7.6).
+   */
+  employerHealthPremium: number;
 };
 
 export type Pph21Report = {
@@ -121,6 +140,8 @@ export type Pph21Report = {
     nonPermanentCount: number;
     /** Rows taxed with daily TER under 21-100-03. */
     dailyCount: number;
+    /** Employer-paid BPJS Kesehatan premium inside `gross`, 0 while the setting is off. */
+    employerHealthPremium: number;
     /** Employment results that still carry a blocker: not paid, so not reported. */
     skippedBlockedCount: number;
   };
@@ -131,14 +152,41 @@ function clean(value: number): number {
   return Number.isFinite(value) ? Number(value.toPrecision(15)) : value;
 }
 
-/** The gross actually paid on one employment: earnings less the excluded ones, through the pay factor. */
-export function reportableGross(row: Pick<Pph21SourceRow, "earnings" | "payFactor">): number {
+/** Which optional parts of the PPh21 base are in force for the masa pajak. */
+export type Pph21BaseOptions = Pick<Pph21Settings, "employerHealthPremiumTaxable">;
+
+/** The pay actually paid on one employment: earnings less the excluded ones, through the pay factor. */
+export function paidEarnings(row: Pick<Pph21SourceRow, "earnings" | "payFactor">): number {
   const earnings = row.earnings
     .filter((line) => !PPH21_EXCLUDED_EARNINGS.includes(line.code))
     .reduce((total, line) => total + line.amount, 0);
   // Same rounding as the payable in engine.finalize: ROUNDUP after the factor,
   // and untouched when there is no factor (specification section 5).
   return row.payFactor === 1 ? earnings : roundUpRupiah(earnings * row.payFactor);
+}
+
+/**
+ * The BPJS Kesehatan premium the yayasan paid for one employment, as taxable
+ * income: the whole allowance line when the setting is in force, otherwise 0.
+ * Not scaled by the pay factor (DRAFT S1): the yayasan pays the full month's
+ * contribution even when the salary is prorated or paid at the early-service rate.
+ */
+export function employerHealthPremium(
+  row: Pick<Pph21SourceRow, "earnings">,
+  options: Pph21BaseOptions = DEFAULT_PPH21_SETTINGS,
+): number {
+  if (!options.employerHealthPremiumTaxable) return 0;
+  return row.earnings
+    .filter((line) => line.code === EMPLOYER_HEALTH_PREMIUM_COMPONENT)
+    .reduce((total, line) => total + line.amount, 0);
+}
+
+/** The reportable gross of one employment (section 5.3): pay actually paid, plus the taxable premium. */
+export function reportableGross(
+  row: Pick<Pph21SourceRow, "earnings" | "payFactor">,
+  options: Pph21BaseOptions = DEFAULT_PPH21_SETTINGS,
+): number {
+  return paidEarnings(row) + employerHealthPremium(row, options);
 }
 
 /** First bracket whose upper bound reaches the gross; null upper bound has none. */
@@ -208,7 +256,8 @@ export function buildPph21Report(input: {
     if (paid.length === 0) continue;
 
     const first = paid[0]!;
-    const gross = paid.reduce((total, source) => total + reportableGross(source), 0);
+    const gross = paid.reduce((total, source) => total + reportableGross(source, settings), 0);
+    const premium = paid.reduce((total, source) => total + employerHealthPremium(source, settings), 0);
     const flags: Pph21Flag[] = [];
 
     // The exclusion is about the person, so any of their profiles saying so is
@@ -296,6 +345,7 @@ export function buildPph21Report(input: {
       exclusionReason: exclusion ? exclusion.exclusionReason : null,
       objectCode: daily ? daily.objectCode : policy.objectCode,
       attendanceDays,
+      employerHealthPremium: premium,
     });
   }
 
@@ -316,6 +366,7 @@ export function buildPph21Report(input: {
       annualCalculationCount: reported.filter((row) => row.flags.includes("ANNUAL_CALCULATION_REQUIRED")).length,
       nonPermanentCount: reported.filter((row) => row.flags.includes("NON_PERMANENT_TERMS")).length,
       dailyCount: reported.filter((row) => row.objectCode === PPH21_NON_PERMANENT_OBJECT_CODE).length,
+      employerHealthPremium: reported.reduce((total, row) => total + row.employerHealthPremium, 0),
       skippedBlockedCount,
     },
   };

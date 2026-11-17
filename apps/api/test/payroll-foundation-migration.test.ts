@@ -179,6 +179,20 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       );
     });
 
+    it("accepts the PAYSLIP_LAYOUT key (migration 0165) and still refuses an unknown one", async () => {
+      await client.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PAYSLIP_LAYOUT', DATE '2010-01-01', DATE '2010-12-31', $2::jsonb, 'uji sintetis')`,
+        [randomUUID(), JSON.stringify({ source: "uji sintetis", employerBlock: true })],
+      );
+      await expectSqlError(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PAYSLIP_UNKNOWN', DATE '2010-01-01', DATE '2010-12-31', '{}'::jsonb, 'uji sintetis')`,
+        [randomUUID()],
+        "23514",
+      );
+    });
+
     it("requires a source for every policy version", async () => {
       await expectSqlError(
         `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, payload, source)

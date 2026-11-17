@@ -98,7 +98,7 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       expect(rows.map((row) => row.code)).toEqual([
         "ADJUST_DEDUCT", "ADJUST_EARN", "ARREARS", "BASIC", "BPJS_KES", "BPJS_KES_ALLOW",
         "BPJS_KES_EXTRA", "CHILD", "CHILD_EDU", "FUNC", "LOAN", "OTHER_INCOME", "OVERTIME",
-        "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
+        "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "REIMBURSE", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
         "TEACH_OVER", "TEACH_SHORT", "TRANSPORT",
       ]);
     });
@@ -136,15 +136,18 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
   });
 
   describe("versioned policy", () => {
+    // Bounded ranges before 2020: the calculation suite, running in parallel
+    // against the same database, keeps an open-ended BPJS version from 2020
+    // committed while it runs, and an open-ended row here would collide with it.
     it("refuses two versions of one policy that cover the same day", async () => {
       await client.query(
         `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
-         VALUES ($1, 'BPJS_KESEHATAN', DATE '2026-01-01', DATE '2026-12-31', '{}'::jsonb, 'Perpres uji')`,
+         VALUES ($1, 'BPJS_KESEHATAN', DATE '2010-01-01', DATE '2010-12-31', '{}'::jsonb, 'Perpres uji')`,
         [randomUUID()],
       );
       await expectSqlError(
-        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, payload, source)
-         VALUES ($1, 'BPJS_KESEHATAN', DATE '2026-06-01', '{}'::jsonb, 'Perpres uji')`,
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'BPJS_KESEHATAN', DATE '2010-06-01', DATE '2011-05-31', '{}'::jsonb, 'Perpres uji')`,
         [randomUUID()],
         "23P01",
       );
@@ -153,12 +156,12 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
     it("accepts a successor version that starts the day the previous one ends", async () => {
       await client.query(
         `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
-         VALUES ($1, 'BPJS_KESEHATAN', DATE '2026-01-01', DATE '2026-12-31', '{}'::jsonb, 'uji')`,
+         VALUES ($1, 'BPJS_KESEHATAN', DATE '2010-01-01', DATE '2010-12-31', '{}'::jsonb, 'uji')`,
         [randomUUID()],
       );
       await client.query(
-        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, payload, source)
-         VALUES ($1, 'BPJS_KESEHATAN', DATE '2027-01-01', '{}'::jsonb, 'uji')`,
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'BPJS_KESEHATAN', DATE '2011-01-01', DATE '2011-12-31', '{}'::jsonb, 'uji')`,
         [randomUUID()],
       );
     });

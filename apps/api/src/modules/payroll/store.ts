@@ -7,6 +7,16 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import {
+  LoanSettlementRefusal,
+  reverseEmployeeLoanSettlements,
+  settleEmployeeLoanDeductions,
+} from "./employee-loan-link.js";
+import {
+  ReimbursementSettlementRefusal,
+  reverseReimbursementHandoffs,
+  settleReimbursementHandoffs,
+} from "./reimbursement-link.js";
 import { defaultCutoffWindow, monthEnd, type PeriodAction, type PeriodState } from "./lifecycle.js";
 
 export type PeriodRow = {
@@ -278,7 +288,12 @@ export type ApplyTransitionInput = {
   fromState: PeriodState;
 };
 
-export type ApplyTransitionResult = { applied: boolean; period: PeriodRow | null };
+export type ApplyTransitionResult = {
+  applied: boolean;
+  period: PeriodRow | null;
+  /** Set when the transition was refused by work it carries (LOAN-001 settlement). */
+  refusal?: { code: string; message: string };
+};
 
 /**
  * Writes one transition. The version check makes a concurrent second click a
@@ -360,6 +375,34 @@ export async function applyTransition(
       return { applied: false, period: null };
     }
 
+    // LOAN-001 Package 2 (employee-loans.md section 9.2 item 3): the approved
+    // slip's loan deductions become loan payments in the same transaction, and
+    // a reopen reverses them. Both are driven by the period's deductions, not
+    // by the switch, so a period approved while the switch was on still
+    // reverses correctly after it is turned off.
+    const settledPeriod = rows[0]!;
+    let loanCounts: Record<string, number> = {};
+    try {
+      if (input.action === "approve") {
+        const { settled } = await settleEmployeeLoanDeductions(client, settledPeriod, input.actorAccountId);
+        loanCounts = settled > 0 ? { loan_payments_settled: settled } : {};
+        // REIMB-001 section 9: the same transaction settles handed-off reimbursements.
+        const reimbursed = await settleReimbursementHandoffs(client, settledPeriod, input.actorAccountId);
+        if (reimbursed.settled > 0) loanCounts = { ...loanCounts, reimbursements_settled: reimbursed.settled };
+      } else if (input.action === "approve_reopen") {
+        const { reversed } = await reverseEmployeeLoanSettlements(client, settledPeriod, input.actorAccountId);
+        loanCounts = reversed > 0 ? { loan_payments_reversed: reversed } : {};
+        const reopened = await reverseReimbursementHandoffs(client, settledPeriod, input.actorAccountId);
+        if (reopened.reversed > 0) loanCounts = { ...loanCounts, reimbursement_handoffs_reversed: reopened.reversed };
+      }
+    } catch (error) {
+      if (error instanceof LoanSettlementRefusal || error instanceof ReimbursementSettlementRefusal) {
+        await client.query("ROLLBACK");
+        return { applied: false, period: null, refusal: { code: error.code, message: error.message } };
+      }
+      throw error;
+    }
+
     // The reason is the content of a decision and has to stay readable, so it
     // goes into the transition log. The audit payload keeps identifiers and
     // counts only (specification section 8).
@@ -390,6 +433,7 @@ export async function applyTransition(
           state: input.nextState,
           blocker_count: input.blockerCount,
           reason_given: input.reason !== null,
+          ...loanCounts,
         },
       });
     }

@@ -497,6 +497,204 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
 
+  /payroll/pph21/annual:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollPph21Annual
+      summary: Read the annual PPh21 (Pasal 17) recap of one tax year
+      description: >-
+        PAY-003 section 7.4. One row per span of service in the year (a person who
+        leaves and returns has two). A span closes on its final masa pajak
+        (December, or the month service ends with no employment continuing). For a
+        closed span: gross = the monthly reportable gross of every final period of
+        the span; biaya jabatan = min(rate x gross, monthlyCap x months, annualCap);
+        net = gross - biaya jabatan - employee pension/JHT contribution; PKP = net -
+        PTKP (status at the start of the span), rounded down to pkpRoundingUnit;
+        annual tax = Pasal 17 layers on PKP; final masa tax = annual tax - TER of
+        the earlier months (negative = lebih potong). Open spans carry no annual
+        figures. Flags OPEN, PTKP_MISSING, PRIOR_TAX_INCOMPLETE. All values from the
+        PPH21_ANNUAL policy effective on 31 December. Requires
+        payroll.results.read.organization, payroll.calculate or payroll.inputs.manage.
+        JSON says only whether NIK/NPWP are on file; format=csv (the e-Bupot 1721-A1
+        recap, pph21-tahunan-YYYY.csv, UTF-8 BOM, CRLF) prints them. Every read is
+        recorded (scope pph21_annual / pph21_annual_csv) without figures or numbers.
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema: { type: integer, minimum: 2024, maximum: 2100 }
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, csv], default: json }
+      responses:
+        '200':
+          description: The recap, as JSON or as a CSV attachment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [annual]
+                properties:
+                  annual: { $ref: '#/components/schemas/PayrollPph21Annual' }
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '409':
+          description: PPH21_ANNUAL_POLICY_MISSING or PPH21_ANNUAL_POLICY_INVALID.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/pph21/annual/{year}/employees/{employeeId}/a1/{index}:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollPph21A1
+      summary: Read one person's bukti potong 1721-A1
+      description: >-
+        PAY-003 section 7.4. The closed span with that index, the pemotong from the
+        policy, the employee's NIK and NPWP opened for this document only, and the
+        signer resolved like PAYSLIP-005. Same readers as the annual recap; every
+        read is recorded as payroll.a1.read without figures or numbers. 409
+        PPH21_A1_NOT_FINAL while the span is open; 404 PPH21_A1_NOT_FOUND.
+      parameters:
+        - { name: year, in: path, required: true, schema: { type: integer } }
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [a1]
+                properties:
+                  a1: { $ref: '#/components/schemas/PayrollPph21A1' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: PPH21_A1_NOT_FINAL, PPH21_A1_PERIOD_PENDING (a period of the year up to the end of the span is not final), or the PPH21_ANNUAL policy is missing or invalid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/me/a1:
+    get:
+      tags: [Payroll]
+      operationId: listOwnPayrollPph21A1
+      summary: List the signed-in employee's own bukti potong 1721-A1
+      description: >-
+        Self-service, active employee with an active account. Closed spans whose
+        final masa pajak period is PUBLISHED (DRAFT). No figures.
+      responses:
+        '200':
+          description: Own bukti potong
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [year, index, startPeriod, endPeriod]
+                      properties:
+                        year: { type: integer }
+                        index: { type: integer }
+                        startPeriod: { type: string, example: '2026-01' }
+                        endPeriod: { type: string, example: '2026-12' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+
+  /payroll/me/a1/{year}/{index}:
+    get:
+      tags: [Payroll]
+      operationId: getOwnPayrollPph21A1
+      summary: Open the signed-in employee's own bukti potong 1721-A1 for printing
+      description: >-
+        Same document as the HC route, only for the own published span; anything
+        else is 404. Recorded as payroll.a1.read (scope pph21_a1_self).
+      parameters:
+        - { name: year, in: path, required: true, schema: { type: integer } }
+        - { name: index, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [a1]
+                properties:
+                  a1: { $ref: '#/components/schemas/PayrollPph21A1' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+
+  /payroll/employees/{employeeId}/tax-identity:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollTaxIdentity
+      summary: Whether NIK and NPWP are on file, masked to the last four digits
+      description: Requires payroll.profiles.manage. Never returns the numbers.
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Masked identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [taxIdentity]
+                properties:
+                  taxIdentity: { $ref: '#/components/schemas/PayrollTaxIdentity' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+    put:
+      tags: [Payroll]
+      operationId: putPayrollTaxIdentity
+      summary: Record or clear NIK and NPWP
+      description: >-
+        Requires payroll.profiles.manage, never on the holder's own record
+        (PAYROLL_SELF_EDIT_FORBIDDEN). A field not sent is kept; null or empty
+        clears it. NIK 16 digits, NPWP 15 or 16 digits; dots, dashes and spaces are
+        ignored. Stored sealed (AES-256-GCM); the audit event
+        payroll.tax_identity.updated names the fields, never the values.
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nik: { type: string, nullable: true }
+                npwp: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Masked identity after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [taxIdentity]
+                properties:
+                  taxIdentity: { $ref: '#/components/schemas/PayrollTaxIdentity' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+
   /payroll/periods/{periodId}/variance:
     get:
       tags: [Payroll]
@@ -656,6 +854,13 @@ paths:
         happened is refused with PAYROLL_STATE_CONFLICT, since the period has
         left the state that action starts from, and a transition written against
         a stale version is refused the same way rather than applied twice.
+        LOAN-001 Package 2: approve records each deduction on a LOAN-001 loan as a
+        PAYROLL_DEDUCTION payment in the same transaction and is refused with
+        PAYROLL_LOAN_BALANCE_CHANGED when a loan no longer has room for it, and with
+        PAYROLL_REIMBURSEMENT_CHANGED when the slips' REIMBURSE lines and the
+        handed-off reimbursements disagree (the
+        director returns the period); approve_reopen reverses the loan payments and
+        the reimbursement handoff rows (the reimbursement payment itself is immutable).
       parameters:
         - name: periodId
           in: path
@@ -726,6 +931,8 @@ components:
             - PAYROLL_BLOCKERS_PRESENT
             - PAYROLL_CALCULATION_STALE
             - PAYROLL_REOPEN_STATE_MISSING
+            - PAYROLL_LOAN_BALANCE_CHANGED
+            - PAYROLL_REIMBURSEMENT_CHANGED
             - PAYROLL_PERIOD_EXISTS
             - PAYROLL_PERIOD_NOT_FOUND
             - PAYROLL_INVALID_PERIOD
@@ -862,6 +1069,116 @@ components:
         bankAccountName: { type: [string, 'null'] }
         paymentConfirmedAt: { type: [string, 'null'], format: date-time }
 
+    PayrollPph21AnnualSegment:
+      type: object
+      description: One span of service in a tax year. Rupiah as decimal strings; null where not determinable.
+      required: [employeeId, employeeNumber, fullName, index, startPeriod, endPeriod, monthCount, closed, lines, gross, positionCost, pensionContribution, deductions, net, flags, note]
+      properties:
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        fullName: { type: string }
+        index: { type: integer }
+        startPeriod: { type: string, example: '2026-01' }
+        endPeriod: { type: string, example: '2026-12' }
+        monthCount: { type: integer }
+        closed: { type: boolean }
+        ptkpStatus: { type: string, nullable: true }
+        lines:
+          type: object
+          description: 1721-A1 lines salary, taxAllowance, otherAllowances, honorarium, insurancePremium, inKind, bonusThr.
+          additionalProperties: { type: string }
+        gross: { type: string }
+        positionCost: { type: string }
+        pensionContribution: { type: string }
+        deductions: { type: string }
+        net: { type: string }
+        ptkp: { type: string, nullable: true }
+        pkp: { type: string, nullable: true }
+        annualTax: { type: string, nullable: true }
+        terWithheld: { type: string, nullable: true }
+        finalMasaTax: { type: string, nullable: true }
+        flags:
+          type: array
+          items: { type: string, enum: [OPEN, PTKP_MISSING, PRIOR_TAX_INCOMPLETE, PERIOD_PENDING] }
+        note: { type: string }
+    PayrollPph21Annual:
+      type: object
+      required: [year, objectCode, policy, pendingPeriods, periodsWithoutTer, totals, rows]
+      properties:
+        year: { type: integer }
+        objectCode: { type: string, example: '21-100-01' }
+        policy:
+          type: object
+          properties:
+            versionId: { type: string }
+            effectiveFrom: { type: string, format: date }
+            source: { type: string }
+        pendingPeriods:
+          type: array
+          items:
+            type: object
+            properties:
+              periodMonth: { type: string }
+              state: { type: string }
+        periodsWithoutTer: { type: array, items: { type: string } }
+        totals:
+          type: object
+          properties:
+            segmentCount: { type: integer }
+            closedCount: { type: integer }
+            annualTax: { type: string }
+            finalMasaTax: { type: string }
+        rows:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/PayrollPph21AnnualSegment'
+              - type: object
+                properties:
+                  taxIdentity:
+                    type: object
+                    properties:
+                      nik: { type: boolean }
+                      npwp: { type: boolean }
+    PayrollPph21A1:
+      type: object
+      required: [year, objectCode, reference, issuedOn, withholder, employee, policy, segment, signer]
+      properties:
+        year: { type: integer }
+        objectCode: { type: string }
+        reference: { type: string, description: HCIS reference, not the e-Bupot number. }
+        issuedOn: { type: string, format: date }
+        withholder:
+          type: object
+          properties:
+            name: { type: string }
+            taxNumber: { type: string, nullable: true }
+        employee:
+          type: object
+          properties:
+            employeeNumber: { type: string }
+            fullName: { type: string }
+            position: { type: string, nullable: true }
+            nik: { type: string, nullable: true }
+            npwp: { type: string, nullable: true }
+        policy:
+          type: object
+          properties:
+            versionId: { type: string }
+            effectiveFrom: { type: string, format: date }
+            source: { type: string }
+        segment: { $ref: '#/components/schemas/PayrollPph21AnnualSegment' }
+        signer:
+          type: object
+          properties:
+            title: { type: string }
+            name: { type: string, nullable: true }
+    PayrollTaxIdentity:
+      type: object
+      properties:
+        nikMasked: { type: string, nullable: true, example: '************0001' }
+        npwpMasked: { type: string, nullable: true }
+        updatedAt: { type: string, nullable: true }
     PayrollPph21Report:
       type: object
       required: [taxPeriod, objectCode, policy, totals, rows]

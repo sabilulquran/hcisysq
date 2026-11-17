@@ -102,6 +102,15 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       "payroll.profiles.manage",
     ].some((permission) => hasPermission(session, permission));
   }
+  // PAY-003 §7.4: the annual PPh21 recap and 1721-A1 carry per-person figures, so the screen
+  // opens exactly to the API's per-person readers (§7.3), before the period rule below.
+  if (path === "/admin/payroll/pph21-annual") {
+    return [
+      "payroll.results.read.organization",
+      "payroll.calculate",
+      "payroll.inputs.manage",
+    ].some((permission) => hasPermission(session, permission));
+  }
   if (/^\/admin\/payroll(?:\/|$)/.test(path)) {
     return [
       "payroll.periods.manage",

@@ -181,6 +181,17 @@ function createPool(
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    // LOAN-001 Package 2 (employee-loan-link.ts): no LOAN-001 loan is mirrored in
+    // these periods, so there is nothing to propose, settle or reverse.
+    if (sql.includes("origin = 'PROPOSED'")
+        || sql.includes("JOIN employee_loans loan")
+        || sql.includes("FROM employee_loan_payments p")
+        || sql.includes("FROM employee_loans")
+        // REIMB-001 section 9 (reimbursement-link.ts): nothing handed off either.
+        || sql.includes("reimbursement_payroll_handoffs")
+        || sql.includes("component_code = 'REIMBURSE'")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FOR UPDATE")) {
       return { rows: [{ state: current.state ?? "DRAFT", version: current.version ?? 0 }], rowCount: 1 };
     }

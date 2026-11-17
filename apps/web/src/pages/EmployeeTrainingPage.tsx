@@ -1,6 +1,6 @@
 // TRAIN-001 employee surface: hours this year, programs I take part in with their schedule and
-// my attendance, my training history, and an external training with its certificate.
-// Spec: docs/domain/training.md.
+// my attendance, my evaluation tasks and results (R3), my training history, and an external
+// training with its certificate. Spec: docs/domain/training.md, docs/domain/training-evaluation.md.
 
 import { GraduationCap, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -8,6 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
+import { EmployeeEvaluationSection } from "@/components/training/EmployeeEvaluationSection";
+import { OnlineModules } from "@/components/training/OnlineModules";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -210,6 +212,11 @@ export function EmployeeTrainingPage() {
               {selected?.id === programId ? (
                 <>
                   {selected.description ? <p className="text-sm text-muted-foreground">{selected.description}</p> : null}
+                  {selected.delivery === "ONLINE" ? (
+                    <div className={selected.description ? "mt-4" : ""}>
+                      <OnlineModules programId={selected.id} onProgramCompleted={() => void loadAll()} />
+                    </div>
+                  ) : null}
                   <ol className={`${selected.description ? "mt-4 " : ""}space-y-2`}>
                     {selected.sessions.map((session) => (
                       <li key={session.id} className="rounded-2xl border border-border/70 p-3 text-sm">
@@ -230,6 +237,8 @@ export function EmployeeTrainingPage() {
             </DetailDialog>
           ) : null}
         </div>
+
+        <EmployeeEvaluationSection />
 
         <section className={`${card} mt-6 overflow-hidden`}>
           <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Riwayat pelatihan</h2>

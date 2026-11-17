@@ -4,9 +4,12 @@
 // The API authorizes every call; a section the account cannot read simply stays empty.
 
 import { useLocation, useRouter } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { Loader2, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
+import { CertificateLetterPaper, CertificatePrintCopy } from "@/components/documents/CertificateLetterPaper";
 import { DocumentRegisterSection, RevokeDocumentDialog, type RegisterView } from "@/components/documents/DocumentRegister";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
@@ -14,11 +17,13 @@ import { hasPermission } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 import {
   HrDocumentApiError,
+  INCOME_DOCUMENT_CODE,
   approveDocumentRequest,
   documentStatusLabel,
   getDisciplinaryLetters,
   getDocumentRegister,
   getDocumentRequests,
+  getIssuedDocument,
   issueDisciplinaryLetter,
   issueDocumentRequest,
   readRegisterFilter,
@@ -27,6 +32,7 @@ import {
   writeRegisterFilter,
   type DisciplinaryLetterSummary,
   type DocumentRequestSummary,
+  type IssuedDocumentSummary,
   type RegisterEntry,
   type RegisterFilter,
 } from "@/lib/hrDocuments";
@@ -66,6 +72,32 @@ export function AdminDocumentsPage() {
   const [registerView, setRegisterView] = useState<RegisterView>({ kind: "loading" });
   const [revokeTarget, setRevokeTarget] = useState<RegisterEntry | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  // D-25: "Lihat surat" opens one issued certificate as a pop-up named in the URL (?surat=<id>).
+  // An income letter carries pay figures, so it is offered only with documents.manage; the API
+  // checks the same on every read and audits each one.
+  const canManage = hasPermission(session, "documents.manage");
+  const canViewLetter = (entry: RegisterEntry) => entry.documentCode !== INCOME_DOCUMENT_CODE || canManage;
+  const [letterId, showLetter, closeLetter] = useDialogParam("surat");
+  const [opened, setOpened] = useState<(IssuedDocumentSummary & { revokedAt: string | null }) | null>(null);
+  const [letterError, setLetterError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!letterId) {
+      setOpened(null);
+      setLetterError(null);
+      return;
+    }
+    let current = true;
+    setLetterError(null);
+    getIssuedDocument(letterId)
+      .then((document) => { if (current) setOpened(document); })
+      .catch((cause: unknown) => {
+        if (!current) return;
+        setOpened(null);
+        setLetterError(cause instanceof Error ? cause.message : "Surat tidak dapat dibuka.");
+      });
+    return () => { current = false; };
+  }, [letterId]);
 
   const { kind: registerKind, status: registerStatus, page: registerPage, pageSize: registerPageSize } = registerFilter;
   // Only the latest request may write the view: a slower answer for the previous tab must not
@@ -253,6 +285,8 @@ export function AdminDocumentsPage() {
             onFilterChange={changeRegisterFilter}
             onRevoke={openRevoke}
             onRetry={() => void loadRegister()}
+            canView={canViewLetter}
+            onView={(entry) => showLetter(entry.id)}
           />
 
           {disciplineReadable ? (
@@ -321,6 +355,43 @@ export function AdminDocumentsPage() {
           ) : null}
         </div>
       )}
+      {letterId ? (
+        <DetailDialog
+          title={opened?.id === letterId ? String(opened.contentSnapshot.documentLabel ?? opened.documentCode) : "Surat"}
+          description={opened?.id === letterId ? opened.documentNumber : undefined}
+          onClose={closeLetter}
+          wide
+        >
+          <DialogMessages error={letterError} />
+          {opened?.id === letterId ? (
+            <>
+              {opened.status === "ISSUED" ? (
+                <>
+                  {/* Printing shows only this copy, mounted under <body>; the pop-up itself is not printed. */}
+                  <CertificatePrintCopy document={opened} />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">Setiap pembukaan surat ini tercatat di jejak audit.</p>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground"
+                    >
+                      <Printer className="h-4 w-4" aria-hidden="true" /> Cetak / Simpan PDF
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p role="status" className="rounded-2xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">
+                  Surat ini sudah dibatalkan {formatDate(opened.revokedAt)} dan tidak dapat dicetak.
+                </p>
+              )}
+              <div className="mt-3 overflow-x-auto">
+                <CertificateLetterPaper document={opened} />
+              </div>
+            </>
+          ) : letterError ? null : <DialogLoading />}
+        </DetailDialog>
+      ) : null}
       {revokeTarget ? (
         <RevokeDocumentDialog
           entry={revokeTarget}

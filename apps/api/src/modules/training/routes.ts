@@ -19,6 +19,12 @@ import type { TrainingPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
+import { EvaluationPolicyError } from "./evaluation-domain.js";
+import { assignSupervisorAssessors, registerTrainingEvaluationRoutes } from "./evaluation-routes.js";
+import { registerTrainingOnlineRoutes } from "./online-routes.js";
+import { DEFAULT_MEDIA_QUOTA_BYTES, DEFAULT_VIDEO_MAX_BYTES } from "./online-domain.js";
+import { LocalFileObjectStorage, type ObjectStorage } from "../../lib/object-storage.js";
+import { audit, loadSelf, send, TrainingError, type Queryable } from "./shared.js";
 import {
   ATTENDANCE_STATUSES,
   CERTIFICATE_CONTENT_TYPES,
@@ -44,7 +50,6 @@ import {
   type ProgramStatus,
 } from "./domain.js";
 
-type Queryable = Pool | PoolClient;
 
 /** A 2 MB certificate grows by a third as base64 inside JSON; same limit as leave evidence. */
 const CERTIFICATE_BODY_LIMIT = 3_500_000;
@@ -63,8 +68,10 @@ const programBody = z.object({
   organizer: z.string().trim().min(3).max(200).nullable().optional(),
   capacity: z.number().int().min(1).max(500).nullable().optional(),
   minAttendancePercent: z.number().int().min(50).max(100).optional(),
+  delivery: z.enum(["CLASSROOM", "ONLINE"]).optional(),
 });
-const programPatch = programBody.partial();
+// R4 M-01: delivery is chosen at creation only.
+const programPatch = programBody.omit({ delivery: true }).partial();
 const programReason = z.object({ reason: z.string().trim().min(10).max(500) });
 const shortReason = z.object({ reason: z.string().trim().min(5).max(500) });
 const sessionBody = z.object({
@@ -133,30 +140,13 @@ const hoursQuery = pageQuerySchema.extend({ year: yearSchema.optional(), q: z.st
 const yearQuery = z.object({ year: yearSchema.optional() });
 const optionsQuery = z.object({ q: z.string().trim().min(2).max(100) });
 
-class TrainingError extends Error {
-  constructor(
-    readonly statusCode: number,
-    readonly code: string,
-    message: string,
-    readonly details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "TrainingError";
-  }
-}
-
-function send(reply: FastifyReply, status: number, body: unknown) {
-  reply.header("Cache-Control", "no-store");
-  return reply.status(status).send(body);
-}
-
 function currentYear(): number {
   return Number(jakartaDate(new Date()).slice(0, 4));
 }
 
 function knownError(error: unknown): TrainingError | null {
   if (error instanceof TrainingError) return error;
-  if (error instanceof TrainingPolicyError || error instanceof CertificateError) {
+  if (error instanceof TrainingPolicyError || error instanceof CertificateError || error instanceof EvaluationPolicyError) {
     return new TrainingError(error.statusCode, error.code, error.message);
   }
   return null;
@@ -171,48 +161,6 @@ function contentDisposition(fileName: string) {
 const notFound = () => new TrainingError(404, "TRAINING_PROGRAM_NOT_FOUND", "Program pelatihan tidak ditemukan.");
 const recordNotFound = () => new TrainingError(404, "TRAINING_RECORD_NOT_FOUND", "Catatan pelatihan tidak ditemukan.");
 
-async function audit(
-  db: Queryable,
-  input: {
-    eventType: string;
-    actorAccountId: string | null;
-    programId?: string | null;
-    sessionId?: string | null;
-    recordId?: string | null;
-    employeeId?: string | null;
-    note?: string | null;
-    metadata?: Record<string, unknown>;
-  },
-) {
-  // clock_timestamp(), not now(): events written in one transaction keep their order.
-  await db.query(
-    `INSERT INTO training_audit_events
-       (id, event_type, program_id, session_id, record_id, employee_id, actor_account_id, note, metadata, occurred_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, clock_timestamp())`,
-    [
-      randomUUID(), input.eventType, input.programId ?? null, input.sessionId ?? null, input.recordId ?? null,
-      input.employeeId ?? null, input.actorAccountId, input.note ?? null, JSON.stringify(input.metadata ?? {}),
-    ],
-  );
-}
-
-async function loadSelf(db: Queryable, accountId: string, lock = false): Promise<{ id: string; fullName: string }> {
-  const result = await db.query<{ id: string; fullName: string; status: string }>(
-    `SELECT employee.id, employee.full_name AS "fullName", employee.status
-       FROM accounts account
-       JOIN employees employee ON employee.id = account.employee_id
-      WHERE account.id = $1 AND account.principal_type = 'EMPLOYEE' AND account.status = 'active'
-        AND employee.removed_at IS NULL
-      ${lock ? "FOR UPDATE OF employee" : ""}`,
-    [accountId],
-  );
-  const employee = result.rows[0];
-  if (!employee || employee.status !== "active") {
-    throw new TrainingError(403, "EMPLOYEE_NOT_ACTIVE", "Akun tidak terhubung ke pegawai aktif.");
-  }
-  return employee;
-}
-
 interface ProgramRow {
   id: string;
   title: string;
@@ -221,11 +169,12 @@ interface ProgramRow {
   capacity: number | null;
   minAttendancePercent: number;
   status: ProgramStatus;
+  delivery: "CLASSROOM" | "ONLINE";
 }
 
 async function lockProgram(db: Queryable, id: string, requireActive = true): Promise<ProgramRow> {
   const result = await db.query<ProgramRow>(
-    `SELECT id, title, category, organizer, capacity, min_attendance_percent AS "minAttendancePercent", status
+    `SELECT id, title, category, organizer, capacity, min_attendance_percent AS "minAttendancePercent", status, delivery
        FROM training_programs WHERE id = $1 FOR UPDATE`,
     [id],
   );
@@ -437,6 +386,7 @@ const wib = new Intl.DateTimeFormat("id-ID", {
 const PROGRAM_COLUMNS = `
   program.id, program.title, program.category, program.description, program.organizer, program.capacity,
   program.min_attendance_percent AS "minAttendancePercent", program.status, program.cancel_reason AS "cancelReason",
+  program.evaluation_passing_score AS "evaluationPassingScore", program.delivery,
   program.created_at AS "createdAt", program.closed_at AS "closedAt",
   (SELECT count(*)::int FROM training_participants participant
     WHERE participant.program_id = program.id AND participant.status <> 'WITHDRAWN') AS "participantCount",
@@ -467,9 +417,20 @@ export async function registerTrainingRoutes(
   pool: Pool,
   config: ApiConfig,
   injectedAuth?: Pick<AuthService, "getSession" | "getAuthorizationContext">,
+  injectedStorage?: ObjectStorage,
 ) {
   const encryptionKey = config.AUTH_ENCRYPTION_KEY;
   if (!encryptionKey) throw new Error("AUTH_ENCRYPTION_KEY is required for training routes");
+  // R4 M-05/M-06: off unless switched on with storage; the adapter is chosen by configuration.
+  const onlineRequested = config.TRAINING_ONLINE_ENABLED === "1";
+  const storage: ObjectStorage | null = !onlineRequested ? null
+    : injectedStorage ?? (config.TRAINING_MEDIA_DIR ? new LocalFileObjectStorage(config.TRAINING_MEDIA_DIR) : null);
+  const online = {
+    enabled: storage !== null,
+    storage,
+    videoMaxBytes: config.TRAINING_VIDEO_MAX_BYTES ?? DEFAULT_VIDEO_MAX_BYTES,
+    mediaQuotaBytes: config.TRAINING_MEDIA_QUOTA_BYTES ?? DEFAULT_MEDIA_QUOTA_BYTES,
+  };
   const auth = injectedAuth ?? new AuthService(
     pool, encryptionKey, config.AUTH_SESSION_TTL_HOURS, config.NODE_ENV === "production",
   );
@@ -816,13 +777,18 @@ export async function registerTrainingRoutes(
     const body = programBody.safeParse(request.body);
     if (!body.success) return invalid(reply, "INVALID_TRAINING_PROGRAM", "Judul (3–200 karakter) atau kategori program tidak valid.");
     return transact(reply, async (client) => {
+      const delivery = body.data.delivery ?? "CLASSROOM";
+      // R4 M-05: no online program while the feature is off.
+      if (delivery === "ONLINE" && !online.enabled) {
+        throw new TrainingError(404, "TRAINING_ONLINE_DISABLED", "Modul daring belum diaktifkan.");
+      }
       const id = randomUUID();
       await client.query(
         `INSERT INTO training_programs
-           (id, title, category, description, organizer, capacity, min_attendance_percent, status, created_by_account_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', $8)`,
+           (id, title, category, description, organizer, capacity, min_attendance_percent, status, created_by_account_id, delivery)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', $8, $9)`,
         [id, body.data.title, body.data.category, body.data.description, body.data.organizer ?? DEFAULT_ORGANIZER,
-          body.data.capacity ?? null, body.data.minAttendancePercent ?? 80, principal.id],
+          body.data.capacity ?? null, body.data.minAttendancePercent ?? 80, principal.id, delivery],
       );
       await audit(client, { eventType: "training.program.created", programId: id, actorAccountId: principal.id });
       return [201, { id, status: "ACTIVE" }];
@@ -933,6 +899,23 @@ export async function registerTrainingRoutes(
     if (!params.success) return invalid(reply, "INVALID_TRAINING_PROGRAM_ID", "Program pelatihan tidak valid.");
     return transact(reply, async (client) => {
       const program = await lockProgram(client, params.data.id);
+      if (program.delivery === "ONLINE") {
+        // R4 M-15: records were made as each participant finished; the rest close without one.
+        const unfinished = await client.query(
+          `UPDATE training_participants SET status = 'INCOMPLETE', updated_at = now()
+            WHERE program_id = $1 AND status = 'ENROLLED' RETURNING employee_id`,
+          [program.id],
+        );
+        const records = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM training_records WHERE program_id = $1 AND source = 'INTERNAL'`, [program.id],
+        );
+        await client.query(`UPDATE training_programs SET status = 'COMPLETED', closed_at = now(), updated_at = now() WHERE id = $1`, [program.id]);
+        await audit(client, {
+          eventType: "training.program.completed", programId: program.id, actorAccountId: principal.id,
+          metadata: { delivery: "ONLINE", incomplete: unfinished.rowCount ?? 0, records: records.rows[0]?.count ?? 0 },
+        });
+        return [200, { id: program.id, status: "COMPLETED", delivery: "ONLINE", totalHours: 0, participants: [], records: records.rows[0]?.count ?? 0, incomplete: unfinished.rowCount ?? 0 }];
+      }
       const sessions = await client.query<{ id: string; startAt: Date; endAt: Date; speakerEmployeeId: string | null }>(
         `SELECT id, start_at AS "startAt", end_at AS "endAt", speaker_employee_id AS "speakerEmployeeId"
            FROM training_sessions WHERE program_id = $1 AND status = 'SCHEDULED'`,
@@ -1028,6 +1011,9 @@ export async function registerTrainingRoutes(
     if (!body.success) return invalid(reply, "INVALID_TRAINING_SESSION", "Judul, waktu, atau narasumber sesi tidak valid.");
     return transact(reply, async (client) => {
       const program = await lockProgram(client, params.data.id);
+      if (program.delivery === "ONLINE") {
+        throw new TrainingError(409, "TRAINING_ONLINE_NO_SESSIONS", "Program daring tidak memiliki sesi terjadwal (R4 M-01).");
+      }
       const interval = validateSessionTimes(body.data.startAt, body.data.endAt);
       const count = await client.query<{ count: number }>(
         // Cancelled sessions count too, so the detail list stays bounded (D-17).
@@ -1187,7 +1173,8 @@ export async function registerTrainingRoutes(
         `SELECT employee_id AS "employeeId", status FROM training_participants WHERE program_id = $1 AND employee_id = ANY($2::uuid[])`,
         [program.id, requested],
       );
-      const alreadyEnrolled = existing.rows.filter((row) => row.status === "ENROLLED").map((row) => row.employeeId);
+      // R4: an online participant can finish while the program is still open; they stay finished.
+      const alreadyEnrolled = existing.rows.filter((row) => row.status !== "WITHDRAWN").map((row) => row.employeeId);
       const toEnroll = requested.filter((id) => !alreadyEnrolled.includes(id));
       if (toEnroll.length === 0) return [200, { enrolled: [], alreadyEnrolled, warnings: [] }];
       const enrolledNow = (await enrolledIds(client, program.id)).length;
@@ -1206,6 +1193,8 @@ export async function registerTrainingRoutes(
         );
         await audit(client, { eventType: "training.participant.enrolled", programId: program.id, employeeId, actorAccountId: principal.id });
       }
+      // R3 E-14: a new participant gets their line manager as assessor on SUPERVISOR components.
+      await assignSupervisorAssessors(client, { programId: program.id, employeeIds: toEnroll, actorAccountId: principal.id });
       const stamp = Date.now();
       await notifyMany(client, toEnroll, {
         eventKey: (employeeId) => `training.program.${program.id}.enrolled.${employeeId}.${stamp}`,
@@ -1537,4 +1526,12 @@ export async function registerTrainingRoutes(
     );
     return send(reply, 200, { items: result.rows });
   });
+
+  async function canManage(principal: AuthPrincipal) {
+    return (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("training.manage");
+  }
+
+  const kit = { pool, requireEmployee, requirePermission, handle, transact, invalid, canManage, transactWork: inTransaction };
+  registerTrainingEvaluationRoutes(app, kit);
+  registerTrainingOnlineRoutes(app, kit, online);
 }

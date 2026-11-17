@@ -21,7 +21,15 @@ import {
   type PayrollBlocker,
   type PeriodInputs,
 } from "./engine.js";
+import {
+  previousMonthStart,
+  resolvePerformanceLink,
+  type LinkedReview,
+  type PerformanceLinkTrace,
+} from "./performance-link.js";
+import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
 import { resolvePolicy, type PolicyProblem } from "./policy.js";
+import { bindReimbursementHandoffs } from "./reimbursement-link.js";
 import { writeAudit } from "./store.js";
 
 /** The engine cannot be called without a profile, a category and a start date. */
@@ -58,6 +66,13 @@ const CATEGORY_BY_TERM: Readonly<Record<string, EmploymentCategory>> = {
 };
 
 const PAYROLL_TERM_CATEGORIES = Object.keys(CATEGORY_BY_TERM);
+
+/** The terms paid under section 5.1, which is where PERF lives. */
+const PERFORMANCE_TERM_CATEGORIES = new Set(
+  Object.entries(CATEGORY_BY_TERM)
+    .filter(([, category]) => category !== "HONORARIUM")
+    .map(([term]) => term),
+);
 
 type EmploymentRow = {
   employmentId: string;
@@ -220,14 +235,25 @@ async function loadLoans(
   periodId: string,
   employeeIds: readonly string[],
 ): Promise<Map<string, { outstanding: number; deduction: number }>> {
+  // A kasbon mirrored from LOAN-001 (employee_loan_id) takes its balance from
+  // LOAN-001 itself, which also counts cash and transfer repayments; only the
+  // payment this very period wrote (none while it is being worked on) is left
+  // out, as the period's own deduction is what the balance is checked against.
   const { rows } = await client.query<LoanRow>(
     `SELECT l.employee_id AS "employeeId",
             coalesce(sum(l.principal) - sum(coalesce(other.paid, 0)), 0)::text AS "outstanding",
             coalesce(sum(coalesce(mine.amount, 0)), 0)::text AS "deductionThisPeriod"
      FROM payroll_loans l
+     LEFT JOIN employee_loans el ON el.id = l.employee_loan_id
      LEFT JOIN LATERAL (
-       SELECT sum(d.amount) AS paid FROM payroll_loan_deductions d
-       WHERE d.loan_id = l.id AND d.period_id <> $1
+       SELECT CASE
+         WHEN l.employee_loan_id IS NULL THEN (
+           SELECT sum(d.amount) FROM payroll_loan_deductions d
+           WHERE d.loan_id = l.id AND d.period_id <> $1)
+         ELSE el.paid_total - coalesce((
+           SELECT sum(p.amount) FROM employee_loan_payments p
+           WHERE p.loan_id = el.id AND p.status = 'ACTIVE' AND p.source_payroll_period_id = $1), 0)
+       END AS paid
      ) other ON true
      LEFT JOIN LATERAL (
        SELECT sum(d.amount) AS amount FROM payroll_loan_deductions d
@@ -243,6 +269,61 @@ async function loadLoans(
       { outstanding: Number(row.outstanding), deduction: Number(row.deductionThisPeriod) },
     ]),
   );
+}
+
+type ReviewRow = LinkedReview & { employeeId: string };
+
+/**
+ * The finalized PERF-001 reviews this period reads (performance-review.md
+ * section 11, payroll-calculation-v1.md section 5.5). Only FINALIZED reviews
+ * from CLOSED cycles: UNRATED, REMOVED, and anything in a cycle still open are
+ * never read. A cycle counts as closed for this pay date when it was closed on
+ * or before the pay date (Asia/Jakarta), so recalculating an earlier period
+ * after a later close does not reach forward.
+ *
+ * - %bulanan: the MONTHLY cycle of the month before the period month.
+ * - %tahunan: the ANNUAL cycle with the latest period that was closed by the
+ *   pay date. Only that cycle is read; an employee without a finalized review
+ *   in it falls back to the profile, not to an older cycle.
+ */
+async function loadLinkedReviews(
+  client: PoolClient,
+  period: { periodStart: string; payDate: string },
+  employeeIds: readonly string[],
+): Promise<{ monthly: Map<string, LinkedReview>; annual: Map<string, LinkedReview> }> {
+  const monthly = new Map<string, LinkedReview>();
+  const annual = new Map<string, LinkedReview>();
+  if (employeeIds.length === 0) return { monthly, annual };
+
+  const { rows } = await client.query<ReviewRow>(
+    `WITH closed AS (
+       SELECT c.id, c.kind, c.period_start
+       FROM performance_cycles c
+       WHERE c.status = 'CLOSED'
+         AND c.closed_at IS NOT NULL
+         AND (c.closed_at AT TIME ZONE 'Asia/Jakarta')::date <= $2::date
+     ),
+     chosen AS (
+       (SELECT id FROM closed WHERE kind = 'MONTHLY' AND period_start = $1::date)
+       UNION ALL
+       (SELECT id FROM closed WHERE kind = 'ANNUAL' ORDER BY period_start DESC LIMIT 1)
+     )
+     SELECT r.employee_id AS "employeeId", r.id AS "reviewId", c.id AS "cycleId",
+            c.kind AS "cycleKind", to_char(c.period_start, 'YYYY-MM-DD') AS "cyclePeriodStart",
+            r.predicate_code AS "predicateCode"
+     FROM performance_reviews r
+     JOIN performance_cycles c ON c.id = r.cycle_id
+     WHERE r.cycle_id IN (SELECT id FROM chosen)
+       AND r.status = 'FINALIZED'
+       AND r.predicate_code IS NOT NULL
+       AND r.employee_id = ANY($3::uuid[])`,
+    [previousMonthStart(period.periodStart), period.payDate, employeeIds],
+  );
+  for (const row of rows) {
+    const { employeeId, ...review } = row;
+    (review.cycleKind === "MONTHLY" ? monthly : annual).set(employeeId, review);
+  }
+  return { monthly, annual };
 }
 
 /**
@@ -261,6 +342,8 @@ export async function calculatePeriod(
   },
   actorAccountId: string,
   expectedVersion: number,
+  /** Feature switches read from configuration by the caller; all default off. */
+  options: { employeeLoanDeduction?: boolean; reimbursementHandoff?: boolean } = {},
 ): Promise<CalculationOutcome> {
   const client = await pool.connect();
   try {
@@ -305,7 +388,32 @@ export async function calculatePeriod(
 
     const employments = await loadEmployments(client, period);
     const employmentIds = employments.map((row) => row.employmentId);
-    const loans = await loadLoans(client, period.id, [...new Set(employments.map((row) => row.employeeId))]);
+    const employeeIds = [...new Set(employments.map((row) => row.employeeId))];
+    // LOAN-001 Package 2: propose this month's instalments before the loans are
+    // read, so the engine sees them like any other kasbon deduction.
+    const loanLink = await syncEmployeeLoanDeductions(
+      client,
+      { id: period.id, periodMonth: period.periodStart },
+      employeeIds,
+      actorAccountId,
+      options.employeeLoanDeduction === true,
+    );
+    const loans = await loadLoans(client, period.id, employeeIds);
+    // REIMB-001 section 9: reimbursements handed to this month, per employee.
+    const reimbursements = await bindReimbursementHandoffs(
+      client,
+      { id: period.id, periodMonth: period.periodStart },
+      employeeIds,
+      options.reimbursementHandoff === true,
+    );
+    // Paid once per person: with two employments in one period, the first
+    // carries it (employments are ordered by id).
+    const reimbursedEmployees = new Set<string>();
+    // Switched off (no enabled PERFORMANCE_PERCENT version on the pay date):
+    // not one review is read and every input stays exactly as it was.
+    const performancePolicy = resolved.performancePercent;
+    const linkedReviews = performancePolicy ? await loadLinkedReviews(client, period, employeeIds) : null;
+    let performanceLinkedCount = 0;
 
     const profiles = await client.query<ProfileRow>(
       `SELECT DISTINCT ON (employment_id)
@@ -378,6 +486,31 @@ export async function calculatePeriod(
         loanDeduction: loan.deduction,
         loanOutstanding: loan.outstanding,
       };
+      const reimbursement = reimbursements.get(employment.employeeId) ?? 0;
+      if (reimbursement > 0 && !reimbursedEmployees.has(employment.employeeId)) {
+        // Absent unless there is something to pay, so a period without a
+        // handoff stores exactly the snapshot it stored before.
+        employmentInputs.reimbursement = reimbursement;
+        reimbursedEmployees.add(employment.employeeId);
+      }
+      let performanceTrace: PerformanceLinkTrace | null = null;
+      const linkBlockers: PayrollBlocker[] = [];
+      // Only the pay bases that earn PERF read a review. Honorarium staff
+      // (KONTRAK_HONORER, LEPAS) have no performance allowance (section 5.2),
+      // so a review of theirs must neither change nor block anything.
+      const earnsPerformance = employment.termCategory !== null && PERFORMANCE_TERM_CATEGORIES.has(employment.termCategory);
+      if (performancePolicy && linkedReviews && earnsPerformance) {
+        const linked = resolvePerformanceLink({
+          policy: performancePolicy,
+          monthly: linkedReviews.monthly.get(employment.employeeId) ?? null,
+          annual: linkedReviews.annual.get(employment.employeeId) ?? null,
+        });
+        employmentInputs.annualPerformanceRateFromReview = linked.annualRate;
+        employmentInputs.monthlyPerformanceRateFromReview = linked.monthlyRate;
+        performanceTrace = linked.trace;
+        linkBlockers.push(...linked.blockers);
+        if (linked.trace.monthly || linked.trace.annual) performanceLinkedCount += 1;
+      }
       const profile = profileOf(employment, profileByEmployment.get(employment.employmentId));
       const unresolvedEnd = employment.endBasis === "UNKNOWN";
 
@@ -412,6 +545,7 @@ export async function calculatePeriod(
       };
       if (!profile) skipped.push({ employmentId: employment.employmentId, blocker: PROFILE_MISSING });
       if (unresolvedEnd) result.blockers.push(SERVICE_END_UNRESOLVED);
+      result.blockers.push(...linkBlockers);
       results.push(result);
 
       const previousRow = previousByEmployment.get(employment.employmentId);
@@ -434,7 +568,13 @@ export async function calculatePeriod(
         bpjs_base: result.bpjsBase,
         extra_family_members: result.extraFamilyMembers,
         blockers: result.blockers,
-        input_snapshot: { period_fingerprint: periodFingerprint, inputs: employmentInputs },
+        // Which review, cycle and predicate the performance rates came from, so
+        // the figure can be audited again later (performance-review.md
+        // section 11 item 5). Absent while the link is switched off, so a
+        // switched-off period stores exactly what it stored before.
+        input_snapshot: performanceTrace
+          ? { period_fingerprint: periodFingerprint, inputs: employmentInputs, performance_link: performanceTrace }
+          : { period_fingerprint: periodFingerprint, inputs: employmentInputs },
       });
 
       for (const [index, line] of result.lines.entries()) {
@@ -501,6 +641,14 @@ export async function calculatePeriod(
         payable_total: totals.payable,
         employer_cost_total: totals.employerCost,
         policy_version_count: resolved.versionIds.length,
+        // Counts only: which predicate anyone received stays in the result row.
+        ...(performancePolicy ? { performance_link_enabled: true, performance_linked_count: performanceLinkedCount } : {}),
+        ...(options.employeeLoanDeduction === true
+          ? { employee_loan_deduction_enabled: true, employee_loan_proposed_count: loanLink.proposed }
+          : {}),
+        ...(options.reimbursementHandoff === true
+          ? { reimbursement_handoff_enabled: true, reimbursement_employee_count: reimbursedEmployees.size }
+          : {}),
       },
     });
 

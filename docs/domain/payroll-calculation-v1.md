@@ -23,12 +23,13 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 - Potongan: kasbon, iuran BPJS Kesehatan, iuran anggota keluarga tambahan, pendidikan anak, kekurangan jam, penyesuaian.
 - Insentif Pj. Media untuk pegawai aktif (input periode).
 - Netto 80% selama 2 bulan pertama masa kerja; prorata sebagai penyesuaian berwenang.
+- Pinjaman LOAN-001 dipotong lewat register yang sama bila sakelar §3.5 menyala; pelunasannya tercatat di LOAN-001 saat periode disahkan.
 - Potongan kasbon diambil dari register kasbon (§3.4), bukan diketik sebagai input periode: sisa pinjaman dihitung dari pokok dikurangi potongan pada periode lain, dan potongan periode berjalan dibandingkan dengan sisa itu.
 - Lifecycle periode dengan pengesahan Direktur, laporan untuk Keuangan/Direktur/Pengurus, publikasi slip lewat PAY-002, laporan PPh21 TER.
 
 ### 1.2 Di luar v1
 
-Penerima non-pegawai/pengabdian/honor lain, THR, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement, integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
+Penerima non-pegawai/pengabdian/honor lain, THR, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement (kecuali penyerahan REIMB-001 di balik saklar mati, §3.6), integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
 
 ## 2. Aktor dan permission
 
@@ -92,6 +93,7 @@ Komponen awal v1 (kode final saat implementasi):
 | `TEACH_SHORT` | Kekurangan jam | DEDUCTION | — |
 | `ADJUST_DEDUCT` | Penyesuaian gaji (potongan) | DEDUCTION | — |
 | `ADJUST_EARN` | Penyesuaian gaji (penambah) | EARNING | tidak |
+| `REIMBURSE` | Penggantian biaya (REIMB-001, §3.6; di luar dasar PPh21, di luar faktor bayar) | EARNING | tidak |
 | `PRORATA` | Faktor prorata masuk/keluar | — (faktor atas netto, §5.1) | — |
 | `PPH21_EMPLOYER` | PPh21 ditanggung yayasan | EMPLOYER_COST | — |
 
@@ -112,6 +114,7 @@ Komponen awal v1 (kode final saat implementasi):
 | PKWT | Transport Rp15.000/kehadiran; honor Rp15.400/jam. |
 | Masa kerja awal | Netto dibayar 80% bila masa kerja < 2 bulan pada tanggal gajian (D8). |
 | PPh21 TER | Tabel TER A/B/C dengan pemetaan status PTKP; kode objek 21-100-01. |
+| `PERFORMANCE_PERCENT` (opsional, sakelar) | Predikat penilaian kinerja PERF-001 → persentase kinerja, sekaligus sakelar sambungan PERF-001 (§5.5). Tidak ada versi = mati. Usulan `DRAFT`: A 100%, B 90%, C 75%, D 50%. |
 
 ### 3.3 Profil kompensasi pegawai
 
@@ -121,7 +124,7 @@ Per employment, berlaku-efektif:
 - jumlah pasangan dan anak tertanggung;
 - pola kerja (penuh / Half Day / Half Day II);
 - jam mengajar per pekan (kosong = tidak terkena aturan jam);
-- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3);
+- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3). Bila sambungan PERF-001 menyala (§5.5), penilaian final menggantikan nilai profil untuk periode itu; profil tetap menjadi cadangan;
 - target kualifikasi khusus (opsional);
 - kepesertaan BPJS Kesehatan: segmen (`PPU_YAYASAN`, `PBI`, `MANDIRI`, `BELUM_TERDAFTAR`), tanggal aktif, jumlah anggota keluarga tambahan, referensi SK (D2). Anggota tambahan **diturunkan**, tidak diketik: `anggota_tambahan = max(0, tanggungan_terdaftar − (pasangan + min(anak, 3)))`, sesuai batas penanggungan pasangan + 3 anak pada iuran 5%. Nilai manual hanya boleh sebagai override dengan alasan dan selisihnya ditampilkan saat review;
 - status PTKP, dan **pengecualian pelaporan PPh21** (`pph21_report_excluded` + alasan wajib, migration 0147; §5.3);
@@ -133,6 +136,52 @@ Jabatan fungsional dan struktural dibaca dari placement EMP-005 dan dipetakan ke
 ### 3.4 Kasbon
 
 Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan **final**, yaitu potongan yang melekat pada periode yang sudah mencapai `APPROVED` ke atas; potongan pada periode yang masih dikerjakan tidak mengurangi sisa. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
+
+### 3.5 Potongan cicilan LOAN-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/employee-loans.md` §9.2. Implementasi: `apps/api/src/modules/payroll/employee-loan-link.ts`, migration 0156. Sakelar: variabel lingkungan `LOAN_PAYROLL_DEDUCTION_ENABLED` (bawaan `0`), pola yang sama dengan `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED`. **Menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi** (LOAN-001 §9.2 butir 6) dan merupakan perubahan konfigurasi production yang dilaporkan.
+
+| Saat | Yang terjadi | Bergantung sakelar? |
+|---|---|---|
+| hitung | Usulan `PROPOSED` periode itu dibuang lalu diturunkan ulang, sehingga usulan lama (pegawai keluar dari periode, pinjaman lunas tunai) tidak tertinggal. Setiap pinjaman LOAN-001 `DISBURSED` milik pegawai di periode mendapat satu baris cermin di register kasbon (`payroll_loans.employee_loan_id`, unik). Cicilan yang jatuh pada bulan periode dan belum terbayar menurut D-11 diusulkan sebagai potongan periode (`payroll_loan_deductions.origin = PROPOSED`), dibatasi sisa pinjaman. Hitung ulang memperbarui usulan; potongan yang ditetapkan Keuangan (`MANUAL`) tidak pernah ditimpa. | ya; saat mati, hitung hanya membuang usulan `PROPOSED` periode itu sendiri, sehingga periode yang tidak pernah melihat sakelar menyala tidak tersentuh |
+| sahkan (`approve`) | Dalam transaksi yang sama, setiap potongan pada cermin LOAN-001 menjadi satu pembayaran `PAYROLL_DEDUCTION` dengan sumber `(period_id, loan_id)` — unik selama `ACTIVE`, sehingga mengulang tidak menggandakan. Tanggal bayar = tanggal gajian; referensi `Payroll YYYY-MM`; perekam = pengesah. Bila sisa LOAN-001 tidak lagi cukup (ada pembayaran tunai atau koreksi setelah hitung), pengesahan ditolak 409 `PAYROLL_LOAN_BALANCE_CHANGED`; Direktur mengembalikan periode dan HC menghitung ulang. Tidak ada pemangkasan diam-diam. | tidak — digerakkan data potongan, agar slip dan pinjaman selalu sama |
+| setujui buka ulang | Pembayaran yang bersumber dari periode itu dibalik (`REVERSED`, LOAN-001 D-12) dengan alasan otomatis; pengesahan berikutnya mencatatnya lagi. | tidak |
+
+Sisa yang dipakai untuk cermin LOAN-001 — oleh mesin (`LOAN_EXCEEDS_BALANCE`), oleh pengisian potongan Keuangan, dan oleh register kasbon — adalah sisa LOAN-001 (pokok − pembayaran berlaku, termasuk tunai/transfer), bukan pokok − potongan payroll final. Kasbon yang diketik Keuangan (tanpa `employee_loan_id`) tetap memakai aturan §3.4.
+
+**Keputusan `DRAFT` (default agent 2026-11-17):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| L1 | Cicilan yang terlambat | Tidak ditarik otomatis ke bulan berjalan; hanya cicilan bulan periode yang diusulkan. Mengejar tunggakan adalah keputusan Keuangan (potongan `MANUAL`). |
+| L2 | Menunda satu bulan | Keuangan mengisi potongan 0 untuk cermin itu: tersimpan sebagai `MANUAL` bernilai 0 (satu-satunya baris bernilai 0 yang diizinkan), sehingga hitung ulang tidak mengusulkannya lagi. |
+| L3 | Tanggal dan perekam pembayaran | Tanggal gajian periode, tetapi tidak pernah setelah hari pengesahan (WIB); perekam = akun pengesah. Pemisahan tugas D-14 tidak berlaku karena pembayaran ini turunan slip yang disahkan, bukan pencatatan Keuangan; bila pengesah sendiri peminjamnya, event `loan.payment.recorded` menandainya (`approverIsBorrower`). Hanya potongan milik pegawai yang punya hasil di periode itu yang dicatat. |
+| L4 | Pencatatan manual `PAYROLL_DEDUCTION` di LOAN-001 | Ditolak `LOAN_PAYROLL_DEDUCTION_AUTOMATIC` selama sakelar menyala, dan untuk pinjaman yang sudah punya cermin payroll walau sakelar sudah dimatikan (mencegah dobel). Pembayaran tunai/transfer tetap boleh dan mengurangi usulan berikutnya. Pembayaran bersumber payroll tidak dapat dikoreksi dari register pinjaman (`LOAN_PAYMENT_FROM_PAYROLL`); koreksinya lewat buka ulang periode. |
+| L6 | Buka ulang bulan lama setelah bulan berikutnya disahkan | Usulan dihitung dari sisa saat itu (D-11 kumulatif): bila bulan berikutnya sudah membayar cicilannya, bulan yang dibuka ulang dapat mengusulkan 0. Total pinjaman tetap benar; potongan per slip dapat bergeser. Keuangan memakai potongan `MANUAL` bila ingin mempertahankan angka slip lama. |
+| L5 | Kasbon legacy ganda | Bila Keuangan juga mengetik kasbon yang sama secara manual di register PAY-003, keduanya terpotong. Sebelum menyalakan sakelar, Keuangan menutup kasbon manual yang sudah menjadi pinjaman LOAN-001. |
+
+Audit: `payroll.period.calculated` menambah `employee_loan_deduction_enabled` dan `employee_loan_proposed_count`; transisi `approve`/`approve_reopen` menambah `loan_payments_settled`/`loan_payments_reversed` — hitungan saja. Event dan notifikasi LOAN-001 tidak memuat nominal (D-15).
+
+Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang sudah tercatat tetap fakta dan tetap dibalik bila periodenya dibuka ulang. Skema: `-- Down:` migration 0156.
+
+### 3.6 Penggantian biaya REIMB-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0159 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
+
+| Saat | Yang terjadi | Bergantung sakelar? |
+|---|---|---|
+| hitung | Penyerahan `PENDING` yang bulan payroll-nya sama dengan periode dan pegawainya dibayar periode itu diikat ke periode; jumlahnya per pegawai menjadi baris `REIMBURSE`. Penyerahan yang terikat tetapi pegawainya tidak lagi dibayar dilepas, kecuali penyerahan terbitan buka ulang (klaimnya sudah `PAID` lewat periode ini), yang tetap terikat. | ya untuk mengikat penyerahan baru; penyerahan terbitan buka ulang tetap dibayar walau sakelar mati. Periode yang tidak pernah melihat sakelar menyala tidak tersentuh dan snapshot-nya identik |
+| sahkan | Baris `REIMBURSE` pada run terakhir harus sama, per pegawai, dengan penyerahan terikat, dan tidak boleh ada penyerahan bulan itu yang belum terikat untuk pegawai yang dibayar periode ini; bila tidak, 409 `PAYROLL_REIMBURSEMENT_CHANGED`. Klaim `VERIFIED` → `PAID` dengan satu pembayaran `PAYROLL` immutable; penyerahan `SETTLED`. | tidak |
+| setujui buka ulang | Penyerahan `SETTLED` → `REVERSED`, satu `PENDING` baru membawa penggantian ke hitung ulang; pembayaran tetap. | tidak |
+
+Rumus: `REIMBURSE` masuk `BRUTO` dan `NETTO` tetapi tidak ikut faktor bayar, karena ia mengganti uang yang sudah dikeluarkan pegawai:
+
+```text
+DIBAYAR = ROUNDUP((NETTO − REIMBURSE) × faktor_bayar) + REIMBURSE      (faktor_bayar ≠ 1)
+DIBAYAR = NETTO                                                         (faktor_bayar = 1, termasuk PKWT)
+```
+
+`REIMBURSE` bukan tunjangan tetap (tidak masuk dasar BPJS) dan dikeluarkan dari bruto PPh21 (`PPH21_EXCLUDED_EARNINGS`). Audit: `payroll.period.calculated` menambah `reimbursement_handoff_enabled`/`reimbursement_employee_count`; transisi menambah `reimbursements_settled`/`reimbursement_handoffs_reversed` — hitungan saja. Keputusan `DRAFT` R1–R4: `reimbursement.md` §9.
 
 ## 4. Input periode
 
@@ -146,7 +195,7 @@ Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (te
 | Rapel | Input HC dengan alasan | |
 | Penyesuaian gaji | Input HC dengan alasan dan referensi keputusan | Wajib untuk kasus yang dulu memakai kualifikasi khusus negatif (D1). |
 | Prorata | Penyesuaian berwenang dengan alasan | |
-| Override kinerja/jam | Input HC untuk periode itu | Mengalahkan profil hanya pada periode tersebut. |
+| Override kinerja/jam | Input HC untuk periode itu | Mengalahkan profil — dan penilaian PERF-001 bila sambungan §5.5 menyala — hanya pada periode tersebut. |
 
 Setiap input mencatat aktor, waktu, alasan bila diwajibkan, dan audit event.
 
@@ -191,7 +240,7 @@ BPJS_KES_EXTRA = ROUND(dasar_bpjs × kebijakan.tarif_anggota_tambahan × anggota
 BRUTO        = Σ EARNING
 POTONGAN     = LOAN + BPJS_KES + BPJS_KES_EXTRA + CHILD_EDU + TEACH_SHORT + ADJUST_DEDUCT
 NETTO        = BRUTO − POTONGAN
-DIBAYAR      = ROUNDUP(NETTO × faktor_bayar)
+DIBAYAR      = ROUNDUP(NETTO × faktor_bayar)        (dengan penggantian biaya: §3.6)
 ```
 
 **Faktor bayar: prorata dan masa kerja awal saling meniadakan** (`DRAFT`, perbaikan review 2026-10-27). Legacy memperlakukan prorata sebagai pengganti netto 80%, bukan tambahannya. v1 mengikuti itu:
@@ -244,6 +293,8 @@ Status implementasi dan keputusan `DRAFT` laporan ini: §7.2.
 
 ### 5.4 Blocker (fail closed)
 
+- predikat penilaian kinerja yang tidak ada di kebijakan `PERFORMANCE_PERCENT` saat sambungan §5.5 menyala (`PERFORMANCE_PREDICATE_UNMAPPED`);
+
 Periode tidak dapat diajukan bila ada blocker:
 
 - MKG di luar tabel skala (D7);
@@ -265,6 +316,39 @@ Tiga blocker terakhir bersifat **tingkat periode**, bukan per pegawai, sehingga 
 
 Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang §10 butir 6, pegawai baru/keluar, input manual bernilai besar.
 
+### 5.5 Sambungan penilaian kinerja PERF-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/performance-review.md` §11. Implementasi: `apps/api/src/modules/payroll/performance-link.ts` (fungsi murni pemetaan) dan `calculation.ts` (pemilihan penilaian). PAY-001/PAY-002 tetap jalur slip resmi; sambungan ini hanya mengubah hasil PAY-003.
+
+**Sakelar = kebijakan berversi.** Kebijakan opsional `PERFORMANCE_PERCENT` berbentuk `{ enabled: boolean, byPredicate: { <kode predikat>: <persen 0..2, ≤ 4 desimal> } }`. Sambungan **mati** bila tidak ada versi yang berlaku pada tanggal gajian (keadaan setelah migrasi 0153 — migrasi itu hanya membuka kunci kebijakan, tidak menulis versi) atau versinya `enabled: false`. Selama mati, tidak satu pun penilaian dibaca, `input_snapshot` dan `policy_version_ids` sama persis dengan sebelum sambungan ada, sehingga hasil tidak berubah sedikit pun. Karena berupa versi kebijakan, menyalakannya berlaku-efektif per tanggal gajian, dicatat audit `payroll.policy.*`, dan dilindungi aturan berlaku-mundur §3. Payload yang tidak sesuai bentuk menggagalkan perhitungan (`PAYROLL_POLICY_MISSING`, kode `INVALID`), bukan diam-diam kembali ke profil.
+
+**Sumber (hanya saat menyala).**
+
+| Persentase | Dibaca dari |
+|---|---|
+| `%bulanan` periode bulan *M* | penilaian `FINALIZED` pegawai itu pada siklus `MONTHLY` yang periodenya mulai tanggal 1 bulan *M−1* |
+| `%tahunan` | penilaian `FINALIZED` pegawai itu pada **satu** siklus `ANNUAL` dengan awal periode terbaru di antara siklus yang sudah ditutup |
+
+Siklus dihitung "sudah ditutup" bila berstatus `CLOSED` dan tanggal tutupnya (Asia/Jakarta) tidak setelah tanggal gajian, sehingga menghitung ulang periode lama setelah siklus berikutnya ditutup tidak membaca ke depan. `UNRATED`, `REMOVED`, penilaian yang belum final, dan siklus yang belum ditutup tidak pernah dibaca. Penilaian dimiliki pegawai (`employee_id`), sehingga dua employment orang yang sama memakai penilaian yang sama.
+
+**Urutan.** `override HC periode itu` > `penilaian final` > `profil kompensasi` (> default masa kerja < 1 tahun §10 butir 3 bila keduanya kosong). Pegawai tanpa penilaian final memakai profil seperti hari ini; tidak ada nilai yang ditebak. Bila hanya `%bulanan` yang berasal dari penilaian dan `%tahunan` profil kosong, `%tahunan` = 0 (bukan `PERFORMANCE.unratedBelowOneYear.annualRate`), sama seperti profil yang hanya mengisi satu persen hari ini; default masa kerja < 1 tahun hanya dipakai bila kedua persen kosong. Pegawai honorer (`KONTRAK_HONORER`, `LEPAS`) tidak mendapat `PERF` (§5.2), sehingga penilaiannya tidak dibaca dan tidak memblokir.
+
+**Predikat tanpa pemetaan.** Siklus boleh memakai kode predikat sendiri (PERF-001 D-06). Kode yang tidak ada di `byPredicate` menjadi blocker per pegawai `PERFORMANCE_PREDICATE_UNMAPPED`; HC menambah kodenya lewat versi kebijakan baru lalu menghitung ulang.
+
+**Jejak.** Setiap baris hasil menyimpan `input_snapshot.performance_link = { policy_version_id, monthly, annual }`, masing-masing `{ review_id, cycle_id, cycle_kind, cycle_period_start, predicate, rate }` atau `null`. Audit `payroll.period.calculated` hanya menambah `performance_link_enabled` dan `performance_linked_count` (jumlah employment yang memakai sedikitnya satu penilaian) — tanpa predikat, persen, atau nominal per orang (§8).
+
+**Keputusan `DRAFT` (default agent 2026-11-17, menunggu konfirmasi owner):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| K1 | Pemetaan predikat | A 100%, B 90%, C 75%, D 50% (usulan PERF-001 §11 butir 2); disimpan sebagai payload yang diisi HC, **bukan** di kode atau seed. |
+| K2 | Bentuk sakelar | Versi kebijakan `PERFORMANCE_PERCENT` (bukan variabel lingkungan), agar berlaku-efektif dan teraudit seperti kebijakan lain. |
+| K3 | Siklus tahunan tanpa penilaian final pegawai | Kembali ke profil, tidak mencari siklus tahunan yang lebih lama. |
+| K4 | Siklus ditutup setelah perhitungan | Tidak membuat periode basi otomatis; HC menghitung ulang setelah menutup siklus. Penilaian yang dipakai terlihat di `performance_link`. |
+| K5 | Kapan dinyalakan | Setelah owner menjadikan PAY-003 jalur slip resmi dan menyetujui K1 (PERF-001 §11 butir 6). Menyalakannya adalah perubahan kebijakan production yang dilaporkan. |
+
+Rollback: menutup versi `PERFORMANCE_PERCENT` (versi baru `{ "enabled": false }`; `byPredicate` boleh dihilangkan selama mati) mematikan sambungan untuk tanggal gajian berikutnya tanpa rilis; rollback skema di komentar `-- Down:` migrasi 0153.
+
 ## 6. Lifecycle periode
 
 ```text
@@ -284,12 +368,12 @@ DRAFT → COLLECTING → CALCULATED → SUBMITTED → APPROVED → PAYMENT_CONFI
 | hitung / hitung ulang | HC | COLLECTING atau CALCULATED | `payroll.period.calculated` (jumlah pegawai, total, blocker) |
 | ajukan | HC (`payroll.submit`) | CALCULATED, tanpa blocker, hasil terbaru | `payroll.period.submitted` |
 | kembalikan | Direktur | SUBMITTED, alasan wajib, tujuan COLLECTING | `payroll.period.returned` |
-| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED | `payroll.period.approved` |
+| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED; potongan pinjaman LOAN-001 masih muat dalam sisanya (§3.5); penggantian biaya di slip sama dengan penyerahannya (§3.6) | `payroll.period.approved` (+ `loan_payments_settled`) |
 | konfirmasi bayar | Keuangan (`payroll.payments.confirm`) | APPROVED | `payroll.payment.confirmed` |
 | siapkan slip | HC (`payroll.periods.manage`) | PAYMENT_CONFIRMED atau PUBLISHED, tanpa blocker | `payroll.payslips.drafted` |
 | terbitkan slip | pemegang `payslips.publish` | ada draft dari periode ini | `payroll.payslips.published` |
 | minta buka ulang | HC | APPROVED/PAYMENT_CONFIRMED/PUBLISHED, alasan wajib | `payroll.reopen.requested` |
-| setujui buka ulang | Direktur | REOPEN_REQUESTED | `payroll.reopen.approved` (periode kembali ke COLLECTING) |
+| setujui buka ulang | Direktur | REOPEN_REQUESTED | `payroll.reopen.approved` (periode kembali ke COLLECTING; pembayaran LOAN-001 dari periode ini dibalik, §3.5) |
 | tolak buka ulang | Direktur | REOPEN_REQUESTED, alasan wajib | `payroll.reopen.rejected` (periode kembali ke state sebelumnya) |
 
 Aturan:
@@ -360,7 +444,7 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 | P2 | Pembulatan PPh21 | `FLOOR` ke rupiah bulat atas bruto × tarif. |
 | P3 | Status gerbang | Laporan baru terbuka setelah periode `APPROVED` ke atas **bagi semua pembaca, termasuk penjalan periode**, karena dibangun dari hasil final; berbeda dari laporan payroll yang dibaca penjalan periode sejak awal. Sebelum itu `409 PAYROLL_NOT_APPROVED_YET`. |
 | P4 | Kebijakan tidak tersedia | `409 PPH21_TER_POLICY_MISSING` bila tidak ada versi `PPH21_TER` yang berlaku pada tanggal gajian; `409 PPH21_TER_POLICY_INVALID` bila versi yang berlaku (mis. dimuat sebelum skema ini ada) tidak sesuai bentuk. Kebijakan ini bukan kunci wajib perhitungan: ketiadaannya tidak memblokir periode. |
-| P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan; perhitungan itu **di luar v1**. Baris diberi `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap ditampilkan sebagai angka sementara. |
+| P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan. Laporan bulanan memberi baris itu `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap tampil sebagai angka sementara; angka finalnya ada di rekap PPh21 tahunan dan bukti potong 1721-A1 (§7.4). |
 | P6 | Laporan saja | Laporan **tidak** menulis baris `PPH21_EMPLOYER` ke hasil perhitungan, agar angka parallel run tetap stabil. Baris biaya yayasan menyusul setelah tabel TER diverifikasi dan dimuat; saat itu `PPH21_TER` menjadi kunci yang dibaca perhitungan. |
 | P7 | Pengecualian per orang | Atribut profil kompensasi `pph21_report_excluded` dengan `pph21_report_exclusion_reason` wajib (CHECK basis data, migration 0147). Mengikuti aturan profil: tidak dikirim = dibawa dari profil berlaku; `false` menghapus alasan. CLI pemuatan awal yang barisnya tidak menyebut pengecualian juga membawa nilai profil yang berlaku, bukan menulis `false`. Audit `payroll.profile.opened` mencatat `pph21_report_excluded` (penanda, bukan alasan). |
 | P8 | Kolom ekspor | CSV UTF-8 dengan BOM dan CRLF: NIP, nama, status PTKP, kategori TER, penghasilan bruto, tarif (persen dengan koma desimal), PPh21, kode objek, dilaporkan (`Y`/`N`), catatan; orang yang dikecualikan di baris terakhir; nama berkas `pph21-ter-YYYY-MM.csv`. **Tanpa NIK/NPWP** — HCIS tidak menyimpannya untuk payroll; formulir DJP diisi dari lembar ini di luar HCIS. |
@@ -372,10 +456,10 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 
 **Yang tetap di luar v1** (bukan kekurangan implementasi, melainkan batas cakupan §1.2 dan keputusan di atas):
 
-- perhitungan tahunan Pasal 17 untuk masa pajak terakhir (Desember / berakhirnya masa kerja) dan bukti potong 1721-A1;
+- ~~perhitungan tahunan Pasal 17 untuk masa pajak terakhir dan bukti potong 1721-A1~~ — **dibangun** (§7.4, migration 0157);
 - aturan PPh21 pegawai tidak tetap (21-100-03, TER harian) untuk kontrak honorer dan lepas, sampai P10 diputuskan;
 - baris `PPH21_EMPLOYER` pada hasil perhitungan dan ringkasan biaya yayasan yang memuat PPh21 (P6);
-- NIK/NPWP dan berkas e-Bupot/SPT Masa PPh21;
+- ~~NIK/NPWP~~ (disimpan tersegel sejak §7.4); berkas unggah e-Bupot/SPT Masa PPh21 dalam format DJP tetap di luar HCIS — rekap CSV §7.4 adalah bahan pengisiannya;
 - THR;
 - integrasi transfer bank (daftar transfer tetap CSV, §10 butir 7);
 - penerima non-pegawai, reimbursement, multi legal entity, akuntansi.
@@ -397,6 +481,67 @@ Angka per orang dipisahkan dari menjalankan periode dan dari membaca rekap. Sebe
 
 **Rilis.** Migration 0151 hanya menambah kunci; build lama tidak memeriksanya. Saat cutover, HCIS Module Admin kehilangan pembacaan angka per orang. Rollback: hapus kunci (komentar migration) dan rilis ulang build sebelumnya.
 
+## 7.4 PPh21 masa pajak terakhir (Pasal 17) dan bukti potong 1721-A1
+
+Ditambahkan 2026-11-17. Dasar hukum: PP 58/2023 dan PMK 168/2023 (TER selama tahun berjalan, penghitungan setahun dengan tarif Pasal 17 UU PPh sebagaimana diubah UU 7/2021 pada masa pajak terakhir), PER-2/PJ/2024 (bentuk 1721-A1). Implementasi: `apps/api/src/modules/payroll/pph21-annual.ts` (fungsi murni), `pph21-annual-store.ts`, `pph21-annual-routes.ts`; layar `/admin/payroll/pph21-annual` dan bagian **Bukti potong PPh21 (1721-A1)** di `/app/payslips`.
+
+**Masa kerja dalam setahun.** Satu baris rekap adalah satu rentang masa kerja seorang pegawai dalam satu tahun pajak. Rentang ditutup oleh masa pajak terakhir: Desember, atau bulan berakhirnya employment tanpa employment lain yang berlanjut (aturan `ANNUAL_CALCULATION_REQUIRED` §7.2). Pegawai yang berhenti lalu masuk lagi dalam tahun yang sama mendapat dua rentang dan dua bukti potong (`DRAFT`). Bulan yang dihitung hanya periode yang sudah final (`APPROVED` ke atas, seperti laporan bulanan); periode lain dilaporkan sebagai `pendingPeriods`. Orang yang dikecualikan (§7.2 P7) dan employment yang masih memiliki blocker tidak masuk, sama seperti laporan bulanan.
+
+**Rumus** (semua rupiah bulat; nilai dari kebijakan `PPH21_ANNUAL`, tidak ada di kode):
+
+```text
+bruto        = Σ bruto bulanan rentang itu (penghasilan yang benar-benar dibayar, §5.3; tanpa BPJS_KES_ALLOW)
+biaya_jabatan = min(FLOOR(bruto × positionCost.rate), positionCost.monthlyCap × jumlah_bulan, positionCost.annualCap)
+iuran_pensiun = Σ baris DEDUCTION yang kodenya ada di pensionContributionComponents (default kosong)
+neto         = bruto − biaya_jabatan − iuran_pensiun          (tidak disetahunkan)
+PTKP         = ptkp.taxpayer + (K: ptkp.married) + min(tanggungan, ptkp.maxDependents) × ptkp.perDependent
+               status = status PTKP profil pada bulan pertama rentang
+PKP          = FLOOR(max(0, neto − PTKP) / pkpRoundingUnit) × pkpRoundingUnit
+PPh21_setahun = Σ lapisan brackets (Pasal 17) atas PKP, FLOOR ke rupiah
+TER_sebelumnya = Σ PPh21 TER bulanan rentang itu kecuali bulan terakhirnya (§7.2)
+PPh21_masa_terakhir = PPh21_setahun − TER_sebelumnya          (negatif = lebih potong, dikembalikan)
+```
+
+Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.000.000 × 12 → biaya jabatan Rp6.000.000, neto Rp114.000.000, PKP Rp60.000.000, PPh21 setahun Rp3.000.000; TER Januari–November Rp200.000 × 11 = Rp2.200.000; Desember Rp800.000. K/2 berhenti Juni, Rp8.000.000 × 6, JHT Rp100.000/bulan → biaya jabatan Rp2.400.000, neto Rp45.000.000 < PTKP Rp67.500.000, PPh21 setahun 0, lebih potong Rp600.000.
+
+**Penanda.** `OPEN` (masa pajak terakhir belum tiba; angka setahun belum dihitung dan bukti potong belum dapat dibuat), `PTKP_MISSING` (status awal rentang kosong atau bukan bentuk `TK/n`/`K/n`), `PRIOR_TAX_INCOMPLETE` (TER salah satu bulan sebelumnya tidak dapat dihitung — tabel TER belum dimuat atau PTKP bulan itu kosong — sehingga PPh21 masa terakhir kosong), `PERIOD_PENDING` (ada periode tahun itu sampai bulan terakhir rentang yang belum final — belum disahkan atau dibuka ulang — sehingga bulan itu hilang dari rentang; bukti potong ditolak `409 PPH21_A1_PERIOD_PENDING` dan tidak ditampilkan ke pegawai sampai periode itu final).
+
+**Baris 1721-A1.** Komponen `EARNING` dipetakan ke baris formulir: `BASIC` → 1 gaji; `TEACH_FEE`, `PJ_MEDIA` → 4 honorarium; `THR`, `BONUS` → 7 tantiem/bonus/THR; lainnya → 3 tunjangan lainnya dan lembur. Kebijakan dapat menimpa per kode (`lineByComponent`). Dengan faktor bayar, tiap baris dikali faktor dan dibulatkan ke bawah, dan sisa rupiahnya masuk ke baris terbesar, sehingga jumlah baris 1–7 selalu sama dengan bruto §5.3. Baris 2 (tunjangan PPh), 5 (premi asuransi), 6 (natura) dan 13 (neto masa sebelumnya) bernilai 0 di v1.
+
+**Keputusan `DRAFT` (default agent 2026-11-17, menunggu konfirmasi process owner):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| A1 | Bentuk kebijakan `PPH21_ANNUAL` | `{ source, ptkp: { taxpayer, married, perDependent, maxDependents }, positionCost: { rate, monthlyCap, annualCap }, brackets: [{ upTo, rate }], pkpRoundingUnit, pensionContributionComponents: [], lineByComponent: {}, withholder: { name, taxNumber } }`, divalidasi saat ditulis. Versi yang berlaku pada **31 Desember** tahun pajak dipakai. Ketiadaannya: `409 PPH21_ANNUAL_POLICY_MISSING`; tidak memblokir periode. Migration 0157 menambah kunci ini ke constraint `payroll_policy_versions`. |
+| A2 | Status PTKP | Dari profil kompensasi bulan pertama rentang (keadaan awal tahun pajak/awal masa kerja). Bentuk lain dari `TK/n`/`K/n` (mis. `K/I/n`) tidak ditebak. Belum ada field PTKP baru: `ptkp_status` profil sudah berlaku-efektif. |
+| A3 | Premi BPJS Kesehatan | Mengikuti dasar §5.3 (D9): `BPJS_KES_ALLOW` tidak masuk bruto dan baris 5 bernilai 0, karena efek bersihnya nol bagi pegawai. **Process owner perlu memastikan**: PMK 168/2023 memperlakukan premi yang dibayar pemberi kerja sebagai penghasilan; bila dikonfirmasi, kode itu dipindahkan ke baris 5 dan dasar §5.3 berubah bersamaan. |
+| A4 | Pembulatan | PKP ke bawah kelipatan `pkpRoundingUnit` (Rp1.000); biaya jabatan dan pajak `FLOOR` ke rupiah. |
+| A5 | Iuran pensiun/JHT | Belum ada komponen iuran JHT/JP pegawai di katalog v1, sehingga `pensionContributionComponents` default kosong. |
+| A6 | Pegawai melihat bukti potong | Lewat endpoint self, hanya rentang yang sudah ditutup dan periode masa terakhirnya `PUBLISHED`. Endpoint self mensyaratkan pegawai dan akun aktif; pegawai yang sudah berhenti menerima cetakan dari HC (batas yang sama dengan paklaring DOC-001). |
+| A7 | Nomor bukti potong | HCIS tidak menerbitkan nomor resmi; dokumen membawa referensi `HCIS-A1-<tahun>-<NIP>-<urut>`, nomor resmi berasal dari e-Bupot. |
+| A8 | Pemotong dan penanda tangan | Nama dan NPWP pemotong dari `withholder` kebijakan (data yayasan, bukan data pribadi). Penanda tangan diselesaikan seperti PAYSLIP-005 (Kepala HCM, cadangan Direktur, tanpa menandatangani milik sendiri). |
+| A9 | Pegawai tidak tetap | Selama P10 belum diputuskan, kontrak honorer/lepas dilaporkan TER bulanan 21-100-01 dan ikut rekap tahunan seperti pegawai tetap. |
+| A10 | Dokumen dihitung saat dibaca | 1721-A1 tidak disimpan sebagai snapshot; ia dihitung ulang dari hasil final setiap kali dibuka dan mencetak versi kebijakan yang dipakai. Membuka ulang periode yang sudah final mengubah angkanya — karena itu rentang dengan periode yang tidak final ditolak (`PERIOD_PENDING`). Snapshot saat penerbitan resmi adalah tindak lanjut bila process owner menghendakinya. |
+| A11 | Bulan sebelum HCIS | Bila payroll HCIS mulai di tengah tahun pajak, bulan yang dibayar lewat spreadsheet tidak ada di HCIS dan rentang terbaca seperti pegawai yang masuk di tengah tahun. Tahun pajak pertama HCIS karena itu dicocokkan manual dengan rekap legacy sebelum bukti potong diserahkan (baris 13 "neto masa sebelumnya" tetap 0 di v1). |
+| A12 | Nomor yang tidak terbuka | NIK/NPWP yang tidak dapat dibuka (baris rusak atau kunci server dirotasi) tampil kosong, disebut di `unreadable` dokumen dan dihitung di audit ekspor (`unreadable_count`), tanpa menggagalkan seluruh rekap. |
+
+**NIK dan NPWP (`DRAFT`).** Bukti potong wajib memuat NIK/NPWP penerima, dan HCIS sebelumnya tidak menyimpannya. Tabel `payroll_tax_identities` (migration 0157) menyimpan keduanya **tersegel** AES-256-GCM dengan kunci turunan HKDF dari kunci server dan label tersendiri; associated data mengikat nilai ke pegawai dan kolomnya. Hanya empat digit terakhir disimpan terbaca untuk tampilan tersamar. NIK 16 digit; NPWP 15 atau 16 digit. Ditulis lewat `PUT /payroll/employees/{id}/tax-identity` oleh pemegang `payroll.profiles.manage`, tidak atas dirinya sendiri (aturan konflik kepentingan §2); field yang tidak dikirim dibiarkan, `null` mengosongkan. Nilai utuh **hanya** dibuka untuk dokumen 1721-A1 dan rekap CSV e-Bupot; layar rekap JSON hanya menyebut ada/tidaknya. Rotasi kunci server membutuhkan penyegelan ulang (tindak lanjut operasional).
+
+**Endpoint dan izin.**
+
+| Endpoint | Pembaca | Audit (tanpa nominal, tanpa NIK/NPWP) |
+|---|---|---|
+| `GET /payroll/pph21/annual?year=` (`format=csv`) | pembaca angka per orang §7.3 | `payroll.report.read` scope `pph21_annual` / `pph21_annual_csv` (+`includes_tax_identity`) |
+| `GET /payroll/pph21/annual/{year}/employees/{employeeId}/a1/{index}` | pembaca angka per orang §7.3 | `payroll.a1.read` scope `pph21_a1` |
+| `GET /payroll/me/a1`, `GET /payroll/me/a1/{year}/{index}` | pegawai sendiri (aktif) | `payroll.a1.read` scope `pph21_a1_self` (dokumen saja) |
+| `GET`/`PUT /payroll/employees/{id}/tax-identity` | `payroll.profiles.manage` | `payroll.tax_identity.updated` (nama field dan yang dikosongkan) |
+
+**Pengecualian ENG-LIST-001 (`DRAFT`).** Rekap tahunan dibaca utuh tanpa halaman, sama seperti laporan PPh21 bulanan: satu tahun pajak dibatasi jumlah pegawai yayasan dan memang dibaca utuh untuk pelaporan. Bila jumlah baris melewati sekitar 1.000, rekap dipindahkan ke endpoint berhalaman.
+
+**Layar.** `/admin/payroll/pph21-annual` (menu **PPh21 Tahunan & 1721-A1**) terbuka bagi pembaca angka per orang: pilih tahun, rekap per rentang, unduh CSV e-Bupot, tombol **1721-A1** pada rentang yang sudah ditutup (pop-up A4, **Cetak / Simpan PDF**), dan tombol **NIK/NPWP** bagi pemegang `payroll.profiles.manage`. Pegawai melihat bukti potongnya di bawah slip gaji.
+
+**Rollback.** Migration 0157: `-- Down:` di berkasnya (menghapus tabel identitas — catat sumber dokumen sebelum menghapus — dan mengembalikan constraint kunci kebijakan). Kode: rilis ulang build sebelumnya; tidak ada data hasil payroll yang ditulis oleh fitur ini.
+
 ## 8. Privasi dan audit
 
 - **Dilarang** di application log dan payload audit: nominal **per orang**, nomor rekening, nama pemilik rekening, NIK, dan isi baris slip.
@@ -404,6 +549,7 @@ Angka per orang dipisahkan dari menjalankan periode dan dari membaca rekap. Sebe
 - Respons laporan dan slip memakai `Cache-Control: no-store`.
 - Laporan per orang dan ekspor dicatat sebagai akses sensitif.
 - Pengurus Yayasan tidak memiliki permission payroll di v1 (§2): tidak membaca laporan, input, maupun profil.
+- NIK dan NPWP disimpan tersegel (§7.4), tidak pernah ditulis ke log atau audit, dan hanya dibuka pada dokumen 1721-A1 dan rekap e-Bupot.
 
 ## 9. Migrasi dan verifikasi
 
@@ -433,6 +579,9 @@ Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payrol
 
 ### 9.3 Test minimum
 
+- Penggantian biaya REIMB-001 (§3.6): komponen di luar faktor bayar dan di luar PPh21/BPJS (`test/payroll-reimbursement-link.test.ts`); sakelar mati tanpa perubahan, sahkan sekali, buka ulang membalik penyerahan tanpa pembayaran kedua, slip berbeda menolak pengesahan, penyerahan dilepas saat pegawai keluar (`test/payroll-calculation.integration.test.ts`); route serahkan/replay/ambil kembali/bulan tertutup (`test/reimbursements.postgres.test.ts`).
+- Potongan LOAN-001 (§3.5): usulan cicilan eksak (bigint), sakelar mati tanpa cermin dan tanpa potongan, pengesahan mencatat sekali (idempoten), buka ulang membalik, pengesahan ulang mencatat lagi, pembayaran tunai dihitung lebih dulu, potongan `MANUAL` dan penundaan 0 dipertahankan, sisa berubah menolak pengesahan, route LOAN-001 menolak `PAYROLL_DEDUCTION` manual (`test/payroll-employee-loan-link.test.ts`, `test/payroll-calculation.integration.test.ts`, `test/loans.postgres.test.ts`).
+- Sambungan PERF-001 (§5.5): sakelar mati menghasilkan baris dan snapshot identik; pemetaan A–D tepat ke rupiah; urutan override > penilaian > profil; siklus terbuka, `UNRATED`, dan siklus ditutup setelah tanggal gajian tidak dibaca; predikat tanpa pemetaan memblokir (`test/payroll-performance-link.test.ts`, `test/payroll-calculation.integration.test.ts`).
 - Unit test fungsi perhitungan per komponen dengan kasus batas: MKG 0/27/28, jam 0/96/lebih/kurang, BPJS di bawah UMK dan di atas Rp12 juta, segmen PBI, anggota tambahan, masa kerja 1/2/3 bulan, kualifikasi khusus negatif, kasbon melebihi sisa.
 - Golden test dari data sintetis yang meniru struktur spreadsheet (bukan data produksi).
 - Test otorisasi untuk setiap permission di §2, termasuk larangan self-approval dan read-only Pengurus.

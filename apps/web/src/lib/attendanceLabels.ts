@@ -40,6 +40,18 @@ export function attendanceSourceLabel(value: unknown): string {
   return sourceLabels[value as (typeof ATTENDANCE_SOURCES)[number]] ?? "Lainnya";
 }
 
+/** ATT-014 §6.5c: where an employee's own raw punch came from, without the machine serial number. */
+export function myTransactionSourceLabel(item: { source: string; deviceName: string | null }): string {
+  if (item.source === "mobile") return "Presensi HP";
+  if (item.source === "manual") return "Koreksi HC";
+  return item.deviceName ? `Mesin absensi · ${item.deviceName}` : "Mesin absensi";
+}
+
+/** A machine scan carries no trusted kind; only HP presensi and HC input say masuk/keluar. */
+export function transactionKindLabel(kind: string | null): string {
+  return kind === "check_in" ? "Masuk" : kind === "check_out" ? "Keluar" : "Scan";
+}
+
 export const REQUEST_STATUSES = ["submitted", "approved", "rejected", "cancelled"] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 const requestStatusLabels: Record<RequestStatus, string> = {

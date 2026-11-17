@@ -2,6 +2,7 @@ import { FileText, Loader2, Printer, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import ysqLogoHorizontal from "@/assets/brand/ysq-logo-white.png";
+import { OwnA1Section } from "@/components/payroll/OwnA1Section";
 import { AppShell } from "@/layouts/AppShell";
 import {
   getEmployeeLeaveSummary,
@@ -453,6 +454,7 @@ export function EmployeePayslipsPage() {
             )}
           </>
         )}
+        <OwnA1Section />
       </div>
     </AppShell>
   );

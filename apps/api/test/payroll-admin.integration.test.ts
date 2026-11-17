@@ -15,6 +15,7 @@ import {
   openPolicyVersion,
   setLoanDeductions,
 } from "../src/modules/payroll/admin-store.js";
+import { createSyntheticActor } from "./support/synthetic-actor.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -67,22 +68,9 @@ describe.skipIf(!allowed)("PAY-003 reference data against PostgreSQL", () => {
 
     await pool.query("DELETE FROM payroll_policy_versions WHERE policy_key = $1", [policyKey]);
 
-    const accounts = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
-    if (accounts.rows[0]) {
-      actorAccountId = accounts.rows[0].id;
-    } else {
-      const actorEmployeeId = randomUUID();
-      actorAccountId = randomUUID();
-      await pool.query(
-        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Actor', 'active')",
-        [actorEmployeeId, `EMP-ADM-ACTOR-${actorEmployeeId}`],
-      );
-      await pool.query(
-        `INSERT INTO accounts(id, employee_id, email, principal_type, status)
-         VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
-        [actorAccountId, actorEmployeeId, `adm-${actorAccountId}@example.invalid`],
-      );
-    }
+    // A fresh actor of this suite: a borrowed account could be another suite's
+    // (see support/synthetic-actor.ts).
+    actorAccountId = await createSyntheticActor(pool, "ADM");
   });
 
   const policy = (effectiveFrom: string) => ({

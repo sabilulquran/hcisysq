@@ -54,6 +54,7 @@ import { registerLeavePostponementRoutes } from "./modules/leave/postponement-ro
 import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes.js";
 import { registerPayrollAdminRoutes } from "./modules/payroll/admin-routes.js";
 import { registerPayrollRoutes } from "./modules/payroll/routes.js";
+import { registerPph21AnnualRoutes } from "./modules/payroll/pph21-annual-routes.js";
 import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
 import { registerAnnouncementRoutes } from "./modules/announcements/routes.js";
@@ -227,6 +228,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAttendanceResolutionRoutes(app, pool, config);
   await registerPayrollAdminRoutes(app, pool, config);
   await registerPayrollRoutes(app, pool, config);
+  await registerPph21AnnualRoutes(app, pool, config);
   await registerPayslipRoutes(app, pool, config);
   await registerNotificationRoutes(app, pool, config);
   // NOTIF-003: reminder preferences (docs/domain/reminders.md §6).

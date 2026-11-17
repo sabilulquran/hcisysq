@@ -163,7 +163,7 @@ const FIGURE_BUILDER_PERMISSIONS: readonly string[] = ["payroll.calculate", "pay
  * report (specification section 7.3, AUTH-011 manifest). payroll.reports.read.organization alone
  * opens the aggregate report only.
  */
-const PER_PERSON_READER_PERMISSIONS: readonly string[] = [
+export const PER_PERSON_READER_PERMISSIONS: readonly string[] = [
   "payroll.results.read.organization",
   ...FIGURE_BUILDER_PERMISSIONS,
 ];
@@ -998,6 +998,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         },
         actor.accountId,
         period.version,
+        {
+          employeeLoanDeduction: config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1",
+          reimbursementHandoff: config.REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED === "1",
+        },
       );
       if (outcome.conflict) {
         return send(reply, 409, {
@@ -1026,6 +1030,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       fromState: period.state,
     });
 
+    if (!result.applied && result.refusal) {
+      return send(reply, 409, result.refusal);
+    }
     if (!result.applied) {
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",

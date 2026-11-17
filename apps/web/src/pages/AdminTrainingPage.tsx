@@ -9,6 +9,9 @@ import { EmployeeSearchField, type PickedEmployee } from "@/components/attendanc
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { replaceDialogParam } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
+import { InstrumentsTab } from "@/components/training/InstrumentsTab";
+import { ProgramEvaluationPanel } from "@/components/training/ProgramEvaluationPanel";
+import { ProgramModulesPanel } from "@/components/training/ProgramModulesPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -65,7 +68,7 @@ import {
 } from "@/lib/training";
 import type { AuthSession } from "@/types/hcis";
 
-type Tab = "programs" | "records" | "hours";
+type Tab = "programs" | "records" | "instruments" | "hours";
 
 const input = "mt-1 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-normal text-brand-heading";
 const label = "text-xs font-semibold text-muted-foreground";
@@ -133,9 +136,9 @@ export function AdminTrainingPage() {
   }, []);
 
   return (
-    <AdminShell active="services" title="Pelatihan" description="Program, jadwal, peserta, kehadiran, catatan, dan jam pelatihan pegawai.">
+    <AdminShell active="services" title="Pelatihan" description="Program, jadwal, peserta, kehadiran, evaluasi, catatan, dan jam pelatihan pegawai.">
       <div role="tablist" className="mb-5 flex flex-wrap gap-2">
-        {([["programs", "Program"], ["records", "Catatan & verifikasi"], ["hours", "Rekap jam"]] as const).map(([key, text]) => (
+        {([["programs", "Program"], ["records", "Catatan & verifikasi"], ["instruments", "Instrumen evaluasi"], ["hours", "Rekap jam"]] as const).map(([key, text]) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
             className={`min-h-11 rounded-xl px-4 text-sm font-bold ${tab === key ? "bg-brand-primary text-brand-foreground" : "border border-border text-brand-heading"}`}>
             {text}
@@ -144,6 +147,7 @@ export function AdminTrainingPage() {
       </div>
       {tab === "programs" ? <ProgramsTab canManage={canManage} /> : null}
       {tab === "records" ? <RecordsTab canManage={canManage} /> : null}
+      {tab === "instruments" ? <InstrumentsTab canManage={canManage} /> : null}
       {tab === "hours" ? <HoursTab /> : null}
     </AdminShell>
   );
@@ -151,7 +155,10 @@ export function AdminTrainingPage() {
 
 // ---------------------------------------------------------------- programs
 
-const emptyProgram = () => ({ title: "", category: "PEDAGOGY" as TrainingCategory, organizer: "", capacity: "", minAttendancePercent: "80", description: "" });
+const emptyProgram = () => ({
+  title: "", category: "PEDAGOGY" as TrainingCategory, organizer: "", capacity: "", minAttendancePercent: "80", description: "",
+  delivery: "CLASSROOM" as "CLASSROOM" | "ONLINE",
+});
 
 function ProgramsTab({ canManage }: { canManage: boolean }) {
   const action = useAction();
@@ -215,7 +222,7 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
       const created = await createProgram({
         title: form.title.trim(), category: form.category, organizer: form.organizer.trim() || null,
         description: form.description.trim() || null, capacity: form.capacity ? Number(form.capacity) : null,
-        minAttendancePercent: Number(form.minAttendancePercent),
+        minAttendancePercent: Number(form.minAttendancePercent), delivery: form.delivery,
       });
       setForm(emptyProgram());
       await load();
@@ -284,6 +291,13 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
               Kategori
               <select className={input} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as TrainingCategory })}>
                 {Object.entries(CATEGORY_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+              </select>
+            </label>
+            <label className={label}>
+              Bentuk
+              <select className={input} value={form.delivery} onChange={(event) => setForm({ ...form, delivery: event.target.value as "CLASSROOM" | "ONLINE" })}>
+                <option value="CLASSROOM">Luring (sesi terjadwal)</option>
+                <option value="ONLINE">Daring (modul video dan bacaan)</option>
               </select>
             </label>
             <label className={label}>
@@ -408,6 +422,9 @@ function ProgramPanel({ program, canManage, action, reload }: {
     void action.run(async () => {
       const result = await completeProgram(program.id);
       await refresh();
+      if (result.delivery === "ONLINE") {
+        return `Program ditutup: ${result.records} peserta sudah menyelesaikan dan tercatat; ${result.incomplete ?? 0} belum menyelesaikan (tanpa catatan).`;
+      }
       return `Program ditutup: ${result.records} catatan pelatihan dibuat (${formatHours(result.totalHours)} per peserta penuh).`;
     }, "Program tidak dapat ditutup.");
   };
@@ -451,7 +468,7 @@ function ProgramPanel({ program, canManage, action, reload }: {
       )}
       {sheet ? <AttendanceSheet key={sheet.id} session={sheet} editable={editable} action={action} onClose={() => setSheet(null)} onSaved={refresh} /> : null}
 
-      {editable ? (
+      {editable && program.delivery !== "ONLINE" ? (
         <form onSubmit={addSession} className="mt-3 grid gap-3 rounded-2xl border border-border/70 p-3 sm:grid-cols-3">
           <label className={`${label} sm:col-span-3`}>
             Judul sesi
@@ -527,6 +544,9 @@ function ProgramPanel({ program, canManage, action, reload }: {
         </ul>
       )}
       {paging && paging.total > paging.pageSize ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
+
+      {program.delivery === "ONLINE" ? <ProgramModulesPanel programId={program.id} programStatus={program.status} canManage={canManage} /> : null}
+      <ProgramEvaluationPanel programId={program.id} programStatus={program.status} canManage={canManage} />
     </div>
   );
 }

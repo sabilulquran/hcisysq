@@ -37,6 +37,9 @@ export interface ProgramSummary {
   sessionCount: number;
   firstSessionAt: string | null;
   lastSessionEndAt: string | null;
+  evaluationPassingScore?: number;
+  /** R4: ONLINE programs have modules instead of sessions. */
+  delivery?: "CLASSROOM" | "ONLINE";
   participantStatus?: ParticipantStatus;
   attendedHours?: number | null;
   nextSessionAt?: string | null;
@@ -186,6 +189,9 @@ function query(params: Record<string, string | number | undefined | null>) {
   return text ? `?${text}` : "";
 }
 
+/** Shared with the R3 evaluation and R4 online-module clients. */
+export { get as trainingGet, query as trainingQuery, send as trainingSend };
+
 // ---------------------------------------------------------------- employee
 
 export const getMyTrainingSummary = (year?: number) => get<HoursSummary>(`/training/me/summary${query({ year })}`);
@@ -207,11 +213,11 @@ export const getPrograms = (filter: { page?: number; status?: ProgramStatus | ""
 export const getProgram = (id: string) => get<ProgramDetail>(`/admin/training/programs/${id}`);
 export const createProgram = (input: {
   title: string; category: TrainingCategory; organizer: string | null; description: string | null;
-  capacity: number | null; minAttendancePercent: number;
+  capacity: number | null; minAttendancePercent: number; delivery?: "CLASSROOM" | "ONLINE";
 }) => send<{ id: string }>("POST", "/admin/training/programs", input);
 export const cancelProgram = (id: string, reason: string) => send("POST", `/admin/training/programs/${id}/cancel`, { reason });
 export const completeProgram = (id: string) =>
-  send<{ totalHours: number; records: number }>("POST", `/admin/training/programs/${id}/complete`);
+  send<{ totalHours: number; records: number; delivery?: "ONLINE"; incomplete?: number }>("POST", `/admin/training/programs/${id}/complete`);
 export const createSession = (programId: string, input: {
   title: string; startAt: string; endAt: string; location: string | null; speakerEmployeeId: string | null; speakerName: string | null;
 }) => send<{ id: string; warnings: Conflict[] }>("POST", `/admin/training/programs/${programId}/sessions`, input);

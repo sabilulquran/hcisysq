@@ -1,15 +1,28 @@
 // DOC-001 D-20: the printable surat keterangan, drawn from the snapshot frozen at issuing time
-// (§4.1) and the printed signer block (D-05). Wording follows hr-documents.md §13; this
-// component decides nothing about who may see the letter — the API already did.
+// (§4.1) and the printed signer block (D-05). Wording follows hr-documents.md §13 and, for the
+// income letter, §14; this component decides nothing about who may see the letter — the API
+// already did — and calculates nothing: every figure is printed as the snapshot holds it.
 
 import { createPortal } from "react-dom";
 
-import type { IssuedDocumentSummary } from "@/lib/hrDocuments";
+import { formatRupiahAmount, incomeFigures, type IssuedDocumentSummary } from "@/lib/hrDocuments";
 
 /** Letter dates are on the Jakarta calendar, like the number (§9). */
 function letterDate(value: string, dateOnly = false) {
   const instant = dateOnly ? new Date(`${value}T00:00:00+07:00`) : new Date(value);
   return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" }).format(instant);
+}
+
+/** `YYYY-MM` -> "Agustus 2026". */
+function monthLabel(period: string) {
+  return new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "Asia/Jakarta" })
+    .format(new Date(`${period}-01T00:00:00+07:00`));
+}
+
+/** Months from `from` to `to` inclusive, both `YYYY-MM`: how many the snapshot's window spans. */
+function monthsBetween(from: string, to: string) {
+  const index = (period: string) => Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7));
+  return index(to) - index(from) + 1;
 }
 
 function text(value: unknown): string | null {
@@ -31,9 +44,12 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
     ["Unit", text(content.unitName)],
     ["Mulai bekerja", startedOn ? letterDate(startedOn, true) : null],
   ];
+  const income = incomeFigures(document);
   const statement = document.documentCode === "PAKLARING"
     ? `telah bekerja di Yayasan Sabilul Qur'an sejak ${startedOn ? letterDate(startedOn, true) : "-"} sampai dengan ${endedOn ? letterDate(endedOn, true) : "-"}.`
-    : "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini.";
+    : income
+      ? "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini, dengan penghasilan menurut slip gaji resmi yang telah diterbitkan sebagai berikut:"
+      : "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini.";
   return (
     <article className="certificate-letter-paper sq-paper rounded-2xl border border-border bg-white p-6 text-sm leading-6 text-slate-900">
       <p className="text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">Yayasan Sabilul Qur&apos;an</p>
@@ -49,6 +65,41 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
         ))}
       </dl>
       <p className="mt-4">{statement}</p>
+      {income ? (
+        <>
+          <table className="mt-3 w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-400">
+                <th className="py-1 pr-2 font-semibold">Bulan</th>
+                <th className="py-1 pr-2 text-right font-semibold">Penghasilan bruto</th>
+                <th className="py-1 text-right font-semibold">Penghasilan neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {income.months.map((month) => (
+                <tr key={month.period} className="border-b border-slate-200">
+                  <td className="py-1 pr-2">{monthLabel(month.period)}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(month.gross)}</td>
+                  <td className="py-1 text-right tabular-nums">{formatRupiahAmount(month.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="font-semibold">
+                <td className="py-1 pr-2">Rata-rata per bulan</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(income.averageGross)}</td>
+                <td className="py-1 text-right tabular-nums">{formatRupiahAmount(income.averageNet)}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p className="mt-2 text-xs">
+            Angka diambil dari slip gaji resmi periode {monthLabel(income.windowFrom)} sampai dengan {monthLabel(income.windowTo)}
+            {income.monthCount < monthsBetween(income.windowFrom, income.windowTo)
+              ? `; rata-rata dihitung dari ${income.monthCount} bulan yang memiliki slip gaji resmi.`
+              : "."}
+          </p>
+        </>
+      ) : null}
       {purpose ? <p className="mt-2">Surat keterangan ini dibuat untuk keperluan: {purpose}.</p> : null}
       <p className="mt-2">Demikian surat keterangan ini dibuat untuk dipergunakan sebagaimana mestinya.</p>
       <div className="mt-8 ml-auto w-56 text-center">

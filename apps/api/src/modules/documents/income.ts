@@ -240,14 +240,25 @@ export const LEGACY_PREMIUM_IN_GROSS_LABELS: readonly string[] = ["tunjangan bpj
 
 /**
  * D-27: the contribution sitting inside a `LEGACY` month's gross, read from that slip's own income
- * line. `null` when the slip does not state it readably; the letter then says the month is on the
- * other basis without naming an amount, which is better than naming one it did not read.
+ * lines. **All** of them are summed, not just the first: the engine can write more than one
+ * `BPJS_KES_ALLOW` earning on a retro or adjustment month, `employerBorneHealthContribution` sums
+ * them, and the slip lists one line per result line — naming only the first would understate the
+ * one figure whose whole job is reconciliation. `null` when the slip states none of them, or when
+ * any of them is unreadable; the letter then says the month is on the earlier basis without naming
+ * an amount, which is better than naming one it did not read in full.
  */
 export function findEmployerBorneInGross(lines: readonly PayslipLine[]): bigint | null {
-  const line = lines.find(
+  const matches = lines.filter(
     (candidate) => candidate.section === "income" && LEGACY_PREMIUM_IN_GROSS_LABELS.includes(normalizeLabel(candidate.label)),
   );
-  return line ? parseRupiahToSen(line.value) : null;
+  if (!matches.length) return null;
+  let total = 0n;
+  for (const line of matches) {
+    const amount = parseRupiahToSen(line.value);
+    if (amount === null) return null;
+    total += amount;
+  }
+  return total;
 }
 
 /**

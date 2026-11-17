@@ -251,6 +251,38 @@ describe("DOC-001 D-27 employer-borne contribution and mixed windows", () => {
     expect(facts.months[1]!.employerBorneInGross).toBeNull();
   });
 
+  it("sums every allowance line of a legacy month, not only the first", () => {
+    // A retro or adjustment month can carry more than one BPJS_KES_ALLOW earning, and the slip
+    // lists one line per result line; naming only the first would understate the bracket.
+    const retro = {
+      period: "2026-09",
+      lines: [
+        { label: "Tunjangan BPJS Kesehatan", value: "Rp205.000", section: "income" },
+        { label: "Tunjangan BPJS Kesehatan", value: "Rp41.000", section: "income" },
+        { label: "Total pendapatan", value: "Rp4.346.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.759.000", section: "summary" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [retro, block("2026-10", "Rp4.100.000", "Rp3.759.000")]);
+    expect(facts.months[0]!.employerBorneInGross).toBe("246000");
+  });
+
+  it("names no amount when one of several allowance lines cannot be read", () => {
+    const broken = {
+      period: "2026-09",
+      lines: [
+        { label: "Tunjangan BPJS Kesehatan", value: "Rp205.000", section: "income" },
+        { label: "Tunjangan BPJS Kesehatan", value: "menyusul", section: "income" },
+        { label: "Total pendapatan", value: "Rp4.346.000", section: "summary" },
+        { label: "Gaji bersih", value: "Rp3.759.000", section: "summary" },
+      ],
+    };
+    const facts = buildIncomeFacts(window, [broken, block("2026-10", "Rp4.100.000", "Rp3.759.000")]);
+    // Not a refusal: this figure only enriches a sentence, it is not the letter's headline.
+    expect(facts.months[0]!.employerBorneInGross).toBeNull();
+    expect(facts.months[0]!.gross).toBe("4346000");
+  });
+
   it("leaves the amount unnamed when the legacy slip does not state it the same way", () => {
     // A PAY-001/PAY-002 import names it "Tunjangan BPJS" and lumps the extra family member in.
     const imported = {

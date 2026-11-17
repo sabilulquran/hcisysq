@@ -50,6 +50,11 @@ function monthsBetween(from: string, to: string) {
  * gross still holds the contribution and, where that slip stated the amount, the amount itself, so
  * a bank can reconcile the two bases instead of reading the step as a change of pay. Printed with
  * the table, not at the foot of the letter.
+ *
+ * It names the contribution in full rather than saying "iuran tersebut": the sentence has to read
+ * correctly on its own. And it never claims a month's gross *does* hold a contribution when the
+ * slip did not state one — only that the month is on the earlier basis, where such a contribution,
+ * if there was one, sits inside the gross.
  */
 export function incomeMixedLayoutNote(
   legacyMonths: ReadonlyArray<{ period: string; employerBorneInGross?: string | null }>,
@@ -63,7 +68,7 @@ export function incomeMixedLayoutNote(
   const amounts = legacyMonths.some((month) => month.employerBorneInGross)
     ? "Nominal dalam kurung adalah iuran yang termasuk di dalam penghasilan bruto bulan itu menurut slip. "
     : "";
-  return `Pada slip periode ${list} iuran tersebut masih tercantum di dalam penghasilan bruto, sehingga kolom “${incomeEmployerColumnTitle}” bulan tersebut dikosongkan dan rata-rata iuran per bulan tidak dicantumkan. ${amounts}Penghasilan bruto bulan tersebut karena itu tidak disusun dengan cara yang sama dengan bulan lainnya, dan selisihnya bukan perubahan gaji.`;
+  return `Slip periode ${list} masih disusun dengan cara lama, sehingga iuran BPJS Kesehatan yang ditanggung yayasan, bila ada, termasuk di dalam penghasilan bruto bulan tersebut dan tidak tercantum terpisah. ${amounts}Kolom “${incomeEmployerColumnTitle}” bulan tersebut dikosongkan dan rata-rata iuran per bulan tidak dicantumkan. Penghasilan bruto bulan tersebut karena itu tidak disusun dengan cara yang sama dengan bulan lainnya, dan selisihnya bukan perubahan gaji.`;
 }
 
 function text(value: unknown): string | null {
@@ -154,6 +159,9 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               </tr>
             </tfoot>
           </table>
+          {/* The sentence that defines the column comes first: the mixed-window note below it
+              talks about that contribution, and a reader must meet it before the reference. */}
+          {showEmployerBorne ? <p className="mt-2 text-xs">{incomeEmployerBorneNote}</p> : null}
           {legacyMonths.length > 0 ? <p className="mt-2 text-xs">{incomeMixedLayoutNote(legacyMonths)}</p> : null}
           <p className="mt-2 text-xs">
             Angka diambil dari slip gaji resmi periode {monthLabel(income.windowFrom)} sampai dengan {monthLabel(income.windowTo)}
@@ -161,7 +169,6 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               ? `; rata-rata dihitung dari ${income.monthCount} bulan yang memiliki slip gaji resmi.`
               : "."}
           </p>
-          {showEmployerBorne ? <p className="mt-2 text-xs">{incomeEmployerBorneNote}</p> : null}
         </>
       ) : null}
       {purpose ? <p className="mt-2">Surat keterangan ini dibuat untuk keperluan: {purpose}.</p> : null}

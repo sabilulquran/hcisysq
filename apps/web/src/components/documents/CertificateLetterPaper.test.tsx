@@ -169,6 +169,13 @@ describe("DOC-001 D-20 certificate letter", () => {
     expect(html).toContain(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }]));
     expect(html).toContain("Agustus 2026 (Rp205.000)");
     expect(html).toContain("tidak disusun dengan cara yang sama");
+    // The sentence that defines the contribution must be read before the one referring to it.
+    expect(html.indexOf(incomeEmployerBorneNote)).toBeLessThan(
+      html.indexOf(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }])),
+    );
+    // ...and both before the source note at the foot of the figures.
+    expect(html.indexOf(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }])))
+      .toBeLessThan(html.indexOf("Angka diambil dari slip gaji resmi periode"));
     // B2: the average would add a month that states the contribution to one that does not.
     expect(html).not.toContain("Rp136.667");
   });
@@ -182,9 +189,11 @@ describe("DOC-001 D-20 certificate letter", () => {
     expect(note).toContain("Nominal dalam kurung");
   });
 
-  it("names no amount when no legacy slip in the window stated one", () => {
+  it("claims nothing it did not read when no legacy slip stated an amount", () => {
     const note = incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: null }]);
-    expect(note).toContain("Agustus 2026 iuran tersebut masih tercantum");
+    expect(note).toContain("Slip periode Agustus 2026 masih disusun dengan cara lama");
+    // It must not assert that a contribution IS inside that month's gross: the slip did not say so.
+    expect(note).toContain("bila ada");
     expect(note).not.toContain("Nominal dalam kurung");
   });
 

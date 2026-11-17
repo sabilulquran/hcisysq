@@ -68,14 +68,22 @@ const bulkImportRowExcludeSchema = z.object({
 type QueryTarget = Pool | PoolClient;
 
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
-// "employer" is written only by PAY-003 publication (payroll-calculation-v1.md section 7.6); imports never carry it.
 export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "employer" | "other";
+/**
+ * The sections an imported slip may carry. "employer" is deliberately excluded: the block
+ * "Ditanggung yayasan" is written only by PAY-003 publication (payroll-calculation-v1.md
+ * section 7.6), and DOC-001 D-27 reads an unknown label in that section as a reason to refuse an
+ * income certificate — an imported slip carrying one would block that employee's letter for three
+ * months. The `generic` contract drops any `section` the file supplies, and the legacy formats pick
+ * theirs from the column definitions below, so this type states a rule both paths already keep.
+ */
+export type ImportedLineSection = Exclude<PayslipLineSection, "employer">;
 export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 interface ImportedLine {
   label: string;
   value: string;
-  section?: PayslipLineSection;
+  section?: ImportedLineSection;
 }
 
 interface ParsedRow {
@@ -267,7 +275,7 @@ function resolveLegacyPeriod(value: string | undefined, fallbackPeriod?: string 
 type LegacyLineDefinition = {
   label: string;
   aliases: string[];
-  section: PayslipLineSection;
+  section: ImportedLineSection;
 };
 
 const fixedLineDefinitions: LegacyLineDefinition[] = [
@@ -381,6 +389,10 @@ function parseCanonicalPayslipCsv(buffer: Buffer): ParsedRow[] {
         })
       ) {
         errors.push("lines_json hanya menerima maksimal 100 item {label,value} string");
+      } else if (parsed.some((item) => (item as Record<string, unknown>).section === "employer")) {
+        // The block "Ditanggung yayasan" belongs to PAY-003 slips alone (section 7.6). Refused at
+        // the boundary rather than dropped silently, so an operator learns why it did not appear.
+        errors.push('lines_json tidak boleh memakai section "employer": blok Ditanggung yayasan hanya ditulis oleh payroll PAY-003');
       } else {
         lines = parsed.map((item) => {
           const record = item as ImportedLine;

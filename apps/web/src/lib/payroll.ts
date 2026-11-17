@@ -186,7 +186,15 @@ export interface PayrollReport {
    * With `employerBlock` the slips leave the employer-borne BPJS Kesehatan pair out,
    * so both are lower than `totals` by that amount; optional for older servers.
    */
-  payslipTotals?: { employerBlock: boolean; gross: string; deductions: string };
+  payslipTotals?: {
+    employerBlock: boolean;
+    gross: string;
+    deductions: string;
+    /** `SLIP` when read from the drafted slips, `KEBIJAKAN` when derived from the layout in force. */
+    source?: "SLIP" | "KEBIJAKAN";
+    /** The PAYSLIP_LAYOUT version in force does not parse: "Siapkan slip" will refuse. */
+    layoutUnreadable?: boolean;
+  };
 }
 
 export interface PayrollTransferRow {

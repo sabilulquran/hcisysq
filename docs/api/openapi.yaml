@@ -3395,9 +3395,16 @@ paths:
                     type: object
                     description: >
                       employeeNumber, fullName, positionTitle, unitName, startedOn, endedOn, purpose, documentLabel.
-                      A KETERANGAN_PENGHASILAN letter also carries `income` (DOC-001 D-24): months[{period, gross, net}],
-                      monthCount, averageGross, averageNet, windowFrom, windowTo, source; amounts are rupiah decimal
-                      strings frozen from the official published payslips at issue. Served with Cache-Control no-store.
+                      A KETERANGAN_PENGHASILAN letter also carries `income` (DOC-001 D-24, D-27):
+                      months[{period, gross, net, employerBorne, layout, employerBorneInGross}], monthCount,
+                      averageGross, averageNet, averageEmployerBorne, mixedLayout, windowFrom, windowTo, source;
+                      amounts are rupiah decimal strings frozen from the official published payslips at issue.
+                      `employerBorne` is the BPJS Kesehatan contribution the yayasan bears as that slip's block
+                      "Ditanggung yayasan" states it; `layout` is EMPLOYER_BLOCK when that line is there and LEGACY
+                      otherwise; `employerBorneInGross` is the same contribution as a LEGACY slip shows it inside
+                      that month's gross, or null; `mixedLayout` says the window holds both bases, and the letter
+                      then prints no average of the contribution. Letters issued before D-27 carry none of these
+                      fields. Served with Cache-Control no-store.
                     additionalProperties: true
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: 'FORBIDDEN or EMPLOYEE_LINK_REQUIRED: not an active employee session' }

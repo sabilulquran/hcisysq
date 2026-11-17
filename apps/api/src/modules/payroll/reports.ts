@@ -23,14 +23,12 @@ import type { Pool } from "pg";
 import { quoteCsvCell } from "../../lib/csv.js";
 import { HEALTH_ALLOWANCE_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT } from "./payslip-layout.js";
 import type { Pph21Report, Pph21Row, Pph21SourceRow } from "./pph21.js";
+import { findPayslipLayout } from "./policy-store.js";
 import {
-  DEFAULT_PAYSLIP_LAYOUT,
   DEFAULT_PPH21_SETTINGS,
-  parsePayslipLayoutPolicy,
   parsePph21Settings,
   parsePph21TerPolicy,
   PPH21_NON_PERMANENT_OBJECT_CODE,
-  type PayslipLayoutPolicy,
   type Pph21Settings,
   type Pph21TerPolicy,
 } from "./policy.js";
@@ -93,51 +91,68 @@ export type PeriodReport = {
    * deduction, which is what the legacy spreadsheet is compared against; with
    * PAYSLIP_LAYOUT.employerBlock in force on the pay date the slips leave that
    * pair out. Without it the two figures equal the totals.
+   *
+   * `source` says where they come from: `SLIP` when every result of the period
+   * has its current slip, so the figures are read from those slips and are what
+   * the employees hold even if a layout version was backdated since; `KEBIJAKAN`
+   * when the slips are not (all) drafted yet and the figures are derived from
+   * the layout in force on the pay date. `layoutUnreadable` is true when that
+   * PAYSLIP_LAYOUT row does not parse — drafting slips would refuse with
+   * `PAYSLIP_LAYOUT_POLICY_INVALID`, so the screen says so instead of showing
+   * the earlier totals as if nothing were wrong.
    */
-  payslipTotals: { employerBlock: boolean; gross: string; deductions: string };
+  payslipTotals: {
+    employerBlock: boolean;
+    gross: string;
+    deductions: string;
+    source: "SLIP" | "KEBIJAKAN";
+    layoutUnreadable: boolean;
+  };
 };
-
-export type PayslipLayoutLookup =
-  | { ok: true; versionId: string | null; layout: PayslipLayoutPolicy }
-  | { ok: false; message: string };
-
-/**
- * PAYSLIP_LAYOUT in force on a pay date. No row means the earlier layout, which
- * is what every slip before the owner decision of 2026-11-17 was drafted with; a
- * row that does not parse is refused rather than silently read as the earlier
- * layout, like PPH21_SETTINGS.
- */
-export async function findPayslipLayout(db: Pick<Pool, "query">, payDate: string): Promise<PayslipLayoutLookup> {
-  const { rows } = await db.query<{ id: string; payload: unknown }>(
-    `SELECT id, payload FROM payroll_policy_versions
-     WHERE policy_key = 'PAYSLIP_LAYOUT'
-       AND effective_from <= $1::date
-       AND (effective_to IS NULL OR effective_to >= $1::date)
-     ORDER BY effective_from DESC
-     LIMIT 1`,
-    [payDate],
-  );
-  const row = rows[0];
-  if (!row) return { ok: true, versionId: null, layout: DEFAULT_PAYSLIP_LAYOUT };
-  const parsed = parsePayslipLayoutPolicy(row.payload);
-  if (!parsed.ok) return { ok: false, message: parsed.message };
-  return { ok: true, versionId: row.id, layout: parsed.layout };
-}
 
 /**
  * The slip totals of a period from the calculation's totals: with the block
  * layout, less the BPJS Kesehatan pairs the slips move out (payslip-layout.ts).
+ * The fallback for a period whose slips have not been drafted yet, or are only
+ * drafted for some of its employees; once every result has its current slip the
+ * report reads the slips themselves (`payslipTotalsOfSlips`).
  */
 export function payslipTotalsOf(
   totals: Pick<PeriodReport["totals"], "gross" | "deductions">,
   employerBlock: boolean,
   movedPairTotal: string,
+  layoutUnreadable = false,
 ): PeriodReport["payslipTotals"] {
   const moved = employerBlock ? BigInt(movedPairTotal) : 0n;
   return {
     employerBlock,
     gross: String(BigInt(totals.gross) - moved),
     deductions: String(BigInt(totals.deductions) - moved),
+    source: "KEBIJAKAN",
+    layoutUnreadable,
+  };
+}
+
+/**
+ * Review finding 2 of PR #378: the figures above describe the layout in force
+ * *now*, which is not what the slips say when a PAYSLIP_LAYOUT version is
+ * backdated over a period whose slips are already out. These are the totals the
+ * slips of the period actually state, summed from their own summary lines.
+ */
+export function payslipTotalsOfSlips(
+  slipTotals: { gross: string; deductions: string; employerBlock: boolean },
+  layoutUnreadable = false,
+): PeriodReport["payslipTotals"] {
+  return {
+    // Observed on the slips themselves — do they carry a block? — never inferred
+    // from the gap against the calculation. A period reopened and recalculated
+    // without redrafting its slips has that gap too, and explaining it with the
+    // block would be a false explanation of a stale slip.
+    employerBlock: slipTotals.employerBlock,
+    gross: slipTotals.gross,
+    deductions: slipTotals.deductions,
+    source: "SLIP",
+    layoutUnreadable,
   };
 }
 
@@ -152,8 +167,11 @@ export function employerCostSummary(
 }
 
 export async function buildPeriodReport(pool: Pool, periodId: string): Promise<PeriodReport> {
-  const totals = await pool.query<PeriodReport["totals"]>(
-    `SELECT count(*)::int AS "employeeCount",
+  // The pay date rides along with the totals (one aggregate row either way), so
+  // the report does not run a query of its own just to read one column.
+  const totals = await pool.query<PeriodReport["totals"] & { payDate: string | null }>(
+    `SELECT (SELECT to_char(pay_date, 'YYYY-MM-DD') FROM payroll_periods WHERE id = $1) AS "payDate",
+            count(*)::int AS "employeeCount",
             coalesce(sum(latest.gross), 0)::text AS gross,
             coalesce(sum(latest.deductions), 0)::text AS deductions,
             coalesce(sum(latest.net), 0)::text AS net,
@@ -191,16 +209,94 @@ export async function buildPeriodReport(pool: Pool, periodId: string): Promise<P
     [periodId],
   );
 
-  // Section 7.6: what the slips of this period state as their totals. The pair is
-  // recognised per result exactly as payslip-layout.ts does: both sides present
-  // and equal. An unreadable layout row reads as the earlier layout here; drafting
-  // the slips refuses it loudly.
-  const periodDates = await pool.query<{ payDate: string }>(
-    `SELECT to_char(pay_date, 'YYYY-MM-DD') AS "payDate" FROM payroll_periods WHERE id = $1`,
+  const { payDate = null, ...row } = totals.rows[0] ?? {};
+  const periodTotals: PeriodReport["totals"] = totals.rows[0]
+    ? (row as PeriodReport["totals"])
+    : { employeeCount: 0, gross: "0", deductions: "0", net: "0", payable: "0", employerCost: "0", blockerCount: 0 };
+
+  return {
+    totals: periodTotals,
+    byUnit: byUnit.rows,
+    byComponent: byComponent.rows,
+    employerCostSummary: employerCostSummary(byComponent.rows),
+    payslipTotals: await buildPayslipTotals(pool, periodId, periodTotals, payDate),
+  };
+}
+
+/**
+ * Section 7.6: what the slips of this period state as their totals.
+ *
+ * Read from the drafted slips when every result has its current one: those are
+ * the figures the employees hold, whatever PAYSLIP_LAYOUT says today. Until the
+ * slips are drafted — which is most of a period's life — the figures are derived
+ * from the layout in force on the pay date, with the pair recognised per result
+ * exactly as payslip-layout.ts does: both sides present and equal.
+ *
+ * An unreadable layout row is reported (`layoutUnreadable`) rather than quietly
+ * read as the earlier layout: drafting the slips refuses it, and HC should not
+ * first learn that at drafting time.
+ */
+async function buildPayslipTotals(
+  pool: Pool,
+  periodId: string,
+  periodTotals: PeriodReport["totals"],
+  payDate: string | null,
+): Promise<PeriodReport["payslipTotals"]> {
+  const lookup = payDate ? await findPayslipLayout(pool, payDate) : null;
+  const layoutUnreadable = lookup?.ok === false;
+
+  // The summary lines are written by formatRupiah, so "Rp1.234.567" and nothing
+  // else: no sen, no stray text. Read in SQL rather than in JavaScript so the
+  // report does not load every slip of the period to add two numbers.
+  //
+  // Hardened against a slip that is not shaped that way: the first matching line
+  // of each kind rather than a lexicographic max over several, and a regex guard
+  // before the cast, so one odd slip leaves `gross`/`deductions` null and the
+  // report falls back instead of failing the whole period with a cast error.
+  const AMOUNT = `(replace(replace(line.value ->> 'value', 'Rp', ''), '.', ''))`;
+  const slips = await pool.query<{
+    slipCount: number;
+    gross: string | null;
+    deductions: string | null;
+    employerBlock: boolean | null;
+  }>(
+    `SELECT count(*)::int AS "slipCount",
+            sum(summary.gross::bigint)::text AS gross,
+            sum(summary.deductions::bigint)::text AS deductions,
+            bool_or(summary."employerBlock") AS "employerBlock"
+       FROM payslips slip
+       JOIN LATERAL (
+         SELECT (array_agg(${AMOUNT} ORDER BY line.ordinality)
+                   FILTER (WHERE line.value ->> 'section' = 'summary'
+                             AND line.value ->> 'label' = 'Total pendapatan'
+                             AND ${AMOUNT} ~ '^-?[0-9]+$'))[1] AS gross,
+                (array_agg(${AMOUNT} ORDER BY line.ordinality)
+                   FILTER (WHERE line.value ->> 'section' = 'summary'
+                             AND line.value ->> 'label' = 'Total potongan'
+                             AND ${AMOUNT} ~ '^-?[0-9]+$'))[1] AS deductions,
+                coalesce(bool_or(line.value ->> 'section' = 'employer'), false) AS "employerBlock"
+           FROM jsonb_array_elements(slip.lines) WITH ORDINALITY AS line(value, ordinality)
+       ) summary ON true
+      WHERE slip.source_period_id = $1
+        AND slip.superseded_by_id IS NULL
+        AND summary.gross IS NOT NULL
+        AND summary.deductions IS NOT NULL`,
     [periodId],
   );
-  const payDate = periodDates.rows[0]?.payDate;
-  const lookup = payDate ? await findPayslipLayout(pool, payDate) : null;
+  const slipRow = slips.rows[0];
+  if (
+    slipRow
+    && slipRow.slipCount > 0
+    && slipRow.slipCount === periodTotals.employeeCount
+    && slipRow.gross !== null
+    && slipRow.deductions !== null
+  ) {
+    return payslipTotalsOfSlips(
+      { gross: slipRow.gross, deductions: slipRow.deductions, employerBlock: slipRow.employerBlock === true },
+      layoutUnreadable,
+    );
+  }
+
   const employerBlock = lookup?.ok === true && lookup.layout.employerBlock;
   const movedPairs = employerBlock
     ? await pool.query<{ amount: string }>(
@@ -217,23 +313,7 @@ export async function buildPeriodReport(pool: Pool, periodId: string): Promise<P
         [periodId, HEALTH_ALLOWANCE_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT],
       )
     : null;
-
-  const periodTotals = totals.rows[0] ?? {
-    employeeCount: 0,
-    gross: "0",
-    deductions: "0",
-    net: "0",
-    payable: "0",
-    employerCost: "0",
-    blockerCount: 0,
-  };
-  return {
-    totals: periodTotals,
-    byUnit: byUnit.rows,
-    byComponent: byComponent.rows,
-    employerCostSummary: employerCostSummary(byComponent.rows),
-    payslipTotals: payslipTotalsOf(periodTotals, employerBlock, movedPairs?.rows[0]?.amount ?? "0"),
-  };
+  return payslipTotalsOf(periodTotals, employerBlock, movedPairs?.rows[0]?.amount ?? "0", layoutUnreadable);
 }
 
 export type TransferRow = {

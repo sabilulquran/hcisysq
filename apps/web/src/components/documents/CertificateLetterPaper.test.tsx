@@ -3,7 +3,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { CertificateLetterPaper } from "@/components/documents/CertificateLetterPaper";
+import {
+  CertificateLetterPaper,
+  incomeEmployerBorneNote,
+  incomeEmployerColumnTitle,
+  incomeMixedLayoutNote,
+} from "@/components/documents/CertificateLetterPaper";
 import { formatRupiahAmount, type IssuedDocumentSummary } from "@/lib/hrDocuments";
 
 function letter(overrides: Partial<IssuedDocumentSummary> = {}): IssuedDocumentSummary {
@@ -96,6 +101,113 @@ describe("DOC-001 D-20 certificate letter", () => {
       },
     })} />);
     expect(html).toContain("rata-rata dihitung dari 1 bulan yang memiliki slip gaji resmi.");
+  });
+
+  // DOC-001 D-27 (owner decision 2026-11-17): the gross follows the slip, and the BPJS Kesehatan
+  // contribution the yayasan bears is named on a line of its own.
+  function incomeLetter(income: Record<string, unknown>) {
+    return renderToStaticMarkup(<CertificateLetterPaper document={letter({
+      documentCode: "KETERANGAN_PENGHASILAN",
+      contentSnapshot: { ...letter().contentSnapshot, documentLabel: "Surat Keterangan Penghasilan", income },
+    })} />);
+  }
+
+  it("says nothing about an employer-borne contribution when no slip in the window states one", () => {
+    const html = incomeLetter({
+      months: [
+        { period: "2026-09", gross: "4305000", net: "3759000", employerBorne: "0", layout: "LEGACY" },
+        { period: "2026-10", gross: "4305000", net: "3759000", employerBorne: "0", layout: "LEGACY" },
+      ],
+      monthCount: 2,
+      averageGross: "4305000",
+      averageNet: "3759000",
+      averageEmployerBorne: "0",
+      mixedLayout: false,
+      windowFrom: "2026-09",
+      windowTo: "2026-10",
+    });
+    expect(html).not.toContain(incomeEmployerColumnTitle);
+    expect(html).not.toContain(incomeEmployerBorneNote);
+  });
+
+  it("names the contribution the yayasan bears, beside the pay and never inside it", () => {
+    const html = incomeLetter({
+      months: [
+        { period: "2026-09", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
+        { period: "2026-10", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
+      ],
+      monthCount: 2,
+      averageGross: "4100000",
+      averageNet: "3759000",
+      averageEmployerBorne: "205000",
+      mixedLayout: false,
+      windowFrom: "2026-09",
+      windowTo: "2026-10",
+    });
+    expect(html).toContain(incomeEmployerColumnTitle);
+    expect(html).toContain(incomeEmployerBorneNote);
+    expect(html).toContain("Rp205.000");
+    // Not a mixed window: no warning, and no month left empty.
+    expect(html).not.toContain("menggabungkan dua cara penyajian slip");
+  });
+
+  it("warns, and names the months, when the window mixes the two slip layouts", () => {
+    const html = incomeLetter({
+      months: [
+        { period: "2026-08", gross: "4305000", net: "3759000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: "205000" },
+        { period: "2026-09", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
+        { period: "2026-10", gross: "4100000", net: "3759000", employerBorne: "205000", layout: "EMPLOYER_BLOCK" },
+      ],
+      monthCount: 3,
+      averageGross: "4168333",
+      averageNet: "3759000",
+      averageEmployerBorne: "136667",
+      mixedLayout: true,
+      windowFrom: "2026-08",
+      windowTo: "2026-10",
+    });
+    expect(html).toContain(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }]));
+    expect(html).toContain("Agustus 2026 (Rp205.000)");
+    expect(html).toContain("tidak disusun dengan cara yang sama");
+    // The sentence that defines the contribution must be read before the one referring to it.
+    expect(html.indexOf(incomeEmployerBorneNote)).toBeLessThan(
+      html.indexOf(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }])),
+    );
+    // ...and both before the source note at the foot of the figures.
+    expect(html.indexOf(incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: "205000" }])))
+      .toBeLessThan(html.indexOf("Angka diambil dari slip gaji resmi periode"));
+    // B2: the average would add a month that states the contribution to one that does not.
+    expect(html).not.toContain("Rp136.667");
+  });
+
+  it("names every month of a mixed window, not only the first", () => {
+    const note = incomeMixedLayoutNote([
+      { period: "2026-08", employerBorneInGross: "205000" },
+      { period: "2026-09", employerBorneInGross: null },
+    ]);
+    expect(note).toContain("Agustus 2026 (Rp205.000) dan September 2026");
+    expect(note).toContain("Nominal dalam kurung");
+  });
+
+  it("claims nothing it did not read when no legacy slip stated an amount", () => {
+    const note = incomeMixedLayoutNote([{ period: "2026-08", employerBorneInGross: null }]);
+    expect(note).toContain("Slip periode Agustus 2026 masih disusun dengan cara lama");
+    // It must not assert that a contribution IS inside that month's gross: the slip did not say so.
+    expect(note).toContain("bila ada");
+    expect(note).not.toContain("Nominal dalam kurung");
+  });
+
+  it("prints a letter issued before the block existed exactly as it did", () => {
+    const html = incomeLetter({
+      months: [{ period: "2026-10", gross: "3000000", net: "2800000" }],
+      monthCount: 1,
+      averageGross: "3000000",
+      averageNet: "2800000",
+      windowFrom: "2026-10",
+      windowTo: "2026-10",
+    });
+    expect(html).toContain("Rp3.000.000");
+    expect(html).not.toContain(incomeEmployerColumnTitle);
   });
 
   it("formats rupiah strings without floating point", () => {

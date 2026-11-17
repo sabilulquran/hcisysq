@@ -5,7 +5,27 @@
 
 import { createPortal } from "react-dom";
 
-import { formatRupiahAmount, incomeFigures, type IssuedDocumentSummary } from "@/lib/hrDocuments";
+import {
+  formatRupiahAmount,
+  hasEmployerBorneIncome,
+  incomeFigures,
+  type IssuedDocumentSummary,
+} from "@/lib/hrDocuments";
+
+/**
+ * DOC-001 D-27 (DRAFT, owner decision 2026-11-17): the letter states the gross the employee was
+ * shown on their slip, and names the BPJS Kesehatan contribution the yayasan pays on their behalf
+ * on a line of its own, so the letter reconciles with the 1721-A1 without inflating the headline
+ * gross a bank reads.
+ */
+/**
+ * The column holds the BPJS Kesehatan contribution alone, not everything the slip's block
+ * "Ditanggung yayasan" lists (PPh21 the yayasan bears stays out, D-27), so it is named for what it
+ * holds rather than after the block.
+ */
+export const incomeEmployerColumnTitle = "Iuran BPJS Kesehatan ditanggung yayasan";
+export const incomeEmployerBorneNote =
+  "Kolom “Iuran BPJS Kesehatan ditanggung yayasan” adalah iuran yang dibayarkan yayasan atas nama pegawai. Iuran tersebut dibayarkan langsung oleh yayasan, tidak diterima pegawai sebagai uang tunai, dan tidak termasuk dalam penghasilan bruto maupun penghasilan neto di atas.";
 
 /** Letter dates are on the Jakarta calendar, like the number (§9). */
 function letterDate(value: string, dateOnly = false) {
@@ -23,6 +43,32 @@ function monthLabel(period: string) {
 function monthsBetween(from: string, to: string) {
   const index = (period: string) => Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7));
   return index(to) - index(from) + 1;
+}
+
+/**
+ * D-27: the sentence a window that mixes the two slip layouts must carry. It names the months whose
+ * gross still holds the contribution and, where that slip stated the amount, the amount itself, so
+ * a bank can reconcile the two bases instead of reading the step as a change of pay. Printed with
+ * the table, not at the foot of the letter.
+ *
+ * It names the contribution in full rather than saying "iuran tersebut": the sentence has to read
+ * correctly on its own. And it never claims a month's gross *does* hold a contribution when the
+ * slip did not state one — only that the month is on the earlier basis, where such a contribution,
+ * if there was one, sits inside the gross.
+ */
+export function incomeMixedLayoutNote(
+  legacyMonths: ReadonlyArray<{ period: string; employerBorneInGross?: string | null }>,
+): string {
+  const parts = legacyMonths.map((month) =>
+    month.employerBorneInGross
+      ? `${monthLabel(month.period)} (${formatRupiahAmount(month.employerBorneInGross)})`
+      : monthLabel(month.period),
+  );
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} dan ${parts[parts.length - 1]}` : parts[0] ?? "";
+  const amounts = legacyMonths.some((month) => month.employerBorneInGross)
+    ? "Nominal dalam kurung adalah iuran yang termasuk di dalam penghasilan bruto bulan itu menurut slip. "
+    : "";
+  return `Slip periode ${list} masih disusun dengan cara lama, sehingga iuran BPJS Kesehatan yang ditanggung yayasan, bila ada, termasuk di dalam penghasilan bruto bulan tersebut dan tidak tercantum terpisah. ${amounts}Kolom “${incomeEmployerColumnTitle}” bulan tersebut dikosongkan dan rata-rata iuran per bulan tidak dicantumkan. Penghasilan bruto bulan tersebut karena itu tidak disusun dengan cara yang sama dengan bulan lainnya, dan selisihnya bukan perubahan gaji.`;
 }
 
 function text(value: unknown): string | null {
@@ -45,6 +91,14 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
     ["Mulai bekerja", startedOn ? letterDate(startedOn, true) : null],
   ];
   const income = incomeFigures(document);
+  // D-27: the column only appears when a slip in the window actually states an employer-borne
+  // figure, so letters issued under the earlier slip layout read exactly as they did.
+  const showEmployerBorne = income ? hasEmployerBorneIncome(income) : false;
+  // Only when the column is there: a window whose block months state nothing employer-borne has
+  // one definition of gross after all, so there is nothing to warn a bank about.
+  const legacyMonths = income && income.mixedLayout && showEmployerBorne
+    ? income.months.filter((month) => month.layout !== "EMPLOYER_BLOCK")
+    : [];
   const statement = document.documentCode === "PAKLARING"
     ? `telah bekerja di Yayasan Sabilul Qur'an sejak ${startedOn ? letterDate(startedOn, true) : "-"} sampai dengan ${endedOn ? letterDate(endedOn, true) : "-"}.`
     : income
@@ -72,7 +126,8 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               <tr className="border-b border-slate-400">
                 <th className="py-1 pr-2 font-semibold">Bulan</th>
                 <th className="py-1 pr-2 text-right font-semibold">Penghasilan bruto</th>
-                <th className="py-1 text-right font-semibold">Penghasilan neto</th>
+                <th className={`py-1 text-right font-semibold${showEmployerBorne ? " pr-2" : ""}`}>Penghasilan neto</th>
+                {showEmployerBorne ? <th className="py-1 text-right font-semibold">{incomeEmployerColumnTitle}</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -80,7 +135,12 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
                 <tr key={month.period} className="border-b border-slate-200">
                   <td className="py-1 pr-2">{monthLabel(month.period)}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(month.gross)}</td>
-                  <td className="py-1 text-right tabular-nums">{formatRupiahAmount(month.net)}</td>
+                  <td className={`py-1 text-right tabular-nums${showEmployerBorne ? " pr-2" : ""}`}>{formatRupiahAmount(month.net)}</td>
+                  {showEmployerBorne ? (
+                    <td className="py-1 text-right tabular-nums">
+                      {month.layout === "EMPLOYER_BLOCK" ? formatRupiahAmount(month.employerBorne ?? "0") : "—"}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -88,10 +148,21 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
               <tr className="font-semibold">
                 <td className="py-1 pr-2">Rata-rata per bulan</td>
                 <td className="py-1 pr-2 text-right tabular-nums">{formatRupiahAmount(income.averageGross)}</td>
-                <td className="py-1 text-right tabular-nums">{formatRupiahAmount(income.averageNet)}</td>
+                <td className={`py-1 text-right tabular-nums${showEmployerBorne ? " pr-2" : ""}`}>{formatRupiahAmount(income.averageNet)}</td>
+                {showEmployerBorne ? (
+                  // D-27 / §7.6.6 S8: on a mixed window the average would add months that state the
+                  // contribution to months that do not, although the yayasan paid it in both.
+                  <td className="py-1 text-right tabular-nums">
+                    {legacyMonths.length > 0 ? "—" : formatRupiahAmount(income.averageEmployerBorne ?? "0")}
+                  </td>
+                ) : null}
               </tr>
             </tfoot>
           </table>
+          {/* The sentence that defines the column comes first: the mixed-window note below it
+              talks about that contribution, and a reader must meet it before the reference. */}
+          {showEmployerBorne ? <p className="mt-2 text-xs">{incomeEmployerBorneNote}</p> : null}
+          {legacyMonths.length > 0 ? <p className="mt-2 text-xs">{incomeMixedLayoutNote(legacyMonths)}</p> : null}
           <p className="mt-2 text-xs">
             Angka diambil dari slip gaji resmi periode {monthLabel(income.windowFrom)} sampai dengan {monthLabel(income.windowTo)}
             {income.monthCount < monthsBetween(income.windowFrom, income.windowTo)

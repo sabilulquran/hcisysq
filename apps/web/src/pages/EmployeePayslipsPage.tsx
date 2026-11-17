@@ -379,6 +379,12 @@ export function EmployeePayslipsPage() {
             print-color-adjust: exact !important;
             -webkit-print-color-adjust: exact !important;
           }
+          /* PAY-003 §7.6: the block "Ditanggung yayasan" is read with its heading
+             and its note, so a long slip must not split it across two pages. */
+          .payslip-employer-block {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
         }
       `}</style>
 

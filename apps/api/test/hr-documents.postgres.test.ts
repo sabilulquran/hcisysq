@@ -401,13 +401,16 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(letter.headers["cache-control"]).toBe("no-store");
     expect(letter.json().contentSnapshot.income).toEqual({
       months: [
-        { period: months[0], gross: "5000000", net: "4500000" },
-        { period: months[1], gross: "5250000", net: "4700000" },
-        { period: months[2], gross: "5100000", net: "4600001" },
+        // D-27: none of these slips carries a block "Ditanggung yayasan".
+        { period: months[0], gross: "5000000", net: "4500000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: months[1], gross: "5250000", net: "4700000", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
+        { period: months[2], gross: "5100000", net: "4600001", employerBorne: "0", layout: "LEGACY", employerBorneInGross: null },
       ],
       monthCount: 3,
       averageGross: "5116667",
       averageNet: "4600000",
+      averageEmployerBorne: "0",
+      mixedLayout: false,
       windowFrom: months[0],
       windowTo: months[2],
       source: "PAYSLIP_PUBLISHED",
@@ -443,7 +446,14 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     await client.query(`UPDATE payslips SET superseded_by_id = $2 WHERE id = $1`, [ids[0], revision]);
     await insertSlip(employeeId, months[0]!, slipLines("1000000", "900000"), { id: revision });
     const again = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
-    expect(again.json().contentSnapshot.income.months[0]).toEqual({ period: months[0], gross: "5000000", net: "4500000" });
+    expect(again.json().contentSnapshot.income.months[0]).toEqual({
+      period: months[0],
+      gross: "5000000",
+      net: "4500000",
+      employerBorne: "0",
+      layout: "LEGACY",
+      employerBorneInGross: null,
+    });
   });
 
   it("DOC-001-L: no official slip in the window refuses issue with 409, keeps APPROVED and uses no number", async () => {

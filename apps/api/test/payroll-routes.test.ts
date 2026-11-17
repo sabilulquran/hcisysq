@@ -165,6 +165,8 @@ function createPool(
     hasPreviousPeriod?: boolean;
     /** The PAYSLIP_LAYOUT payload in force on the pay date; absent means no version (section 7.6). */
     payslipLayout?: unknown;
+    /** The totals the period's current slips state; absent means no slip is drafted yet. */
+    draftedSlips?: { slipCount: number; gross: string; deductions: string; employerBlock: boolean };
   } = {},
 ) {
   const audits: string[] = [];
@@ -240,15 +242,21 @@ function createPool(
         ? { rows: [], rowCount: 0 }
         : { rows: [{ id: "99999999-9999-4999-8999-999999999999", payload: options.payslipLayout }], rowCount: 1 };
     }
-    if (sql.includes('AS "payDate" FROM payroll_periods WHERE id = $1')) {
-      return { rows: [{ payDate: "2026-09-25" }], rowCount: 1 };
-    }
+    // The totals of the period report carry the pay date with them (no query of its own).
     if (sql.includes("pair.allowance")) {
       return { rows: [{ amount: "300000" }], rowCount: 1 };
+    }
+    // The totals as the drafted slips state them; `drafted` tells how many slips exist, so a
+    // period whose slips are not (all) out falls back to the layout in force.
+    if (sql.includes("slip.source_period_id")) {
+      return options.draftedSlips === undefined
+        ? { rows: [{ slipCount: 0, gross: null, deductions: null, employerBlock: null }], rowCount: 1 }
+        : { rows: [options.draftedSlips], rowCount: 1 };
     }
     if (sql.includes("coalesce(sum(latest.gross)")) {
       return {
         rows: [{
+          payDate: "2026-09-25",
           employeeCount: 2,
           gross: "6000000",
           deductions: "400000",
@@ -477,6 +485,7 @@ async function call(
     policyComplete?: boolean;
     hasPreviousPeriod?: boolean;
     payslipLayout?: unknown;
+    draftedSlips?: { slipCount: number; gross: string; deductions: string; employerBlock: boolean };
   } = {},
 ) {
   const { pool, audits, updates, transitions, inputWrites, deletes } = createPool(persona, options.period ?? {}, {
@@ -484,6 +493,7 @@ async function call(
     ...(options.policyComplete === undefined ? {} : { policyComplete: options.policyComplete }),
     ...(options.hasPreviousPeriod === undefined ? {} : { hasPreviousPeriod: options.hasPreviousPeriod }),
     ...(options.payslipLayout === undefined ? {} : { payslipLayout: options.payslipLayout }),
+    ...(options.draftedSlips === undefined ? {} : { draftedSlips: options.draftedSlips }),
   });
   const app = Fastify({ logger: false });
   await registerPayrollRoutes(app, pool, config);
@@ -1383,7 +1393,13 @@ describe("PAY-003 period report", () => {
     const { response } = await call("director", "GET", url, { period: { state: "APPROVED" } });
     const { report } = response.json();
     expect(report.totals).toMatchObject({ gross: "6000000", deductions: "400000", net: "5600000" });
-    expect(report.payslipTotals).toEqual({ employerBlock: false, gross: "6000000", deductions: "400000" });
+    expect(report.payslipTotals).toEqual({
+      employerBlock: false,
+      gross: "6000000",
+      deductions: "400000",
+      source: "KEBIJAKAN",
+      layoutUnreadable: false,
+    });
   });
 
   it("states the slip totals without the employer-borne BPJS Kesehatan pair under the block layout", async () => {
@@ -1394,17 +1410,81 @@ describe("PAY-003 period report", () => {
     const { report } = response.json();
     // The calculation's totals do not move; both slip totals drop by the same 300.000, so net is equal.
     expect(report.totals).toMatchObject({ gross: "6000000", deductions: "400000", net: "5600000", payable: "5600000" });
-    expect(report.payslipTotals).toEqual({ employerBlock: true, gross: "5700000", deductions: "100000" });
+    expect(report.payslipTotals).toEqual({
+      employerBlock: true,
+      gross: "5700000",
+      deductions: "100000",
+      source: "KEBIJAKAN",
+      layoutUnreadable: false,
+    });
     expect(BigInt(report.payslipTotals.gross) - BigInt(report.payslipTotals.deductions)).toBe(BigInt(report.totals.net));
   });
 
-  it("reads an unreadable layout version as the earlier layout on the report", async () => {
+  // Review finding 1 of PR #378: the report used to read an unreadable layout row as the earlier
+  // layout without a word, while "Siapkan slip" refused with 409. It now says so.
+  it("says on the report that the layout version in force does not parse", async () => {
     const { response } = await call("director", "GET", url, {
       period: { state: "APPROVED" },
       payslipLayout: { employerBlock: true },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().report.payslipTotals).toEqual({ employerBlock: false, gross: "6000000", deductions: "400000" });
+    expect(response.json().report.payslipTotals).toEqual({
+      employerBlock: false,
+      gross: "6000000",
+      deductions: "400000",
+      source: "KEBIJAKAN",
+      layoutUnreadable: true,
+    });
+  });
+
+  // Review finding 2 of PR #378: once the slips are out, the report states what they say, so a
+  // backdated PAYSLIP_LAYOUT version cannot move the figure beside slips already in hand.
+  it("reads the totals from the drafted slips once every result has one", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      payslipLayout: { source: "Keputusan owner uji", employerBlock: true },
+      draftedSlips: { slipCount: 2, gross: "5700000", deductions: "100000", employerBlock: true },
+    });
+    expect(response.json().report.payslipTotals).toEqual({
+      employerBlock: true,
+      gross: "5700000",
+      deductions: "100000",
+      source: "SLIP",
+      layoutUnreadable: false,
+    });
+  });
+
+  // Item 1 of the independent review: a period reopened and recalculated without redrafting has a
+  // gap between slip gross and calculation gross too, and that gap is not the block.
+  it("does not call stale slips a block layout just because their totals differ", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      draftedSlips: { slipCount: 2, gross: "5400000", deductions: "100000", employerBlock: false },
+    });
+    expect(response.json().report.payslipTotals).toEqual({
+      employerBlock: false,
+      gross: "5400000",
+      deductions: "100000",
+      source: "SLIP",
+      layoutUnreadable: false,
+    });
+  });
+
+  it("reports an unreadable layout policy even when the figures come from the slips", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      payslipLayout: { employerBlock: true },
+      draftedSlips: { slipCount: 2, gross: "5700000", deductions: "100000", employerBlock: true },
+    });
+    expect(response.json().report.payslipTotals).toMatchObject({ source: "SLIP", layoutUnreadable: true });
+  });
+
+  it("falls back to the layout in force while only some of the slips are drafted", async () => {
+    const { response } = await call("director", "GET", url, {
+      period: { state: "APPROVED" },
+      draftedSlips: { slipCount: 1, gross: "2850000", deductions: "50000", employerBlock: true },
+    });
+    expect(response.json().report.payslipTotals).toMatchObject({ source: "KEBIJAKAN", gross: "6000000" });
   });
 
   it("is closed to the board and to anyone without a payroll permission", async () => {

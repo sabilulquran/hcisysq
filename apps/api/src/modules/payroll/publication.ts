@@ -23,7 +23,8 @@ import type { Pool, PoolClient } from "pg";
 
 import { notifyEmployee } from "../notifications/service.js";
 import { EMPLOYER_PPH21_COMPONENT, HEALTH_CONTRIBUTION_COMPONENT, presentPayslip } from "./payslip-layout.js";
-import { findPayslipLayout, formatRupiah } from "./reports.js";
+import { findPayslipLayout } from "./policy-store.js";
+import { formatRupiah } from "./reports.js";
 import { LATEST_RESULTS_OF_PERIOD, writeAudit } from "./store.js";
 
 /** Drafting is only sensible while the period is paid and not reopened. */
@@ -141,9 +142,17 @@ export function buildPayslipLines(
     });
   }
   if (shown.employerPph21 !== 0n) {
+    // DRAFT S3: on a final masa pajak the figure can be negative, because the TER
+    // the yayasan bore in the earlier months of the year was more than the Pasal
+    // 17 tax for the whole year. "-Rp600.000" under "Ditanggung yayasan" reads as
+    // a mistake to the person holding the slip, so the refund gets its own label
+    // and a positive amount; the block note still says it moves no net pay.
+    const refund = shown.employerPph21 < 0n;
     payslip.push({
-      label: nameOf(EMPLOYER_PPH21_COMPONENT, "PPh21 ditanggung yayasan"),
-      value: formatRupiah(shown.employerPph21.toString()),
+      label: refund
+        ? "Pengembalian kelebihan PPh21 ditanggung yayasan"
+        : nameOf(EMPLOYER_PPH21_COMPONENT, "PPh21 ditanggung yayasan"),
+      value: formatRupiah((refund ? -shown.employerPph21 : shown.employerPph21).toString()),
       section: "employer",
     });
   }

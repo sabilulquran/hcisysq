@@ -72,6 +72,27 @@ const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
 
 const NO_READ_ACCESS = { report: false, perPerson: false, transfers: false };
 
+/**
+ * PAY-003 §7.6: the PAYSLIP_LAYOUT version in force on this period's pay date does not parse.
+ * The rekap falls back to the earlier layout, but "Siapkan slip" refuses, so the screen says it
+ * here instead of letting HC find out at drafting time.
+ */
+export const payslipLayoutUnreadableNote =
+  "Kebijakan tata letak slip (PAYSLIP_LAYOUT) yang berlaku pada tanggal gajian periode ini tidak terbaca. "
+  + "Siapkan slip akan ditolak sampai isi kebijakan itu diperbaiki di /admin/payroll/reference → Kebijakan.";
+
+/**
+ * PAY-003 §7.6.6 S9: where the slip totals of the rekap come from. HC has to be able to tell a
+ * figure read from the slips in the employees' hands from one derived from the policy in force,
+ * because only the first is what a pegawai can check against their own slip.
+ */
+export const payslipTotalsSourceNote: Record<"SLIP" | "KEBIJAKAN", string> = {
+  SLIP: "Total di slip dibaca dari slip periode ini yang sudah disiapkan.",
+  KEBIJAKAN:
+    "Slip periode ini belum disiapkan untuk semua penerima, sehingga total di slip diturunkan dari kebijakan tata letak "
+    + "yang berlaku pada tanggal gajian — bukan dibaca dari slip — dan dapat berbeda dari slip yang sudah dipegang pegawai.",
+};
+
 export function AdminPayrollPeriodPage() {
   const { periodId } = useParams({ from: "/admin/payroll/$periodId" });
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -366,6 +387,23 @@ export function AdminPayrollPeriodPage() {
                 Bruto dan potongan hasil perhitungan masih memuat tunjangan dan iuran BPJS Kesehatan yang ditanggung
                 yayasan. Slip periode ini menampilkannya di blok "Ditanggung yayasan", sehingga total di slip lebih
                 kecil sebesar iuran itu; netto dan nilai dibayar sama.
+              </p>
+            ) : null}
+            {/* Only where the rekap actually makes a claim about the slips: with the earlier
+                layout everywhere, the slip totals and the calculation's are the same figure. */}
+            {report.payslipTotals?.source
+            && (report.payslipTotals.employerBlock || report.payslipTotals.layoutUnreadable) ? (
+              <p
+                className={`mt-3 text-xs ${
+                  report.payslipTotals.source === "SLIP" ? "text-muted-foreground" : "text-warning-ink"
+                }`}
+              >
+                {payslipTotalsSourceNote[report.payslipTotals.source]}
+              </p>
+            ) : null}
+            {report.payslipTotals?.layoutUnreadable ? (
+              <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                {payslipLayoutUnreadableNote}
               </p>
             ) : null}
           </section>

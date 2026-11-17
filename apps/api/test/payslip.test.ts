@@ -84,6 +84,26 @@ describe("payslip import contract", () => {
     expect(rows[0]?.lines).toEqual([{ label: "Imported A", value: "synthetic-value" }]);
   });
 
+  // DOC-001 D-27: the block "Ditanggung yayasan" is written only by PAY-003 publication, and an
+  // income certificate refuses on an unknown label in that section. An imported slip carrying one
+  // would block that employee's letter for three months, so the import refuses the file instead.
+  it("refuses an imported line that claims the employer block", () => {
+    const rows = parsePayslipCsv(csvPayload([
+      `SYN-001,2026-08,"[{""label"":""Iuran BPJS Kesehatan"",""value"":""Rp205.000"",""section"":""employer""}]"`,
+    ]));
+    expect(rows[0]?.lines).toBeNull();
+    expect(rows[0]?.errors.join(" ")).toContain(`section "employer"`);
+  });
+
+  it("keeps accepting a line that names any other section", () => {
+    const rows = parsePayslipCsv(csvPayload([
+      `SYN-001,2026-08,"[{""label"":""Gaji Pokok"",""value"":""Rp4.000.000"",""section"":""income""}]"`,
+    ]));
+    expect(rows[0]?.errors).toEqual([]);
+    // The generic contract keeps only label and value, as it always has.
+    expect(rows[0]?.lines).toEqual([{ label: "Gaji Pokok", value: "Rp4.000.000" }]);
+  });
+
   it("rejects business-shape assumptions outside the generic line contract", () => {
     const csv = Buffer.from("employee_number,period,net_salary\nSYN-001,2026-08,100\n");
     expect(() => parsePayslipCsv(csv)).toThrow(/header CSV wajib/i);

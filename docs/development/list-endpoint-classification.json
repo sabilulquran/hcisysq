@@ -1578,6 +1578,42 @@
     {
       "url": "/admin/training/programs/:id/online-progress",
       "list": "paged"
+    },
+    {
+      "url": "/admin/rewards/source",
+      "list": "single",
+      "reason": "REWARD-001: status sumber Al-Qur'an untuk satu bulan."
+    },
+    {
+      "url": "/admin/rewards/rounds",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/rewards/rounds/:id",
+      "list": "single",
+      "reason": "Satu putaran; kandidat dibatasi kursi putaran (3 kursi yayasan, satu per unit papan skor, seri dan pengganti), REWARD-001 §9."
+    },
+    {
+      "url": "/admin/rewards/rounds/:id/events",
+      "list": "paged"
+    },
+    {
+      "url": "/rewards/recipients",
+      "list": "paged"
+    },
+    {
+      "url": "/me/rewards",
+      "list": "paged"
+    },
+    {
+      "url": "/me/rewards/:id/certificate",
+      "list": "single",
+      "reason": "Satu sertifikat PDF milik sendiri."
+    },
+    {
+      "url": "/public/rewards/verify/:code",
+      "list": "single",
+      "reason": "Satu pemeriksaan sertifikat publik."
     }
   ]
 }

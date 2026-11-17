@@ -17,7 +17,7 @@
 -- Down, only while no THR period exists (SELECT count(*) FROM payroll_periods WHERE period_kind =
 -- 'THR' must be 0; otherwise withdraw the THR routes and keep the columns):
 --   DELETE FROM payroll_policy_versions WHERE policy_key = 'THR';
---   restore payroll_policy_versions_policy_key_check without 'THR' (keeping PERFORMANCE_PERCENT);
+--   restore payroll_policy_versions_policy_key_check without 'THR' (keeping PERFORMANCE_PERCENT and PPH21_ANNUAL);
 --   DELETE FROM payroll_components WHERE code = 'THR';
 --   ALTER TABLE payroll_components DROP CONSTRAINT payroll_components_thr_wage_is_earning,
 --     DROP COLUMN is_thr_wage;
@@ -95,8 +95,8 @@ ALTER TABLE payroll_policy_versions
     'SALARY_SCALE', 'BASIC_MULTIPLIER', 'TEACHING_HOURS', 'PERFORMANCE', 'FAMILY',
     'FUNCTIONAL_ALLOWANCE', 'POSITIONAL_ALLOWANCE', 'OVERTIME', 'BPJS_KESEHATAN',
     'CONTRACT_RATES', 'EARLY_SERVICE', 'VARIANCE_THRESHOLD', 'PPH21_TER',
-    -- 0153 (PERF-001 link) added PERFORMANCE_PERCENT; this rebuild keeps it.
-    'PERFORMANCE_PERCENT', 'THR'
+    -- 0153 (PERF-001 link) added PERFORMANCE_PERCENT and 0157 PPH21_ANNUAL; this rebuild keeps both.
+    'PERFORMANCE_PERCENT', 'PPH21_ANNUAL', 'THR'
   ));
 
 INSERT INTO payroll_policy_versions (id, policy_key, effective_from, effective_to, payload, source, note)

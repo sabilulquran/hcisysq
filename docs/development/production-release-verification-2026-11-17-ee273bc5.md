@@ -1,6 +1,6 @@
 # Verifikasi rilis produksi — hcis-ee273bc5-20261117 (OPS-MI8-REL-001)
 
-**Tanggal:** 2026-11-17 14:01–14:04 UTC (21:01–21:04 WIB), pengamatan 10 menit sampai 14:14 UTC
+**Tanggal:** 2026-11-17 14:01–14:04 UTC (21:01–21:04 WIB), pengamatan 10 menit sampai 14:15 UTC
 **Operator:** Claude Code (sesi rilis untuk #377–#381), di bawah aturan owner 2026-10-27: rilis tanpa konfirmasi, dengan pengaman teknis tetap dijalankan (dry run lebih dulu, backup basis data sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, laporan sesudahnya, tidak pernah pada jam 19 UTC). Kunci rilis perangkat kosong saat preflight, diambil skrip, dan dilepas setelah verify.
 
 | Item | Nilai |
@@ -50,7 +50,7 @@ Tidak ada rollback. Tidak ada fase yang gagal.
 - Tanpa sesi, rute-rute ini menjawab 401 (bukan 5xx, bukan 200): `/api/attendance/me/transactions` (badan `{"code":"UNAUTHENTICATED","message":"Sesi tidak ditemukan atau sudah berakhir."}`), `/api/payslips`, `/api/payroll/periods`, `/api/payroll/policies`. Jadi transaksi kehadiran tetap hanya untuk yang berautentikasi.
 - Deep link `/login`, `/app/attendance/transactions`, `/app/payslips` dan `/admin/payroll` mengembalikan shell SPA (200); `/assets/does-not-exist.js` 404.
 - `hub.sabilulquran.or.id` dan `aset.sabilulquran.or.id` menjawab 200.
-- Pengamatan 10 menit (14:04–14:14 UTC): `/api/health` dan `/login` 200 pada setiap menit; proses `hcis` (pid 18296) dan `hcis-web` (pid 18597) serta worker (pid 17458) tidak berubah; `cwd` keduanya di dalam `hcis-ee273bc5-20261117`; `current` → `releases/hcis-ee273bc5-20261117`; tidak ada baris level error di `api.log`.
+- Pengamatan 10 menit (14:05–14:15 UTC): `/api/health` dan `/login` 200 pada setiap menit; proses `hcis` (pid 18296) dan `hcis-web` (pid 18597) serta worker (pid 17458) tidak berubah; `cwd` keduanya di dalam `hcis-ee273bc5-20261117`; `current` → `releases/hcis-ee273bc5-20261117`; tidak ada baris level error di `api.log`.
 
 ## Angka yang tidak berubah
 

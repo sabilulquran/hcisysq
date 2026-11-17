@@ -36,7 +36,10 @@ describe.skipIf(!allowed)("EMP-005 S2 baseline on PostgreSQL", () => {
 
   beforeEach(async () => {
     client = await pool.connect();
-    await client.query("BEGIN");
+    // REPEATABLE READ: "never changes accounts" compares the whole accounts table before and
+    // after. Other test files commit and delete accounts in parallel; one snapshot for the
+    // transaction keeps their rows out while this test's own writes stay visible.
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
     const stack: string[] = [];
     let sequence = 0;
     const query = async (text: string, values?: unknown[]) => {

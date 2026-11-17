@@ -781,6 +781,9 @@ function finalize(args: {
       blockers.push({ code: "INPUT_INVALID", message: `Input ${name} bernilai tidak sah (${value}).` });
     }
   }
+  if (inputs.reimbursement !== undefined && !Number.isInteger(inputs.reimbursement)) {
+    blockers.push({ code: "INPUT_INVALID", message: "Penggantian biaya harus rupiah bulat." });
+  }
   if (!Number.isInteger(inputs.adjustment)) {
     blockers.push({ code: "INPUT_INVALID", message: "Penyesuaian gaji harus rupiah bulat." });
   }
@@ -816,7 +819,9 @@ function finalize(args: {
   if (inputs.loanDeduction > inputs.loanOutstanding) {
     blockers.push({ code: "LOAN_EXCEEDS_BALANCE", message: "Potongan kasbon melebihi sisa pinjaman." });
   }
-  if (net < 0) {
+  // A reimbursement repays an expense; it must not cover deductions that exceed
+  // pay, so the pay part alone is checked (section 3.6).
+  if (net - (inputs.reimbursement ?? 0) < 0) {
     blockers.push({ code: "NEGATIVE_NET", message: "Netto bernilai negatif." });
   }
   if (payable < 0) {

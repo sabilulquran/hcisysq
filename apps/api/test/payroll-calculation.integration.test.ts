@@ -1136,6 +1136,36 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect((await claimState(claimId)).payments).toEqual([]);
     });
 
+    it("refuses approval for a handoff made after the last calculation", async () => {
+      const { employeeId } = await newEmployment({ category: "TETAP" });
+      await recalculate();
+      const { claimId } = await handedOffClaim(employeeId);
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      const outcome = await transition("approve", "APPROVED");
+      expect(outcome.refusal?.code).toBe("PAYROLL_REIMBURSEMENT_CHANGED");
+      expect((await claimState(claimId)).status).toBe("VERIFIED");
+    });
+
+    it("refuses re-approval when a reopened period no longer pays a claim it already paid", async () => {
+      await newEmployment({ category: "TETAP" });
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      const { claimId } = await handedOffClaim(employeeId);
+      await recalculate();
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      await pool.query(
+        "UPDATE payroll_periods SET state = 'REOPEN_REQUESTED', state_before_reopen_request = 'APPROVED' WHERE id = $1",
+        [reimbursementPeriodId],
+      );
+      expect((await transition("approve_reopen", "COLLECTING")).applied).toBe(true);
+      // The employee drops out of the recalculated run.
+      await pool.query("UPDATE employments SET legal_entity_key = $2 WHERE id = $1", [employmentId, randomUUID()]);
+      await recalculate();
+      await pool.query("UPDATE payroll_periods SET state = 'SUBMITTED' WHERE id = $1", [reimbursementPeriodId]);
+      expect((await transition("approve", "APPROVED")).refusal?.code).toBe("PAYROLL_REIMBURSEMENT_CHANGED");
+      expect((await claimState(claimId)).payments).toHaveLength(1);
+    });
+
     it("releases a handoff when its employee leaves the run", async () => {
       // Someone stays, so the second run writes results of its own.
       await newEmployment({ category: "TETAP" });

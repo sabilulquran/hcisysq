@@ -123,6 +123,15 @@ describe("PAY-003 REIMBURSE component", () => {
 
   it("refuses a negative or fractional input", () => {
     expect(run({}, { reimbursement: -1 }).blockers.map((blocker) => blocker.code)).toContain("INPUT_INVALID");
+    expect(run({}, { reimbursement: 1.5 }).blockers.map((blocker) => blocker.code)).toContain("INPUT_INVALID");
+  });
+
+  it("does not let a reimbursement cover deductions larger than pay", () => {
+    // A child-education deduction above the whole salary: blocked with or without a reimbursement.
+    const short = run({}, { childEducationDeduction: 10_000_000 });
+    const covered = run({}, { childEducationDeduction: 10_000_000, reimbursement: 20_000_000 });
+    expect(short.blockers.map((blocker) => blocker.code)).toContain("NEGATIVE_NET");
+    expect(covered.blockers.map((blocker) => blocker.code)).toContain("NEGATIVE_NET");
   });
 });
 

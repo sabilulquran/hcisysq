@@ -64,13 +64,17 @@ export async function bindReimbursementHandoffs(
 ): Promise<Map<string, number>> {
   // Release first: someone who left the run since the last calculation must not
   // keep a handoff bound to a period that no longer pays it.
+  // A handoff re-issued by a reopen (its claim is already PAID through this
+  // period) stays bound: the period paid it once and must carry it again, and
+  // approval refuses if the recalculated slips do not.
   await client.query(
-    `UPDATE reimbursement_payroll_handoffs SET period_id = NULL
-     WHERE period_id = $1 AND status = 'PENDING'`,
+    `UPDATE reimbursement_payroll_handoffs h SET period_id = NULL
+     FROM reimbursement_claims c
+     WHERE c.id = h.claim_id AND h.period_id = $1 AND h.status = 'PENDING' AND c.status <> 'PAID'`,
     [period.id],
   );
   const owed = new Map<string, number>();
-  if (!enabled || employeeIds.length === 0) return owed;
+  if (employeeIds.length === 0) return owed;
 
   const { rows } = await client.query<{ employeeId: string; amount: string }>(
     `WITH bound AS (
@@ -78,14 +82,17 @@ export async function bindReimbursementHandoffs(
        FROM reimbursement_claims c
        WHERE c.id = h.claim_id
          AND h.status = 'PENDING'
-         AND h.period_id IS NULL
+         -- Switched off, only what this period already paid once (re-issued by a
+         -- reopen) is carried; nothing new is bound. Such a handoff exists only
+         -- if the switch was once on, so a period that never saw it is untouched.
+         AND (h.period_id = $1 OR ($4::boolean AND h.period_id IS NULL))
          AND h.payroll_month = date_trunc('month', $2::date)::date
          AND c.employee_id = ANY($3::uuid[])
          AND c.status IN ('VERIFIED', 'PAID')
        RETURNING c.employee_id, h.amount
      )
      SELECT employee_id AS "employeeId", sum(amount)::text AS amount FROM bound GROUP BY employee_id`,
-    [period.id, period.periodMonth, employeeIds],
+    [period.id, period.periodMonth, employeeIds, enabled],
   );
   for (const row of rows) owed.set(row.employeeId, Number(row.amount));
   return owed;
@@ -100,6 +107,7 @@ type BoundHandoff = {
   verifiedTotal: string | null;
   paymentId: string | null;
   paymentPeriodMonth: string | null;
+  handedOffBy: string;
 };
 
 /**
@@ -117,7 +125,8 @@ export async function settleReimbursementHandoffs(
   const { rows } = await client.query<BoundHandoff>(
     `SELECT h.id AS "handoffId", c.id AS "claimId", c.employee_id AS "employeeId", h.amount::text AS amount,
             c.status AS "claimStatus", c.verified_total::text AS "verifiedTotal",
-            pay.id AS "paymentId", to_char(pay.payroll_month, 'YYYY-MM') AS "paymentPeriodMonth"
+            pay.id AS "paymentId", to_char(pay.payroll_month, 'YYYY-MM') AS "paymentPeriodMonth",
+            h.created_by_account_id AS "handedOffBy"
      FROM reimbursement_payroll_handoffs h
      JOIN reimbursement_claims c ON c.id = h.claim_id
      LEFT JOIN reimbursement_payments pay ON pay.claim_id = c.id
@@ -140,6 +149,30 @@ export async function settleReimbursementHandoffs(
   );
 
   const month = period.periodMonth.slice(0, 7);
+
+  // A handoff of this month that the slips do not carry because it was made
+  // after the last calculation for someone the period pays. Approving would
+  // leave it unpaid, so the period goes back for a recalculation. (A handoff
+  // re-issued by a reopen stays bound and is checked against the slips below.)
+  const stranded = await client.query(
+    `SELECT 1
+     FROM reimbursement_payroll_handoffs h
+     JOIN reimbursement_claims c ON c.id = h.claim_id
+     WHERE h.status = 'PENDING' AND h.period_id IS NULL
+       AND h.payroll_month = date_trunc('month', $2::date)::date
+       AND EXISTS (SELECT 1 FROM payroll_results r JOIN employments e ON e.id = r.employment_id
+                   WHERE r.period_id = $1 AND e.employee_id = c.employee_id
+                     AND r.calculated_at = (SELECT max(x.calculated_at) FROM payroll_results x WHERE x.period_id = $1))
+     LIMIT 1`,
+    [period.id, period.periodMonth],
+  );
+  if (stranded.rows.length > 0) {
+    throw new ReimbursementSettlementRefusal(
+      "PAYROLL_REIMBURSEMENT_CHANGED",
+      "Ada penggantian biaya bulan ini yang belum masuk slip; kembalikan periode lalu hitung ulang.",
+    );
+  }
+
   const handedOff = new Map<string, bigint>();
   for (const row of rows) {
     const payable = row.claimStatus === "VERIFIED" && row.verifiedTotal === row.amount;
@@ -182,7 +215,10 @@ export async function settleReimbursementHandoffs(
           `Payroll ${month}`,
           "Dicatat otomatis saat periode payroll disahkan.",
           randomUUID(),
-          actorAccountId,
+          // The Finance account that handed the claim off, which already passed
+          // the own-claim and not-approver checks (REIMB-001 D-13), not the
+          // director approving the whole period.
+          row.handedOffBy,
         ],
       );
       await client.query(

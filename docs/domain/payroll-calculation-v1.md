@@ -170,8 +170,8 @@ Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules
 
 | Saat | Yang terjadi | Bergantung sakelar? |
 |---|---|---|
-| hitung | Penyerahan `PENDING` yang bulan payroll-nya sama dengan periode dan pegawainya dibayar periode itu diikat ke periode; jumlahnya per pegawai menjadi baris `REIMBURSE`. Penyerahan yang terikat tetapi pegawainya tidak lagi dibayar dilepas. | ya; saat mati hanya melepas ikatan periode itu sendiri, jadi periode tanpa penyerahan tidak tersentuh dan snapshot-nya identik |
-| sahkan | Baris `REIMBURSE` pada run terakhir harus sama, per pegawai, dengan penyerahan terikat; bila tidak, 409 `PAYROLL_REIMBURSEMENT_CHANGED`. Klaim `VERIFIED` → `PAID` dengan satu pembayaran `PAYROLL` immutable; penyerahan `SETTLED`. | tidak |
+| hitung | Penyerahan `PENDING` yang bulan payroll-nya sama dengan periode dan pegawainya dibayar periode itu diikat ke periode; jumlahnya per pegawai menjadi baris `REIMBURSE`. Penyerahan yang terikat tetapi pegawainya tidak lagi dibayar dilepas, kecuali penyerahan terbitan buka ulang (klaimnya sudah `PAID` lewat periode ini), yang tetap terikat. | ya untuk mengikat penyerahan baru; penyerahan terbitan buka ulang tetap dibayar walau sakelar mati. Periode yang tidak pernah melihat sakelar menyala tidak tersentuh dan snapshot-nya identik |
+| sahkan | Baris `REIMBURSE` pada run terakhir harus sama, per pegawai, dengan penyerahan terikat, dan tidak boleh ada penyerahan bulan itu yang belum terikat untuk pegawai yang dibayar periode ini; bila tidak, 409 `PAYROLL_REIMBURSEMENT_CHANGED`. Klaim `VERIFIED` → `PAID` dengan satu pembayaran `PAYROLL` immutable; penyerahan `SETTLED`. | tidak |
 | setujui buka ulang | Penyerahan `SETTLED` → `REVERSED`, satu `PENDING` baru membawa penggantian ke hitung ulang; pembayaran tetap. | tidak |
 
 Rumus: `REIMBURSE` masuk `BRUTO` dan `NETTO` tetapi tidak ikut faktor bayar, karena ia mengganti uang yang sudah dikeluarkan pegawai:

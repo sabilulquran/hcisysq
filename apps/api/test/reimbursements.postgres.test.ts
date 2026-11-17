@@ -593,6 +593,21 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
       expect(handoffs.rows.map((row) => row.status)).toEqual(["WITHDRAWN"]);
       await checkMoneyInvariants();
 
+      // Rejecting a handed-off claim takes it back from payroll first.
+      const rejected = await approved();
+      expect((await verify(rejected.id)).statusCode).toBe(200);
+      expect((await handOff(rejected.id)).statusCode).toBe(201);
+      actAs("finance", FINANCE);
+      const reject = await switched.inject({
+        method: "POST", url: `/admin/reimbursements/${rejected.id}/reject`,
+        payload: { reason: "Bukti tidak sesuai kebijakan" },
+      });
+      expect(reject.statusCode, reject.body).toBe(200);
+      const closedHandoff = await client.query<{ status: string }>(
+        "SELECT status FROM reimbursement_payroll_handoffs WHERE claim_id = $1", [rejected.id],
+      );
+      expect(closedHandoff.rows.map((row) => row.status)).toEqual(["WITHDRAWN"]);
+
       // A month whose payroll period is already submitted cannot take a handoff.
       const other = await approved();
       expect((await verify(other.id)).statusCode).toBe(200);

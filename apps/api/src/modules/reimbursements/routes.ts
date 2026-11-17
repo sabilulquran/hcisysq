@@ -1463,6 +1463,33 @@ export async function registerReimbursementRoutes(
           ? "Klaim ini sudah dibayar."
           : "Keuangan hanya dapat menolak klaim yang sudah disetujui dan belum dibayar.");
       }
+      // REIMB-001 section 9: a claim handed to payroll is taken back first, and
+      // only while its period can still be recalculated.
+      const handedOff = await client.query<{ id: string; periodState: string | null }>(
+        `SELECT h.id, p.state AS "periodState"
+           FROM reimbursement_payroll_handoffs h
+           LEFT JOIN payroll_periods p ON p.id = h.period_id
+          WHERE h.claim_id = $1 AND h.status = 'PENDING'
+          FOR UPDATE OF h`,
+        [params.data.id],
+      );
+      const pending = handedOff.rows[0];
+      if (pending) {
+        if (pending.periodState !== null && !["DRAFT", "COLLECTING", "CALCULATED"].includes(pending.periodState)) {
+          throw new ReimbursementError(409, "REIMBURSEMENT_IN_PAYROLL",
+            "Klaim ini sudah masuk periode payroll yang diajukan; kembalikan periodenya dulu.");
+        }
+        await client.query(
+          `UPDATE reimbursement_payroll_handoffs
+              SET status = 'WITHDRAWN', period_id = NULL, closed_at = clock_timestamp(),
+                  closed_by_account_id = $2, close_reason = $3
+            WHERE id = $1`,
+          [pending.id, principal.id, "Klaim ditolak Keuangan sebelum dibayar."],
+        );
+        await addEvent(client, params.data.id, principal.id, "reimbursement.payroll_withdrawn", null, {
+          handoffId: pending.id,
+        });
+      }
       await client.query(
         `UPDATE reimbursement_claims
             SET status = 'REJECTED', rejected_by = 'FINANCE', reject_reason = $2, rejected_by_account_id = $3, updated_at = now()
@@ -1560,13 +1587,15 @@ export async function registerReimbursementRoutes(
           throw new ReimbursementError(409, "REIMBURSEMENT_ALREADY_HANDED_OFF",
             `Klaim ini sudah diserahkan ke payroll bulan ${handoff.payrollMonth}.`);
         }
+        // FOR SHARE: a period of this month being submitted or approved right now
+        // waits for this handoff, or this handoff sees the new state.
         const closed = await client.query(
-          `SELECT 1 FROM payroll_periods
+          `SELECT state FROM payroll_periods
             WHERE period_month = ($1 || '-01')::date
-              AND state NOT IN ('DRAFT', 'COLLECTING', 'CALCULATED')`,
+            FOR SHARE`,
           [payrollMonth],
         );
-        if (closed.rows.length > 0) {
+        if (closed.rows.some((row: { state: string }) => !["DRAFT", "COLLECTING", "CALCULATED"].includes(row.state))) {
           throw new ReimbursementError(409, "REIMBURSEMENT_PAYROLL_PERIOD_CLOSED",
             `Periode payroll ${payrollMonth} sudah diajukan atau disahkan; pilih bulan berikutnya.`);
         }

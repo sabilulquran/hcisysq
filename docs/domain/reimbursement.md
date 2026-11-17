@@ -176,7 +176,7 @@ Status: sisi payroll **sudah dibangun** di balik saklar D-11 `REIMBURSEMENT_PAYR
 1. **Serahkan.** Saklar `1`: cara `PAYROLL` dengan `payrollMonth` menulis satu baris `reimbursement_payroll_handoffs` `PENDING` sebesar `verified_total`; klaim tetap `VERIFIED`, belum ada pembayaran. Satu penyerahan hidup per klaim (indeks unik parsial); kunci idempoten yang sama di-replay. Bulan yang periode PAY-003-nya sudah diajukan atau disahkan ditolak 409 `REIMBURSEMENT_PAYROLL_PERIOD_CLOSED`. Audit `reimbursement.payroll_handed_off` (bulan, tanpa nominal).
 2. **Hitung.** Penyerahan `PENDING` bulan periode milik pegawai yang dibayar periode itu diikat ke periode dan menjadi komponen non-pajak `REIMBURSE` "Penggantian biaya", dibayar penuh di luar faktor prorata/masa kerja awal (`payroll-calculation-v1.md` §3.6). Penyerahan pegawai yang keluar dari periode dilepas lagi.
 3. **Sahkan.** Dalam transaksi pengesahan, klaim menjadi `PAID` dengan satu-satunya pembayaran `PAYROLL` (immutable, D-10) dan penyerahan `SETTLED`. Bila slip dan penyerahan tidak sama (klaim dibayar tunai atau ditolak setelah hitung) pengesahan ditolak 409 `PAYROLL_REIMBURSEMENT_CHANGED`.
-4. **Buka ulang.** Pembayaran **tidak** dibalik — pembayaran reimbursement append-only, dan buka ulang payroll tidak membatalkan pembayaran yang sudah terjadi (`payroll-calculation-v1.md` §6). Yang dibalik adalah baris penyerahan (`REVERSED`, alasan otomatis) dan satu baris `PENDING` baru membawa penggantian itu ke hitung ulang; pengesahan ulang menandainya `SETTLED` pada pembayaran yang sama tanpa pembayaran kedua. **Ini menyimpang dari kontrak awal** ("reopen mengembalikan ke `VERIFIED`"), yang tidak dapat dipenuhi tanpa menghapus pembayaran immutable (`DRAFT` R3).
+4. **Buka ulang.** Pembayaran **tidak** dibalik — pembayaran reimbursement append-only, dan buka ulang payroll tidak membatalkan pembayaran yang sudah terjadi (`payroll-calculation-v1.md` §6). Yang dibalik adalah baris penyerahan (`REVERSED`, alasan otomatis) dan satu baris `PENDING` baru membawa penggantian itu ke hitung ulang; pengesahan ulang menandainya `SETTLED` pada pembayaran yang sama tanpa pembayaran kedua. Penyerahan terbitan ulang ini tetap terikat ke periodenya (juga bila saklar sudah dimatikan); bila hitung ulang tidak lagi memuatnya, pengesahan ditolak. **Ini menyimpang dari kontrak awal** ("reopen mengembalikan ke `VERIFIED`"), yang tidak dapat dipenuhi tanpa menghapus pembayaran immutable (`DRAFT` R3).
 5. **Ambil kembali.** Membayar tunai/transfer klaim yang masih `PENDING` menutup penyerahannya (`WITHDRAWN`, audit `reimbursement.payroll_withdrawn`) selama periodenya masih dapat dihitung ulang; setelah periode diajukan ditolak 409 `REIMBURSEMENT_IN_PAYROLL`.
 6. Uang tetap `bigint`; riwayat penyerahan append-only (trigger). Rollback: saklar `0`; skema lewat `-- Down:` migration 0157.
 
@@ -184,10 +184,14 @@ Status: sisi payroll **sudah dibangun** di balik saklar D-11 `REIMBURSEMENT_PAYR
 
 | # | Keputusan | Default |
 |---|---|---|
-| R1 | Tanggal pembayaran `PAYROLL` | Tanggal gajian periode, tidak pernah setelah hari pengesahan (WIB); perekam = akun pengesah. |
+| R1 | Tanggal pembayaran `PAYROLL` | Tanggal gajian periode, tidak pernah setelah hari pengesahan (WIB). |
 | R2 | Pajak dan BPJS | Penggantian biaya bukan penghasilan: di luar dasar PPh21 dan bukan tunjangan tetap BPJS. |
 | R3 | Buka ulang | Klaim tetap `PAID`; baris penyerahan dibalik dan diterbitkan ulang (butir 4). Mengeluarkan penggantian dari periode yang dibuka ulang tidak didukung; koreksinya lewat penyesuaian periode berikutnya. |
 | R4 | Dua employment satu orang | Penggantian dibayar sekali, pada employment pertama (urut id). |
+| R5 | Perekam pembayaran `PAYROLL` | Akun Keuangan yang menyerahkan klaim (sudah lolos cek klaim sendiri dan bukan approver), bukan pengesah periode. |
+| R6 | Penyerahan yang tidak masuk slip | Penyerahan bulan periode yang belum terikat — dibuat setelah hitung terakhir untuk pegawai yang dibayar periode itu, atau diterbitkan ulang oleh buka ulang untuk klaim yang sudah dibayar lewat bulan itu — menolak pengesahan (`PAYROLL_REIMBURSEMENT_CHANGED`) sampai periode dihitung ulang. |
+| R7 | Netto negatif | Penggantian tidak menutup potongan yang melebihi gaji: `NEGATIVE_NET` diperiksa pada bagian upah (netto − penggantian). |
+| R8 | Penolakan Keuangan | Menolak klaim yang masih diserahkan menutup penyerahannya (`WITHDRAWN`) selama periodenya masih dapat dihitung ulang; setelah diajukan ditolak `REIMBURSEMENT_IN_PAYROLL`. |
 
 ## 10. Penyimpanan
 

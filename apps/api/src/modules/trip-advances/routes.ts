@@ -484,7 +484,7 @@ export async function registerTripAdvanceRoutes(
     try {
       await client.query("BEGIN");
       const result = await work(client);
-      // The money invariants are deferred triggers (migration 0159); COMMIT is where they run.
+      // The money invariants are deferred triggers (migration 0160); COMMIT is where they run.
       await client.query("COMMIT");
       return result;
     } catch (error) {
@@ -1222,6 +1222,14 @@ export async function registerTripAdvanceRoutes(
       );
       if (claimApprover.rows[0]) {
         throw new TripAdvanceError(403, "TRIP_ADVANCE_APPROVER_CANNOT_PROCESS", "Penyetuju salah satu klaim perjalanan ini tidak boleh sekaligus menyelesaikannya.");
+      }
+      // REIMB-001 §9: a claim already handed to a payroll month is paid there, never also here.
+      const handedOff = await client.query(
+        `SELECT 1 FROM reimbursement_payroll_handoffs WHERE claim_id = ANY($1::uuid[]) AND status = 'PENDING' LIMIT 1`,
+        [claims.rows.map((claim) => claim.id)],
+      );
+      if (handedOff.rows[0]) {
+        throw new TripAdvanceError(409, "TRIP_ADVANCE_CLAIMS_PENDING", "Ada klaim perjalanan ini yang sudah diserahkan ke payroll. Tarik kembali penyerahannya dulu.");
       }
       if (claims.rows.some((claim) => claim.status !== "VERIFIED")) {
         throw new TripAdvanceError(409, "TRIP_ADVANCE_CLAIMS_PENDING", "Masih ada klaim perjalanan ini yang belum selesai disetujui atau diverifikasi.");

@@ -1470,6 +1470,33 @@ export async function registerReimbursementRoutes(
           ? "Klaim ini sudah dibayar."
           : "Keuangan hanya dapat menolak klaim yang sudah disetujui dan belum dibayar.");
       }
+      // REIMB-001 section 9: a claim handed to payroll is taken back first, and
+      // only while its period can still be recalculated.
+      const handedOff = await client.query<{ id: string; periodState: string | null }>(
+        `SELECT h.id, p.state AS "periodState"
+           FROM reimbursement_payroll_handoffs h
+           LEFT JOIN payroll_periods p ON p.id = h.period_id
+          WHERE h.claim_id = $1 AND h.status = 'PENDING'
+          FOR UPDATE OF h`,
+        [params.data.id],
+      );
+      const pending = handedOff.rows[0];
+      if (pending) {
+        if (pending.periodState !== null && !["DRAFT", "COLLECTING", "CALCULATED"].includes(pending.periodState)) {
+          throw new ReimbursementError(409, "REIMBURSEMENT_IN_PAYROLL",
+            "Klaim ini sudah masuk periode payroll yang diajukan; kembalikan periodenya dulu.");
+        }
+        await client.query(
+          `UPDATE reimbursement_payroll_handoffs
+              SET status = 'WITHDRAWN', period_id = NULL, closed_at = clock_timestamp(),
+                  closed_by_account_id = $2, close_reason = $3
+            WHERE id = $1`,
+          [pending.id, principal.id, "Klaim ditolak Keuangan sebelum dibayar."],
+        );
+        await addEvent(client, params.data.id, principal.id, "reimbursement.payroll_withdrawn", null, {
+          handoffId: pending.id,
+        });
+      }
       await client.query(
         `UPDATE reimbursement_claims
             SET status = 'REJECTED', rejected_by = 'FINANCE', reject_reason = $2, rejected_by_account_id = $3, updated_at = now()
@@ -1526,6 +1553,25 @@ export async function registerReimbursementRoutes(
         }
         return [200, { id: params.data.id, paymentId: previous.id, status: "PAID", amount: amount(previous.amount), idempotentReplay: true }];
       }
+      // REIMB-001 section 9: a live payroll handoff for this claim, if any.
+      const handoffs = await client.query<{
+        id: string; status: string; idempotencyKey: string; payrollMonth: string; periodState: string | null;
+      }>(
+        `SELECT h.id, h.status, h.idempotency_key AS "idempotencyKey",
+                to_char(h.payroll_month, 'YYYY-MM') AS "payrollMonth", p.state AS "periodState"
+           FROM reimbursement_payroll_handoffs h
+           LEFT JOIN payroll_periods p ON p.id = h.period_id
+          WHERE h.claim_id = $1 AND h.status IN ('PENDING', 'SETTLED')
+          FOR UPDATE OF h`,
+        [params.data.id],
+      );
+      const handoff = handoffs.rows[0];
+      if (handoff && handoff.idempotencyKey === body.data.idempotencyKey) {
+        if (body.data.method !== "PAYROLL" || handoff.payrollMonth !== (body.data.payrollMonth ?? null)) {
+          throw new ReimbursementError(409, "IDEMPOTENCY_KEY_REUSED", "Penyerahan ini sudah tercatat dengan nilai lain. Muat ulang halaman.");
+        }
+        return [200, { id: params.data.id, handoffId: handoff.id, status: claim.status, idempotentReplay: true }];
+      }
       if (claim.status !== "VERIFIED") {
         throw new ReimbursementError(409, "REIMBURSEMENT_NOT_PAYABLE", "Hanya klaim yang sudah diverifikasi Keuangan yang dapat dibayar.");
       }
@@ -1546,6 +1592,66 @@ export async function registerReimbursementRoutes(
         payrollMonth: body.data.payrollMonth ?? null,
         payrollHandoffEnabled,
       });
+
+      if (body.data.method === "PAYROLL") {
+        // REIMB-001 section 9 (payroll side built): the claim is handed to the
+        // PAY-003 period of that month and stays VERIFIED until the period is
+        // approved, which records the one PAYROLL payment.
+        if (handoff) {
+          throw new ReimbursementError(409, "REIMBURSEMENT_ALREADY_HANDED_OFF",
+            `Klaim ini sudah diserahkan ke payroll bulan ${handoff.payrollMonth}.`);
+        }
+        // FOR SHARE: a period of this month being submitted or approved right now
+        // waits for this handoff, or this handoff sees the new state.
+        const closed = await client.query(
+          `SELECT state FROM payroll_periods
+            WHERE period_month = ($1 || '-01')::date
+            FOR SHARE`,
+          [payrollMonth],
+        );
+        if (closed.rows.some((row: { state: string }) => !["DRAFT", "COLLECTING", "CALCULATED"].includes(row.state))) {
+          throw new ReimbursementError(409, "REIMBURSEMENT_PAYROLL_PERIOD_CLOSED",
+            `Periode payroll ${payrollMonth} sudah diajukan atau disahkan; pilih bulan berikutnya.`);
+        }
+        const handoffId = randomUUID();
+        await client.query(
+          `INSERT INTO reimbursement_payroll_handoffs (
+             id, claim_id, payroll_month, amount, status, idempotency_key, created_by_account_id)
+           VALUES ($1, $2, ($3 || '-01')::date, $4::bigint, 'PENDING', $5, $6)`,
+          [handoffId, params.data.id, payrollMonth, claim.verifiedTotal, body.data.idempotencyKey, principal.id],
+        );
+        await addEvent(client, params.data.id, principal.id, "reimbursement.payroll_handed_off", null, {
+          handoffId, payrollMonth,
+        });
+        await notifyEmployee(client, claim.employeeId, {
+          eventKey: `reimbursement.${params.data.id}.payroll.${handoffId}`,
+          category: "system",
+          title: "Reimbursement diserahkan ke payroll",
+          body: `Klaim reimbursement Anda akan dibayarkan bersama gaji bulan ${payrollMonth}.`,
+          href: `/app/reimbursements?claim=${params.data.id}`,
+          actorAccountId: principal.id,
+        });
+        return [201, { id: params.data.id, handoffId, status: "VERIFIED", amount: amount(claim.verifiedTotal), idempotentReplay: false }];
+      }
+      if (handoff) {
+        // Paying outside payroll takes the claim back from payroll, but only
+        // while its period can still be recalculated: a submitted period's slip
+        // already shows the reimbursement.
+        if (handoff.periodState !== null && !["DRAFT", "COLLECTING", "CALCULATED"].includes(handoff.periodState)) {
+          throw new ReimbursementError(409, "REIMBURSEMENT_IN_PAYROLL",
+            "Klaim ini sudah masuk periode payroll yang diajukan; kembalikan periodenya dulu.");
+        }
+        await client.query(
+          `UPDATE reimbursement_payroll_handoffs
+              SET status = 'WITHDRAWN', period_id = NULL, closed_at = clock_timestamp(),
+                  closed_by_account_id = $2, close_reason = $3
+            WHERE id = $1`,
+          [handoff.id, principal.id, "Dibayar di luar payroll oleh Keuangan."],
+        );
+        await addEvent(client, params.data.id, principal.id, "reimbursement.payroll_withdrawn", null, {
+          handoffId: handoff.id,
+        });
+      }
       const paymentId = randomUUID();
       await client.query(
         `INSERT INTO reimbursement_payments (
@@ -1567,9 +1673,7 @@ export async function registerReimbursementRoutes(
         eventKey: `reimbursement.${params.data.id}.paid`,
         category: "system",
         title: "Reimbursement dibayar",
-        body: body.data.method === "PAYROLL"
-          ? `Klaim reimbursement Anda dibayarkan bersama gaji bulan ${payrollMonth}.`
-          : "Keuangan mencatat pembayaran klaim reimbursement Anda. Lihat rinciannya di detail klaim.",
+        body: "Keuangan mencatat pembayaran klaim reimbursement Anda. Lihat rinciannya di detail klaim.",
         href: `/app/reimbursements?claim=${params.data.id}`,
         actorAccountId: principal.id,
       });

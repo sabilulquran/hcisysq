@@ -230,7 +230,9 @@ export async function settleEmployeeLoanDeductions(
        -- produced no LOAN line, so it must not become a loan payment either.
        AND EXISTS (
          SELECT 1 FROM payroll_results r JOIN employments e ON e.id = r.employment_id
-         WHERE r.period_id = $1 AND e.employee_id = loan.employee_id)
+         WHERE r.period_id = $1 AND e.employee_id = loan.employee_id
+           -- The last run only: someone who left keeps an older revision as history.
+           AND r.calculated_at = (SELECT max(x.calculated_at) FROM payroll_results x WHERE x.period_id = $1))
      ORDER BY loan.id
      FOR UPDATE OF loan`,
     [period.id, actorAccountId],

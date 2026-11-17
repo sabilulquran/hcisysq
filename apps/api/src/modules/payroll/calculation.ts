@@ -29,6 +29,7 @@ import {
 } from "./performance-link.js";
 import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
 import { resolvePolicy, type PolicyProblem } from "./policy.js";
+import { bindReimbursementHandoffs } from "./reimbursement-link.js";
 import { writeAudit } from "./store.js";
 
 /** The engine cannot be called without a profile, a category and a start date. */
@@ -342,7 +343,7 @@ export async function calculatePeriod(
   actorAccountId: string,
   expectedVersion: number,
   /** Feature switches read from configuration by the caller; all default off. */
-  options: { employeeLoanDeduction?: boolean } = {},
+  options: { employeeLoanDeduction?: boolean; reimbursementHandoff?: boolean } = {},
 ): Promise<CalculationOutcome> {
   const client = await pool.connect();
   try {
@@ -398,6 +399,16 @@ export async function calculatePeriod(
       options.employeeLoanDeduction === true,
     );
     const loans = await loadLoans(client, period.id, employeeIds);
+    // REIMB-001 section 9: reimbursements handed to this month, per employee.
+    const reimbursements = await bindReimbursementHandoffs(
+      client,
+      { id: period.id, periodMonth: period.periodStart },
+      employeeIds,
+      options.reimbursementHandoff === true,
+    );
+    // Paid once per person: with two employments in one period, the first
+    // carries it (employments are ordered by id).
+    const reimbursedEmployees = new Set<string>();
     // Switched off (no enabled PERFORMANCE_PERCENT version on the pay date):
     // not one review is read and every input stays exactly as it was.
     const performancePolicy = resolved.performancePercent;
@@ -475,6 +486,13 @@ export async function calculatePeriod(
         loanDeduction: loan.deduction,
         loanOutstanding: loan.outstanding,
       };
+      const reimbursement = reimbursements.get(employment.employeeId) ?? 0;
+      if (reimbursement > 0 && !reimbursedEmployees.has(employment.employeeId)) {
+        // Absent unless there is something to pay, so a period without a
+        // handoff stores exactly the snapshot it stored before.
+        employmentInputs.reimbursement = reimbursement;
+        reimbursedEmployees.add(employment.employeeId);
+      }
       let performanceTrace: PerformanceLinkTrace | null = null;
       const linkBlockers: PayrollBlocker[] = [];
       // Only the pay bases that earn PERF read a review. Honorarium staff
@@ -627,6 +645,9 @@ export async function calculatePeriod(
         ...(performancePolicy ? { performance_link_enabled: true, performance_linked_count: performanceLinkedCount } : {}),
         ...(options.employeeLoanDeduction === true
           ? { employee_loan_deduction_enabled: true, employee_loan_proposed_count: loanLink.proposed }
+          : {}),
+        ...(options.reimbursementHandoff === true
+          ? { reimbursement_handoff_enabled: true, reimbursement_employee_count: reimbursedEmployees.size }
           : {}),
       },
     });

@@ -324,6 +324,10 @@ const THR_SCHEMA = z
     terminationGraceDays: z.number().int().min(0),
     terminationGraceTermCategories: z.array(z.string()),
     eligibleTermCategories: z.array(z.string()).min(1),
+    // T5, section 2.1 H4: the earnings that count as wages received by an honorarium worker.
+    // Absent on a version that predates the owner decision of 2026-11-17; such a version yields
+    // no system average, so an honorarium row on it needs the typed figure or is blocked.
+    averageWageComponents: z.array(z.string().min(1)).min(1).optional(),
   })
   .refine((value) => value.minimumServiceMonths <= value.fullServiceMonths, {
     message: "minimumServiceMonths tidak boleh melebihi fullServiceMonths",

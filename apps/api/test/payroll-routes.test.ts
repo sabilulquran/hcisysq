@@ -621,11 +621,14 @@ describe("PAY-003-THR period (payroll-thr.md)", () => {
     expect(response.json()).toMatchObject({ code: "PAYROLL_THR_PAY_DATE_LATE", latestPayDate: "2026-09-23" });
   });
 
-  it("offers only the adjustment as a typed input, and no attendance resolve", async () => {
+  it("offers the adjustment and the honorarium average wage as typed inputs, and no attendance resolve", async () => {
     const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
       period: { ...thr, state: "COLLECTING" },
     });
-    expect(response.json().period.inputRules.manual).toEqual(["ADJUSTMENT"]);
+    expect(response.json().period.inputRules.manual).toEqual(["ADJUSTMENT", "THR_AVERAGE_WAGE"]);
+    // Both rest on a reason and a decision (payroll-thr.md section 2.1 H8).
+    expect(response.json().period.inputRules.reasonRequired).toContain("THR_AVERAGE_WAGE");
+    expect(response.json().period.inputRules.decisionRequired).toEqual(["ADJUSTMENT", "THR_AVERAGE_WAGE"]);
     expect(response.json().period.availableOperations).toEqual([]);
     expect(response.json().period.kind).toBe("THR");
   });
@@ -650,6 +653,97 @@ describe("PAY-003-THR period (payroll-thr.md)", () => {
       },
     });
     expect(response.statusCode).toBe(200);
+  });
+
+  it("accepts the average wage of an honorarium worker with its reason and decision (T5)", async () => {
+    const { response, inputWrites, audits } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: {
+        inputs: [{
+          employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE", value: 1_250_000,
+          reason: "HCIS baru mencakup 3 dari 12 bulan", decisionReference: "Rekap honor 2026 uji",
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(inputWrites).toHaveLength(1);
+    expect(inputWrites[0]).toMatchObject({ employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE" });
+    // Audited like every other period input (the payload carries keys and a row count only).
+    expect(audits).toContain("payroll.period.inputs_recorded");
+  });
+
+  it("refuses an average wage without a reason or without the decision it rests on", async () => {
+    const withoutReason = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: {
+        inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE", value: 1_250_000, decisionReference: "Rekap uji" }],
+      },
+    });
+    expect(withoutReason.response.statusCode).toBe(400);
+    expect(withoutReason.response.json().code).toBe("PAYROLL_REASON_REQUIRED");
+
+    const withoutDecision = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: {
+        inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE", value: 1_250_000, reason: "cakupan parsial" }],
+      },
+    });
+    expect(withoutDecision.response.statusCode).toBe(400);
+    expect(withoutDecision.response.json()).toMatchObject({
+      code: "PAYROLL_DECISION_REQUIRED",
+      message: "Rata-rata upah THR membutuhkan referensi keputusan.",
+    });
+    expect(withoutDecision.inputWrites).toEqual([]);
+  });
+
+  it("refuses an average wage that is not a positive whole rupiah", async () => {
+    for (const value of [0, -1_000_000, 1_250_000.5]) {
+      const { response, inputWrites } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: { ...thr, state: "COLLECTING" },
+        payload: {
+          inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE", value, reason: "uji", decisionReference: "uji" }],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe("PAYROLL_INVALID_INPUT");
+      expect(inputWrites).toEqual([]);
+    }
+  }, 20_000);
+
+  it("refuses the average wage on a monthly period, and does not offer it there", async () => {
+    const { response, inputWrites } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: {
+        inputs: [{
+          employmentId: EMPLOYMENT_ID, inputKey: "THR_AVERAGE_WAGE", value: 1_250_000, reason: "uji", decisionReference: "uji",
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_INPUT_ONLY_FOR_THR");
+    expect(inputWrites).toEqual([]);
+
+    const monthly = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, { period: { state: "COLLECTING" } });
+    expect(monthly.response.json().period.inputRules.manual).not.toContain("THR_AVERAGE_WAGE");
+  });
+
+  it("keeps the average wage behind payroll.inputs.manage and away from the actor's own record", async () => {
+    const input = { inputKey: "THR_AVERAGE_WAGE", value: 1_250_000, reason: "uji", decisionReference: "uji" };
+    const payload = { inputs: [{ employmentId: EMPLOYMENT_ID, ...input }] };
+    const director = await call("director", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload,
+    });
+    expect(director.response.statusCode).toBe(403);
+    expect(director.inputWrites).toEqual([]);
+
+    const own = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { ...thr, state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: OWN_EMPLOYMENT_ID, ...input }] },
+    });
+    expect(own.response.statusCode).toBe(403);
+    expect(own.response.json().code).toBe("PAYROLL_OWN_RECORD");
+    expect(own.inputWrites).toEqual([]);
   });
 
   it("refuses the attendance resolve on a THR period", async () => {
@@ -1371,8 +1465,11 @@ describe("PAY-003 input rules on the period", () => {
     expect(rules.manual).not.toContain("OVERTIME_HOURS");
     expect(rules.manual).not.toContain("CONTRACT_ATTENDANCE_DAYS");
     expect(rules.manual).toContain("ADJUSTMENT");
-    expect(rules.reasonRequired).toEqual(["ADJUSTMENT", "ARREARS", "PRORATION_FACTOR", "FULL_PAY_DESPITE_LEAVING"]);
-    expect(rules.decisionRequired).toEqual(["ADJUSTMENT"]);
+    expect(rules.manual).not.toContain("THR_AVERAGE_WAGE");
+    expect(rules.reasonRequired).toEqual([
+      "ADJUSTMENT", "ARREARS", "PRORATION_FACTOR", "FULL_PAY_DESPITE_LEAVING", "THR_AVERAGE_WAGE",
+    ]);
+    expect(rules.decisionRequired).toEqual(["ADJUSTMENT", "THR_AVERAGE_WAGE"]);
   });
 
   it("refuses a key the attendance resolver owns", async () => {

@@ -165,7 +165,7 @@ Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan
 
 ### Uang muka dan uang harian dinas (TRIP-002)
 
-Migration `0153_trip_advances.sql`, berscope organisasi (`docs/domain/trip-advance-per-diem.md` D-15 DRAFT).
+Migration `0157_trip_advances.sql`, berscope organisasi (`docs/domain/trip-advance-per-diem.md` D-15 DRAFT).
 
 | Permission | Pemegang | Catatan |
 |---|---|---|

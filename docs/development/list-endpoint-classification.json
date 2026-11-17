@@ -431,6 +431,11 @@
       "list": "paged"
     },
     {
+      "url": "/admin/documents/issued/:id",
+      "list": "single",
+      "reason": "DOC-001 D-25: satu surat keterangan terbit dibaca HC; surat keterangan penghasilan butuh documents.manage."
+    },
+    {
       "url": "/admin/documents/register",
       "list": "paged"
     },
@@ -836,6 +841,11 @@
       "url": "/attendance/me/schedule",
       "list": "range",
       "reason": "Jadwal saya, rentang maks 31 hari."
+    },
+    {
+      "url": "/attendance/me/transactions",
+      "list": "range",
+      "reason": "ATT-014 §6.5c Transaksi saya: scan milik pegawai sendiri, rentang maks 31 hari, plafon 2000 baris dengan penanda truncated (bukan pemotongan diam-diam)."
     },
     {
       "url": "/attendance/me/workforce",
@@ -1246,6 +1256,28 @@
       "reason": "Laporan PPh21 TER satu masa pajak, dibatasi jumlah pegawai aktif; ekspor CSV."
     },
     {
+      "url": "/payroll/pph21/annual",
+      "list": "export",
+      "reason": "Rekap PPh21 tahunan satu tahun pajak (satu baris per masa kerja pegawai), dibatasi jumlah pegawai yayasan; ekspor CSV e-Bupot 1721-A1."
+    },
+    {
+      "url": "/payroll/pph21/annual/:year/employees/:employeeId/a1/:index",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/employees/:employeeId/tax-identity",
+      "list": "single"
+    },
+    {
+      "url": "/payroll/me/a1",
+      "list": "bounded",
+      "reason": "Bukti potong milik pegawai sendiri: paling banyak beberapa per tahun pajak, tanpa angka."
+    },
+    {
+      "url": "/payroll/me/a1/:year/:index",
+      "list": "single"
+    },
+    {
       "url": "/payroll/periods/:periodId/results",
       "list": "bounded",
       "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."
@@ -1440,6 +1472,78 @@
       "url": "/me/reminders/preferences",
       "list": "bounded",
       "reason": "NOTIF-003 §6: katalog aturan pengingat di kode (tiga belas aturan) dengan preferensi WhatsApp akun itu."
+    },
+    {
+      "url": "/admin/employees/:employeeId/job-classifications",
+      "list": "bounded",
+      "reason": "ORG-011: klasifikasi satu pegawai pada satu tanggal, satu entri per hubungan kerja yang berlaku (praktis satu)."
+    },
+    {
+      "url": "/admin/job-classification-audit-events",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/job-classifications/export",
+      "list": "export",
+      "reason": "ORG-011: CSV katalog lengkap; di atas 10.000 baris ditolak EXPORT_TOO_LARGE, tidak dipotong."
+    },
+    {
+      "url": "/admin/job-grades/export",
+      "list": "export",
+      "reason": "ORG-011: CSV golongan lengkap; di atas 10.000 baris ditolak EXPORT_TOO_LARGE, tidak dipotong."
+    },
+    {
+      "url": "/training/me/evaluation/tasks",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/evaluation/components/:id/form",
+      "list": "single",
+      "reason": "Satu formulir evaluasi; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/training/me/evaluation/results",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/instruments",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/instruments/:id",
+      "list": "single",
+      "reason": "Satu instrumen; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/components",
+      "list": "bounded",
+      "reason": "Komponen evaluasi satu program; aktif dibatasi 20 (E-18), seluruhnya termasuk arsip dibatasi 100."
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/assessors",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/form",
+      "list": "single",
+      "reason": "Satu formulir evaluasi; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/comments",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/summary",
+      "list": "aggregate",
+      "reason": "Agregat per komponen evaluasi satu program (≤ 20 komponen aktif)."
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/results",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/employees/:employeeId/evaluation",
+      "list": "paged"
     }
   ]
 }

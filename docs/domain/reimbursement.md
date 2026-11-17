@@ -174,6 +174,8 @@ NOTIF-003:
 
 Status: **ditunda**, sama alasannya dengan LOAN-001 §9 — menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
 
+Pemeriksaan 2026-11-17: sisi payroll dari sakelar D-11 **belum dibangun**. Selama saklar `1`, cara `PAYROLL` hanya mencatat klaim `PAID` dengan `payrollMonth`; tidak ada yang memasukkannya ke periode PAY-003. Potongan pinjaman LOAN-001 sudah dibangun dengan pola sakelar mati (`payroll-calculation-v1.md` §3.5); penyerahan reimbursement mengikuti pola yang sama di perubahan tersendiri.
+
 1. Saklar D-11 tetap `0` sampai keputusan itu ada; mengubahnya adalah perubahan konfigurasi production yang wajib dilaporkan.
 2. Bila dibangun: klaim `VERIFIED` yang diserahkan ke bulan payroll menjadi input komponen non-pajak "Penggantian biaya" pada periode PAY-003 bulan itu, dengan sumber `(period_id, claim_id)` unik; periode `APPROVED` menandai klaim `PAID` dengan cara `PAYROLL`; `reopen` periode mengembalikannya ke `VERIFIED`.
 3. Uang tetap `bigint`; perubahan itu menyentuh payroll dan migration, jadi wajib review independen.

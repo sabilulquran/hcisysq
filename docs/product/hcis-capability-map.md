@@ -59,9 +59,9 @@ Approved leave/permission may feed attendance/payroll as a resolved fact. Submis
 
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
-- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
+- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, annual PPh21 Pasal 17 with bukti potong 1721-A1 and the e-Bupot recap, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
 - Reimbursement — REIMB-001. Package 1 (draft claims with encrypted receipts, optional link to a business trip, APR-001 approval, Finance verification per item, payment outside payroll, register, summary and CSV export) is implemented; see `docs/domain/reimbursement.md`. Payroll handoff stays behind a DRAFT switch that is off; advances and per diem are TRIP-002.
-- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is deferred until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
+- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is built behind `LOAN_PAYROLL_DEDUCTION_ENABLED=0` (`payroll-calculation-v1.md` §3.5); switching it on waits until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
 
 PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
 
@@ -84,8 +84,8 @@ See `docs/domain/payroll-engine-discovery.md`.
 
 ### 4. Performance and development
 
-- Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. Results do not feed tunjangan kinerja until the PAY-003 link (spec §11).
-- Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. Evaluation and online modules remain discovery.
+- Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. The PAY-003 link (spec §11, `payroll-calculation-v1.md` §5.5) is built behind the versioned payroll policy `PERFORMANCE_PERCENT`, which is off by default; until HC/owner switches it on, results do not feed tunjangan kinerja.
+- Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. R3 evaluation (four levels: reaction, learning, application, result; instruments, pre/post tests, supervisor assessment, recap) is implemented; see `docs/domain/training-evaluation.md`. Online modules remain discovery.
 
 - Employee awards — REWARD-001. Monthly awards whose candidates come only from the tilawah scoreboard of the Al-Qur'an application (SQ-Hub ADR-0013); the Kepala HCM decides, publication sends a notification, an announcement and a certificate. Specified in `docs/domain/rewards.md`; not an input to PERF-001 and not a payroll component. Staff open the Al-Qur'an application itself from an HCIS menu; reading data stays in that application.
 
@@ -106,12 +106,12 @@ Package 1 (EMP-005, EMP-006, EMP-010) is accepted by the owner (2026-10-16) in `
 
 EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
 
-Job classification/grade is a separate discovery concern from ORG-004 hierarchy/authority — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED, `docs/domain/job-classification-grade.md`). A classification is the stable key PAY-003 allowance tables are keyed to; it never grants approval authority and never holds monetary values.
+Job classification/grade is separate from ORG-004 hierarchy/authority — ORG-011 (implemented, Packages 1-4; ADR-0004 ACCEPTED; open decisions DRAFT in `docs/domain/job-classification-grade.md` §8). A classification is the stable key PAY-003 allowance tables are keyed to; it never grants approval authority and never holds monetary values.
 
 Employee services continue with:
 
 - Employee data change request — EMP-003.
-- Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
+- Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. Package 2, the income certificate (surat keterangan penghasilan), is implemented: it states the gross and net figures of the official published payslips of the three full months before issue and their average, frozen at issue (DRAFT D-21..D-24); its content goes only to the employee and to holders of `documents.manage` (D-25).
 - Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Package 2 (attendance disposition) is implemented: a working day covered by an issued trip reads **Dinas** (`business_trip`) in attendance and counts as present for PAY-003, without any cost component. Trip costs are claimed through REIMB-001 Package 1; advances and per diem are TRIP-002.
 - Business-trip advance and per diem — TRIP-002. Versioned per diem rates per zone (HC/Finance), employee advance requests on the trip's own approval chain, Finance disbursement outside payroll, settlement against the trip's REIMB-001 claims with top-up or refunds, overdue queue and reminders, register and CSV export are implemented; see `docs/domain/trip-advance-per-diem.md`.
 - Employee asset assignment and return — ASSET-001. Implemented (HCIS consumer and Aset SQ ASQ-004 provider); switched off in production until the `hcis-aset-custody` Keycloak client, the Aset SQ flag and private path, and the HCIS `ASET_SQ_*` settings are in place (`docs/domain/employee-assets.md` §7–§8). Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog.
@@ -155,7 +155,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (DEFERRED by owner direction 2026-11-11: not needed now; ADR-0005 stays PROPOSED as reference).
 - Organization structure designer UX — ORG-008 (implemented: packages ORG-008-1..12).
 - Foundation organ accounts as structural approvers — ORG-013 (implemented; effective once a workflow rollout is STRUCTURE).
-- Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).
+- Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (implemented: catalog, seat and placement binding, resolver, HC screen with CSV export and audited import, change history, employee and designer read views; payroll consumption waits for PAY-003).
 - Committees (kepanitiaan) — ORG-012. Package 1 implemented (`docs/domain/committees.md`).
 
 `ORG-012` covers the time-boxed committees a school runs every year (PPDB, exams, graduation, Ramadhan, events). Legacy let an employee propose a committee, a leader approve it, and the committee then had a chair, secretary, treasurer and members with join and leave dates until it was completed or cancelled; an active committee could also issue numbered letters (DOC-003). Legacy modelled each committee as a virtual unit in the organization tree. HCIS should not copy that without an ADR, because ORG-004 units carry approval authority and a committee should not. Package 1 therefore keeps committees outside the structure: HC records the committee and its line-up from active employees, decrees it with an SK numbered in the DOC-001 register (code `SKP`) or records an SK signed outside HCIS, and keeps the history; employees see "Kepanitiaan Saya", can invite a whole committee to a CAL-001 meeting, and HC reads a yearly participation recap for PERF-001. The proposal/approval flow and committee fees are not included.
@@ -166,7 +166,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 
 `ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented. The readiness assessment, staged plan E1..E6, and DRAFT defaults for the open ORG-007 decisions are in `docs/domain/multi-entity-readiness.md`.
 
-`ORG-011` introduces effective-dated job classification and optional grade catalogs that live outside ORG-004 change sets. They carry no monetary values and no authority; PAY-003 keeps the salary scale (education x MKG) and the versioned allowance policy tables.
+`ORG-011` introduces effective-dated job classification and optional grade catalogs that live outside ORG-004 change sets. They carry no monetary values and no authority; PAY-003 keeps the salary scale (education x MKG) and the versioned allowance policy tables. PAY-003 has no connection point yet, so payroll results are unchanged; the contract for wiring the resolver behind a default-OFF switch is in spec §4.1.
 
 ### 9. Reporting and user support
 

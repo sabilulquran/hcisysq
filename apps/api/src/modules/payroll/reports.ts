@@ -177,7 +177,7 @@ const TRANSFER_HEADER = [
 ];
 
 /** Excel on Windows reads a UTF-8 file as the system codepage unless it sees this. */
-const UTF8_BOM = "﻿";
+export const UTF8_BOM = "﻿";
 
 /**
  * CSV for the finance transfer list (specification section 10 item 7). RFC 4180
@@ -207,7 +207,7 @@ export function transferListToCsv(rows: readonly TransferRow[]): string {
   return `${UTF8_BOM}${lines.join("\r\n")}\r\n`;
 }
 
-function asText(value: string): string {
+export function asText(value: string): string {
   return /^0\d+$/.test(value) ? `'${value}` : value;
 }
 
@@ -356,10 +356,11 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
  * with the same employer past the period (so ending one of two is not a final
  * masa pajak).
  */
-export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise<Pph21SourceRow[]> {
-  const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings"> & {
+export async function loadPph21SourceRows(pool: Pool, periodId: string, employeeId?: string): Promise<Pph21SourceRow[]> {
+  const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings" | "deductions"> & {
     payFactor: string;
     earnings: Array<{ code: string; amount: string | number }>;
+    deductions: Array<{ code: string; amount: string | number }>;
   }>(
     `SELECT latest.employment_id AS "employmentId",
             emp.id AS "employeeId",
@@ -391,19 +392,26 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise
               SELECT jsonb_agg(jsonb_build_object('code', l.component_code, 'amount', l.amount::text))
               FROM payroll_result_lines l
               WHERE l.result_id = latest.id AND l.category = 'EARNING'
-            ), '[]'::jsonb) AS earnings
+            ), '[]'::jsonb) AS earnings,
+            coalesce((
+              SELECT jsonb_agg(jsonb_build_object('code', l.component_code, 'amount', l.amount::text))
+              FROM payroll_result_lines l
+              WHERE l.result_id = latest.id AND l.category = 'DEDUCTION'
+            ), '[]'::jsonb) AS deductions
      FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      JOIN employments e ON e.id = latest.employment_id
      JOIN employees emp ON emp.id = e.employee_id
      JOIN payroll_periods period ON period.id = latest.period_id
      ${RESULT_PROFILE}
+     WHERE ($2::uuid IS NULL OR emp.id = $2::uuid)
      ORDER BY emp.employee_number, latest.employment_id`,
-    [periodId],
+    [periodId, employeeId ?? null],
   );
   return rows.map((row) => ({
     ...row,
     payFactor: Number(row.payFactor),
     earnings: row.earnings.map((line) => ({ code: line.code, amount: Number(line.amount) })),
+    deductions: (row.deductions ?? []).map((line) => ({ code: line.code, amount: Number(line.amount) })),
   }));
 }
 
@@ -474,7 +482,7 @@ export function pph21RowNote(row: Pph21Row): string {
     notes.push("Status PTKP berbeda antar-employment pegawai ini; PPh21 belum dapat dihitung");
   }
   if (row.flags.includes("ANNUAL_CALCULATION_REQUIRED")) {
-    notes.push("Masa pajak terakhir: PPh21 final memakai perhitungan tahunan Pasal 17 (di luar v1); angka TER ini bukan angka final");
+    notes.push("Masa pajak terakhir: PPh21 final memakai perhitungan tahunan Pasal 17 (rekap PPh21 tahunan dan bukti potong 1721-A1); angka TER ini bukan angka final");
   }
   if (row.flags.includes("NON_PERMANENT_TERMS")) {
     notes.push("Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap");

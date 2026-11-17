@@ -1,6 +1,7 @@
 # Job Classification and Grade
 
-**Status:** ACCEPTED (Package 1 terimplementasi); keputusan terbuka §8 tetap DRAFT  
+**Status:** ACCEPTED (Package 1-4 terimplementasi); keputusan terbuka §8 tetap DRAFT menunggu konfirmasi owner  
+**Package 4:** ekspor CSV, impor CSV beraudit, riwayat perubahan, tampilan baca di profil pegawai dan designer, 2026-11-17 (§5.1-§5.5); tanpa migration  
 **Specification:** ORG-011  
 **Package 1:** migration 0110, `apps/api/src/modules/organization/job-classification-*.ts`, 2026-10-30  
 **Rilis:** `hcis-cdf13906-20261030`, 31 Okt 2026. Diverifikasi read-only dari Mi8VPS: `cwd` proses yang berjalan menunjuk release itu, dan bundelnya memuat migration 0110-0114. Hasil gate dan verify dilaporkan sesi yang menjalankan rilis  
@@ -47,7 +48,13 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 | Mengubah klasifikasi pada penempatan yang sedang berjalan | **belum**; hanya lewat pembatalan lalu rekam ulang, karena mutasi menolak tujuan yang sama persis |
 | Menampilkan klasifikasi penempatan di layar riwayat | **belum**; API sudah mengirimnya |
 | Layar pengelolaan katalog | **Package 3**, `/admin/job-classifications`: daftar per tanggal, seluruh versi, tambah, ubah nama, dan tutup; berlaku untuk klasifikasi maupun golongan |
-| Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
+| Menampilkan klasifikasi penempatan di layar riwayat | **Package 4**: tab Penempatan profil pegawai menampilkan kode milik penempatan pada penempatan saat ini, tugas tambahan, dan daftar semua penempatan |
+| Ekspor katalog CSV (§5.1) | **Package 4** |
+| Impor katalog CSV beraudit, dengan pemeriksaan dulu (§5.2) | **Package 4** |
+| Riwayat perubahan katalog dari jejak audit (§5.3) | **Package 4**, tab "Riwayat perubahan" |
+| Tampilan baca klasifikasi di profil pegawai (§5.4) dan di designer (§5.5) | **Package 4** |
+| Sambungan PAY-003 di balik sakelar | **tidak dibangun**: PAY-003 belum punya titik sambung (lihat §4.1). Kontraknya didokumentasikan; tidak ada sakelar dan tidak ada perubahan payroll |
+| Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED`; ORG-007 ditunda owner 2026-11-11 |
 
 Setelah Package 2, kolom pengikatan dan resolver sudah ada, tetapi **belum ada jalur tulis**: designer ORG-008 dan employment action EMP-006 belum punya field untuk mengisinya, sehingga seluruh kolom masih kosong. Payroll juga belum memanggil resolver. Artinya sampai Package 3, ORG-011 belum mengubah nominal siapa pun, dan resolver tersedia bagi sesi PAY-003 untuk diintegrasikan serta diuji lebih dulu.
 
@@ -105,7 +112,8 @@ Aturan versi, supaya satu kode tidak pernah berarti dua hal:
 
 - kode **tidak pernah dibuat ulang**. Membuat kode yang pernah ada ditolak, termasuk setelah dinonaktifkan, karena kebijakan payroll berversi masih menyimpan kode itu apa adanya;
 - menulis **di belakang versi yang sudah berlaku lebih awal** ditolak (`CLASSIFICATION_HAS_LATER_VERSION` / `GRADE_HAS_LATER_VERSION`). Tanpa ini, amend akan menimpa rentang versi berikutnya, dan deaktivasi akan menutup versi berjalan sementara versi berikutnya menghidupkan kembali kode itu setelah jeda;
-- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama.
+- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama;
+- kode yang sudah ditutup tidak dapat diubah lagi (`CLASSIFICATION_DEACTIVATED` / `GRADE_DEACTIVATED`, Package 4). Tanpa ini, perubahan di dalam rentang versi terakhir yang ditutup akan menyisipkan versi tanpa tanggal akhir dan menghidupkan kembali kode itu.
 
 Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
 
@@ -146,6 +154,20 @@ Aturan konsumsi:
 - **Kode blocker baru `CLASSIFICATION_NOT_EFFECTIVE`** bila sebuah kode terikat pada placement atau kursi tetapi tidak berlaku pada tanggal periode. Resolver gagal, tidak mengembalikan slot kosong, karena slot kosong akan menghilangkan tunjangan tanpa ada yang menyadarinya.
 - **Kode blocker baru `CLASSIFICATION_AMBIGUOUS`** untuk slot yang diisi dua klasifikasi sekaligus. Tidak dipetakan ke `POSITION_NOT_MAPPED`: sebabnya berbeda (ambigu, bukan tak terpetakan) dan penyelesaiannya ada di penempatan ORG, bukan di kebijakan payroll. Mengikuti pola `UNIT_NOT_MAPPED` / `WORK_PATTERN_NOT_MAPPED`; ditambahkan sesi PAY-003 di engine saat menyambungkan resolver.
 
+### 4.1 Status sambungan PAY-003 (diperiksa 2026-11-17)
+
+PAY-003 **belum punya titik sambung** untuk klasifikasi. `engine.ts` membaca `profile.functionalPositionRef` / `structuralPositionRef` (uuid kursi) langsung sebagai kunci `byPosition`; `payroll_compensation_profiles` belum punya kolom kode klasifikasi, dan hasil periode belum punya tempat menyimpan resolusi klasifikasi. Menyambungkan resolver di dalam `calculation.ts` sekarang berarti menulis berkas payroll dan migration payroll dari sesi ORG, yang dilarang §4 butir 1 dan §7 langkah 5. Karena itu Package 4 **tidak** memasang sakelar: tidak ada satu baris pun kode payroll yang berubah, sehingga hasil payroll production dijamin sama.
+
+Kontrak yang harus dipenuhi sesi PAY-003 saat menyambung, ringkas:
+
+1. Sakelar env payroll sendiri, default OFF (DRAFT nama: `PAYROLL_CLASSIFICATION_KEYS_ENABLED`). Saat OFF, jalur kursi berjalan persis seperti sekarang.
+2. Saat ON, untuk setiap pegawai: panggil `resolveJobClassifications(target, employmentId, periodEnd)` dari `apps/api/src/modules/organization/job-classification-resolver.ts`; pakai `functional.code` / `structural.code` sebagai kunci `byPosition` di tempat ref kursi, dengan urutan pemeriksaan §4 tidak berubah.
+3. `CLASSIFICATION_AMBIGUOUS` dan `CLASSIFICATION_NOT_EFFECTIVE` dari resolver menjadi blocker periode, bukan nol.
+4. Simpan `{functional, structural}` hasil resolver pada baris hasil periode di samping `policy_version_ids`.
+5. Aktifkan hanya setelah parallel run kursi-vs-klasifikasi menunjukkan nominal identik untuk seluruh pegawai.
+
+Sementara itu HC sudah dapat melihat apa yang akan dibaca payroll per pegawai lewat §5.4, termasuk blocker-nya.
+
 ## 5. Permission (usulan)
 
 | Aksi | Permission | Scope |
@@ -161,7 +183,36 @@ Peran **Staf Human Capital** (`human_capital`) sengaja **tidak** memegangnya. Pe
 
 Ini berbeda dari laporan awal sesi pelaksana, yang keliru menyebut `human_capital_admin` sebagai "Staf Human Capital" — nama itu milik `human_capital` sejak migration 0109.
 
-Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog menghasilkan audit event (`job_classification.created`, `.updated`, `.deactivated`).
+Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog menghasilkan audit event (`job_classification.created`, `.amended`, `.deactivated`, `.imported`, dan padanannya `job_grade.*`).
+
+Package 4 tidak menambah permission. Ekspor, riwayat, dan tampilan per pegawai memakai `job_classifications.read`; impor memakai `job_classifications.manage`. Kelima rute tercatat di `docs/domain/AUTH-011-admin-route-permissions.json`.
+
+### 5.1 Ekspor (Package 4)
+
+`GET /admin/job-classifications/export` dan `GET /admin/job-grades/export`, parameter `onDate` atau `includeHistory=true`. CSV UTF-8 dengan BOM, setiap sel dikutip dan dinetralkan dari formula spreadsheet (SEC-13). Kolom klasifikasi: `code,name,family,grade_code,effective_from,effective_to,active`; golongan: `code,name,rank_order,effective_from,effective_to,active`. Ekspor di atas 10.000 baris ditolak `EXPORT_TOO_LARGE`, tidak dipotong.
+
+### 5.2 Impor CSV beraudit (Package 4)
+
+`POST /admin/job-classification-imports` dengan `{kind: CLASSIFICATION|GRADE, csv, dryRun, fileName}`.
+
+- Aktor: pemegang `job_classifications.manage`. Prasyarat: baris pertama judul kolom; kolom wajib klasifikasi `code,name,family,grade_code,effective_from`, golongan `code,name,rank_order,effective_from`; kolom lain diabaikan, sehingga berkas hasil ekspor dapat diimpor kembali.
+- Per baris: kode yang belum pernah ada dibuat; kode yang berlaku pada `effective_from` dengan isi sama dilewati (`UNCHANGED`); isi berbeda membuka versi baru dari tanggal itu, persis seperti tombol ubah. Semua aturan versi §3.3 berlaku, termasuk kode tidak pernah dibuat ulang. Penutupan kode tidak lewat impor.
+- Kode tidak dinormalisasi: `func_guru` ditolak, bukan diubah menjadi `FUNC_GURU`. Satu kode hanya sekali per berkas. Batas 1.000 baris per berkas.
+- Seluruh berkas satu transaksi dengan savepoint per baris dan advisory lock. Pemeriksaan (`dryRun`) menjalankan semuanya lalu membatalkan; satu baris ditolak membuat penerapan dibatalkan seluruhnya dan dijawab 422 dengan laporan yang sama.
+- Audit: setiap baris yang tertulis menghasilkan event biasanya (`*.created` / `*.amended`) dengan `importId`, ditambah satu event `job_classification.imported` / `job_grade.imported` berisi nama berkas, SHA-256 isi berkas, dan hitungannya. Pemeriksaan tidak menulis audit karena tidak mengubah apa pun.
+- Layar: unggah berkas, "Periksa berkas", lalu "Terapkan impor" hanya aktif untuk teks yang sama persis dengan pemeriksaan bersih yang membawa perubahan. Laporan menampilkan seluruh baris (maksimal 1.000, digulir, tidak dipotong; pengecualian ENG-LIST-001 karena laporan satu berkas, bukan daftar yang bertumbuh).
+
+### 5.3 Riwayat perubahan (Package 4)
+
+`GET /admin/job-classification-audit-events`, paged (ENG-LIST-001), filter `entityType` dan `entityCode`. Menampilkan aksi, kode, waktu, nama pelaku (nama pegawai atau email akun), dan isi perubahan. Versi katalog sendiri tetap dapat dibaca lewat "Tampilkan seluruh versi".
+
+### 5.4 Tampilan baca di profil pegawai (Package 4)
+
+`GET /admin/employees/:employeeId/job-classifications?onDate=` mengembalikan per hubungan kerja yang berlaku: dua slot hasil resolver §4, semua kode yang terikat termasuk `SUPPORT`, dan blocker resolver sebagai data (`error`), bukan 500. Kartu "Klasifikasi jabatan" tampil di tab Penempatan hanya bagi pemegang `job_classifications.read`. Pegawai sendiri tidak melihatnya pada v1 (DRAFT, §8).
+
+### 5.5 Tampilan baca di designer (Package 4)
+
+Panel "Dipilih" designer menampilkan klasifikasi default kursi yang dipilih, berikut catatan bahwa itu acuan tunjangan, bukan kewenangan. Mengubahnya tetap lewat form jabatan (Package 3).
 
 ## 6. Yang tidak termasuk
 
@@ -173,8 +224,8 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 
 ## 7. Migrasi
 
-1. Buat katalog kosong; tidak ada perubahan perilaku.
-2. HC mengisi klasifikasi dari daftar tunjangan fungsional dan jabatan yang dipakai PAY-003 hari ini.
+1. Buat katalog kosong; tidak ada perubahan perilaku. Katalog production tetap kosong: tidak ada data awal yang ditebak dari jabatan nyata.
+2. HC mengisi klasifikasi dari daftar tunjangan fungsional dan jabatan yang dipakai PAY-003 hari ini, satu per satu atau lewat impor CSV §5.2.
 3. Tetapkan klasifikasi pada position lewat change set ORG-004 biasa.
 4. Backfill placement hanya untuk kasus yang berbeda dari position-nya.
 5. Petakan setiap `functional_position_ref` / `structural_position_ref` yang dipakai `payroll_compensation_profiles` ke klasifikasi, lalu salin kunci kebijakan `byPosition` dari uuid kursi ke `classificationCode`. Dilakukan sesi PAY-003 di berkasnya sendiri.
@@ -190,5 +241,10 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 | Siapa yang mengelola katalog | **ditutup 2026-10-30** oleh owner: Human Capital Administrator (`human_capital_admin`, migration 0110) dan Kepala Human Capital (`human_capital_lead`, migration 0113). Staf Human Capital (`human_capital`) tidak, karena boleh ber-scope unit | tidak |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
+| Impor CSV: apa yang dilakukan baris untuk kode yang sudah ada (Package 4) | **DRAFT**: isi sama dilewati, isi berbeda membuka versi baru dari `effective_from`; penutupan tidak lewat impor; satu baris salah membatalkan seluruh berkas | ya |
+| Batas ukuran impor dan ekspor (Package 4) | **DRAFT**: 1.000 baris per berkas impor, 10.000 baris per ekspor | ya |
+| Siapa yang melihat klasifikasi pegawai (Package 4) | **DRAFT**: hanya pemegang `job_classifications.read` (HC Administrator dan Kepala HC); tidak tampil di layar pegawai sendiri pada v1 | ya |
+| Sambungan payroll | **DRAFT**: tidak dipasang sampai sesi PAY-003 menambah titik sambung (§4.1); nama sakelar usulan `PAYROLL_CLASSIFICATION_KEYS_ENABLED`, default OFF | ya (proses owner payroll) |
+| Data awal katalog | **DRAFT**: kosong; HC mengisi sendiri, tidak ada jabatan yang ditebak | tidak |
 | Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |
 | Apakah `*_position_ref` payroll dihapus | **ditutup 2026-10-27** bersama sesi PAY-003: tidak dihapus, berhenti dibaca, read-only selamanya demi keterjelasan periode lampau | tidak |

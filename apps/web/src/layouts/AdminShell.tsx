@@ -65,6 +65,7 @@ export type AdminNavKey =
   | "payslips"
   | "payroll"
   | "payroll-reference"
+  | "payroll-pph21-annual"
   | "reports"
   | "access"
   | "services";
@@ -150,6 +151,8 @@ const navGroups: AdminNavGroup[] = [
       // AUTH-015: the kasbon register (Staf Keuangan) and payroll reference data had no menu entry;
       // a loans-only account could reach it only by typing the address. Shown per canAccessAdminPath.
       { key: "payroll-reference", label: "Kasbon & Acuan Payroll", href: "/admin/payroll/reference", icon: Calculator },
+      // PAY-003 §7.4: annual PPh21 and 1721-A1, for the per-person payroll readers.
+      { key: "payroll-pph21-annual", label: "PPh21 Tahunan & 1721-A1", href: "/admin/payroll/pph21-annual", icon: Calculator },
     ],
   },
   {

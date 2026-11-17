@@ -44,6 +44,9 @@ const envSchema = z
     // REIMB-001 D-11 DRAFT: recording a reimbursement as paid through payroll. Stays off until the
     // owner makes PAY-003 the official payslip path (docs/domain/reimbursement.md §9).
     REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED: z.enum(["0", "1"]).default("0"),
+    // LOAN-001 Package 2 DRAFT: PAY-003 proposes LOAN-001 instalments as period deductions.
+    // Stays off until the owner makes PAY-003 the official payslip path (employee-loans.md §9).
+    LOAN_PAYROLL_DEDUCTION_ENABLED: z.enum(["0", "1"]).default("0"),
     ORG_DIRECTORY_TOKEN_ISSUER: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().url().optional(),

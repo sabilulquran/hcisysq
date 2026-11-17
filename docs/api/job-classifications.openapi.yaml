@@ -1,0 +1,320 @@
+openapi: 3.1.0
+info:
+  title: HCIS Job Classification and Grade Catalog (ORG-011)
+  version: 1.0.0
+  description: |
+    The catalog routes in apps/api/src/modules/organization/job-classification-routes.ts.
+    Spec: docs/domain/job-classification-grade.md (Packages 1-4). ADR-0004.
+    Session cookie; Cache-Control: no-store; errors use { code, message }. Every route needs an
+    organization-scoped permission (job_classifications.read or .manage), never granted through
+    legacy Super Admin compatibility. The catalog holds no monetary value and grants no authority.
+    Seat and placement binding travel in the ORG-004 change set (openapi.yaml) and the EMP-006
+    employment actions (employment.openapi.yaml).
+paths:
+  /admin/job-classifications:
+    get:
+      tags: [JobClassifications]
+      operationId: listJobClassifications
+      summary: Classifications in force on a date, or every version (paged, ENG-LIST-001)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/OnDate' }
+        - { $ref: '#/components/parameters/IncludeHistory' }
+        - { name: family, in: query, schema: { $ref: '#/components/schemas/Family' } }
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  classifications: { type: array, items: { $ref: '#/components/schemas/Classification' } }
+                  onDate: { type: string, format: date }
+                  includeHistory: { type: boolean }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [JobClassifications]
+      operationId: createJobClassification
+      summary: Create the first version of a permanent code (job_classifications.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, family, effectiveFrom]
+              properties:
+                code: { $ref: '#/components/schemas/ClassificationCode' }
+                name: { type: string, minLength: 2, maxLength: 120 }
+                family: { $ref: '#/components/schemas/Family' }
+                gradeCode: { type: [string, 'null'] }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, properties: { classification: { $ref: '#/components/schemas/Classification' } } } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { description: 'CLASSIFICATION_CODE_IN_USE or CATALOG_VERSION_CONFLICT', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+  /admin/job-classifications/{code}:
+    get:
+      tags: [JobClassifications]
+      operationId: getJobClassificationOnDate
+      summary: One code as it stood on a date, with its grade
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/OnDate' }
+      responses:
+        '200': { description: The version in force }
+        '404': { description: CLASSIFICATION_NOT_EFFECTIVE, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+  /admin/job-classifications/{code}/amendments:
+    post:
+      tags: [JobClassifications]
+      operationId: amendJobClassification
+      summary: Open a new version from a date; the code never changes (job_classifications.manage)
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effectiveFrom]
+              properties:
+                effectiveFrom: { type: string, format: date }
+                name: { type: string }
+                family: { $ref: '#/components/schemas/Family' }
+                gradeCode: { type: [string, 'null'] }
+      responses:
+        '200': { description: The new version }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { description: 'CLASSIFICATION_SAME_DAY_AMEND, CLASSIFICATION_HAS_LATER_VERSION', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+  /admin/job-classifications/{code}/deactivation:
+    post:
+      tags: [JobClassifications]
+      operationId: deactivateJobClassification
+      summary: Close a code from a date; history stays readable (job_classifications.manage)
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endOn, reason]
+              properties:
+                endOn: { type: string, format: date }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { description: The closed version }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/job-grades:
+    get:
+      tags: [JobClassifications]
+      operationId: listJobGrades
+      summary: Grades in force on a date, or every version (paged)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/OnDate' }
+        - { $ref: '#/components/parameters/IncludeHistory' }
+      responses:
+        '200': { description: One page }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [JobClassifications]
+      operationId: createJobGrade
+      summary: Create a grade; rankOrder is display order only, never a pay multiplier
+      responses:
+        '201': { description: Created }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/job-grades/{code}/amendments:
+    post:
+      tags: [JobClassifications]
+      operationId: amendJobGrade
+      summary: Open a new grade version from a date
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The new version }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/job-grades/{code}/deactivation:
+    post:
+      tags: [JobClassifications]
+      operationId: deactivateJobGrade
+      summary: Close a grade; refused while a classification still names it (GRADE_STILL_REFERENCED)
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The closed version }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/job-classifications/export:
+    get:
+      tags: [JobClassifications]
+      operationId: exportJobClassifications
+      summary: Package 4 — CSV of classifications on a date or every version (job_classifications.read)
+      description: |
+        UTF-8 with BOM, every cell quoted and guarded against spreadsheet formulas (SEC-13).
+        Columns code,name,family,grade_code,effective_from,effective_to,active. More than 10,000 rows
+        is refused with 413 EXPORT_TOO_LARGE instead of being cut short.
+      parameters:
+        - { $ref: '#/components/parameters/OnDate' }
+        - { $ref: '#/components/parameters/IncludeHistory' }
+      responses:
+        '200': { description: CSV attachment, content: { text/csv: { schema: { type: string } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+  /admin/job-grades/export:
+    get:
+      tags: [JobClassifications]
+      operationId: exportJobGrades
+      summary: Package 4 — CSV of grades (columns code,name,rank_order,effective_from,effective_to,active)
+      parameters:
+        - { $ref: '#/components/parameters/OnDate' }
+        - { $ref: '#/components/parameters/IncludeHistory' }
+      responses:
+        '200': { description: CSV attachment, content: { text/csv: { schema: { type: string } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+  /admin/job-classification-imports:
+    post:
+      tags: [JobClassifications]
+      operationId: importJobCatalog
+      summary: Package 4 — audited CSV import, checked first with dryRun (job_classifications.manage)
+      description: |
+        One file, one transaction. New codes are created; a code in force on effective_from with the
+        same content is UNCHANGED; different content opens a new version from that date. Codes are
+        never normalised or resurrected. A dry run writes nothing (no audit). A real import with any
+        rejected row writes nothing and answers 422 with the same report. Each written row has its
+        usual audit event carrying importId, and the batch adds job_classification.imported or
+        job_grade.imported with the file name, SHA-256 and counts. At most 1,000 data rows.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, csv, dryRun]
+              properties:
+                kind: { type: string, enum: [CLASSIFICATION, GRADE] }
+                csv: { type: string, maxLength: 1000000 }
+                dryRun: { type: boolean }
+                fileName: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '200': { description: Check report, or applied import, content: { application/json: { schema: { type: object, properties: { report: { $ref: '#/components/schemas/ImportReport' } } } } } }
+        '400': { description: 'IMPORT_EMPTY, IMPORT_MISSING_COLUMNS, IMPORT_DUPLICATE_COLUMN, IMPORT_TOO_MANY_ROWS, IMPORT_CSV_MALFORMED', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { description: Not applied because at least one row was rejected, content: { application/json: { schema: { type: object, properties: { report: { $ref: '#/components/schemas/ImportReport' } } } } } }
+  /admin/job-classification-audit-events:
+    get:
+      tags: [JobClassifications]
+      operationId: listJobCatalogAuditEvents
+      summary: Package 4 — catalog change history, newest first (paged, job_classifications.read)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: entityType, in: query, schema: { type: string, enum: [JOB_GRADE, JOB_CLASSIFICATION] } }
+        - { name: entityCode, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        action: { type: string }
+                        entityType: { type: string, enum: [JOB_GRADE, JOB_CLASSIFICATION] }
+                        entityCode: { type: [string, 'null'] }
+                        payload: { type: object }
+                        actorName: { type: [string, 'null'] }
+                        occurredAt: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /admin/employees/{employeeId}/job-classifications:
+    get:
+      tags: [JobClassifications]
+      operationId: employeeJobClassifications
+      summary: Package 4 — what the PAY-003 resolver returns for one employee on a date (read-only)
+      description: |
+        Per employment in force on the date: the two resolver slots, every bound code including
+        SUPPORT, and a resolver blocker (CLASSIFICATION_AMBIGUOUS, CLASSIFICATION_NOT_EFFECTIVE) as
+        data in `error` rather than an error response. Grants nothing and holds no money.
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/OnDate' }
+      responses:
+        '200': { description: The employee's classifications }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { description: EMPLOYEE_NOT_FOUND, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+components:
+  parameters:
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+    OnDate: { name: onDate, in: query, description: 'Asia/Jakarta date; defaults to today', schema: { type: string, format: date } }
+    IncludeHistory: { name: includeHistory, in: query, schema: { type: string, enum: ['true', 'false'], default: 'false' } }
+  responses:
+    Problem:
+      description: Error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Family: { type: string, enum: [FUNCTIONAL, STRUCTURAL, SUPPORT] }
+    ClassificationCode: { type: string, pattern: '^[A-Z][A-Z0-9_]{0,47}$' }
+    Classification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { $ref: '#/components/schemas/ClassificationCode' }
+        name: { type: string }
+        family: { $ref: '#/components/schemas/Family' }
+        gradeCode: { type: [string, 'null'] }
+        active: { type: boolean }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+    ImportReport:
+      type: object
+      properties:
+        importId: { type: string, format: uuid }
+        kind: { type: string, enum: [CLASSIFICATION, GRADE] }
+        dryRun: { type: boolean }
+        applied: { type: boolean }
+        summary:
+          type: object
+          properties:
+            rows: { type: integer }
+            create: { type: integer }
+            amend: { type: integer }
+            unchanged: { type: integer }
+            error: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer }
+              code: { type: [string, 'null'] }
+              outcome: { type: string, enum: [CREATE, AMEND, UNCHANGED, ERROR] }
+              errorCode: { type: string }
+              message: { type: string }

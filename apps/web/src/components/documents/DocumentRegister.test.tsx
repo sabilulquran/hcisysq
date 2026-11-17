@@ -60,6 +60,31 @@ function section(view: RegisterView, filter: RegisterFilter = DEFAULT_REGISTER_F
   );
 }
 
+describe("DOC-001 D-25 Lihat surat", () => {
+  const incomeCertificate: RegisterEntry = {
+    ...revokedCertificate, status: "ISSUED", revokedAt: null, revokeReason: null,
+    documentCode: "KETERANGAN_PENGHASILAN", documentNumber: "1/SKP/YSQ/XI/2026",
+  };
+  // Mirrors AdminDocumentsPage: an income letter only with documents.manage.
+  const viewWith = (canManage: boolean) => (entry: RegisterEntry) =>
+    entry.documentCode !== "KETERANGAN_PENGHASILAN" || canManage;
+  const viewRow = (entry: RegisterEntry, canManage: boolean) => renderToStaticMarkup(
+    <ul><RegisterRow entry={entry} canRevoke={false} busy={false} onRevoke={() => {}}
+      canView={viewWith(canManage)} onView={() => {}} /></ul>,
+  );
+
+  it("offers an income letter only to an account that also manages documents", () => {
+    expect(viewRow(incomeCertificate, true)).toContain("Lihat surat");
+    expect(viewRow(incomeCertificate, false)).not.toContain("Lihat surat");
+  });
+
+  it("offers other certificates to every register reader, never a warning letter", () => {
+    expect(viewRow(revokedCertificate, false)).toContain("Lihat surat");
+    expect(viewRow(warningLetter, true)).not.toContain("Lihat surat");
+    expect(row(revokedCertificate, false)).not.toContain("Lihat surat");
+  });
+});
+
 describe("DOC-002-F1 Batalkan", () => {
   it("is offered on an issued letter to a holder of documents.correct", () => {
     expect(row(warningLetter, true)).toContain("Batalkan");

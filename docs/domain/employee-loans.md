@@ -34,7 +34,7 @@ Termasuk (Paket 1):
 
 | Di luar lingkup | Alasan |
 | --- | --- |
-| **Potongan cicilan otomatis lewat payroll** | PAY-003 belum lulus parallel run, dan AGENTS.md §5 melarang mengubah jalur slip resmi PAY-001/PAY-002. Paket 1 tidak membaca maupun menulis tabel `payroll_*`. Kontraknya ditulis di §9 sebagai **Paket 2**. |
+| **Potongan cicilan otomatis lewat payroll** | Paket 2 (§9), **dibangun 2026-11-17 di balik sakelar `LOAN_PAYROLL_DEDUCTION_ENABLED` yang default-nya mati**. Jalur slip resmi PAY-001/PAY-002 tidak berubah. |
 | Bunga, biaya administrasi, denda keterlambatan | D-02: pinjaman tanpa bunga. Tidak ada kolom untuknya. |
 | Restrukturisasi (ubah tenor/nominal setelah cair), penghapusan (write-off) | Belum ada aturan. Koreksi hanya lewat pembayaran dan koreksi pembayaran (D-12). |
 | Plafon berbasis gaji atau batas cicilan per gaji | Membaca gaji membutuhkan data payroll yang belum resmi di HCIS. Keuangan menilainya saat mencairkan (D-03). |
@@ -180,9 +180,9 @@ Kerahasiaan log: PostgreSQL menaruh baris yang gagal — termasuk nominal — di
 
 Judul dan isi notifikasi tidak memuat nominal (D-15). Notifikasi ditulis dalam transaksi yang sama dengan transisinya dan idempoten per `eventKey`.
 
-## 9. Kontrak Paket 2 dengan payroll (ditunda)
+## 9. Kontrak Paket 2 dengan payroll (dibangun 2026-11-17, sakelar default MATI)
 
-**Status 2026-11-13: ditunda dengan alasan tercatat.** PAY-003 v1 sudah lengkap, tetapi butir 9.2.6 hanya mengizinkan Paket 2 setelah pemilik memutuskan PAY-003 menjadi jalur slip resmi. Uji paralel baru selesai putaran 1 (Oktober 2026); putaran 2 dan keputusan itu masih proses owner. Paket 2 (termasuk peringatan pinjaman di dialog Pemberhentian, §9.3) dikerjakan begitu keputusan itu ada.
+**Status 2026-11-17.** Potongan otomatis (§9.2 butir 1–5) **sudah dibangun** di balik sakelar `LOAN_PAYROLL_DEDUCTION_ENABLED` (bawaan `0`); rincian implementasi dan keputusan `DRAFT` L1–L5 ada di `payroll-calculation-v1.md` §3.5. **Menyalakan sakelar tetap menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi** (butir 6); sebelum itu production berperilaku persis seperti Paket 1. Peringatan pinjaman di dialog Pemberhentian (§9.3) belum dibangun.
 
 ### 9.1 Kondisi hari ini
 
@@ -190,11 +190,11 @@ Judul dan isi notifikasi tidak memuat nominal (D-15). Notifikasi ditulis dalam t
 - PAY-003 sudah punya register kasbon sendiri (`payroll_loans`, `payroll_loan_deductions`, komponen `LOAN` "Potongan kasbon", izin `payroll.loans.manage`) yang dipakai mesin hitung selama parallel run (`docs/domain/payroll-calculation-v1.md` §3.4).
 - Di Paket 1, Keuangan mencatat potongan gaji yang tampil di slip resmi sebagai pembayaran `PAYROLL_DEDUCTION` di LOAN-001, dengan periode slip di `reference`. Selama parallel run PAY-003, Keuangan masih mengisi register kasbon PAY-003 secara terpisah; kedua register belum saling membaca.
 
-### 9.2 Kontrak yang dibangun setelah PAY-003 lulus parallel run
+### 9.2 Kontrak (dibangun; dinyalakan setelah PAY-003 menjadi jalur slip resmi)
 
-1. **Satu sumber pinjaman.** Pinjaman LOAN-001 yang `DISBURSED` menjadi sumber register kasbon PAY-003: `payroll_loans` mendapat kolom `employee_loan_id` (unik, nullable untuk kasbon lama), dan pencairan LOAN-001 membuat barisnya dengan `principal` = pokok dan `instalment` = cicilan dasar D-07. Kasbon tidak lagi diketik dua kali.
+1. **Satu sumber pinjaman.** Pinjaman LOAN-001 yang `DISBURSED` menjadi sumber register kasbon PAY-003: `payroll_loans` mendapat kolom `employee_loan_id` (unik, nullable untuk kasbon lama) dengan `principal` = pokok dan `instalment` = cicilan dasar D-07. Kasbon tidak lagi diketik dua kali. *Implementasi:* baris cermin dibuat oleh perhitungan payroll saat sakelar menyala, bukan oleh pencairan, sehingga kode LOAN-001 tetap tidak menulis tabel `payroll_*` dan pinjaman yang cair sebelum sakelar menyala ikut tercakup.
 2. **Usulan potongan per periode.** Mesin PAY-003 mengusulkan potongan periode = jumlah cicilan yang jatuh pada bulan periode dan belum lunas menurut D-11, dibatasi sisa pinjaman. Keuangan tetap dapat mengubahnya per periode (perilaku `payroll_loan_deductions` hari ini), dan aturan kunci di `CALCULATED` tetap berlaku.
-3. **Potongan final menjadi pembayaran.** Saat periode mencapai `APPROVED`, setiap `payroll_loan_deductions` yang tertaut ke pinjaman LOAN-001 menulis satu pembayaran `PAYROLL_DEDUCTION` dengan sumber `(period_id, loan_id)` yang unik, sehingga ulangan tidak menggandakan. Pembukaan ulang periode (`reopen`) membalik pembayaran itu lewat koreksi D-12 dengan alasan otomatis.
+3. **Potongan final menjadi pembayaran.** Saat periode mencapai `APPROVED`, setiap `payroll_loan_deductions` yang tertaut ke pinjaman LOAN-001 menulis satu pembayaran `PAYROLL_DEDUCTION` dengan sumber `(period_id, loan_id)` yang unik selama `ACTIVE` (`employee_loan_payments.source_payroll_period_id`, migration 0156), sehingga ulangan tidak menggandakan. Pembukaan ulang periode (`reopen`) membalik pembayaran itu lewat koreksi D-12 dengan alasan otomatis. Selama sakelar menyala, pencatatan manual `PAYROLL_DEDUCTION` ditolak (`LOAN_PAYROLL_DEDUCTION_AUTOMATIC`) dan pembayaran bersumber payroll tidak dapat dikoreksi dari register pinjaman (`LOAN_PAYMENT_FROM_PAYROLL`).
 4. **Tidak ada potongan melebihi sisa** — sudah menjadi blocker PAY-003 (`PAYROLL_LOAN_EXCEEDS_BALANCE`); sisa yang dipakai adalah sisa LOAN-001.
 5. **Uang tetap `bigint` rupiah** di kedua sisi; tidak ada pembulatan baru.
 6. Perubahan ini menyentuh payroll dan migration, jadi wajib review independen dan baru boleh setelah keputusan pemilik bahwa PAY-003 menjadi jalur slip resmi.
@@ -266,7 +266,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 - LOAN-001-J: tanpa `loans.read` register menjawab 403; tanpa `loans.manage` tindakan menjawab 403; Super Admin legacy dan `payroll.loans.manage` tidak menerima `loans.*`.
 - LOAN-001-K: pemegang `loans.manage` tidak dapat memproses pinjamannya sendiri.
 - LOAN-001-L: database menolak `paid_total` yang tidak sama dengan pembayaran berlaku, jadwal yang tidak sama dengan pokok, dan perubahan/penghapusan riwayat uang.
-- LOAN-001-M: tidak ada tabel, kolom, atau trigger LOAN-001 yang membaca atau menulis tabel `payroll_*`.
+- LOAN-001-M: route dan tabel LOAN-001 tidak menulis tabel `payroll_*`. Paket 2 (§9.2): hanya modul payroll yang menulis pembayaran LOAN-001 bersumber periode, dan hanya saat periode disahkan atau dibuka ulang; kolom `source_payroll_period_id` dan cermin `payroll_loans.employee_loan_id` adalah satu-satunya tautan.
 
 ## 15. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk
 

@@ -34,7 +34,9 @@ paths:
             Own schedule and current results for up to 31 days. ATT-014 6.5b (DRAFT): a day with no
             result version carries pendingScans (firstScanAt, lastScanAt, scanCount) for ADMS scans
             already mapped to the employee, so an uncalculated day is not shown as "no scan";
-            pendingScans is null once the day has a calculated result.
+            pendingScans is null once the day has a calculated result. Since 6.5c the employee screen
+            reads clock times from /attendance/me/transactions instead; pendingScans is kept for
+            compatibility (deprecated).
           content:
             application/json:
               schema:
@@ -58,6 +60,64 @@ paths:
                             firstScanAt: { type: string, format: date-time }
                             lastScanAt: { type: string, format: date-time, nullable: true }
                             scanCount: { type: integer, minimum: 1 }
+
+  /attendance/me/transactions:
+    get:
+      tags: [Attendance]
+      operationId: listMyAttendanceTransactions
+      description: >-
+        ATT-014 6.5c (DRAFT): Transaksi saya. Every raw punch of the signed-in employee in the range,
+        read live and never calculated or materialised: machine scans from attendance_adms_events
+        through the PIN mapping valid at scan time, plus the employee's HP presensi and HC manual
+        punches. One query per range. The employee is taken from the session; no other employee's
+        punches, no PIN, device serial/id, raw line, coordinates or photo id are returned. A
+        calculated result is a separate thing (see /attendance/me/schedule); a punch recorded after
+        the latest result of its date is flagged afterCalculation, and its day newSinceCalculation.
+        Range at most 31 days; at most 2000 rows, with truncated=true when more exist.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Own raw punches, ascending by time. Sent with Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, generatedAt, truncated, items, days]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  generatedAt: { type: string, format: date-time }
+                  truncated: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [occurredAt, workDate, source, kind, deviceName, reviewState, afterCalculation]
+                      properties:
+                        occurredAt: { type: string, format: date-time }
+                        workDate: { type: string, format: date, description: WIB calendar date of the punch }
+                        source: { type: string, enum: [adms, mobile, manual] }
+                        kind: { type: [string, 'null'], enum: [check_in, check_out, null], description: Only when the source states it; a machine scan is null }
+                        deviceName: { type: [string, 'null'], description: Machine display name (never its serial number); null for other sources }
+                        reviewState: { type: [string, 'null'], enum: [accepted, needs_review, null] }
+                        afterCalculation: { type: boolean }
+                  days:
+                    type: array
+                    items:
+                      type: object
+                      required: [workDate, firstScanAt, lastScanAt, scanCount, calculatedAt, newSinceCalculation]
+                      properties:
+                        workDate: { type: string, format: date }
+                        firstScanAt: { type: string, format: date-time }
+                        lastScanAt: { type: [string, 'null'], format: date-time }
+                        scanCount: { type: integer, minimum: 1 }
+                        calculatedAt: { type: [string, 'null'], format: date-time }
+                        newSinceCalculation: { type: boolean }
+        '400': { description: Invalid date or range over 31 days }
+        '401': { description: Authentication required }
+        '403': { description: Active employee required }
 
   /attendance/mobile/clock:
     post:

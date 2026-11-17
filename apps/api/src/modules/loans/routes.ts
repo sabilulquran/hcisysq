@@ -989,6 +989,17 @@ export async function registerLoanRoutes(
         }
         return [200, { id: params.data.id, paymentId: previous.id, status: loan.status, idempotentReplay: true }];
       }
+      // Package 2: while payroll deducts instalments itself, a hand-recorded
+      // PAYROLL_DEDUCTION would count the same slip twice (employee-loans.md §9.2).
+      // A loan payroll already mirrors is refused too while the switch is off:
+      // a deduction set on the mirror would be recorded on approval as well.
+      const mirrored = body.data.method === "PAYROLL_DEDUCTION" && config.LOAN_PAYROLL_DEDUCTION_ENABLED !== "1"
+        ? (await client.query("SELECT 1 FROM payroll_loans WHERE employee_loan_id = $1", [params.data.id])).rows.length > 0
+        : false;
+      if (body.data.method === "PAYROLL_DEDUCTION" && (config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1" || mirrored)) {
+        throw new LoanError(409, "LOAN_PAYROLL_DEDUCTION_AUTOMATIC",
+          "Potongan gaji dicatat otomatis saat periode payroll disahkan; catat tunai atau transfer saja.");
+      }
       if (loan.status !== "DISBURSED") {
         throw new LoanError(409, "LOAN_NOT_REPAYABLE", loan.status === "PAID_OFF"
           ? "Pinjaman ini sudah lunas."
@@ -1049,8 +1060,9 @@ export async function registerLoanRoutes(
     return transact(reply, async (client) => {
       const loan = await lockLoan(client, params.data.id);
       await assertNotOwnLoan(client, principal.id, loan.employeeId);
-      const found = await client.query<{ amount: string; status: string }>(
-        `SELECT amount::text AS amount, status FROM employee_loan_payments
+      const found = await client.query<{ amount: string; status: string; fromPayroll: boolean }>(
+        `SELECT amount::text AS amount, status, source_payroll_period_id IS NOT NULL AS "fromPayroll"
+           FROM employee_loan_payments
           WHERE id = $1 AND loan_id = $2 FOR UPDATE`,
         [params.data.paymentId, params.data.id],
       );
@@ -1058,6 +1070,12 @@ export async function registerLoanRoutes(
       if (!payment) throw new LoanError(404, "LOAN_PAYMENT_NOT_FOUND", "Pembayaran tidak ditemukan.");
       if (payment.status !== "ACTIVE") {
         throw new LoanError(409, "LOAN_PAYMENT_ALREADY_REVERSED", "Pembayaran ini sudah dikoreksi.");
+      }
+      // A payment written by an approved payroll period mirrors the slip; it is
+      // reversed only by reopening that period (employee-loans.md §9.2 item 3).
+      if (payment.fromPayroll) {
+        throw new LoanError(409, "LOAN_PAYMENT_FROM_PAYROLL",
+          "Potongan ini berasal dari periode payroll yang sudah disahkan; koreksi lewat buka ulang periode itu.");
       }
       const principalAmount = toRupiah(loan.principal);
       const paidAfter = toRupiah(loan.paidTotal) - toRupiah(payment.amount);

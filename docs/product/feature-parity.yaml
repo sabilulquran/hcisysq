@@ -779,7 +779,7 @@ features:
       since 2026-11-17 (spec §7.3, migration 0151), so payroll.periods.manage alone opens none.
       Annual PPh21 for the final masa pajak (Pasal 17, PP 58/2023, PMK 168/2023), bukti potong
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
-      sealed per employee (spec §7.4, migration 0156). Out of v1 by the spec (§1.2):
+      sealed per employee (spec §7.4, migration 0157). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
@@ -920,13 +920,21 @@ features:
       program, form/test/rubric instruments with snapshot-on-attach, anonymous standard reaction
       questionnaire, server-scored pre/post tests, supervisor and HC assessment, per-program and
       per-employee recap. Essay grading, two raters, item banks and RTL follow-up stay later.
-      Online modules (R4) stay in discovery.
+      R4 online modules implemented 2026-11-17 behind TRAINING_ONLINE_ENABLED (default off;
+      docs/domain/training-online-modules.md): modules with MP4 video stored through the
+      ObjectStorage port (local adapter, explicit TRAINING_MEDIA_DIR, 300 MB per file and 5 GB
+      quota DRAFT), range streaming for enrolled participants only, server-credited watch progress
+      that cannot be skipped or sped up, readings, module quizzes, completion into the verified
+      record and yearly hours. Transcoding/HLS, document files, S3 adapter and system-issued
+      certificates stay later. Turning it on needs media capacity outside the release directory.
     planning_note: HCIS feature, not a separate SQ Core app (Product Owner, 2026-10-20). Staged R1 training records, R2 offline programs, R3 training evaluation (four-level framework, evaluation plans, form/test/rubric instruments), R4 online modules with server-hosted video that cannot be skipped or sped up, enforced by server-side progress crediting. Storage goes through the ObjectStorage port and must not assume Mi8VPS.
     docs:
       - docs/domain/training.md
       - docs/domain/training-evaluation.md
       - docs/domain/training-lms-discovery.md
       - docs/api/training-evaluation.openapi.yaml
+      - docs/domain/training-online-modules.md
+      - docs/api/training-online.openapi.yaml
       - docs/product/hcis-capability-map.md
 
   - id: DOC-001

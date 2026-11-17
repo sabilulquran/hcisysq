@@ -484,7 +484,7 @@ export async function registerTripAdvanceRoutes(
     try {
       await client.query("BEGIN");
       const result = await work(client);
-      // The money invariants are deferred triggers (migration 0157); COMMIT is where they run.
+      // The money invariants are deferred triggers (migration 0159); COMMIT is where they run.
       await client.query("COMMIT");
       return result;
     } catch (error) {

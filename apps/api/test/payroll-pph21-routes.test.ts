@@ -105,6 +105,8 @@ type Options = {
   state?: string;
   policy?: "valid" | "missing" | "invalid";
   periodMonth?: string;
+  /** PPH21_SETTINGS payload in force (section 7.5); absent = no row. */
+  settings?: unknown;
 };
 
 function periodRow(options: Options) {
@@ -161,6 +163,11 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
     if (text.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) {
       const keys = persona === "anonymous" ? [] : PERMISSIONS[persona];
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
+    }
+    if (text.includes("policy_key = 'PPH21_SETTINGS'")) {
+      // No row: both PPh21 switches off (section 7.5), unless the case says otherwise.
+      if (!options.settings) return { rows: [], rowCount: 0 };
+      return { rows: [{ id: "70000000-0000-4000-8000-000000000009", payload: options.settings }], rowCount: 1 };
     }
     if (text.includes("policy_key = 'PPH21_TER'")) {
       if (options.policy === "missing") return { rows: [], rowCount: 0 };
@@ -265,6 +272,31 @@ describe("PAY-003 PPh21 report state and policy", () => {
   it("refuses an unknown format", async () => {
     const { response } = await call("director", `${URL}?format=xlsx`);
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe("PAY-003 PPh21 settings (section 7.5)", () => {
+  it("taxes honorer/lepas with daily TER under 21-100-03 when P10 is on", async () => {
+    const { response } = await call("director", URL, {
+      settings: {
+        source: "uji",
+        nonPermanentDailyTer: true,
+        daily: { objectCode: "21-100-03", brackets: [{ upTo: 100_000, rate: 0 }, { upTo: null, rate: 0.005 }], dailyCeiling: null },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const honorer = response.json().report.rows.find((row: { employeeNumber: string }) => row.employeeNumber === "2016002");
+    // The fake row carries no attendance days, so the daily TER cannot divide: flagged, no tax.
+    expect(honorer).toMatchObject({ objectCode: "21-100-03", tax: null });
+    expect(honorer.flags).toContain("DAILY_DAYS_MISSING");
+    const permanent = response.json().report.rows.find((row: { employeeNumber: string }) => row.employeeNumber === "0016001");
+    expect(permanent.objectCode).toBe("21-100-01");
+  });
+
+  it("refuses an unreadable PPH21_SETTINGS row", async () => {
+    const { response } = await call("director", URL, { settings: { source: "uji", nonPermanentDailyTer: true } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PPH21_SETTINGS_POLICY_INVALID");
   });
 });
 

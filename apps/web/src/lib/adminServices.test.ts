@@ -33,6 +33,9 @@ describe("admin module catalog", () => {
     // REIMB-001 Package 1: the register, verification and payment outside payroll.
     expect(getAdminService("reimbursement")?.stage).toBe("available");
     expect(getAdminService("reimbursement")?.href).toBe("/admin/reimbursements");
+    // TRIP-002: advances and per diem.
+    expect(getAdminService("trip-advances")?.stage).toBe("available");
+    expect(getAdminService("trip-advances")?.href).toBe("/admin/trip-advances");
     // TRIP-001 Package 1 ships the register and the surat tugas; trip costs go through REIMB-001.
     expect(getAdminService("business-travel")?.stage).toBe("available");
     expect(getAdminService("business-travel")?.href).toBe("/admin/trips");

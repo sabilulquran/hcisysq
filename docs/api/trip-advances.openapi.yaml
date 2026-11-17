@@ -1,0 +1,489 @@
+openapi: 3.1.0
+info:
+  title: HCIS Trip Advances and Per Diem (TRIP-002)
+  version: 1.0.0
+  description: |
+    Business-trip advances (uang muka dinas) and per diem (uang harian), as implemented in
+    apps/api/src/modules/trip-advances/routes.ts. Spec: docs/domain/trip-advance-per-diem.md.
+    All JSON routes use the session cookie and answer with Cache-Control: no-store.
+    Errors use { code, message }.
+
+    Money: every amount is whole rupiah carried as a JSON integer. A fractional number or a
+    string is refused with 400, never rounded. Payroll is not touched; disbursements, top-ups
+    and refunds are CASH or TRANSFER outside payroll.
+
+    Per diem: days x the versioned rate of the advance's zone effective on the departure date.
+    The rate table starts empty; a settlement that counts per diem days without a rate is refused
+    with 409 TRIP_PER_DIEM_RATE_MISSING.
+
+    Settlement: Finance counts the employee's VERIFIED REIMB-001 claims linked to the trip (each
+    becomes PAID with method ADVANCE) plus the per diem, minus the advance. A positive balance is
+    paid to the employee (top-up); a negative balance is a refund the employee owes, recorded by
+    Finance in one or more parts.
+
+    Visibility: an employee sees only their own advances (another employee's is 404);
+    trip_advances.read opens the register, detail and export; trip_advances.manage rejects,
+    disburses, settles, pays top-ups and records refunds; trip_per_diem.manage records rates.
+paths:
+  /trip-advances/me:
+    get:
+      tags: [Trip Advances]
+      operationId: listMyTripAdvances
+      summary: The signed-in employee's advances, newest first, with the zone catalog
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AdvanceStatus' }
+      responses:
+        '200':
+          description: One page of advances
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination, zones, policy]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AdvanceSummary' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  zones: { type: array, items: { $ref: '#/components/schemas/Zone' } }
+                  policy:
+                    type: object
+                    properties:
+                      maxAdvanceExpenses: { type: integer }
+                      settlementDueDays: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Trip Advances]
+      operationId: requestTripAdvance
+      summary: Request an advance (0 = per diem only) for one's own trip; the trip's chain is copied
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [businessTripId, zone, amount, purpose, idempotencyKey]
+              properties:
+                businessTripId: { type: string, format: uuid }
+                zone: { $ref: '#/components/schemas/ZoneKey' }
+                amount: { type: integer, minimum: 0, maximum: 1000000000 }
+                purpose: { type: string, minLength: 10, maxLength: 1000 }
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        '200': { description: Replay of the same idempotency key }
+        '201': { description: Advance stored IN_REVIEW with its approval steps }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /trip-advances/me/trips:
+    get:
+      tags: [Trip Advances]
+      operationId: listAdvanceableTrips
+      summary: The employee's trips (IN_REVIEW, APPROVED, ISSUED) without a live advance
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: One page of trips }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /trip-advances/me/estimate:
+    get:
+      tags: [Trip Advances]
+      operationId: estimateTripAdvance
+      summary: Per diem estimate, advance ceiling and approvers for one trip and zone; stores nothing
+      parameters:
+        - { name: tripId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: zone, in: query, required: true, schema: { $ref: '#/components/schemas/ZoneKey' } }
+      responses:
+        '200':
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days: { type: integer }
+                  dailyRate: { type: [integer, 'null'] }
+                  rateEffectiveFrom: { type: [string, 'null'], format: date }
+                  perDiemEstimate: { type: integer }
+                  maxAmount: { type: integer }
+                  approvalChain: { type: array, items: { type: object } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /trip-advances/me/{id}:
+    get:
+      tags: [Trip Advances]
+      operationId: getMyTripAdvance
+      summary: One own advance with steps, transactions, claims, settlement preview and history
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Advance detail, content: { application/json: { schema: { $ref: '#/components/schemas/AdvanceDetail' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /trip-advances/me/{id}/cancel:
+    post:
+      tags: [Trip Advances]
+      operationId: cancelMyTripAdvance
+      summary: Cancel while IN_REVIEW or APPROVED (before disbursement)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 5, maxLength: 500 } } }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChanged' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /trip-advances/me/{id}/settlement:
+    post:
+      tags: [Trip Advances]
+      operationId: submitTripAdvanceSettlement
+      summary: Ask Finance to settle; after the return date and with no linked claim in DRAFT or IN_REVIEW
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { note: { type: [string, 'null'], maxLength: 1000 } } }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChanged' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /trip-advances/approvals:
+    get:
+      tags: [Trip Advances]
+      operationId: listTripAdvanceApprovals
+      summary: Advances whose pending step the caller holds
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: One page of pending steps }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /trip-advances/approvals/{stepId}/decision:
+    post:
+      tags: [Trip Advances]
+      operationId: decideTripAdvanceApproval
+      summary: Approve or reject the caller's pending step
+      parameters:
+        - { name: stepId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 1000, description: Required (5+) when rejecting }
+      responses:
+        '200': { description: Decision stored }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-advances:
+    get:
+      tags: [Trip Advances]
+      operationId: listTripAdvances
+      summary: Register (trip_advances.read); filter status, employee, overdue
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AdvanceStatus' } }
+        - { name: employeeId, in: query, schema: { type: string, format: uuid } }
+        - { name: overdue, in: query, schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200': { description: One page of advances }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/trip-advances/claimants:
+    get:
+      tags: [Trip Advances]
+      operationId: searchTripAdvanceClaimants
+      summary: Typeahead over employees who requested an advance
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 100 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: One page of employees }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/trip-advances/export.csv:
+    get:
+      tags: [Trip Advances]
+      operationId: exportTripAdvances
+      summary: Audited CSV of advances submitted in a window of at most 366 days (≤ 20,000 rows, else 422)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AdvanceStatus' } }
+      responses:
+        '200': { description: CSV, content: { text/csv: { schema: { type: string } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /admin/trip-advances/{id}:
+    get:
+      tags: [Trip Advances]
+      operationId: getTripAdvance
+      summary: One advance with its settlement preview
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Advance detail, content: { application/json: { schema: { $ref: '#/components/schemas/AdvanceDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/trip-advances/{id}/reject:
+    post:
+      tags: [Trip Advances]
+      operationId: rejectTripAdvance
+      summary: Finance rejection from APPROVED (trip_advances.manage, not one's own)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 10, maxLength: 500 } } }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChanged' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-advances/{id}/disburse:
+    post:
+      tags: [Trip Advances]
+      operationId: disburseTripAdvance
+      summary: Record the disbursement of the approved amount (idempotent; not by the requester or an approver)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Transaction' }
+      responses:
+        '200': { description: Replay of the same key and terms }
+        '201': { description: Disbursed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-advances/{id}/settle:
+    post:
+      tags: [Trip Advances]
+      operationId: settleTripAdvance
+      summary: Settle from SETTLEMENT_SUBMITTED against verified claims and per diem
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [perDiemDays, idempotencyKey]
+              properties:
+                perDiemDays: { type: integer, minimum: 0, maximum: 30 }
+                note: { type: [string, 'null'], maxLength: 500, description: Required (10+) when days are below the trip's days }
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Settled (or a replay of the same key)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [SETTLED, AWAITING_TOP_UP, AWAITING_REFUND] }
+                  perDiemAmount: { type: integer }
+                  claimsTotal: { type: integer }
+                  settlementBalance: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-advances/{id}/top-up:
+    post:
+      tags: [Trip Advances]
+      operationId: payTripAdvanceTopUp
+      summary: Pay the positive balance to the employee (always the balance; idempotent)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Transaction' }
+      responses:
+        '200': { description: Replay of the same key and terms }
+        '201': { description: Paid; the advance is SETTLED }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-advances/{id}/refunds:
+    post:
+      tags: [Trip Advances]
+      operationId: recordTripAdvanceRefund
+      summary: Record a refund received from the employee (partial allowed, never above what is owed)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransactionInput'
+                - type: object
+                  required: [amount]
+                  properties:
+                    amount: { type: integer, minimum: 1, maximum: 1000000000 }
+      responses:
+        '200': { description: Replay of the same key and terms }
+        '201': { description: Recorded; SETTLED when nothing is owed any more }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-per-diem-rates:
+    get:
+      tags: [Trip Advances]
+      operationId: listTripPerDiemRates
+      summary: Rate versions (trip_advances.read or trip_per_diem.manage) and the rate in force today per zone
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: zone, in: query, schema: { $ref: '#/components/schemas/ZoneKey' } }
+      responses:
+        '200': { description: One page of rate versions with the current rates }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Trip Advances]
+      operationId: createTripPerDiemRate
+      summary: Record a new rate version (trip_per_diem.manage); append-only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zone, effectiveFrom, dailyAmount]
+              properties:
+                zone: { $ref: '#/components/schemas/ZoneKey' }
+                effectiveFrom: { type: string, format: date }
+                dailyAmount: { type: integer, minimum: 0, maximum: 5000000 }
+                note: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '201': { description: Stored }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+  requestBodies:
+    Transaction:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TransactionInput' }
+  schemas:
+    AdvanceStatus:
+      type: string
+      enum: [IN_REVIEW, APPROVED, DISBURSED, SETTLEMENT_SUBMITTED, AWAITING_TOP_UP, AWAITING_REFUND, SETTLED, REJECTED, CANCELLED]
+    ZoneKey: { type: string, enum: [LOCAL, PROVINCIAL, NATIONAL, INTERNATIONAL] }
+    Zone:
+      type: object
+      properties:
+        key: { $ref: '#/components/schemas/ZoneKey' }
+        label: { type: string }
+    TransactionInput:
+      type: object
+      required: [paidOn, method, idempotencyKey]
+      properties:
+        paidOn: { type: string, format: date, description: Date the money moved }
+        method: { type: string, enum: [CASH, TRANSFER] }
+        reference: { type: [string, 'null'], maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
+        idempotencyKey: { type: string, format: uuid }
+    AdvanceSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/AdvanceStatus' }
+        zone: { $ref: '#/components/schemas/ZoneKey' }
+        zoneLabel: { type: string }
+        amount: { type: integer }
+        purpose: { type: string }
+        settlementBalance: { type: [integer, 'null'] }
+        businessTripId: { type: string, format: uuid }
+        tripDestination: { type: string }
+        tripStatus: { type: string }
+        tripStartOn: { type: string, format: date }
+        tripEndOn: { type: string, format: date }
+        dueOn: { type: string, format: date }
+        overdue: { type: boolean }
+        currentApproverName: { type: [string, 'null'] }
+    AdvanceDetail:
+      allOf:
+        - $ref: '#/components/schemas/AdvanceSummary'
+        - type: object
+          properties:
+            perDiemDays: { type: [integer, 'null'] }
+            perDiemRate: { type: [integer, 'null'] }
+            perDiemAmount: { type: [integer, 'null'] }
+            claimsTotal: { type: [integer, 'null'] }
+            refundedTotal: { type: integer }
+            refundOutstanding: { type: integer }
+            steps: { type: array, items: { type: object } }
+            transactions: { type: array, items: { type: object } }
+            settledClaims: { type: array, items: { type: object } }
+            linkedClaims: { type: array, items: { type: object } }
+            settlementPreview:
+              type: object
+              properties:
+                maxPerDiemDays: { type: integer }
+                tripDays: { type: integer }
+                dailyRate: { type: [integer, 'null'] }
+                rateEffectiveFrom: { type: [string, 'null'], format: date }
+                verifiedClaims: { type: integer }
+                pendingClaims: { type: integer }
+                openClaims: { type: integer }
+            events: { type: array, items: { type: object } }
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+  responses:
+    Problem:
+      description: Invalid input or refused export
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unauthenticated:
+      description: No session
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Forbidden:
+      description: Wrong principal type, missing permission, the actor's own advance, or an approver paying out
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    NotFound:
+      description: Not found or not the caller's
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Conflict:
+      description: |
+        Business rule refused the transition, e.g. TRIP_ADVANCE_TRIP_NOT_ELIGIBLE, TRIP_ADVANCE_EXISTS,
+        TRIP_ADVANCE_AMOUNT_ABOVE_LIMIT, APPROVER_NOT_ACTIVE, APPROVER_ACCOUNT_NOT_READY, STEP_NOT_PENDING,
+        TRIP_ADVANCE_NOT_CANCELLABLE, TRIP_ADVANCE_NOT_REJECTABLE, TRIP_ADVANCE_NOT_DISBURSABLE,
+        TRIP_ADVANCE_ALREADY_DISBURSED, TRIP_ADVANCE_TRIP_NOT_ACTIVE, TRIP_ADVANCE_NOT_SETTLEABLE,
+        TRIP_ADVANCE_TRIP_NOT_ENDED, TRIP_ADVANCE_CLAIMS_OPEN, TRIP_ADVANCE_CLAIMS_PENDING,
+        TRIP_PER_DIEM_RATE_MISSING, TRIP_ADVANCE_PER_DIEM_DAYS, TRIP_ADVANCE_REDUCTION_NOTE_REQUIRED,
+        TRIP_ADVANCE_NO_TOP_UP_DUE, TRIP_ADVANCE_TOP_UP_ALREADY_PAID, TRIP_ADVANCE_NO_REFUND_DUE,
+        TRIP_ADVANCE_REFUND_EXCEEDS_DUE, TRIP_ADVANCE_PAYMENT_DATE, IDEMPOTENCY_KEY_REUSED,
+        TRIP_ADVANCE_STATE_CONFLICT.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    StatusChanged:
+      description: Transition stored
+      content:
+        application/json:
+          schema: { type: object, properties: { id: { type: string, format: uuid }, status: { $ref: '#/components/schemas/AdvanceStatus' } } }

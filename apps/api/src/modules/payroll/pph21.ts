@@ -18,7 +18,14 @@
  */
 
 import { roundUpRupiah } from "./engine.js";
-import { normalizePtkpStatus, type Pph21TerPolicy, type TerCategory } from "./policy.js";
+import {
+  DEFAULT_PPH21_SETTINGS,
+  normalizePtkpStatus,
+  PPH21_NON_PERMANENT_OBJECT_CODE,
+  type Pph21Settings,
+  type Pph21TerPolicy,
+  type TerCategory,
+} from "./policy.js";
 
 /** Earnings that do not count towards the PPh21 base (section 3.1). */
 export const PPH21_EXCLUDED_EARNINGS: readonly string[] = [
@@ -40,7 +47,13 @@ export type Pph21Flag =
   | "PTKP_CONFLICT"
   | "EXCLUDED"
   | "ANNUAL_CALCULATION_REQUIRED"
-  | "NON_PERMANENT_TERMS";
+  | "NON_PERMANENT_TERMS"
+  /** Daily TER (21-100-03) is on, but the month has no attendance days to average over. */
+  | "DAILY_DAYS_MISSING"
+  /** Average daily gross above the policy ceiling: the Pasal 17 rule applies, not computed in v1. */
+  | "DAILY_ABOVE_CEILING"
+  /** Daily TER is on, but the person also has a permanent employment this month: monthly TER for the whole gross. */
+  | "MIXED_TERMS";
 
 /** One employment's latest result of the period, as the report needs it. */
 export type Pph21SourceRow = {
@@ -62,6 +75,8 @@ export type Pph21SourceRow = {
   earnings: ReadonlyArray<{ code: string; amount: number }>;
   /** DEDUCTION lines; the annual calculation reads the pension contribution from them. */
   deductions?: ReadonlyArray<{ code: string; amount: number }>;
+  /** CONTRACT_ATTENDANCE_DAYS of the period, the divisor of daily TER (section 7.5). */
+  attendanceDays?: number | null;
 };
 
 /** One person on the report. */
@@ -77,6 +92,10 @@ export type Pph21Row = {
   tax: number | null;
   flags: Pph21Flag[];
   exclusionReason: string | null;
+  /** 21-100-01, or 21-100-03 when the row is taxed with daily TER. */
+  objectCode: string;
+  /** Attendance days the daily TER averaged over, null on monthly TER. */
+  attendanceDays: number | null;
 };
 
 export type Pph21Report = {
@@ -96,6 +115,8 @@ export type Pph21Report = {
     ptkpMissingCount: number;
     annualCalculationCount: number;
     nonPermanentCount: number;
+    /** Rows taxed with daily TER under 21-100-03. */
+    dailyCount: number;
     /** Employment results that still carry a blocker: not paid, so not reported. */
     skippedBlockedCount: number;
   };
@@ -161,8 +182,11 @@ export function buildPph21Report(input: {
   period: { periodMonth: string; periodStart: string; periodEnd: string };
   policy: Pph21TerPolicy;
   rows: readonly Pph21SourceRow[];
+  /** PPH21_SETTINGS in force; omitted means both switches off (section 7.5). */
+  settings?: Pph21Settings;
 }): Pph21Report {
   const { period, policy } = input;
+  const settings = input.settings ?? DEFAULT_PPH21_SETTINGS;
 
   // One person, in the order their first employment arrives.
   const people = new Map<string, Pph21SourceRow[]>();
@@ -197,10 +221,39 @@ export function buildPph21Report(input: {
     const ptkpStatus = statuses.size === 0 ? null : [...statuses.values()].join(" / ");
     const category = conflicting ? null : terCategoryFor(policy, ptkpStatus);
 
+    const isNonPermanent = (source: Pph21SourceRow) =>
+      source.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(source.termCategory);
+    const nonPermanent = paid.some(isNonPermanent);
+    const dailyOn = settings.nonPermanentDailyTer && settings.daily !== null;
+    // P10 switched on: a pegawai tidak tetap is taxed per attendance day under
+    // 21-100-03, which needs no PTKP and has no annual settlement (section 7.5).
+    // Only when every paid employment is non-permanent: a permanent salary in the
+    // same month is never divided by honorarium days (review 2026-11-17).
+    const daily = dailyOn && paid.every(isNonPermanent) ? settings.daily : null;
+    if (dailyOn && nonPermanent && !daily) flags.push("MIXED_TERMS");
+    const attendanceDays = daily
+      ? paid.reduce((total, source) => total + (source.attendanceDays ?? 0), 0)
+      : null;
+
     let rate: number | null = null;
     let tax: number | null = null;
     if (exclusion) {
       flags.push("EXCLUDED");
+    } else if (daily) {
+      if (!attendanceDays || attendanceDays <= 0) {
+        flags.push("DAILY_DAYS_MISSING");
+      } else {
+        const perDay = gross / attendanceDays;
+        if (daily.dailyCeiling !== null && perDay > daily.dailyCeiling) {
+          flags.push("DAILY_ABOVE_CEILING");
+        } else {
+          rate = (daily.brackets.find((bracket) => bracket.upTo === null || perDay <= bracket.upTo) ??
+            daily.brackets[daily.brackets.length - 1]!).rate;
+          // Every day falls in the same layer as the average, so gross × rate is
+          // the sum of the daily taxes (DRAFT: the average stands for each day).
+          tax = terTax(gross, rate);
+        }
+      }
     } else if (conflicting) {
       flags.push("PTKP_CONFLICT");
     } else if (category === null) {
@@ -210,6 +263,7 @@ export function buildPph21Report(input: {
       tax = terTax(gross, rate);
     }
     if (
+      !daily &&
       needsAnnualCalculation(
         period,
         employments.map((source) => source.serviceEndDate),
@@ -218,9 +272,7 @@ export function buildPph21Report(input: {
     ) {
       flags.push("ANNUAL_CALCULATION_REQUIRED");
     }
-    if (paid.some((source) => source.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(source.termCategory))) {
-      flags.push("NON_PERMANENT_TERMS");
-    }
+    if (nonPermanent) flags.push("NON_PERMANENT_TERMS");
 
     rows.push({
       employeeId,
@@ -228,12 +280,14 @@ export function buildPph21Report(input: {
       employeeNumber: first.employeeNumber,
       fullName: first.fullName,
       ptkpStatus,
-      terCategory: exclusion ? null : category,
+      terCategory: exclusion || daily ? null : category,
       gross,
       rate,
       tax,
       flags,
       exclusionReason: exclusion ? exclusion.exclusionReason : null,
+      objectCode: daily ? daily.objectCode : policy.objectCode,
+      attendanceDays,
     });
   }
 
@@ -253,6 +307,7 @@ export function buildPph21Report(input: {
       ).length,
       annualCalculationCount: reported.filter((row) => row.flags.includes("ANNUAL_CALCULATION_REQUIRED")).length,
       nonPermanentCount: reported.filter((row) => row.flags.includes("NON_PERMANENT_TERMS")).length,
+      dailyCount: reported.filter((row) => row.objectCode === PPH21_NON_PERMANENT_OBJECT_CODE).length,
       skippedBlockedCount,
     },
   };

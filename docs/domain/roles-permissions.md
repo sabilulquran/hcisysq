@@ -163,6 +163,18 @@ Migration `0149_reimbursement_permissions.sql`, berscope organisasi (`docs/domai
 
 Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan klaim dan tahap snapshot APR-001. `reimbursements.*`, `loans.*`, dan `payroll.*` tidak saling membuka. Super Admin tidak memperoleh `reimbursements.*` lewat kompatibilitas legacy.
 
+### Uang muka dan uang harian dinas (TRIP-002)
+
+Migration `0160_trip_advances.sql`, berscope organisasi (`docs/domain/trip-advance-per-diem.md` D-15 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `trip_advances.read` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | register, detail, ekspor CSV (dicatat), typeahead pengaju, membaca tarif |
+| `trip_advances.manage` | Keuangan (`finance_officer`) | tolak, cairkan, selesaikan, bayar kekurangan, catat pengembalian; tidak atas uang muka sendiri; approver uang muka itu tidak mencairkan, menyelesaikan, atau membayar kekurangannya |
+| `trip_per_diem.manage` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | mencatat versi tarif uang harian; juga membaca tarif |
+
+Pegawai dan approver tidak memerlukan permission. `trip_advances.*`, `reimbursements.*`, dan `payroll.*` tidak saling membuka. Super Admin tidak memperoleh izin ini lewat kompatibilitas legacy.
+
 ### Pusat Bantuan (HELP-001)
 
 Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/help-center.md` §6, D-08 DRAFT).

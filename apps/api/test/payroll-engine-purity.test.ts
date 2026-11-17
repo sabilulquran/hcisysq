@@ -51,10 +51,14 @@ describe("PAY-003 engine purity", () => {
 const pph21Path = fileURLToPath(new URL("../src/modules/payroll/pph21.ts", import.meta.url));
 const pph21Source = readFileSync(pph21Path, "utf8");
 
+/** Every module an import statement names, single-line or spread over several lines. */
+function importedModules(source: string): string[] {
+  return [...source.matchAll(/^\s*import\s[\s\S]*?\sfrom\s+["']([^"']+)["']/gm)].map((match) => match[1]!).sort();
+}
+
 describe("PAY-003 PPh21 report purity", () => {
   it("imports only the engine and the policy shape", () => {
-    const imports = [...pph21Source.matchAll(/^\s*import\s[^\n]*from\s+["']([^"']+)["']/gm)].map((match) => match[1]);
-    expect(imports.sort()).toEqual(["./engine.js", "./policy.js"]);
+    expect(importedModules(pph21Source)).toEqual(["./engine.js", "./policy.js"]);
   });
 
   it("reaches for no ambient state", () => {
@@ -62,5 +66,24 @@ describe("PAY-003 PPh21 report purity", () => {
     expect(pph21Source).not.toMatch(/\bDate\.now\s*\(/);
     expect(pph21Source).not.toMatch(/\bMath\.random\s*\(/);
     expect(pph21Source).not.toMatch(/\bprocess\.env\b/);
+  });
+});
+
+/** The annual settlement (§7.4) and the employer line (§7.5) are held to the same rule. */
+describe.each([
+  ["pph21-annual.ts", ["./policy.js", "./policy.js", "./pph21.js"]],
+  ["pph21-employer.ts", ["./policy.js", "./pph21-annual.js", "./pph21.js"]],
+])("PAY-003 %s purity", (file, expected) => {
+  const source = readFileSync(fileURLToPath(new URL(`../src/modules/payroll/${file}`, import.meta.url)), "utf8");
+
+  it("imports only pure payroll modules", () => {
+    expect(importedModules(source)).toEqual([...expected].sort());
+  });
+
+  it("reaches for no ambient state", () => {
+    expect(source).not.toMatch(/\bnew Date\s*\(\s*\)/);
+    expect(source).not.toMatch(/\bDate\.now\s*\(/);
+    expect(source).not.toMatch(/\bMath\.random\s*\(/);
+    expect(source).not.toMatch(/\bprocess\.env\b/);
   });
 });

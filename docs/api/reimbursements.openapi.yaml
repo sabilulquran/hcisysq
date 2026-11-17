@@ -834,7 +834,7 @@ components:
                     id: { type: string, format: uuid }
                     amount: { type: integer }
                     paidOn: { type: string, format: date }
-                    method: { type: string, enum: [CASH, TRANSFER, PAYROLL] }
+                    method: { type: string, enum: [CASH, TRANSFER, PAYROLL, ADVANCE], description: "ADVANCE: counted in a TRIP-002 advance settlement (REIMB-001 D-19)" }
                     payrollMonth: { type: [string, 'null'] }
                     reference: { type: [string, 'null'] }
                     note: { type: [string, 'null'] }
@@ -906,7 +906,8 @@ components:
         REIMBURSEMENT_NOTHING_APPROVED, REIMBURSEMENT_NOT_PAYABLE, REIMBURSEMENT_PAYMENT_DATE,
         REIMBURSEMENT_PAYROLL_HANDOFF_DISABLED, REIMBURSEMENT_ALREADY_PAID, IDEMPOTENCY_KEY_REUSED,
         REIMBURSEMENT_ALREADY_HANDED_OFF, REIMBURSEMENT_PAYROLL_PERIOD_CLOSED, REIMBURSEMENT_IN_PAYROLL,
-        REIMBURSEMENT_NOT_REJECTABLE, REIMBURSEMENT_NOT_CANCELLABLE, REIMBURSEMENT_STATE_CONFLICT.
+        REIMBURSEMENT_NOT_REJECTABLE, REIMBURSEMENT_NOT_CANCELLABLE, REIMBURSEMENT_STATE_CONFLICT,
+        REIMBURSEMENT_SETTLED_THROUGH_ADVANCE (the trip has an unsettled TRIP-002 advance, D-19).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Problem' }

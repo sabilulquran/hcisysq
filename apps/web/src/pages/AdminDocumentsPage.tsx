@@ -261,7 +261,8 @@ export function AdminDocumentsPage() {
                           </button>
                         </>
                       ) : null}
-                      {request.status === "APPROVED" ? (
+                      {/* D-26: an income letter is issued only by an account that also reads payroll figures. */}
+                      {request.status === "APPROVED" && (request.documentCode !== INCOME_DOCUMENT_CODE || canReadIncome) ? (
                         <button type="button" disabled={busy}
                           onClick={() => void run(() => issueDocumentRequest(request.id), "Surat terbit.")}
                           className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">

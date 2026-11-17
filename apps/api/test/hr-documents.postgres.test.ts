@@ -524,16 +524,21 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     // Other letters are unaffected.
     expect((await approveAndIssue(await submitRequest())).statusCode).toBe(201);
 
-    // Each of the three payroll readers opens issuing and reading.
-    for (const reader of ["payroll.results.read.organization", "payroll.calculate", "payroll.inputs.manage"]) {
-      permissions = ["documents.read", "documents.manage", reader];
-      expect((await app.inject({ method: "GET", url: "/admin/documents/register?kind=CERTIFICATE" })).statusCode).toBe(200);
-    }
     permissions = ["documents.read", "documents.manage", "payroll.inputs.manage"];
     const issued = await app.inject({ method: "POST", url: `/admin/documents/requests/${requestId}/issue`, payload: {} });
     expect(issued.statusCode, issued.body).toBe(201);
     const incomeId = issued.json().id as string;
-    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` })).statusCode).toBe(200);
+    // Each of the three payroll readers opens the content.
+    for (const reader of ["payroll.results.read.organization", "payroll.calculate", "payroll.inputs.manage"]) {
+      permissions = ["documents.read", "documents.manage", reader];
+      const read = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
+      expect(read.statusCode, reader).toBe(200);
+      expect(read.json().contentSnapshot.income.averageGross, reader).toBe("5116667");
+    }
+    const openedBefore = await client.query(
+      `SELECT 1 FROM hr_document_audit_events WHERE event_type = 'doc.opened' AND issued_document_id = $1`,
+      [incomeId],
+    );
 
     // A payroll reader alone is not documents.manage: the route itself stays closed.
     permissions = ["documents.read", "payroll.results.read.organization"];
@@ -546,6 +551,11 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(noReader.statusCode).toBe(403);
     expect(noReader.json().code).toBe("DOCUMENT_INCOME_FORBIDDEN");
     for (const amount of AMOUNTS) expect(noReader.body).not.toContain(amount);
+    const openedAfter = await client.query(
+      `SELECT 1 FROM hr_document_audit_events WHERE event_type = 'doc.opened' AND issued_document_id = $1`,
+      [incomeId],
+    );
+    expect(openedAfter.rowCount).toBe(openedBefore.rowCount);
 
     // The employee still reads their own letter by ownership, with no permission at all (D-20).
     permissions = [];

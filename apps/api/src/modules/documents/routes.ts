@@ -567,7 +567,8 @@ export async function registerDocumentRoutes(
         await client.query("ROLLBACK");
         return send(reply, 409, { code: "DOCUMENT_REQUEST_NOT_APPROVED", message: "Permintaan belum disetujui atau sudah terbit." });
       }
-      // D-26: the issuer sees the figures in the response, so issuing needs the payroll reader too.
+      // D-26: issuing an income letter freezes one person's pay figures into a document the
+      // issuer is responsible for, so it needs the payroll per-person reader too.
       if (found0.documentCode === INCOME_DOCUMENT_CODE && !mayHandleIncome(access.granted)) {
         await client.query("ROLLBACK");
         return incomeForbidden(reply);

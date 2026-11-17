@@ -36,6 +36,7 @@ const icons = {
   payslips: WalletCards,
   payroll: WalletCards,
   reimbursement: HandCoins,
+  "trip-advances": HandCoins,
   loans: Landmark,
   performance: TrendingUp,
   learning: GraduationCap,

@@ -3,7 +3,7 @@
 **Status:** ACCEPTED (Paket 1 dan Paket 2) — Paket 1 (pengajuan, persetujuan, surat tugas) dan Paket 2 (disposisi kehadiran `business_trip`, §9.2) sudah dibangun. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
 **Spesifikasi:** TRIP-001
 **Tanggal:** 2026-11-02
-**Terkait:** APR-001, ORG-002, ORG-004, DOC-001, NOTIF-004, ATT-014, ATT-015, LEAVE-001, PAY-003, REIMB-001, AUTH-011, ENG-LIST-001
+**Terkait:** APR-001, ORG-002, ORG-004, DOC-001, NOTIF-004, ATT-014, ATT-015, LEAVE-001, PAY-003, REIMB-001, TRIP-002, AUTH-011, ENG-LIST-001
 **Roadmap:** `docs/product/roadmap.md` §G, `docs/product/hcis-capability-map.md` §5, `docs/design/employee-self-service-experience.md` (Layanan Pegawai)
 
 ## 1. Tujuan
@@ -37,7 +37,7 @@ Termasuk (Paket 1):
 
 | Di luar lingkup | Alasan |
 | --- | --- |
-| Uang muka, biaya, uang harian, akomodasi, tiket | TRIP-001 tidak menyimpan nominal apa pun dan tidak menghitung biaya. Biaya yang sudah dikeluarkan (tiket, akomodasi, konsumsi) diklaim lewat REIMB-001 dengan menautkan perjalanan `APPROVED`/`ISSUED`/`COMPLETED` (`docs/domain/reimbursement.md` D-06). Uang muka dan uang harian belum ada (REIMB-001 §2). |
+| Uang muka, biaya, uang harian, akomodasi, tiket | TRIP-001 tidak menyimpan nominal apa pun dan tidak menghitung biaya. Biaya yang sudah dikeluarkan (tiket, akomodasi, konsumsi) diklaim lewat REIMB-001 dengan menautkan perjalanan `APPROVED`/`ISSUED`/`COMPLETED` (`docs/domain/reimbursement.md` D-06). Uang muka dan uang harian dibangun sebagai **TRIP-002** (`docs/domain/trip-advance-per-diem.md`) di tabel sendiri; tabel TRIP-001 tetap tanpa nominal. |
 | Pengajuan oleh atasan untuk bawahan, atau satu pengajuan untuk rombongan | Paket 1 satu pengajuan = satu pegawai yang berangkat (D-02). |
 | Perubahan tanggal setelah diajukan | Batalkan lalu ajukan ulang (D-09). |
 | Lampiran undangan/agenda | Belum ada object storage untuk berkas pegawai (sama dengan DOC-001 §2). |

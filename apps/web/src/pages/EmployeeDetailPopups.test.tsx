@@ -16,6 +16,7 @@ import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeReimbursementsPage } from "@/pages/EmployeeReimbursementsPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
+import { EmployeeTripAdvancesPage } from "@/pages/EmployeeTripAdvancesPage";
 import { EmployeeTripsPage } from "@/pages/EmployeeTripsPage";
 import { EmployeeWorkArrangementsPage } from "@/pages/EmployeeWorkArrangementsPage";
 import type { MeetingDetail } from "@/lib/meetings";
@@ -41,6 +42,7 @@ const listScreens = [
   { name: "Pinjaman", page: <EmployeeLoansPage />, path: "/app/loans", param: "loan", title: "Detail pinjaman", list: "Pinjaman saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" },
   { name: "Reimbursement", page: <EmployeeReimbursementsPage />, path: "/app/reimbursements", param: "claim", title: "Detail klaim", list: "Klaim saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]" },
   { name: "Perjalanan Dinas", page: <EmployeeTripsPage />, path: "/app/trips", param: "trip", title: "Detail perjalanan dinas", list: "Perjalanan saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" },
+  { name: "Uang Muka Dinas", page: <EmployeeTripAdvancesPage />, path: "/app/trip-advances", param: "uangmuka", title: "Detail uang muka", list: "Uang muka saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" },
   { name: "Pelatihan", page: <EmployeeTrainingPage />, path: "/app/training", param: "program", title: "Program pelatihan", list: "Program yang saya ikuti", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" },
   { name: "Tugas Luar & WFH", page: <EmployeeWorkArrangementsPage />, path: "/app/attendance/arrangements", param: "arrangement", title: "Detail pengajuan", list: "Pengajuan saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" },
   { name: "Penilaian Kinerja", page: <EmployeePerformancePage />, path: "/app/performance", param: "review", title: "Detail penilaian kinerja", list: "Penilaian saya", oldColumn: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" },

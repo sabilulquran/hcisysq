@@ -72,6 +72,7 @@ import { registerTripRoutes } from "./modules/trips/routes.js";
 import { registerPerformanceRoutes } from "./modules/performance/routes.js";
 import { registerLoanRoutes } from "./modules/loans/routes.js";
 import { registerReimbursementRoutes } from "./modules/reimbursements/routes.js";
+import { registerTripAdvanceRoutes } from "./modules/trip-advances/routes.js";
 import { registerMeetingRoutes } from "./modules/meetings/routes.js";
 import { registerMeetingRunner } from "./modules/meetings/runner.js";
 import { registerReminderEngine } from "./modules/reminders/engine.js";
@@ -238,6 +239,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPerformanceRoutes(app, pool, config);
   await registerLoanRoutes(app, pool, config);
   await registerReimbursementRoutes(app, pool, config);
+  await registerTripAdvanceRoutes(app, pool, config);
   await registerTrainingRoutes(app, pool, config);
   await registerReportRoutes(app, pool, config);
   await registerHelpRoutes(app, pool, config);

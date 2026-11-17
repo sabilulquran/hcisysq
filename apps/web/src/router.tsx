@@ -69,6 +69,7 @@ import { AdminWorkArrangementsPage } from "@/pages/AdminWorkArrangementsPage";
 import { AdminPerformancePage } from "@/pages/AdminPerformancePage";
 import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminReimbursementsPage } from "@/pages/AdminReimbursementsPage";
+import { AdminTripAdvancesPage } from "@/pages/AdminTripAdvancesPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
 import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
@@ -93,6 +94,7 @@ import { EmployeeWorkArrangementsPage } from "@/pages/EmployeeWorkArrangementsPa
 import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeeReimbursementsPage } from "@/pages/EmployeeReimbursementsPage";
+import { EmployeeTripAdvancesPage } from "@/pages/EmployeeTripAdvancesPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
 import { EmployeeCardPage } from "@/pages/EmployeeCardPage";
@@ -275,6 +277,14 @@ const employeeReimbursementsRoute = createRoute({
   path: "/app/reimbursements",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeReimbursementsPage,
+});
+
+// TRIP-002: an employee session requests and follows its own trip advances.
+const employeeTripAdvancesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/trip-advances",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeTripAdvancesPage,
 });
 
 // HELP-001: any employee session reads the help center (D-07).
@@ -835,6 +845,13 @@ const adminReimbursementsRoute = createRoute({
   component: AdminReimbursementsPage,
 });
 
+const adminTripAdvancesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/trip-advances",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/trip-advances"),
+  component: AdminTripAdvancesPage,
+});
+
 const adminHelpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/help",
@@ -938,6 +955,7 @@ const routeTree = rootRoute.addChildren([
   employeePerformanceRoute,
   employeeLoansRoute,
   employeeReimbursementsRoute,
+  employeeTripAdvancesRoute,
   employeeTrainingRoute,
   employeeCommitteesRoute,
   employeeHelpRoute,
@@ -1016,6 +1034,7 @@ const routeTree = rootRoute.addChildren([
   adminPerformanceRoute,
   adminLoansRoute,
   adminReimbursementsRoute,
+  adminTripAdvancesRoute,
   adminTrainingRoute,
   adminCommitteesRoute,
   adminHrReportsRoute,

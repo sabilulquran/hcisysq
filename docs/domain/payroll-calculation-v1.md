@@ -29,7 +29,7 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 
 ### 1.2 Di luar v1
 
-THR kini dibangun sebagai jenis periode tersendiri: spesifikasi **PAY-003-THR** `docs/domain/payroll-thr.md` (2026-11-17, keputusan T1–T14 `DRAFT`). Lifecycle, izin, laporan, daftar transfer, dan jalur slip bab ini berlaku untuknya tanpa perubahan.
+THR kini dibangun sebagai jenis periode tersendiri: spesifikasi **PAY-003-THR** `docs/domain/payroll-thr.md` (2026-11-17, keputusan T1–T14 `DRAFT`; T5 honorer/pekerja lepas dan T6 dasar upah diputuskan owner 2026-11-17). Lifecycle, izin, laporan, daftar transfer, dan jalur slip bab ini berlaku untuknya tanpa perubahan.
 
 Penerima non-pegawai/pengabdian/honor lain, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement (kecuali penyerahan REIMB-001 di balik saklar mati, §3.6), integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
 

@@ -60,8 +60,13 @@ paths:
         holidayName, with payDate before holidayDate; the THR policy's deadline in
         days before the holiday is checked when calculating
         (409 PAYROLL_THR_PAY_DATE_LATE). A THR period accepts only the ADJUSTMENT
-        input (409 PAYROLL_INPUT_NOT_FOR_THR), offers no attendance resolve
-        (409 PAYROLL_OPERATION_NOT_FOR_THR), and its slips are kind THR.
+        and THR_AVERAGE_WAGE inputs (409 PAYROLL_INPUT_NOT_FOR_THR), offers no
+        attendance resolve (409 PAYROLL_OPERATION_NOT_FOR_THR), and its slips are
+        kind THR. Honorarium and daily workers (KONTRAK_HONORER, LEPAS) are paid
+        THR on the average of what the approved salary periods before the THR
+        month paid them (payroll-thr.md T5, section 2.1); a row the system does
+        not fully cover and nobody typed THR_AVERAGE_WAGE for carries the blocker
+        THR_AVERAGE_WAGE_INCOMPLETE.
       requestBody:
         required: true
         content:
@@ -174,9 +179,14 @@ paths:
         Requires payroll.inputs.manage, and only while the period is COLLECTING or
         CALCULATED. Each row replaces the value for its employment and key, so
         sending the same batch twice leaves the same state. ADJUSTMENT, ARREARS,
-        PRORATION_FACTOR and FULL_PAY_DESPITE_LEAVING need a reason, and an
-        ADJUSTMENT also needs the decision it rests on. Nobody may record inputs
-        for their own employment.
+        PRORATION_FACTOR, FULL_PAY_DESPITE_LEAVING and THR_AVERAGE_WAGE need a
+        reason, and ADJUSTMENT and THR_AVERAGE_WAGE also need the decision they
+        rest on. Nobody may record inputs for their own employment.
+        THR_AVERAGE_WAGE (PAY-003-THR T5) is the average monthly wage of one
+        honorarium or daily worker for a THR period, a positive whole rupiah; it
+        is accepted on a THR period only (409 PAYROLL_INPUT_ONLY_FOR_THR on a
+        monthly period), and a THR period accepts nothing but it and ADJUSTMENT
+        (409 PAYROLL_INPUT_NOT_FOR_THR).
       parameters:
         - name: periodId
           in: path
@@ -875,6 +885,10 @@ paths:
         handed-off reimbursements disagree (the
         director returns the period); approve_reopen reverses the loan payments and
         the reimbursement handoff rows (the reimbursement payment itself is immutable).
+        PAY-003-THR T5: approving a THR period is refused with
+        PAYROLL_THR_AVERAGE_WAGE_STALE when a salary period one of its
+        system-averaged honorarium rows read has been reopened since the
+        calculation (the director returns the period and it is recalculated).
       parameters:
         - name: periodId
           in: path
@@ -947,6 +961,9 @@ components:
             - PAYROLL_REOPEN_STATE_MISSING
             - PAYROLL_LOAN_BALANCE_CHANGED
             - PAYROLL_REIMBURSEMENT_CHANGED
+            - PAYROLL_THR_AVERAGE_WAGE_STALE
+            - PAYROLL_INPUT_NOT_FOR_THR
+            - PAYROLL_INPUT_ONLY_FOR_THR
             - PAYROLL_PERIOD_EXISTS
             - PAYROLL_PERIOD_NOT_FOUND
             - PAYROLL_INVALID_PERIOD
@@ -989,6 +1006,7 @@ components:
         - TEACHING_HOURS_PER_WEEK_OVERRIDE
         - ANNUAL_PERFORMANCE_OVERRIDE
         - MONTHLY_PERFORMANCE_OVERRIDE
+        - THR_AVERAGE_WAGE
 
     PayrollPeriodInput:
       type: object
@@ -1026,6 +1044,52 @@ components:
         bpjsBase: { type: string }
         blockers: { type: array, items: { type: object } }
         calculatedAt: { type: string, format: date-time }
+        thrAverageWage:
+          description: >-
+            PAY-003-THR T5 (payroll-thr.md section 2.1): on a THR period, how the
+            month of wages of an honorarium or daily worker was arrived at. Null
+            for a salaried employee and on a monthly period. A per-person figure,
+            read under the same permissions as the result itself.
+          oneOf:
+            - { type: 'null' }
+            - { $ref: '#/components/schemas/PayrollThrAverageWage' }
+
+    PayrollThrAverageWage:
+      type: object
+      required: [source, requiredMonths, coveredMonths, monthsWithPay, systemTotal, monthlyWage]
+      properties:
+        source:
+          type: string
+          enum: [SYSTEM, HC_INPUT, NONE]
+          description: >-
+            SYSTEM: the average of the approved salary periods, every required
+            month covered. HC_INPUT: the THR_AVERAGE_WAGE typed for this
+            employment. NONE: neither; the row carries THR_AVERAGE_WAGE_INCOMPLETE.
+        windowStart: { type: [string, 'null'], description: First required month, YYYY-MM. }
+        windowEnd: { type: [string, 'null'], description: Last required month, YYYY-MM. }
+        requiredMonths:
+          type: integer
+          description: The months before the THR month the rule asks for, from the month of TMT on, at most the policy's fullServiceMonths.
+        coveredMonths: { type: integer, description: Required months that have an approved salary period. }
+        monthsWithPay: { type: integer, description: Covered months in which the employment was paid a counted wage. }
+        systemTotal: { type: integer, description: Counted wages over the covered months, whole rupiah. }
+        systemAverage:
+          type: [integer, 'null']
+          description: systemTotal over the required months, rounded up; null unless every required month is covered.
+        partialAverage:
+          type: [integer, 'null']
+          description: systemTotal over the covered months only. A reference for the reviewer, never the basis.
+        monthlyWage: { type: integer, description: The month of wages the THR was taken from; 0 when blocked. }
+        hcInput: { type: [integer, 'null'], description: The THR_AVERAGE_WAGE typed for this employment, if any. }
+        periods:
+          type: array
+          description: The approved salary periods the system figure read, with the reopen count they were read at.
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              month: { type: string }
+              reopenCount: { type: integer }
 
     PayrollResultLine:
       type: object

@@ -9,7 +9,7 @@
 
 Pengingat berbeda dari notifikasi transaksi: sumbernya **keadaan data** pada suatu waktu (kontrak akan berakhir, penilaian belum diisi, persetujuan menggantung), bukan peristiwa. Legacy punya `reminders:generate-*` dan `reminders:dispatch` dengan preferensi per pegawai. HCIS sudah punya satu aturan (pengingat rapat CAL-001) dengan penjalan sendiri.
 
-Paket 1 menyediakan **satu mesin pengingat** (sebelas aturan sejak 2026-11-13, termasuk `reimbursement.finance_queue_digest` REIMB-001) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
+Paket 1 menyediakan **satu mesin pengingat** (tiga belas aturan sejak 2026-11-17, termasuk `reimbursement.finance_queue_digest` REIMB-001 serta `trip_advance.finance_queue_digest` dan `trip_advance.settlement_overdue` TRIP-002) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
 
 ## 2. Inventaris pengingat yang sudah dijanjikan
 
@@ -53,9 +53,11 @@ Paket 1 menyediakan **satu mesin pengingat** (sebelas aturan sejak 2026-11-13, t
 
 | `rule_key` | Penerima | Kapan (WIB) | Kunci kejadian | WA bawaan | Tautan |
 | --- | --- | --- | --- | --- | --- |
-| `approval.pending_digest` | Approver dengan langkah `pending` pada pengajuan yang masih ditinjau (cuti, dinas, pinjaman, reimbursement, tugas luar/WFH/ubah jadwal) — sama dengan kotak Persetujuan; approver berupa akun Organ Yayasan menerima in-app saja | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
+| `approval.pending_digest` | Approver dengan langkah `pending` pada pengajuan yang masih ditinjau (cuti, dinas, pinjaman, reimbursement, uang muka dinas, tugas luar/WFH/ubah jadwal) — sama dengan kotak Persetujuan; approver berupa akun Organ Yayasan menerima in-app saja | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
 | `leave.hc_queue_digest` | Pemegang `leave.validate` | Senin–Sabtu 07.00, bila ada tugas HC cuti `pending` | tanggal | Nyala | `/app/hc/leave` |
 | `reimbursement.finance_queue_digest` | Pemegang `reimbursements.manage` | Senin–Sabtu 07.00, bila ada klaim `APPROVED` (menunggu verifikasi) atau `VERIFIED` (menunggu pembayaran) | tanggal | Nyala | `/admin/reimbursements` |
+| `trip_advance.finance_queue_digest` | Pemegang `trip_advances.manage` | Senin–Sabtu 07.00, bila ada uang muka menunggu pencairan, penyelesaian, pembayaran kekurangan, pengembalian, atau terlambat dipertanggungjawabkan (TRIP-002 §8); jumlah saja | tanggal | Nyala | `/admin/trip-advances` |
+| `trip_advance.settlement_overdue` | Pegawai pemilik uang muka `DISBURSED` yang melewati tenggat (TRIP-002 D-09) | Harian 07.00, sekali per minggu keterlambatan per uang muka; tanpa nominal | uang muka + minggu | Nyala | `/app/trip-advances?uangmuka=<id>` |
 | `documents.request_queue_digest` | Pemegang `documents.manage` | Senin–Sabtu 07.00, bila ada permintaan `SUBMITTED` ≥ 2 hari | tanggal | Nyala | `/admin/documents` |
 | `employment.term_ending` | Pemegang `employment.manage`; tidak berjalan selama riwayat kepegawaian `OFF` | Harian 07.00; ambang H-60, H-30, H-7 dari akhir masa kontrak/percobaan/magang/lepas yang sedang berjalan | term + ambang | Mati | `/admin/employees/<id>` |
 | `employee.document_expiring` | Pegawai pemilik dokumen EMP-011 `VERIFIED` (pegawai aktif yang dikelola HCIS, sama dengan daftar kerja D-15) | Harian 07.00; ambang H-30, H-7 | dokumen + tanggal berakhir + ambang | Nyala | `/app/my-data` |

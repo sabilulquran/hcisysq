@@ -781,7 +781,7 @@ features:
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
       sealed per employee (spec §7.4, migration 0157). PPh21 borne by the yayasan (PPH21_EMPLOYER line
       and the employer-cost summary) and daily TER 21-100-03 for honorer/lepas are built behind
-      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0160). Out of v1 by the spec (§1.2):
+      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0161). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
@@ -818,7 +818,8 @@ features:
       payroll-calculation-v1.md §3.6) behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0: a VERIFIED
       claim handed to a payroll month becomes the non-taxable REIMBURSE line paid outside the pay
       factor, the claim is PAID when the period is approved, a reopen reverses the handoff row
-      (never the immutable payment). PAY-001/PAY-002 untouched. Advances and per diem are not included.
+      (never the immutable payment). PAY-001/PAY-002 untouched. Advances and per diem are TRIP-002; claims linked to a trip
+      with an unsettled advance are counted in its settlement (payment method ADVANCE, D-19).
     docs:
       - docs/domain/reimbursement.md
       - docs/api/reimbursements.openapi.yaml
@@ -1014,12 +1015,31 @@ features:
       business_trip ("Dinas", symbol PD) below approved leave; punches stand and lateness/early
       leave are not counted; PAY-003 counts the day as present like field_assignment, with no
       cost component (DRAFT D-15..D-17). Trip costs are claimed through REIMB-001 (linked trip);
-      advances are not built.
+      advances and per diem are TRIP-002.
     docs:
       - docs/domain/business-travel.md
       - docs/domain/attendance-report-calculation.md
       - docs/domain/payroll-calculation-v1.md
       - docs/product/hcis-capability-map.md
+
+  - id: TRIP-002
+    module: employee-service
+    name: Business-trip advance (uang muka) and per diem (uang harian)
+    legacy_evidence: none; recorded as out of scope in TRIP-001 §2 and REIMB-001 §2
+    target_status: implemented
+    priority: after-mvp
+    risk: high
+    notes: >-
+      Implemented 2026-11-17 on the owner's instruction to build what TRIP-001 and REIMB-001 left out
+      (docs/domain/trip-advance-per-diem.md): versioned per diem rates per zone managed by HC/Finance
+      (empty at start, nothing guessed), employee advance requests (0 = per diem only) approved on the
+      trip's own APR-001 chain, idempotent Finance disbursement outside payroll, settlement against
+      the trip's verified REIMB-001 claims plus per diem, top-up to the employee or refunds owed by the
+      employee (partial allowed), 14-day settlement deadline with Finance digest and NOTIF-003
+      reminder, register, audited CSV export. Payroll untouched.
+    docs:
+      - docs/domain/trip-advance-per-diem.md
+      - docs/api/trip-advances.openapi.yaml
 
   - id: ASSET-001
     module: employee-service

@@ -149,6 +149,20 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "trip-advances",
+    label: "Uang Muka Dinas",
+    description: "Uang muka dan uang harian perjalanan dinas, pertanggungjawaban, dan tarif uang harian berversi.",
+    featureIds: ["TRIP-002"],
+    stage: "available",
+    category: "payroll-benefits",
+    href: "/admin/trip-advances",
+    details: [
+      "Pengajuan pegawai disetujui rantai yang sama dengan perjalanannya",
+      "Pencairan, penyelesaian dengan klaim Reimbursement, pembayaran kekurangan, dan pengembalian",
+      "Tarif uang harian per zona dikelola HC/Keuangan; di luar slip gaji",
+    ],
+  },
+  {
     key: "loans",
     label: "Pinjaman Pegawai",
     description: "Register pinjaman pegawai, pencairan, dan pencatatan cicilan.",
@@ -229,7 +243,7 @@ export const adminServices: AdminServiceDefinition[] = [
     details: [
       "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
       "Surat tugas bernomor dari register dokumen",
-      "Biaya perjalanan diklaim lewat Reimbursement (REIMB-001); uang muka belum",
+      "Biaya diklaim lewat Reimbursement; uang muka dan uang harian lewat Uang Muka Dinas (TRIP-002)",
     ],
   },
   {

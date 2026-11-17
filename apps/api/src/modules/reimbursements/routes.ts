@@ -41,6 +41,7 @@ import {
 } from "../leave/domain/request-workflow.js";
 import { LeaveOrganizationAuthorityError, resolveLeaveAuthorities } from "../leave/organization-authority.js";
 import { notifyEmployee } from "../notifications/service.js";
+import { tripHasUnsettledAdvance } from "../trip-advances/routes.js";
 import {
   approvalRequestStatus,
   assertExpensesFresh,
@@ -291,15 +292,21 @@ async function resolveApprovalChain(db: Queryable, employee: EmployeeContext, ef
   return { chain, context: resolution.context };
 }
 
-/** D-06: only the employee's own trip, once it is approved. */
+/**
+ * D-06 SQL: the employee's own trip once it is approved — or, D-19 (TRIP-002 D-14), a trip
+ * cancelled after its advance was disbursed, so costs already spent can still be accounted for.
+ */
+const LINKABLE_TRIP_SQL = `(trip.status = ANY($2::text[]) OR (trip.status = 'CANCELLED' AND EXISTS (
+  SELECT 1 FROM trip_advances advance WHERE advance.business_trip_id = trip.id AND advance.status = 'DISBURSED')))`;
+
+/** D-06, D-19: only a linkable trip of the employee's own. */
 async function assertTripLinkable(db: Queryable, tripId: string | null | undefined, employeeId: string) {
   if (!tripId) return;
-  const found = await db.query<{ status: string }>(
-    `SELECT status FROM business_trip_requests WHERE id = $1 AND employee_id = $2`,
-    [tripId, employeeId],
+  const found = await db.query(
+    `SELECT 1 FROM business_trip_requests trip WHERE trip.id = $1 AND trip.employee_id = $3 AND ${LINKABLE_TRIP_SQL}`,
+    [tripId, [...LINKABLE_TRIP_STATUSES], employeeId],
   );
-  const status = found.rows[0]?.status;
-  if (!status || !(LINKABLE_TRIP_STATUSES as readonly string[]).includes(status)) {
+  if (!found.rows[0]) {
     throw new ReimbursementError(
       409, "REIMBURSEMENT_TRIP_NOT_ELIGIBLE",
       "Perjalanan dinas tidak dapat ditautkan. Pilih perjalanan Anda yang sudah disetujui, terbit, atau selesai.",
@@ -700,7 +707,7 @@ export async function registerReimbursementRoutes(
         `SELECT trip.id, trip.destination, to_char(trip.start_on, 'YYYY-MM-DD') AS "startOn",
                 to_char(trip.end_on, 'YYYY-MM-DD') AS "endOn", trip.status, count(*) OVER ()::int AS total
            FROM business_trip_requests trip
-          WHERE trip.employee_id = $1 AND trip.status = ANY($2::text[])
+          WHERE trip.employee_id = $1 AND ${LINKABLE_TRIP_SQL}
           ORDER BY trip.start_on DESC, trip.id DESC
           LIMIT $3 OFFSET $4`,
         [employee.id, [...LINKABLE_TRIP_STATUSES], query.data.pageSize, pageOffset(query.data)],
@@ -1567,6 +1574,13 @@ export async function registerReimbursementRoutes(
       }
       if (claim.status !== "VERIFIED") {
         throw new ReimbursementError(409, "REIMBURSEMENT_NOT_PAYABLE", "Hanya klaim yang sudah diverifikasi Keuangan yang dapat dibayar.");
+      }
+      // D-19 (TRIP-002 D-13): the trip's advance settles this claim; it is never paid twice.
+      if (await tripHasUnsettledAdvance(client, claim.businessTripId)) {
+        throw new ReimbursementError(
+          409, "REIMBURSEMENT_SETTLED_THROUGH_ADVANCE",
+          "Klaim ini diperhitungkan saat penyelesaian uang muka dinas perjalanannya, bukan dibayar sendiri.",
+        );
       }
       await assertNotApprover(client, params.data.id, principal.id);
       const payrollMonth = body.data.method === "PAYROLL" ? body.data.payrollMonth ?? null : null;

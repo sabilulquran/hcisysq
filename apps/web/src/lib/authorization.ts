@@ -60,6 +60,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "loans.read",
     // REIMB-001: finance_officer reaches the reimbursement register with reimbursements.read.
     "reimbursements.read",
+    // TRIP-002: Finance and HC reach the advance register or the per diem rate table.
+    "trip_advances.read", "trip_per_diem.manage",
     // HELP-001: help.manage opens its own screen even for an account holding nothing else.
     "help.manage",
     // EMP-012: employee_cards.manage opens its own screen even for an account holding nothing else.
@@ -163,6 +165,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/loans") return hasPermission(session, "loans.read");
   // REIMB-001: Finance and HC only; Super Admin legacy compatibility never carries reimbursements.*.
   if (path === "/admin/reimbursements") return hasPermission(session, "reimbursements.read");
+  // TRIP-002: Finance and HC only; the rate table alone opens the page for trip_per_diem.manage.
+  if (path === "/admin/trip-advances") return hasPermission(session, "trip_advances.read") || hasPermission(session, "trip_per_diem.manage");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
   if (path === "/admin/training") return hasPermission(session, "training.read");
   // RPT-001: organization- or unit-scoped; the API narrows every report to the account's units.

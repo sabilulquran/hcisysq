@@ -11,6 +11,7 @@ import {
   HC_ADMIN_PERMISSIONS,
   LOAN_PERMISSIONS,
   REIMBURSEMENT_PERMISSIONS,
+  TRIP_ADVANCE_PERMISSIONS,
   PAYROLL_PERMISSIONS,
   REPORT_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
@@ -193,6 +194,8 @@ describe("AUTH-011 route manifest coverage", () => {
       ...LOAN_PERMISSIONS,
       // REIMB-001: reimbursements.manage belongs to finance_officer, outside both bundles.
       ...REIMBURSEMENT_PERMISSIONS,
+      // TRIP-002: trip_advances.manage belongs to finance_officer, outside both bundles.
+      ...TRIP_ADVANCE_PERMISSIONS,
       // RPT-001: the report roles' keys, outside both bundles and honoured from unit scope too.
       ...REPORT_PERMISSIONS,
       ACCESS_REACTIVATION_PERMISSION,

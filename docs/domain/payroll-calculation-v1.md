@@ -166,7 +166,7 @@ Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang suda
 
 ### 3.6 Penggantian biaya REIMB-001 (dibangun 2026-11-17, sakelar default MATI)
 
-Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0160 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
+Kontrak: `docs/domain/reimbursement.md` §9. Implementasi: `apps/api/src/modules/payroll/reimbursement-link.ts`, migration 0161 (tabel `reimbursement_payroll_handoffs`, komponen `REIMBURSE`). Sakelar: `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` (bawaan `0`); menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi.
 
 | Saat | Yang terjadi | Bergantung sakelar? |
 |---|---|---|
@@ -544,7 +544,7 @@ Contoh hitung manual (ada di test `payroll-pph21-annual.test.ts`): TK/0, Rp10.00
 
 ## 7.5 PPh21 ditanggung yayasan dan pegawai tidak tetap (`DRAFT`, default agent 2026-11-17)
 
-Ditambahkan 2026-11-17 untuk keputusan P6 dan P10 §7.2. Keduanya berada di balik satu kebijakan berversi `PPH21_SETTINGS` (migration 0160) yang **mati secara bawaan**: tanpa baris kebijakan, perhitungan, laporan PPh21, dan rekap tahunan berperilaku persis seperti sebelumnya, sehingga angka parallel run tidak bergeser.
+Ditambahkan 2026-11-17 untuk keputusan P6 dan P10 §7.2. Keduanya berada di balik satu kebijakan berversi `PPH21_SETTINGS` (migration 0161) yang **mati secara bawaan**: tanpa baris kebijakan, perhitungan, laporan PPh21, dan rekap tahunan berperilaku persis seperti sebelumnya, sehingga angka parallel run tidak bergeser.
 
 ```text
 PPH21_SETTINGS = {
@@ -576,7 +576,7 @@ Contoh hitung manual (test `payroll-pph21-employer.test.ts`, tabel sintetis 0% s
 
 **Keputusan `DRAFT` tambahan:** rata-rata harian mewakili setiap hari; ambang di atas plafon tidak dihitung; PPh21 ditanggung tidak digross-up; dasar penghasilan tetap §5.3 (tanpa `BPJS_KES_ALLOW`). Process owner yang menyalakan salah satu saklar wajib memuat tabelnya lebih dulu dan menghitung ulang periode yang masih dikerjakan; periode yang sudah disahkan tidak berubah.
 
-**Rollback.** Matikan saklar dengan versi kebijakan baru (`employerBorne: false`) lalu hitung ulang periode yang masih dikerjakan; migration 0160 `-- Down:` mengembalikan constraint kunci kebijakan.
+**Rollback.** Matikan saklar dengan versi kebijakan baru (`employerBorne: false`) lalu hitung ulang periode yang masih dikerjakan; migration 0161 `-- Down:` mengembalikan constraint kunci kebijakan.
 
 ## 8. Privasi dan audit
 

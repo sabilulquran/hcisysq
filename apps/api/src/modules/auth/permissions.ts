@@ -31,6 +31,9 @@ export const HC_ADMIN_PERMISSIONS = [
   // REIMB-001 D-12: migration 0149 grants reimbursements.read to human_capital_admin.
   // reimbursements.manage stays with finance_officer, which owns the money.
   "reimbursements.read",
+  // TRIP-002 D-15: migration 0160 grants trip_advances.read and trip_per_diem.manage to
+  // human_capital_admin. trip_advances.manage stays with finance_officer, which owns the money.
+  "trip_advances.read", "trip_per_diem.manage",
   // TRAIN-001: migration 0119 grants both to human_capital_admin.
   "training.read", "training.manage",
   // HELP-001 D-08: migration 0131 grants help.manage to human_capital_admin.
@@ -80,6 +83,11 @@ export type LoanPermission = (typeof LOAN_PERMISSIONS)[number];
  * Migration 0149 grants both to finance_officer and reimbursements.read to human_capital_admin. */
 export const REIMBURSEMENT_PERMISSIONS = ["reimbursements.read", "reimbursements.manage"] as const;
 export type ReimbursementPermission = (typeof REIMBURSEMENT_PERMISSIONS)[number];
+/** TRIP-002: Finance and HC only; never granted through legacy Super Admin compatibility.
+ * Migration 0160 grants all three to finance_officer and trip_advances.read plus
+ * trip_per_diem.manage to human_capital_admin. */
+export const TRIP_ADVANCE_PERMISSIONS = ["trip_advances.read", "trip_advances.manage", "trip_per_diem.manage"] as const;
+export type TripAdvancePermission = (typeof TRIP_ADVANCE_PERMISSIONS)[number];
 /** TRAIN-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRAINING_PERMISSIONS = ["training.read", "training.manage"] as const;
 export type TrainingPermission = (typeof TRAINING_PERMISSIONS)[number];

@@ -148,6 +148,7 @@ paths:
                   byteSize: { type: integer }
                   durationSeconds: { type: number }
         '400': { $ref: '#/components/responses/Problem' }
+        '411': { $ref: '#/components/responses/Problem' }
         '413': { $ref: '#/components/responses/Problem' }
         '415': { $ref: '#/components/responses/Problem' }
         '507': { $ref: '#/components/responses/Problem' }
@@ -197,6 +198,18 @@ paths:
       tags: [Training]
       operationId: completeTrainingMaterialManually
       summary: Mark a material complete for one participant with a reason (M-12)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /admin/training/modules/{id}/quiz/{employeeId}/extra-attempt:
+    post:
+      tags: [Training]
+      operationId: grantTrainingQuizAttempt
+      summary: Grant one more quiz attempt to a participant, with a reason (M-18)
       parameters:
         - $ref: '#/components/parameters/Id'
         - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }

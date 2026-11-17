@@ -422,6 +422,9 @@ function ProgramPanel({ program, canManage, action, reload }: {
     void action.run(async () => {
       const result = await completeProgram(program.id);
       await refresh();
+      if (result.delivery === "ONLINE") {
+        return `Program ditutup: ${result.records} peserta sudah menyelesaikan dan tercatat; ${result.incomplete ?? 0} belum menyelesaikan (tanpa catatan).`;
+      }
       return `Program ditutup: ${result.records} catatan pelatihan dibuat (${formatHours(result.totalHours)} per peserta penuh).`;
     }, "Program tidak dapat ditutup.");
   };

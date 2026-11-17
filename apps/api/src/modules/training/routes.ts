@@ -914,7 +914,7 @@ export async function registerTrainingRoutes(
           eventType: "training.program.completed", programId: program.id, actorAccountId: principal.id,
           metadata: { delivery: "ONLINE", incomplete: unfinished.rowCount ?? 0, records: records.rows[0]?.count ?? 0 },
         });
-        return [200, { id: program.id, status: "COMPLETED", totalHours: 0, participants: [], records: records.rows[0]?.count ?? 0 }];
+        return [200, { id: program.id, status: "COMPLETED", delivery: "ONLINE", totalHours: 0, participants: [], records: records.rows[0]?.count ?? 0, incomplete: unfinished.rowCount ?? 0 }];
       }
       const sessions = await client.query<{ id: string; startAt: Date; endAt: Date; speakerEmployeeId: string | null }>(
         `SELECT id, start_at AS "startAt", end_at AS "endAt", speaker_employee_id AS "speakerEmployeeId"
@@ -1173,7 +1173,8 @@ export async function registerTrainingRoutes(
         `SELECT employee_id AS "employeeId", status FROM training_participants WHERE program_id = $1 AND employee_id = ANY($2::uuid[])`,
         [program.id, requested],
       );
-      const alreadyEnrolled = existing.rows.filter((row) => row.status === "ENROLLED").map((row) => row.employeeId);
+      // R4: an online participant can finish while the program is still open; they stay finished.
+      const alreadyEnrolled = existing.rows.filter((row) => row.status !== "WITHDRAWN").map((row) => row.employeeId);
       const toEnroll = requested.filter((id) => !alreadyEnrolled.includes(id));
       if (toEnroll.length === 0) return [200, { enrolled: [], alreadyEnrolled, warnings: [] }];
       const enrolledNow = (await enrolledIds(client, program.id)).length;
@@ -1526,15 +1527,11 @@ export async function registerTrainingRoutes(
     return send(reply, 200, { items: result.rows });
   });
 
-  async function transactWork<T>(work: (client: PoolClient) => Promise<T>) {
-    return inTransaction(work);
-  }
-
   async function canManage(principal: AuthPrincipal) {
     return (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("training.manage");
   }
 
-  const kit = { pool, requireEmployee, requirePermission, handle, transact, invalid, canManage, transactWork };
+  const kit = { pool, requireEmployee, requirePermission, handle, transact, invalid, canManage, transactWork: inTransaction };
   registerTrainingEvaluationRoutes(app, kit);
   registerTrainingOnlineRoutes(app, kit, online);
 }

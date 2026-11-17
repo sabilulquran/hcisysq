@@ -7,6 +7,7 @@
 -- (TRAINING_ONLINE_ENABLED=0), so these tables stay empty until the owner turns it on.
 --
 -- Down (only TRAIN-001 R4 code reads these objects; remove the media directory separately):
+--   DROP TABLE IF EXISTS training_quiz_extra_attempts;
 --   DROP TABLE IF EXISTS training_quiz_attempts;
 --   DROP TABLE IF EXISTS training_playbacks;
 --   DROP TABLE IF EXISTS training_material_progress;
@@ -88,6 +89,8 @@ CREATE TABLE IF NOT EXISTS training_playbacks (
   material_id uuid NOT NULL REFERENCES training_materials(id),
   employee_id uuid NOT NULL REFERENCES employees(id),
   status text NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'ENDED')),
+  -- M-10: credit at the start of the session; the session never credits faster than real time from here.
+  base_seconds numeric(9, 3) NOT NULL DEFAULT 0 CHECK (base_seconds >= 0),
   started_at timestamptz NOT NULL DEFAULT now(),
   last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
   ended_at timestamptz NULL,
@@ -102,10 +105,22 @@ CREATE TABLE IF NOT EXISTS training_quiz_attempts (
   id uuid PRIMARY KEY,
   module_id uuid NOT NULL REFERENCES training_modules(id),
   employee_id uuid NOT NULL REFERENCES employees(id),
-  attempt_no integer NOT NULL CHECK (attempt_no BETWEEN 1 AND 10),
+  attempt_no integer NOT NULL CHECK (attempt_no BETWEEN 1 AND 50),
   answers jsonb NOT NULL CHECK (jsonb_typeof(answers) = 'object'),
   score numeric(5, 2) NOT NULL CHECK (score BETWEEN 0 AND 100),
   passed boolean NOT NULL,
   submitted_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (module_id, employee_id, attempt_no)
 );
+
+-- M-18: HC grants one more quiz attempt to a participant who used them all, with a reason.
+CREATE TABLE IF NOT EXISTS training_quiz_extra_attempts (
+  id uuid PRIMARY KEY,
+  module_id uuid NOT NULL REFERENCES training_modules(id),
+  employee_id uuid NOT NULL REFERENCES employees(id),
+  reason text NOT NULL CHECK (char_length(reason) BETWEEN 5 AND 500),
+  granted_by_account_id uuid NOT NULL REFERENCES accounts(id),
+  granted_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS training_quiz_extra_attempts_idx ON training_quiz_extra_attempts (module_id, employee_id);

@@ -44,6 +44,10 @@ export function creditHeartbeat(input: {
   nowMs: number;
   positionSeconds: number;
   durationSeconds: number;
+  /** Credit when the watch session started, and when it started: the session as a whole never
+   * credits faster than real time, so heartbeats sent back to back cannot add up their slack. */
+  sessionBaseSeconds: number;
+  sessionStartedMs: number;
 }): { frontierSeconds: number; lastPositionSeconds: number } {
   const position = Math.max(0, Math.min(input.positionSeconds, input.durationSeconds));
   const elapsed = Math.max(0, Math.min((input.nowMs - input.lastHeartbeatMs) / 1000, MAX_CREDIT_WINDOW_SECONDS));
@@ -51,7 +55,9 @@ export function creditHeartbeat(input: {
   const contiguous = input.lastPositionSeconds <= frontier + CREDIT_SLACK_SECONDS;
   if (position > frontier && contiguous) {
     const reachable = input.lastPositionSeconds + elapsed * CREDIT_RATE + CREDIT_SLACK_SECONDS;
-    frontier = Math.max(frontier, Math.min(position, reachable, input.durationSeconds));
+    const sessionCap = input.sessionBaseSeconds
+      + Math.max(0, (input.nowMs - input.sessionStartedMs) / 1000) * CREDIT_RATE + CREDIT_SLACK_SECONDS;
+    frontier = Math.max(frontier, Math.min(position, reachable, sessionCap, input.durationSeconds));
   }
   return { frontierSeconds: round3(frontier), lastPositionSeconds: round3(position) };
 }

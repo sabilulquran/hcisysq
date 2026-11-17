@@ -147,6 +147,7 @@ describe.skipIf(!allowed)("TRAIN-001 R4 online modules", () => {
     expect(storage.objects.size).toBe(0);
     const big = await upload(video, syntheticMp4(60, 20_000));
     expect(big.statusCode).toBe(413);
+    expect(big.json().code).toBe("TRAINING_VIDEO_TOO_LARGE");
     expect(storage.objects.size).toBe(0);
     const ok = await upload(video, syntheticMp4(120));
     expect(ok.statusCode, ok.body).toBe(200);
@@ -209,6 +210,13 @@ describe.skipIf(!allowed)("TRAIN-001 R4 online modules", () => {
 
     // Credit: a jump to the end earns only real time; honest heartbeats earn their seconds.
     actAs("aisyah");
+    // Rapid heartbeats right after the start earn almost nothing: the session cap is real time.
+    for (let i = 1; i <= 5; i += 1) await call("POST", `/training/me/playbacks/${playbackId}/heartbeat`, { position: i * 2 });
+    const spam = await client.query(`SELECT credited_seconds::float8 AS credited FROM training_material_progress WHERE material_id = $1`, [video]);
+    expect(spam.rows[0].credited).toBeLessThan(4);
+    await client.query(`UPDATE training_material_progress SET credited_seconds = 0, last_position_seconds = 0 WHERE material_id = $1`, [video]);
+    // From here the session has been open for an hour; each heartbeat is judged on its own interval.
+    await client.query(`UPDATE training_playbacks SET started_at = clock_timestamp() - interval '1 hour' WHERE id = $1`, [playbackId]);
     const beat = async (position: number, secondsAgo: number) => {
       await client.query(`UPDATE training_playbacks SET last_heartbeat_at = clock_timestamp() - ($2 || ' seconds')::interval WHERE id = $1`,
         [playbackId, String(secondsAgo)]);
@@ -234,8 +242,19 @@ describe.skipIf(!allowed)("TRAIN-001 R4 online modules", () => {
     expect(quiz.body).not.toContain("correct");
     const wrong = await call("POST", `/training/me/modules/${moduleId}/quiz/attempts`, { answers: { q1: true, q2: 0 } });
     expect(wrong.json()).toMatchObject({ score: 50, passed: false, attemptsLeft: 2, programCompleted: false });
+    for (let i = 0; i < 2; i += 1) await call("POST", `/training/me/modules/${moduleId}/quiz/attempts`, { answers: { q1: false, q2: 0 } });
+    expect((await call("POST", `/training/me/modules/${moduleId}/quiz/attempts`, { answers: {} })).json().code).toBe("TRAINING_QUIZ_NO_ATTEMPTS");
+    // M-18: HC grants one more attempt with a reason.
+    actAs("hc", HC);
+    expect((await call("POST", `/admin/training/modules/${moduleId}/quiz/${people.aisyah.employeeId}/extra-attempt`, { reason: "Remedial setelah pendampingan" })).statusCode).toBe(200);
+    actAs("aisyah");
     const right = await call("POST", `/training/me/modules/${moduleId}/quiz/attempts`, { answers: { q1: true, q2: 1 } });
     expect(right.json()).toMatchObject({ score: 100, passed: true, best: 100, programCompleted: true });
+    // Enrolling a finished participant again leaves them finished.
+    actAs("hc", HC);
+    const again = await call("POST", `/admin/training/programs/${programId}/participants`, { employeeIds: [people.aisyah.employeeId] });
+    expect(again.json().alreadyEnrolled).toEqual([people.aisyah.employeeId]);
+    actAs("aisyah");
 
     const record = await client.query(
       `SELECT hours::float8 AS hours, status, completed, source FROM training_records WHERE program_id = $1 AND employee_id = $2`,

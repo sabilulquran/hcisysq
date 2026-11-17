@@ -217,7 +217,7 @@ export const createProgram = (input: {
 }) => send<{ id: string }>("POST", "/admin/training/programs", input);
 export const cancelProgram = (id: string, reason: string) => send("POST", `/admin/training/programs/${id}/cancel`, { reason });
 export const completeProgram = (id: string) =>
-  send<{ totalHours: number; records: number }>("POST", `/admin/training/programs/${id}/complete`);
+  send<{ totalHours: number; records: number; delivery?: "ONLINE"; incomplete?: number }>("POST", `/admin/training/programs/${id}/complete`);
 export const createSession = (programId: string, input: {
   title: string; startAt: string; endAt: string; location: string | null; speakerEmployeeId: string | null; speakerName: string | null;
 }) => send<{ id: string; warnings: Conflict[] }>("POST", `/admin/training/programs/${programId}/sessions`, input);

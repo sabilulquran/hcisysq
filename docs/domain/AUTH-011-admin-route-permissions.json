@@ -5844,5 +5844,13 @@
     "permissions": [
       "training.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/modules/:id/quiz/:employeeId/extra-attempt",
+    "permissions": [
+      "training.manage"
+    ]
   }
 ]

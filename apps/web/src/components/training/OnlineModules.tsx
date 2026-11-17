@@ -46,8 +46,8 @@ export function VideoPlayer({ material, onProgress }: { material: MyMaterial; on
   useEffect(() => {
     if (!session) return;
     const element = video.current;
-    const report = async () => {
-      if (!element || element.paused) return;
+    const report = async (force = false) => {
+      if (!element || (element.paused && !force)) return;
       try {
         const result = await heartbeat(session.playbackId, element.currentTime);
         creditedRef.current = result.creditedSeconds;
@@ -62,10 +62,19 @@ export function VideoPlayer({ material, onProgress }: { material: MyMaterial; on
       }
     };
     const timer = window.setInterval(() => void report(), HEARTBEAT_MS);
+    // The last stretch before a pause or the end counts too.
+    const flush = () => void report(true);
+    element?.addEventListener("pause", flush);
+    element?.addEventListener("ended", flush);
     // Discovery §12 no. 5: the video pauses while the tab is hidden.
     const hidden = () => { if (document.hidden) element?.pause(); };
     document.addEventListener("visibilitychange", hidden);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", hidden); };
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", hidden);
+      element?.removeEventListener("pause", flush);
+      element?.removeEventListener("ended", flush);
+    };
   }, [session]);
 
   return (

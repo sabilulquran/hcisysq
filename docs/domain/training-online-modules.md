@@ -28,13 +28,15 @@ Termasuk: program daring, modul, materi video dan bacaan, unggah MP4 lewat port 
 | M-07 | Modul `DRAFT` dapat diubah (materi, video, kuis). **Terbit** (`PUBLISHED`) bila punya ≥ 1 materi dan setiap video sudah diunggah; setelah terbit modul **terkunci**. Modul `DRAFT` dapat diarsipkan; modul terbit tidak. | DRAFT |
 | M-08 | Akses tonton hanya untuk **peserta terdaftar** (`ENROLLED` atau `COMPLETED`) dari program `ACTIVE`, pada modul `PUBLISHED`. Menonton membuka **sesi tonton**; hanya satu sesi aktif per peserta per materi (sesi lama berakhir). Aliran video memerlukan id sesi tonton aktif milik pemanggil; sesi berakhir setelah 30 menit tanpa detak. | ACCEPTED (discovery §8.4 no. 3, 6) |
 | M-09 | Aliran video hanya menjawab **range request** (`Range: bytes=…`, 206), paling banyak 4 MB per respons, `Content-Disposition: inline`, `Cache-Control: private, no-store`. Tanpa `Range` → 416. Tidak ada URL publik dan tidak ada tombol unduh. | DRAFT |
-| M-10 | **Kredit server** (discovery §8.4): pemutar mengirim detak tiap ±10 detik berisi posisi. Server mengkredit kemajuan hanya bila posisi sebelumnya bersambung dengan batas terjauh yang sudah dikredit (selisih ≤ 2 detik), dan majunya tidak lebih dari `waktu nyata sejak detak sebelumnya × 1,25 + 2 detik`, dengan waktu nyata dibatasi 30 detik per detak. Mempercepat atau melompat di browser tidak menambah kredit. | ACCEPTED (discovery §8.4); angka DRAFT |
+| M-10 | **Kredit server** (discovery §8.4): pemutar mengirim detak tiap ±10 detik (dan saat jeda/selesai) berisi posisi. Server mengkredit kemajuan hanya bila posisi sebelumnya bersambung dengan batas terjauh yang sudah dikredit (selisih ≤ 2 detik), dan majunya tidak lebih dari `waktu nyata sejak detak sebelumnya × 1,25 + 2 detik` (waktu nyata dibatasi 30 detik per detak) **dan** tidak lebih dari `kredit saat sesi tonton dimulai + waktu nyata sejak sesi dimulai × 1,25 + 2 detik`, supaya detak beruntun tidak menjumlahkan toleransinya. Mempercepat atau melompat di browser tidak menambah kredit. | ACCEPTED (discovery §8.4); angka DRAFT |
 | M-11 | Video **selesai** bila batas terkredit ≥ **95%** durasi. Bacaan selesai dengan konfirmasi. | DRAFT (discovery §12 no. 8) |
 | M-12 | HC dapat menandai materi selesai untuk peserta tertentu dengan **alasan wajib** (aksesibilitas, gangguan teknis), diaudit. | ACCEPTED (discovery §8.4 pengecualian) |
 | M-13 | **Kuis** modul opsional: salinan butir instrumen `TEST` R3 (snapshot), nilai minimal lulus bawaan **70**, paling banyak **3 percobaan**, nilai **tertinggi** dipakai. Kuis terbuka setelah semua materi modul selesai. Kunci tidak pernah dikirim ke browser; skor dihitung server dengan aturan R3 E-04/E-05. | DRAFT |
 | M-14 | Modul selesai bila semua materinya selesai dan kuisnya lulus (bila ada). Peserta **menyelesaikan program** bila semua modul terbit selesai: dalam transaksi yang sama dibuat catatan `INTERNAL`/`PARTICIPANT`/`VERIFIED`, `completed = true`, jam = Σ `creditHours` modul terbit, tanggal mulai = tanggal didaftarkan (WIB), tanggal selesai = hari ini (WIB); peserta → `COMPLETED`; pegawai diberi tahu. Jam ini otomatis masuk rekap jam tahunan Paket 1. | DRAFT |
 | M-15 | Menutup program daring (Paket 1 §6.5) tidak memerlukan sesi atau kehadiran: peserta `ENROLLED` yang belum menyelesaikan menjadi `INCOMPLETE` **tanpa** catatan; catatan peserta yang sudah selesai tetap. | DRAFT |
 | M-16 | Modul tidak dapat terbit bila program tidak `ACTIVE`; modul baru tidak dapat ditambahkan ke program yang sudah ditutup atau dibatalkan. Menerbitkan modul baru setelah sebagian peserta selesai **tidak** mencabut catatan mereka; peserta lain harus menyelesaikan semua modul terbit. | DRAFT |
+| M-18 | Peserta yang menghabiskan percobaan kuis dapat diberi **satu percobaan tambahan** oleh HC (`training.manage`) dengan alasan wajib, diaudit; batas teknis 50 percobaan. | DRAFT |
+| M-19 | Mengarsipkan modul draf menghapus objek videonya dari penyimpanan. Materi program yang sudah ditutup atau dibatalkan dapat dihapus untuk membebaskan kuota; catatan pelatihan tidak berubah. Kuota diperiksa ulang di bawah kunci saat unggahan dicatat, dan unggahan wajib menyertakan `Content-Length` (411) supaya berkas terlalu besar ditolak sebelum dibaca. | DRAFT |
 | M-17 | Izin memakai `training.read` (lihat modul, pratinjau video, progres) dan `training.manage` (ubah, unggah, terbitkan, tandai selesai). **Tidak ada permission baru.** | DRAFT |
 
 ## 4. Actor
@@ -69,7 +71,7 @@ Pemutar web: tanpa kontrol bawaan untuk maju; posisi yang melewati batas terkred
 
 ## 8. Audit (ke `training_audit_events`)
 
-`training.module.created`, `training.module.updated`, `training.module.published`, `training.module.archived`, `training.material.created`, `training.material.removed`, `training.material.video_uploaded`, `training.material.completed` (metadata `via`: `WATCHED`/`READ`/`HC_MANUAL`; alasan sebagai `note` untuk manual), `training.quiz.attempted` (skor, lulus; tanpa jawaban), `training.record.created` (penyelesaian program daring). Detak tidak diaudit per detak.
+`training.module.created`, `training.module.updated`, `training.module.published`, `training.module.archived`, `training.material.created`, `training.material.removed`, `training.material.video_uploaded`, `training.material.completed` (metadata `via`: `WATCHED`/`READ`/`HC_MANUAL`; alasan sebagai `note` untuk manual), `training.quiz.attempted` (skor, lulus; tanpa jawaban), `training.quiz.attempt_granted` (alasan sebagai `note`), `training.record.created` (penyelesaian program daring). Detak tidak diaudit per detak.
 
 ## 9. Penyimpanan (migrasi `0156`)
 
@@ -80,6 +82,7 @@ training_materials                  materi; kunci objek, ukuran, durasi, sha256 
 training_material_progress          batas terkredit per peserta per materi, selesai
 training_playbacks                  sesi tonton
 training_quiz_attempts              percobaan kuis dengan skor
+training_quiz_extra_attempts        percobaan tambahan dari HC (M-18)
 ```
 
 Isi video ada di `ObjectStorage`, bukan database. Rollback `-- Down:` di berkas migrasi; objek video dihapus terpisah dari direktori media.
@@ -88,7 +91,7 @@ Isi video ada di `ObjectStorage`, bukan database. Rollback `-- Down:` di berkas 
 
 Pegawai: `GET /training/me/programs/:id/modules`, `POST /training/me/materials/:id/playbacks`, `POST /training/me/playbacks/:id/heartbeat`, `GET /training/me/materials/:id/stream`, `POST /training/me/materials/:id/read`, `GET /training/me/modules/:id/quiz`, `POST /training/me/modules/:id/quiz/attempts`.
 
-HC: `GET /admin/training/online/storage`, `GET|POST /admin/training/programs/:id/modules`, `PATCH /admin/training/modules/:id`, `POST /admin/training/modules/:id/publish`, `POST /admin/training/modules/:id/archive`, `POST /admin/training/modules/:id/materials`, `POST /admin/training/materials/:id/remove`, `PUT /admin/training/materials/:id/video`, `GET /admin/training/materials/:id/stream`, `GET /admin/training/programs/:id/online-progress`, `POST /admin/training/materials/:id/progress/:employeeId/complete`.
+HC: `GET /admin/training/online/storage`, `GET|POST /admin/training/programs/:id/modules`, `PATCH /admin/training/modules/:id`, `POST /admin/training/modules/:id/publish`, `POST /admin/training/modules/:id/archive`, `POST /admin/training/modules/:id/materials`, `POST /admin/training/materials/:id/remove`, `PUT /admin/training/materials/:id/video`, `GET /admin/training/materials/:id/stream`, `GET /admin/training/programs/:id/online-progress`, `POST /admin/training/materials/:id/progress/:employeeId/complete`, `POST /admin/training/modules/:id/quiz/:employeeId/extra-attempt`.
 
 Kontrak: `docs/api/training-online.openapi.yaml`. Modul per program dibatasi M-02 (≤ 20 modul × 20 materi, daftar terbatas); progres per peserta berhalaman (ENG-LIST-001).
 

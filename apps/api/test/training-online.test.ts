@@ -75,7 +75,8 @@ describe("TRAIN-001 R4 rules", () => {
   });
 
   it("credits only contiguous real-time progress (M-10)", () => {
-    const base = { frontierSeconds: 100, lastPositionSeconds: 100, lastHeartbeatMs: 0, durationSeconds: 600 };
+    // A session that started long ago: only the per-heartbeat rule applies.
+    const base = { frontierSeconds: 100, lastPositionSeconds: 100, lastHeartbeatMs: 0, durationSeconds: 600, sessionBaseSeconds: 0, sessionStartedMs: -3_600_000 };
     // Ten real seconds, ten seconds watched: credited.
     expect(creditHeartbeat({ ...base, nowMs: 10_000, positionSeconds: 110 }).frontierSeconds).toBe(110);
     // Twice the speed: only real time × 1.25 + 2.
@@ -86,6 +87,13 @@ describe("TRAIN-001 R4 rules", () => {
     expect(creditHeartbeat({ ...base, lastPositionSeconds: 300, nowMs: 10_000, positionSeconds: 310 }).frontierSeconds).toBe(100);
     // Rewinding is free and never loses credit.
     expect(creditHeartbeat({ ...base, nowMs: 10_000, positionSeconds: 20 })).toEqual({ frontierSeconds: 100, lastPositionSeconds: 20 });
+    // Heartbeats sent back to back cannot add up their slack: the session as a whole is capped.
+    let state = { frontierSeconds: 100, lastPositionSeconds: 100 };
+    for (let i = 0; i < 50; i += 1) {
+      state = creditHeartbeat({ ...state, lastHeartbeatMs: 1_000, nowMs: 1_000, positionSeconds: state.frontierSeconds + 2,
+        durationSeconds: 600, sessionBaseSeconds: 100, sessionStartedMs: 0 });
+    }
+    expect(state.frontierSeconds).toBeLessThanOrEqual(100 + 1 * 1.25 + 2);
     expect(videoCompleted(570, 600)).toBe(true);
     expect(videoCompleted(569, 600)).toBe(false);
   });

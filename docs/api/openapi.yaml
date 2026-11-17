@@ -649,6 +649,8 @@ paths:
     $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1online-progress'
   /admin/training/materials/{id}/progress/{employeeId}/complete:
     $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1materials~1{id}~1progress~1{employeeId}~1complete'
+  /admin/training/modules/{id}/quiz/{employeeId}/extra-attempt:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1modules~1{id}~1quiz~1{employeeId}~1extra-attempt'
   /training/me/programs/{id}/modules:
     $ref: './training-online.openapi.yaml#/paths/~1training~1me~1programs~1{id}~1modules'
   /training/me/materials/{id}/playbacks:

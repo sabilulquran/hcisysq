@@ -425,14 +425,24 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
     const params = idParams.safeParse(request.params);
     const body = reasonBody.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_TRAINING_REASON", "Alasan 5 sampai 500 huruf.");
-    return transact(reply, async (client) => {
+    let archivedKeys: string[] = [];
+    const result = await transact(reply, async (client) => {
       requireEnabled();
       const module = await loadModule(client, params.data.id, true);
       if (module.status !== "DRAFT") throw new TrainingError(409, "TRAINING_MODULE_LOCKED", "Hanya modul draf yang dapat diarsipkan.");
       await client.query(`UPDATE training_modules SET status = 'ARCHIVED', archive_reason = $2, updated_at = now() WHERE id = $1`, [module.id, body.data.reason]);
-      await audit(client, { eventType: "training.module.archived", programId: module.programId, actorAccountId: principal.id, note: body.data.reason, metadata: { moduleId: module.id } });
+      // M-19: an archived draft never plays, so its videos leave storage and the quota.
+      const removed = await client.query<{ objectKey: string | null }>(
+        `UPDATE training_materials SET status = 'REMOVED', updated_at = now()
+          WHERE module_id = $1 AND status = 'ACTIVE' RETURNING object_key AS "objectKey"`,
+        [module.id],
+      );
+      archivedKeys = removed.rows.map((row) => row.objectKey).filter((key): key is string => key !== null);
+      await audit(client, { eventType: "training.module.archived", programId: module.programId, actorAccountId: principal.id, note: body.data.reason, metadata: { moduleId: module.id, removedMaterials: removed.rowCount ?? 0 } });
       return [200, { id: module.id, status: "ARCHIVED" }];
     });
+    if (storage) for (const key of archivedKeys) await storage.delete(key).catch(() => undefined);
+    return result;
   });
 
   app.post("/admin/training/modules/:id/materials", async (request, reply) => {
@@ -470,7 +480,8 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
       requireEnabled();
       const material = await loadMaterial(client, params.data.id, true);
       const module = await loadModule(client, material.moduleId, true);
-      assertDraft(module);
+      // M-19: a draft module's material, or any material of a closed or cancelled program (frees storage).
+      if (module.programStatus === "ACTIVE") assertDraft(module);
       await client.query(`UPDATE training_materials SET status = 'REMOVED', updated_at = now() WHERE id = $1`, [material.id]);
       await audit(client, { eventType: "training.material.removed", programId: module.programId, actorAccountId: principal.id, metadata: { materialId: material.id } });
       removedKey = material.objectKey;
@@ -495,7 +506,12 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
       const material = await loadMaterial(pool, params.data.id);
       if (material.kind !== "VIDEO") throw new TrainingError(409, "TRAINING_MATERIAL_NOT_VIDEO", "Materi ini bukan video.");
       assertDraft(await loadModule(pool, material.moduleId));
-      const declared = Number(request.headers["content-length"] ?? 0);
+      // A declared length lets an oversized upload be refused before any byte is read; cutting a
+      // stream midway would reset the connection and the browser would never see the reason.
+      const declared = Number(request.headers["content-length"]);
+      if (!Number.isSafeInteger(declared) || declared <= 0) {
+        throw new TrainingError(411, "TRAINING_VIDEO_LENGTH_REQUIRED", "Unggahan video memerlukan ukuran berkas (Content-Length).");
+      }
       if (declared > options.videoMaxBytes) throw new TrainingError(413, "TRAINING_VIDEO_TOO_LARGE", "Video melebihi batas ukuran.");
       const room = options.mediaQuotaBytes - (await usedBytes(pool)) + (material.byteSize ?? 0);
       if (declared > room || room <= 0) throw new TrainingError(507, "TRAINING_MEDIA_QUOTA_EXCEEDED", "Kuota penyimpanan video habis.");
@@ -524,6 +540,11 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
         await kit.transactWork(async (client) => {
           const current = await loadMaterial(client, material.id, true);
           assertDraft(await loadModule(client, current.moduleId, true));
+          // Concurrent uploads each saw room before they started; the quota is settled one at a time here.
+          await client.query(`SELECT pg_advisory_xact_lock(hashtext('training_media_quota'))`);
+          if ((await usedBytes(client)) - (current.byteSize ?? 0) + stored.byteSize > options.mediaQuotaBytes) {
+            throw new TrainingError(507, "TRAINING_MEDIA_QUOTA_EXCEEDED", "Kuota penyimpanan video habis.");
+          }
           previousKey = current.objectKey;
           await client.query(
             `UPDATE training_materials SET object_key = $2, byte_size = $3, duration_seconds = $4, sha256 = $5, uploaded_at = now(), updated_at = now()
@@ -611,6 +632,42 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
     });
   });
 
+  app.post("/admin/training/modules/:id/quiz/:employeeId/extra-attempt", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "training.manage");
+    if (!principal) return;
+    const params = progressParams.safeParse(request.params);
+    const body = reasonBody.safeParse(request.body);
+    if (!params.success || !body.success) return invalid(reply, "INVALID_TRAINING_REASON", "Alasan 5 sampai 500 huruf.");
+    return transact(reply, async (client) => {
+      requireEnabled();
+      const module = await loadModule(client, params.data.id, true);
+      const member = await client.query(
+        `SELECT 1 FROM training_participants WHERE program_id = $1 AND employee_id = $2 AND status = 'ENROLLED'`,
+        [module.programId, params.data.employeeId],
+      );
+      if (module.status !== "PUBLISHED" || !module.quizItems || module.programStatus !== "ACTIVE" || !member.rows[0]) throw moduleNotFound();
+      const used = (await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM training_quiz_attempts WHERE module_id = $1 AND employee_id = $2`,
+        [module.id, params.data.employeeId],
+      )).rows[0]!.count;
+      if (used >= 50) throw new TrainingError(409, "TRAINING_QUIZ_ATTEMPT_LIMIT", "Batas teknis 50 percobaan tercapai.");
+      await client.query(
+        `INSERT INTO training_quiz_extra_attempts (id, module_id, employee_id, reason, granted_by_account_id) VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), module.id, params.data.employeeId, body.data.reason, principal.id],
+      );
+      await audit(client, {
+        eventType: "training.quiz.attempt_granted", programId: module.programId, employeeId: params.data.employeeId,
+        actorAccountId: principal.id, note: body.data.reason, metadata: { moduleId: module.id },
+      });
+      await notifyEmployee(client, params.data.employeeId, {
+        eventKey: `training.quiz.${module.id}.extra.${params.data.employeeId}.${Date.now()}`, category: "system",
+        title: "Percobaan kuis tambahan", body: `Anda mendapat satu percobaan lagi untuk kuis ${module.title}.`,
+        href: `/app/training?program=${module.programId}`, actorAccountId: principal.id,
+      });
+      return [200, { moduleId: module.id, granted: 1 }];
+    });
+  });
+
   // ---------------------------------------------------------------- employee
 
   app.get("/training/me/programs/:id/modules", async (request, reply) => {
@@ -633,7 +690,8 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
       }>(
         `SELECT module.id, module.title, module.description, module.credit_hours::float8 AS "creditHours",
                 module.quiz_items IS NOT NULL AS "hasQuiz", module.quiz_passing_score AS "quizPassingScore",
-                module.quiz_max_attempts AS "quizMaxAttempts",
+                module.quiz_max_attempts + (SELECT count(*)::int FROM training_quiz_extra_attempts extra
+                                             WHERE extra.module_id = module.id AND extra.employee_id = $2) AS "quizMaxAttempts",
                 COALESCE((SELECT array_agg(attempt.score::float8 ORDER BY attempt.attempt_no) FROM training_quiz_attempts attempt
                            WHERE attempt.module_id = module.id AND attempt.employee_id = $2), '{}') AS scores,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object(
@@ -680,13 +738,17 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
         `UPDATE training_playbacks SET status = 'ENDED', ended_at = now() WHERE material_id = $1 AND employee_id = $2 AND status = 'ACTIVE'`,
         [material.id, self.id],
       );
-      const id = randomUUID();
-      await client.query(`INSERT INTO training_playbacks (id, material_id, employee_id) VALUES ($1, $2, $3)`, [id, material.id, self.id]);
       const progress = await client.query<{ credited: number; completed: boolean }>(
         `INSERT INTO training_material_progress (material_id, employee_id) VALUES ($1, $2)
          ON CONFLICT (material_id, employee_id) DO UPDATE SET last_position_seconds = training_material_progress.credited_seconds, updated_at = now()
          RETURNING credited_seconds::float8 AS credited, completed_at IS NOT NULL AS completed`,
         [material.id, self.id],
+      );
+      const id = randomUUID();
+      await client.query(
+        `INSERT INTO training_playbacks (id, material_id, employee_id, base_seconds, started_at, last_heartbeat_at)
+         VALUES ($1, $2, $3, $4, clock_timestamp(), clock_timestamp())`,
+        [id, material.id, self.id, progress.rows[0]!.credited],
       );
       return [201, {
         playbackId: id, durationSeconds: material.durationSeconds, creditedSeconds: progress.rows[0]!.credited,
@@ -704,8 +766,9 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
     return transact(reply, async (client) => {
       requireEnabled();
       const self = await loadSelf(client, principal.id);
-      const found = await client.query<{ materialId: string; status: string; lastHeartbeatAt: Date; nowAt: Date }>(
-        `SELECT material_id AS "materialId", status, last_heartbeat_at AS "lastHeartbeatAt", clock_timestamp() AS "nowAt"
+      const found = await client.query<{ materialId: string; status: string; lastHeartbeatAt: Date; nowAt: Date; startedAt: Date; base: number }>(
+        `SELECT material_id AS "materialId", status, last_heartbeat_at AS "lastHeartbeatAt", clock_timestamp() AS "nowAt",
+                started_at AS "startedAt", base_seconds::float8 AS base
            FROM training_playbacks WHERE id = $1 AND employee_id = $2 FOR UPDATE`,
         [params.data.id, self.id],
       );
@@ -728,6 +791,7 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
       const next = creditHeartbeat({
         frontierSeconds: progress.credited, lastPositionSeconds: progress.last, lastHeartbeatMs: playback.lastHeartbeatAt.getTime(),
         nowMs, positionSeconds: body.data.position, durationSeconds: material.durationSeconds ?? 0,
+        sessionBaseSeconds: playback.base, sessionStartedMs: playback.startedAt.getTime(),
       });
       await client.query(`UPDATE training_playbacks SET last_heartbeat_at = $2 WHERE id = $1`, [params.data.id, playback.nowAt]);
       await client.query(
@@ -812,7 +876,11 @@ export function registerTrainingOnlineRoutes(app: FastifyInstance, kit: Training
       `SELECT score::float8 AS score FROM training_quiz_attempts WHERE module_id = $1 AND employee_id = $2 ORDER BY attempt_no`,
       [moduleId, employeeId],
     )).rows.map((row) => row.score);
-    return { module, unlocked: materials.rows[0]!.done >= materials.rows[0]!.total, attempts };
+    const extra = (await db.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM training_quiz_extra_attempts WHERE module_id = $1 AND employee_id = $2`,
+      [moduleId, employeeId],
+    )).rows[0]!.count;
+    return { module: { ...module, quizMaxAttempts: module.quizMaxAttempts + extra }, unlocked: materials.rows[0]!.done >= materials.rows[0]!.total, attempts };
   }
 
   app.get("/training/me/modules/:id/quiz", async (request, reply) => {

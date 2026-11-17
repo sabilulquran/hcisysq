@@ -4,9 +4,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 
 import { getOidcRuntimeConfig, isGovernanceSummaryEnabled, type ApiConfig } from "../../config/env.js";
-import { ApplicationAccessError, SqHubApplicationAccessClient } from "../auth/application-access.js";
-import { hasBoardAccess } from "../auth/permissions.js";
+import { SqHubApplicationAccessClient } from "../auth/application-access.js";
 import { readBearerToken } from "../organization-directory/machine-auth.js";
+import {
+  GovernanceAccountDenied as SummaryDenied,
+  resolveGovernanceAccount,
+  type ResolvedGovernanceAccount,
+} from "./account.js";
 import { loadBoardAggregates } from "../board/aggregates.js";
 import { employeeListQuerySchema, loadOrganEmployeeList } from "./employee-list.js";
 import {
@@ -49,13 +53,7 @@ const MESSAGES: Record<string, string> = {
   APPLICATION_ACCESS_UNAVAILABLE: "Akses HCIS belum dapat diverifikasi. Coba lagi.",
 };
 
-interface ResolvedAccount { id: string; principalType: string; employeeId: string | null }
-
-class SummaryDenied extends Error {
-  constructor(public readonly statusCode: number, public readonly code: string, public readonly accountId: string | null) {
-    super(code);
-  }
-}
+type ResolvedAccount = ResolvedGovernanceAccount;
 
 function productionDependencies(config: ApiConfig): GovernanceSummaryDependencies {
   const oidc = getOidcRuntimeConfig(config);
@@ -106,25 +104,7 @@ export function registerGovernanceSummaryRoutes(
   }
 
   async function resolveAccount(identity: GovernanceIdentity): Promise<ResolvedAccount> {
-    const mapped = await pool.query<ResolvedAccount & { status: string }>(
-      `SELECT id, principal_type AS "principalType", employee_id AS "employeeId", status
-       FROM accounts WHERE identity_issuer = $1 AND identity_subject = $2 LIMIT 2`,
-      [identity.issuer, identity.subject],
-    );
-    const account = mapped.rows.length === 1 ? mapped.rows[0] : undefined;
-    if (!account) throw new SummaryDenied(403, "OIDC_ACCOUNT_NOT_MAPPED", null);
-    if (account.status !== "active") throw new SummaryDenied(403, "ACCOUNT_INACTIVE", account.id);
-    if (!(await hasBoardAccess(pool, account))) throw new SummaryDenied(403, "BOARD_ACCESS_REQUIRED", account.id);
-    // D3: re-check SQ Hub Application Access with the same client and rules as OIDC login.
-    let allowed: boolean;
-    try {
-      allowed = await dependencies!.applicationAccess.isAllowed({ issuer: identity.issuer, subject: identity.subject });
-    } catch (error) {
-      if (!(error instanceof ApplicationAccessError)) throw error;
-      throw new SummaryDenied(503, "APPLICATION_ACCESS_UNAVAILABLE", account.id);
-    }
-    if (!allowed) throw new SummaryDenied(403, "HCIS_ACCESS_DENIED", account.id);
-    return { id: account.id, principalType: account.principalType, employeeId: account.employeeId };
+    return await resolveGovernanceAccount(pool, dependencies!.applicationAccess, identity);
   }
 
   /**

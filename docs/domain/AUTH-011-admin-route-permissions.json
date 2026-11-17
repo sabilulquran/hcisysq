@@ -2192,6 +2192,30 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/governance/decision-routes.ts",
+    "method": "GET",
+    "url": "/governance/decisions",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": [
+      "leave.governance.approve"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/governance/decision-routes.ts",
+    "method": "POST",
+    "url": "/governance/decisions/:stepId",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": [
+      "leave.governance.approve"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/governance/routes.ts",
     "method": "GET",
     "url": "/governance/employees",

@@ -75,7 +75,7 @@ const decisionSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
-type HcHandling = "notify" | "validate" | "approve" | "none";
+export type HcHandling = "notify" | "validate" | "approve" | "none";
 
 export interface EmployeeContextRow {
   id: string;
@@ -640,7 +640,7 @@ export async function insertAnnualRequest(
   return { requestId, preview, insertedSteps };
 }
 
-function mapKnownError(error: unknown): EmployeeLeaveError | null {
+export function mapKnownError(error: unknown): EmployeeLeaveError | null {
   if (error instanceof EmployeeLeaveError) return error;
   if (error instanceof AnnualLeaveRequestPolicyError) {
     return new EmployeeLeaveError(409, error.code, error.message);
@@ -1120,241 +1120,14 @@ export async function registerEmployeeLeaveRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const actor = principal.principalType === "EMPLOYEE"
-        ? await loadEmployeeContext(client, principal.id)
-        : null;
-      const stepResult = await client.query<{
-        id: string;
-        requestId: string;
-        requesterEmployeeId: string;
-        approverEmployeeId: string | null;
-        approverAccountId: string | null;
-        status: LeaveApprovalStepState["status"];
-        requestStatus: LeaveRequestStatus;
-        hcHandling: HcHandling;
-        policyKey: string;
-      }>(
-        `SELECT
-          s.id,
-          s.leave_request_id AS "requestId",
-          r.employee_id AS "requesterEmployeeId",
-          s.approver_employee_id AS "approverEmployeeId",
-          s.approver_account_id AS "approverAccountId",
-          s.status,
-          r.status AS "requestStatus",
-          r.hc_handling AS "hcHandling",
-          r.policy_key AS "policyKey"
-        FROM leave_request_approval_steps s
-        JOIN leave_requests r ON r.id = s.leave_request_id
-        WHERE s.id = $1
-        FOR UPDATE OF s, r`,
-        [params.data.stepId],
-      );
-      const current = stepResult.rows[0];
-      if (!current) {
-        throw new EmployeeLeaveError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
-      }
-      const ownsStep = actor
-        ? current.approverEmployeeId === actor.id
-        : current.approverAccountId === principal.id;
-      if (!ownsStep) {
-        throw new EmployeeLeaveError(
-          403,
-          "APPROVAL_FORBIDDEN",
-          "Tahap approval ini bukan milik akun Anda.",
-        );
-      }
-      if (!actor) {
-        await assertGovernanceApprovalCapability(client, principal.id);
-        if (await governanceActorIsRequester(client, principal.id, current.requesterEmployeeId)) {
-          throw new EmployeeLeaveError(
-            403,
-            "APPROVAL_SELF_FORBIDDEN",
-            "Pengajuan ini tidak dapat diputuskan oleh pemohon sendiri.",
-          );
-        }
-      }
-
-      const allStepsResult = await client.query<LeaveApprovalStepState>(
-        `SELECT id, step_order AS "order", status
-         FROM leave_request_approval_steps
-         WHERE leave_request_id = $1
-         ORDER BY step_order ASC`,
-        [current.requestId],
-      );
-      const steps: LeaveApprovalStepState[] = allStepsResult.rows;
-      const decision = decideLeaveApprovalStep({
-        requestStatus: current.requestStatus,
-        stepId: current.id,
+      const { payload } = await applyLeaveApprovalDecision(client, {
+        principal,
+        stepId: params.data.stepId,
         decision: body.data.decision,
-        steps,
+        note: body.data.note ?? null,
       });
-
-      await client.query(
-        `UPDATE leave_request_approval_steps
-         SET status = $2,
-             acted_by_account_id = $3,
-             acted_at = now(),
-             decision_note = $4
-         WHERE id = $1`,
-        [current.id, decision.decidedStepStatus, principal.id, body.data.note ?? null],
-      );
-
-      if (decision.nextPendingStepId) {
-        const next = await client.query<{ approverEmployeeId: string | null; approverAccountId: string | null }>(
-          `UPDATE leave_request_approval_steps
-           SET status = 'pending'
-           WHERE id = $1
-           RETURNING approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"`,
-          [decision.nextPendingStepId],
-        );
-        const target = next.rows[0];
-        if (target) {
-          await enqueueNotification(
-            client,
-            current.requestId,
-            "leave.approval.requested",
-            target.approverAccountId ? "account" : "employee",
-            target.approverAccountId ?? target.approverEmployeeId!,
-          );
-          await notifyApprovalRequested(client, {
-            requestId: current.requestId,
-            stepId: decision.nextPendingStepId,
-            approverEmployeeId: target.approverEmployeeId,
-            approverAccountId: target.approverAccountId,
-          });
-        }
-      }
-
-      let effectiveRequestStatus: LeaveRequestStatus = decision.requestStatus;
-      let hcTaskStatus: "pending" | null = null;
-      // LEAVE-009 D-05: a critical-period review runs before any HC administrative task.
-      const criticalReviewId = decision.requestStatus === "approved"
-        ? await activateCriticalReviewAfterLineApproval(client, current.requestId)
-        : null;
-      if (criticalReviewId) {
-        effectiveRequestStatus = "in_review";
-      } else if (decision.requestStatus === "approved" && current.hcHandling === "validate") {
-        await activateHcTaskAfterLineApproval(client, current.requestId, "validate");
-        effectiveRequestStatus = "in_review";
-        hcTaskStatus = "pending";
-      } else if (decision.requestStatus === "approved" && current.hcHandling === "approve") {
-        await activateHcTaskAfterLineApproval(client, current.requestId, "approve");
-        effectiveRequestStatus = "in_review";
-        hcTaskStatus = "pending";
-      }
-
-      if (effectiveRequestStatus !== current.requestStatus || decision.requestStatus === "approved") {
-        await client.query(
-          `UPDATE leave_requests
-           SET status = $2,
-               final_decided_at = CASE WHEN $2 IN ('approved', 'rejected') THEN now() ELSE NULL END,
-               updated_at = now()
-           WHERE id = $1`,
-          [current.requestId, effectiveRequestStatus],
-        );
-      }
-
-      const eventType =
-        body.data.decision === "approve"
-          ? "leave.request.approved_step"
-          : "leave.request.rejected";
-      await addEvent(client, current.requestId, principal.id, eventType, {
-        stepId: current.id,
-        hcHandling: current.hcHandling,
-      });
-
-      if (criticalReviewId) {
-        await addEvent(client, current.requestId, principal.id, "leave.critical_review.pending", {
-          reviewId: criticalReviewId,
-        });
-        await enqueueNotification(
-          client,
-          current.requestId,
-          "leave.critical_review.requested",
-          "role",
-          "human_capital",
-        );
-        await enqueueNotification(
-          client,
-          current.requestId,
-          "leave.line_approval.completed.employee_notify",
-          "employee",
-          current.requesterEmployeeId,
-        );
-      } else if (decision.requestStatus === "approved" && hcTaskStatus === "pending") {
-        await addEvent(
-          client,
-          current.requestId,
-          principal.id,
-          current.hcHandling === "approve"
-            ? "leave.hc.approval_pending"
-            : "leave.hc.validation_pending",
-        );
-        await enqueueNotification(
-          client,
-          current.requestId,
-          current.hcHandling === "approve"
-            ? "leave.hc.approval.requested"
-            : "leave.hc.validation.requested",
-          "role",
-          "human_capital",
-        );
-        await enqueueNotification(
-          client,
-          current.requestId,
-          "leave.line_approval.completed.employee_notify",
-          "employee",
-          current.requesterEmployeeId,
-        );
-      } else if (effectiveRequestStatus === "approved") {
-        await enqueueNotification(
-          client,
-          current.requestId,
-          "leave.request.approved",
-          "employee",
-          current.requesterEmployeeId,
-        );
-        if (current.hcHandling === "notify") {
-          await enqueueNotification(
-            client,
-            current.requestId,
-            "leave.request.approved.hc_notify",
-            "role",
-            "human_capital",
-          );
-        }
-      } else if (effectiveRequestStatus === "rejected") {
-        await enqueueNotification(
-          client,
-          current.requestId,
-          "leave.request.rejected",
-          "employee",
-          current.requesterEmployeeId,
-        );
-      }
-
-      if (effectiveRequestStatus === "approved") {
-        await enqueueFinalApprovalOversight(client, {
-          requestId: current.requestId,
-          workflowKey: `leave.${current.policyKey}`,
-          effectiveDate: jakartaToday(),
-          ...(current.approverEmployeeId
-            ? { finalApproverEmployeeId: current.approverEmployeeId }
-            : {}),
-        });
-      }
-
       await client.query("COMMIT");
-      return reply.send({
-        requestId: current.requestId,
-        requestStatus: effectiveRequestStatus,
-        stepStatus: decision.decidedStepStatus,
-        nextPendingStepId: decision.nextPendingStepId,
-        hcHandling: current.hcHandling,
-        hcTaskStatus,
-        criticalReviewStatus: criticalReviewId ? "pending" : null,
-      });
+      return reply.send(payload);
     } catch (error) {
       await client.query("ROLLBACK");
       return sendKnownError(reply, error);
@@ -1362,4 +1135,319 @@ export async function registerEmployeeLeaveRoutes(
       client.release();
     }
   });
+}
+
+export interface LeaveApprovalDecisionPayload {
+  requestId: string;
+  requestStatus: LeaveRequestStatus;
+  stepStatus: LeaveApprovalStepState["status"];
+  nextPendingStepId: string | null;
+  hcHandling: HcHandling;
+  hcTaskStatus: "pending" | null;
+  criticalReviewStatus: "pending" | null;
+}
+
+export interface LeaveApprovalDecisionInput {
+  /** Only the identity and its kind matter here; the bearer route has no session to take more from. */
+  principal: Pick<AuthPrincipal, "id" | "principalType">;
+  stepId: string;
+  decision: "approve" | "reject";
+  note?: string | null;
+  /**
+   * ORG-015-3: set only by the Portal Organ Yayasan route. Resending the same id answers with the
+   * decision that was already made instead of deciding twice; a different id on a step that has
+   * been decided is refused. The cookie route leaves it unset and keeps its old behaviour.
+   */
+  decisionRequestId?: string | null;
+}
+
+/**
+ * ORG-013-3 and ORG-015-B: the single place a leave approval step is decided. The cookie route
+ * (`POST /leave/approvals/:stepId/decision`) and the Portal Organ bearer route
+ * (`POST /governance/decisions/:stepId`) both call it, so step ownership, the governance
+ * capability, the self-approval rule, the APR-001 transitions, the audit events and the
+ * notifications cannot drift apart between the two doors.
+ *
+ * The caller owns the transaction: it opens it, commits it, and rolls it back on error.
+ */
+export async function applyLeaveApprovalDecision(
+  client: PoolClient,
+  input: LeaveApprovalDecisionInput,
+): Promise<{ payload: LeaveApprovalDecisionPayload; replayed: boolean }> {
+  const principal = input.principal;
+  const actor = principal.principalType === "EMPLOYEE"
+    ? await loadEmployeeContext(client, principal.id)
+    : null;
+  const stepResult = await client.query<{
+    id: string;
+    requestId: string;
+    requesterEmployeeId: string;
+    approverEmployeeId: string | null;
+    approverAccountId: string | null;
+    status: LeaveApprovalStepState["status"];
+    decisionRequestId: string | null;
+    requestStatus: LeaveRequestStatus;
+    hcHandling: HcHandling;
+    policyKey: string;
+  }>(
+    `SELECT
+      s.id,
+      s.leave_request_id AS "requestId",
+      r.employee_id AS "requesterEmployeeId",
+      s.approver_employee_id AS "approverEmployeeId",
+      s.approver_account_id AS "approverAccountId",
+      s.status,
+      s.decision_request_id AS "decisionRequestId",
+      r.status AS "requestStatus",
+      r.hc_handling AS "hcHandling",
+      r.policy_key AS "policyKey"
+    FROM leave_request_approval_steps s
+    JOIN leave_requests r ON r.id = s.leave_request_id
+    WHERE s.id = $1
+    FOR UPDATE OF s, r`,
+    [input.stepId],
+  );
+  const current = stepResult.rows[0];
+  if (!current) {
+    throw new EmployeeLeaveError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
+  }
+  const ownsStep = actor
+    ? current.approverEmployeeId === actor.id
+    : current.approverAccountId === principal.id;
+  if (!ownsStep) {
+    throw new EmployeeLeaveError(
+      403,
+      "APPROVAL_FORBIDDEN",
+      "Tahap approval ini bukan milik akun Anda.",
+    );
+  }
+
+  // ORG-015-3 idempotency. Decided inside the same transaction as the decision itself and after
+  // `FOR UPDATE`, so two requests carrying the same id produce one decision, one audit event and
+  // one notification. The replay deliberately runs before the capability and self-approval checks:
+  // the decision has already been made and recorded, and re-reading it must not depend on a
+  // capability the account may have lost since.
+  if (input.decisionRequestId && current.status !== "pending") {
+    if (current.decisionRequestId !== input.decisionRequestId) {
+      throw new EmployeeLeaveError(
+        409,
+        "APPROVAL_STEP_DECIDED",
+        "Tahap approval ini sudah diputuskan.",
+      );
+    }
+    const pending = await client.query<{ id: string }>(
+      `SELECT id FROM leave_request_approval_steps
+       WHERE leave_request_id = $1 AND status = 'pending'
+       ORDER BY step_order ASC
+       LIMIT 1`,
+      [current.requestId],
+    );
+    return {
+      replayed: true,
+      payload: {
+        requestId: current.requestId,
+        requestStatus: current.requestStatus,
+        stepStatus: current.status,
+        nextPendingStepId: pending.rows[0]?.id ?? null,
+        hcHandling: current.hcHandling,
+        hcTaskStatus: null,
+        criticalReviewStatus: null,
+      },
+    };
+  }
+
+  if (!actor) {
+    await assertGovernanceApprovalCapability(client, principal.id);
+    if (await governanceActorIsRequester(client, principal.id, current.requesterEmployeeId)) {
+      throw new EmployeeLeaveError(
+        403,
+        "APPROVAL_SELF_FORBIDDEN",
+        "Pengajuan ini tidak dapat diputuskan oleh pemohon sendiri.",
+      );
+    }
+  }
+
+  const allStepsResult = await client.query<LeaveApprovalStepState>(
+    `SELECT id, step_order AS "order", status
+     FROM leave_request_approval_steps
+     WHERE leave_request_id = $1
+     ORDER BY step_order ASC`,
+    [current.requestId],
+  );
+  const steps: LeaveApprovalStepState[] = allStepsResult.rows;
+  const decision = decideLeaveApprovalStep({
+    requestStatus: current.requestStatus,
+    stepId: current.id,
+    decision: input.decision,
+    steps,
+  });
+
+  await client.query(
+    `UPDATE leave_request_approval_steps
+     SET status = $2,
+         acted_by_account_id = $3,
+         acted_at = now(),
+         decision_note = $4,
+         decision_request_id = $5
+     WHERE id = $1`,
+    [current.id, decision.decidedStepStatus, principal.id, input.note ?? null, input.decisionRequestId ?? null],
+  );
+
+  if (decision.nextPendingStepId) {
+    const next = await client.query<{ approverEmployeeId: string | null; approverAccountId: string | null }>(
+      `UPDATE leave_request_approval_steps
+       SET status = 'pending'
+       WHERE id = $1
+       RETURNING approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"`,
+      [decision.nextPendingStepId],
+    );
+    const target = next.rows[0];
+    if (target) {
+      await enqueueNotification(
+        client,
+        current.requestId,
+        "leave.approval.requested",
+        target.approverAccountId ? "account" : "employee",
+        target.approverAccountId ?? target.approverEmployeeId!,
+      );
+      await notifyApprovalRequested(client, {
+        requestId: current.requestId,
+        stepId: decision.nextPendingStepId,
+        approverEmployeeId: target.approverEmployeeId,
+        approverAccountId: target.approverAccountId,
+      });
+    }
+  }
+
+  let effectiveRequestStatus: LeaveRequestStatus = decision.requestStatus;
+  let hcTaskStatus: "pending" | null = null;
+  // LEAVE-009 D-05: a critical-period review runs before any HC administrative task.
+  const criticalReviewId = decision.requestStatus === "approved"
+    ? await activateCriticalReviewAfterLineApproval(client, current.requestId)
+    : null;
+  if (criticalReviewId) {
+    effectiveRequestStatus = "in_review";
+  } else if (decision.requestStatus === "approved" && current.hcHandling === "validate") {
+    await activateHcTaskAfterLineApproval(client, current.requestId, "validate");
+    effectiveRequestStatus = "in_review";
+    hcTaskStatus = "pending";
+  } else if (decision.requestStatus === "approved" && current.hcHandling === "approve") {
+    await activateHcTaskAfterLineApproval(client, current.requestId, "approve");
+    effectiveRequestStatus = "in_review";
+    hcTaskStatus = "pending";
+  }
+
+  if (effectiveRequestStatus !== current.requestStatus || decision.requestStatus === "approved") {
+    await client.query(
+      `UPDATE leave_requests
+       SET status = $2,
+           final_decided_at = CASE WHEN $2 IN ('approved', 'rejected') THEN now() ELSE NULL END,
+           updated_at = now()
+       WHERE id = $1`,
+      [current.requestId, effectiveRequestStatus],
+    );
+  }
+
+  const eventType =
+    input.decision === "approve"
+      ? "leave.request.approved_step"
+      : "leave.request.rejected";
+  await addEvent(client, current.requestId, principal.id, eventType, {
+    stepId: current.id,
+    hcHandling: current.hcHandling,
+  });
+
+  if (criticalReviewId) {
+    await addEvent(client, current.requestId, principal.id, "leave.critical_review.pending", {
+      reviewId: criticalReviewId,
+    });
+    await enqueueNotification(
+      client,
+      current.requestId,
+      "leave.critical_review.requested",
+      "role",
+      "human_capital",
+    );
+    await enqueueNotification(
+      client,
+      current.requestId,
+      "leave.line_approval.completed.employee_notify",
+      "employee",
+      current.requesterEmployeeId,
+    );
+  } else if (decision.requestStatus === "approved" && hcTaskStatus === "pending") {
+    await addEvent(
+      client,
+      current.requestId,
+      principal.id,
+      current.hcHandling === "approve"
+        ? "leave.hc.approval_pending"
+        : "leave.hc.validation_pending",
+    );
+    await enqueueNotification(
+      client,
+      current.requestId,
+      current.hcHandling === "approve"
+        ? "leave.hc.approval.requested"
+        : "leave.hc.validation.requested",
+      "role",
+      "human_capital",
+    );
+    await enqueueNotification(
+      client,
+      current.requestId,
+      "leave.line_approval.completed.employee_notify",
+      "employee",
+      current.requesterEmployeeId,
+    );
+  } else if (effectiveRequestStatus === "approved") {
+    await enqueueNotification(
+      client,
+      current.requestId,
+      "leave.request.approved",
+      "employee",
+      current.requesterEmployeeId,
+    );
+    if (current.hcHandling === "notify") {
+      await enqueueNotification(
+        client,
+        current.requestId,
+        "leave.request.approved.hc_notify",
+        "role",
+        "human_capital",
+      );
+    }
+  } else if (effectiveRequestStatus === "rejected") {
+    await enqueueNotification(
+      client,
+      current.requestId,
+      "leave.request.rejected",
+      "employee",
+      current.requesterEmployeeId,
+    );
+  }
+
+  if (effectiveRequestStatus === "approved") {
+    await enqueueFinalApprovalOversight(client, {
+      requestId: current.requestId,
+      workflowKey: `leave.${current.policyKey}`,
+      effectiveDate: jakartaToday(),
+      ...(current.approverEmployeeId
+        ? { finalApproverEmployeeId: current.approverEmployeeId }
+        : {}),
+    });
+  }
+
+  return {
+    replayed: false,
+    payload: {
+      requestId: current.requestId,
+      requestStatus: effectiveRequestStatus,
+      stepStatus: decision.decidedStepStatus,
+      nextPendingStepId: decision.nextPendingStepId,
+      hcHandling: current.hcHandling,
+      hcTaskStatus,
+      criticalReviewStatus: criticalReviewId ? "pending" : null,
+    },
+  };
 }

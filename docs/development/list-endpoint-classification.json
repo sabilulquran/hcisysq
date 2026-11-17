@@ -960,6 +960,11 @@
       "reason": "Ringkasan kepegawaian pegawai yang masuk sendiri beserta linimasa tindakannya; dibatasi riwayat satu pegawai."
     },
     {
+      "url": "/governance/decisions",
+      "list": "bounded",
+      "reason": "ORG-015: langkah approval yang menunggu satu akun organ; terbatas pada pengajuan in_review miliknya sendiri, dalam praktiknya satuan."
+    },
+    {
       "url": "/governance/employees",
       "list": "paged",
       "reason": "ORG-014: pegawai aktif, page/pageSize 25/100 dengan total; daftar unit untuk filter adalah data master terbatas (<= 200)."

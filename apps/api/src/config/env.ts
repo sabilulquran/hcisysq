@@ -85,6 +85,13 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
     ),
+    // ORG-015 §1: deciding from the Portal Organ Yayasan. Off by default; the routes are not
+    // registered at all while it is off.
+    GOVERNANCE_DECISIONS_ENABLED: z.enum(["true", "false", "1", "0"]).default("false"),
+    /** Its own audience, never the summary one: a read token must never be able to decide. */
+    GOVERNANCE_DECISION_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    /** The portal client only. SQ Hub's own client is never allowed to decide (ADR-0012 D4). */
+    GOVERNANCE_DECISION_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-organ")),
     // ASSET-001 §7: read-only person custody from Aset SQ ASQ-004, with a dedicated machine client.
     // A base URL only: http(s), no query or fragment, because the request path is appended to it.
     ASET_SQ_PERSON_CUSTODY_URL: z.preprocess(
@@ -328,6 +335,40 @@ const envSchema = z
       }
     }
 
+    // ORG-015-1: the decision audience must exist, must differ from every other audience this
+    // service accepts, and the decision routes need the summary plumbing (identity mapping and
+    // Application Access) that GOVERNANCE_SUMMARY_ENABLED sets up.
+    if (isGovernanceDecisionsEnabled(value)) {
+      if (!value.GOVERNANCE_DECISION_AUDIENCE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["GOVERNANCE_DECISION_AUDIENCE"],
+          message: "GOVERNANCE_DECISION_AUDIENCE is required when GOVERNANCE_DECISIONS_ENABLED=true",
+        });
+      }
+      if (!isGovernanceSummaryEnabled(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["GOVERNANCE_DECISIONS_ENABLED"],
+          message: "GOVERNANCE_DECISIONS_ENABLED=true requires GOVERNANCE_SUMMARY_ENABLED=true",
+        });
+      }
+    }
+    if (value.GOVERNANCE_DECISION_AUDIENCE) {
+      for (const key of [
+        "GOVERNANCE_SUMMARY_AUDIENCE",
+        "ORG_DIRECTORY_TOKEN_AUDIENCE",
+        "STAFF_IDENTITY_TOKEN_AUDIENCE",
+      ] as const) {
+        if (value[key] !== value.GOVERNANCE_DECISION_AUDIENCE) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["GOVERNANCE_DECISION_AUDIENCE"],
+          message: `GOVERNANCE_DECISION_AUDIENCE must differ from ${key}`,
+        });
+      }
+    }
+
     const asetSqKeys = ["ASET_SQ_PERSON_CUSTODY_URL", "ASET_SQ_MACHINE_CLIENT_ID", "ASET_SQ_MACHINE_CLIENT_SECRET"] as const;
     if (asetSqKeys.some((key) => value[key])) {
       // All or nothing: half a configuration would only fail on first use.
@@ -443,6 +484,11 @@ export function kirimSettings(config: KirimSettingsSource) {
 
 export function isGovernanceSummaryEnabled(config: { GOVERNANCE_SUMMARY_ENABLED?: string | undefined }): boolean {
   return config.GOVERNANCE_SUMMARY_ENABLED === "true" || config.GOVERNANCE_SUMMARY_ENABLED === "1";
+}
+
+/** ORG-015: deciding from the Portal Organ Yayasan. Separate flag, separate audience. */
+export function isGovernanceDecisionsEnabled(config: { GOVERNANCE_DECISIONS_ENABLED?: string | undefined }): boolean {
+  return config.GOVERNANCE_DECISIONS_ENABLED === "true" || config.GOVERNANCE_DECISIONS_ENABLED === "1";
 }
 
 export interface OidcRuntimeConfig {

@@ -143,6 +143,8 @@ export interface PayrollReport {
     employeeCount: number;
     amount: string;
   }>;
+  /** BPJS Kesehatan and PPh21 the yayasan bears (§7, §7.5); optional for older servers. */
+  employerCostSummary?: { bpjsKesehatan: string; pph21: string; total: string };
 }
 
 export interface PayrollTransferRow {
@@ -161,7 +163,10 @@ export type PayrollPph21Flag =
   | "PTKP_CONFLICT"
   | "EXCLUDED"
   | "ANNUAL_CALCULATION_REQUIRED"
-  | "NON_PERMANENT_TERMS";
+  | "NON_PERMANENT_TERMS"
+  | "DAILY_DAYS_MISSING"
+  | "DAILY_ABOVE_CEILING"
+  | "MIXED_TERMS";
 
 /**
  * One person on the PPh21 TER report: two employments in the period are one row
@@ -179,6 +184,9 @@ export interface PayrollPph21Row {
   tax: string | null;
   flags: PayrollPph21Flag[];
   exclusionReason: string | null;
+  /** 21-100-01, or 21-100-03 for daily TER (§7.5); absent from older servers. */
+  objectCode?: string;
+  attendanceDays?: number | null;
   /** What the flags mean, in the same words as the CSV. */
   note: string;
 }
@@ -367,6 +375,9 @@ const PPH21_FLAG_LABELS: Record<PayrollPph21Flag, string> = {
   EXCLUDED: "Dikecualikan",
   ANNUAL_CALCULATION_REQUIRED: "Masa pajak terakhir — bukan angka final",
   NON_PERMANENT_TERMS: "Honorer/lepas — aturan menunggu konfirmasi",
+  DAILY_DAYS_MISSING: "TER harian — hari hadir kosong",
+  DAILY_ABOVE_CEILING: "TER harian — di atas batas harian",
+  MIXED_TERMS: "Campuran tetap dan tidak tetap — TER bulanan",
 };
 
 export function payrollPph21FlagLabel(flag: PayrollPph21Flag): string {

@@ -204,6 +204,66 @@ const PPH21_ANNUAL_SCHEMA = z.object({
 
 export type Pph21AnnualPolicy = z.infer<typeof PPH21_ANNUAL_SCHEMA>;
 
+/** Bukti potong object code for pegawai tidak tetap (PMK 168/2023). */
+export const PPH21_NON_PERMANENT_OBJECT_CODE = "21-100-03";
+
+/**
+ * PPh21 switches (specification section 7.5, decisions P6 and P10). Both are off
+ * by default, and a missing row means off: the yayasan does not bear the tax and
+ * honorer/lepas stay on monthly TER under 21-100-01, which is what v1 did before.
+ * The daily TER table is policy like every other table, never code.
+ */
+const PPH21_SETTINGS_SCHEMA = z
+  .object({
+    source: z.string().trim().min(3).max(500),
+    /** P6: the yayasan bears PPh21, written as a PPH21_EMPLOYER line on each result. */
+    employerBorne: z.boolean().default(false),
+    /** P10: KONTRAK_HONORER and LEPAS are taxed with daily TER under 21-100-03. */
+    nonPermanentDailyTer: z.boolean().default(false),
+    daily: z
+      .object({
+        objectCode: z.literal(PPH21_NON_PERMANENT_OBJECT_CODE),
+        /** Layers by average gross per attendance day, ascending, the last open-ended. */
+        brackets: terTable,
+        /**
+         * Above this average daily gross the law leaves daily TER (Pasal 17 on 50%
+         * of gross); v1 does not compute that and flags the row instead (DRAFT).
+         */
+        dailyCeiling: z.number().int().positive().nullable().default(null),
+      })
+      .nullable()
+      .default(null),
+  })
+  .superRefine((settings, ctx) => {
+    if (settings.nonPermanentDailyTer && settings.daily === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["daily"],
+        message: "tabel TER harian wajib diisi bila nonPermanentDailyTer aktif",
+      });
+    }
+  });
+
+export type Pph21Settings = z.infer<typeof PPH21_SETTINGS_SCHEMA>;
+
+/** Off/off: the behaviour without a PPH21_SETTINGS row. */
+export const DEFAULT_PPH21_SETTINGS: Pph21Settings = {
+  source: "bawaan",
+  employerBorne: false,
+  nonPermanentDailyTer: false,
+  daily: null,
+};
+
+export function parsePph21Settings(
+  payload: unknown,
+): { ok: true; settings: Pph21Settings } | { ok: false; message: string } {
+  const result = PPH21_SETTINGS_SCHEMA.safeParse(payload);
+  if (result.success) return { ok: true, settings: result.data };
+  const issue = result.error.issues[0];
+  const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
+}
+
 /** Reads a stored PPH21_ANNUAL payload, or says why it cannot be used. */
 export function parsePph21AnnualPolicy(
   payload: unknown,
@@ -270,6 +330,8 @@ const PAYLOAD_SCHEMAS = {
   PPH21_TER: PPH21_TER_SCHEMA,
   // Read by the annual calculation and the 1721-A1 (pph21-annual.ts).
   PPH21_ANNUAL: PPH21_ANNUAL_SCHEMA,
+  // Read by the PPh21 report, the annual calculation and the calculation (section 7.5).
+  PPH21_SETTINGS: PPH21_SETTINGS_SCHEMA,
 } as const;
 
 /**

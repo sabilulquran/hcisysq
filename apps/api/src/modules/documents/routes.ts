@@ -32,7 +32,7 @@ import {
   type DocumentType,
   type EmployeeFacts,
 } from "./service.js";
-import { INCOME_DOCUMENT_CODE, loadIncomeFacts } from "./income.js";
+import { INCOME_DOCUMENT_CODE, INCOME_READER_PERMISSIONS, loadIncomeFacts } from "./income.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus YYYY-MM-DD");
 
@@ -101,6 +101,23 @@ export async function registerDocumentRoutes(
 
   function forbidden(reply: FastifyReply) {
     return send(reply, 403, { code: "DOCUMENT_FORBIDDEN", message: "Anda tidak memiliki akses untuk tindakan ini." });
+  }
+
+  /**
+   * D-26 (DRAFT): an income letter states one person's pay, so issuing it or reading its content
+   * for someone else also needs a permission that already opens per-person payroll figures
+   * (PAY-003 §7.3), not documents.manage alone. The employee still reads their own letter through
+   * the self route.
+   */
+  function mayHandleIncome(granted: readonly string[]): boolean {
+    return INCOME_READER_PERMISSIONS.some((permission) => granted.includes(permission));
+  }
+
+  function incomeForbidden(reply: FastifyReply) {
+    return send(reply, 403, {
+      code: "DOCUMENT_INCOME_FORBIDDEN",
+      message: "Surat keterangan penghasilan memuat angka gaji; dibutuhkan izin baca angka payroll per orang.",
+    });
   }
 
   async function requireAccess(
@@ -530,8 +547,9 @@ export async function registerDocumentRoutes(
   app.post("/admin/documents/requests/:id/reject", (request, reply) => decideRequest(request, reply, "REJECTED"));
 
   app.post("/admin/documents/requests/:id/issue", async (request, reply) => {
-    const principal = await requirePermission(request, reply, "documents.manage");
-    if (!principal) return;
+    const access = await requireAccess(request, reply, "documents.manage");
+    if (!access) return;
+    const principal = access.principal;
     const params = idParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_DOCUMENT_ID", message: "Permintaan tidak valid." });
     const client = await pool.connect();
@@ -548,6 +566,11 @@ export async function registerDocumentRoutes(
       if (!found0) {
         await client.query("ROLLBACK");
         return send(reply, 409, { code: "DOCUMENT_REQUEST_NOT_APPROVED", message: "Permintaan belum disetujui atau sudah terbit." });
+      }
+      // D-26: the issuer sees the figures in the response, so issuing needs the payroll reader too.
+      if (found0.documentCode === INCOME_DOCUMENT_CODE && !mayHandleIncome(access.granted)) {
+        await client.query("ROLLBACK");
+        return incomeForbidden(reply);
       }
       const types = await listDocumentTypes(client);
       const type = types.find((candidate) => candidate.code === found0.documentCode)!;
@@ -591,10 +614,15 @@ export async function registerDocumentRoutes(
 
   /** HC issues directly, without a request: paklaring for an employee who has left. */
   app.post("/admin/documents/issue", async (request, reply) => {
-    const principal = await requirePermission(request, reply, "documents.manage");
-    if (!principal) return;
+    const access = await requireAccess(request, reply, "documents.manage");
+    if (!access) return;
+    const principal = access.principal;
     const body = directIssueBody.safeParse(request.body);
     if (!body.success) return send(reply, 400, { code: "INVALID_DOCUMENT_REQUEST", message: "Data penerbitan tidak valid." });
+    // D-26: refused before anything is read about the employee.
+    if (body.data.documentCode === INCOME_DOCUMENT_CODE && !mayHandleIncome(access.granted)) {
+      return incomeForbidden(reply);
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -691,8 +719,10 @@ export async function registerDocumentRoutes(
     );
     const document = found.rows[0];
     if (!document) return send(reply, 404, { code: "DOCUMENT_NOT_FOUND", message: "Surat tidak ditemukan." });
-    if (document.documentCode === INCOME_DOCUMENT_CODE && !access.granted.includes("documents.manage")) {
-      return forbidden(reply);
+    if (document.documentCode === INCOME_DOCUMENT_CODE) {
+      if (!access.granted.includes("documents.manage")) return forbidden(reply);
+      // D-26: and a permission that already opens per-person payroll figures (PAY-003 §7.3).
+      if (!mayHandleIncome(access.granted)) return incomeForbidden(reply);
     }
     await writeDocumentAudit(pool, {
       eventType: "doc.opened",

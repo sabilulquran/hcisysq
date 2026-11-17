@@ -99,7 +99,9 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
       [accountId, employeeId, `doc-${accountId}@example.invalid`],
     );
     principal = { id: accountId, email: "doc@example.invalid", principalType: "EMPLOYEE" };
-    permissions = ["documents.read", "documents.manage"];
+    // HC as it issues income letters: documents plus a per-person payroll reader (D-26). Tests
+    // that are about the reader narrow this themselves.
+    permissions = ["documents.read", "documents.manage", "payroll.results.read.organization"];
 
     const config = { NODE_ENV: "test", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8 } as ApiConfig;
     app = Fastify({ logger: false });
@@ -494,6 +496,62 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(snapshot.rows[0]?.income).toMatchObject({ monthCount: 1, averageGross: "3000000", averageNet: "2800000" });
   });
 
+  it("DOC-001-N (D-26): issuing or reading someone else's income letter needs a payroll per-person reader", async () => {
+    await addSigner();
+    await seedOfficialSlips();
+    const requestId = await requestIncome();
+
+    // documents.read + documents.manage only (human_capital_admin without payroll figures).
+    permissions = ["documents.read", "documents.manage"];
+    const approve = await app.inject({ method: "POST", url: `/admin/documents/requests/${requestId}/approve`, payload: {} });
+    expect(approve.statusCode, approve.body).toBe(200);
+    const skpBefore = await counterFor("SKP");
+    const refused = await app.inject({ method: "POST", url: `/admin/documents/requests/${requestId}/issue`, payload: {} });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.json().code).toBe("DOCUMENT_INCOME_FORBIDDEN");
+    for (const amount of AMOUNTS) expect(refused.body).not.toContain(amount);
+    // Nothing issued, no number used, the request stays APPROVED for a permitted issuer.
+    const state = await client.query(`SELECT status FROM hr_document_requests WHERE id = $1`, [requestId]);
+    expect(state.rows[0]).toEqual({ status: "APPROVED" });
+    expect(await counterFor("SKP")).toBe(skpBefore);
+    const direct = await app.inject({
+      method: "POST",
+      url: "/admin/documents/issue",
+      payload: { employeeId: otherEmployeeId, documentCode: "KETERANGAN_PENGHASILAN", purpose: "Pengajuan kredit" },
+    });
+    expect(direct.statusCode, direct.body).toBe(403);
+    expect(direct.json().code).toBe("DOCUMENT_INCOME_FORBIDDEN");
+    // Other letters are unaffected.
+    expect((await approveAndIssue(await submitRequest())).statusCode).toBe(201);
+
+    // Each of the three payroll readers opens issuing and reading.
+    for (const reader of ["payroll.results.read.organization", "payroll.calculate", "payroll.inputs.manage"]) {
+      permissions = ["documents.read", "documents.manage", reader];
+      expect((await app.inject({ method: "GET", url: "/admin/documents/register?kind=CERTIFICATE" })).statusCode).toBe(200);
+    }
+    permissions = ["documents.read", "documents.manage", "payroll.inputs.manage"];
+    const issued = await app.inject({ method: "POST", url: `/admin/documents/requests/${requestId}/issue`, payload: {} });
+    expect(issued.statusCode, issued.body).toBe(201);
+    const incomeId = issued.json().id as string;
+    expect((await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` })).statusCode).toBe(200);
+
+    // A payroll reader alone is not documents.manage: the route itself stays closed.
+    permissions = ["documents.read", "payroll.results.read.organization"];
+    const noManage = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
+    expect(noManage.statusCode).toBe(403);
+    expect(noManage.json().code).toBe("DOCUMENT_FORBIDDEN");
+    // documents.manage without a payroll reader: refused with its own code, and no doc.opened.
+    permissions = ["documents.read", "documents.manage"];
+    const noReader = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
+    expect(noReader.statusCode).toBe(403);
+    expect(noReader.json().code).toBe("DOCUMENT_INCOME_FORBIDDEN");
+    for (const amount of AMOUNTS) expect(noReader.body).not.toContain(amount);
+
+    // The employee still reads their own letter by ownership, with no permission at all (D-20).
+    permissions = [];
+    expect((await app.inject({ method: "GET", url: `/documents/me/issued/${incomeId}` })).statusCode).toBe(200);
+  });
+
   it("DOC-001-M: HC reads an issued letter by permission; income content needs documents.manage", async () => {
     await addSigner();
     await seedOfficialSlips();
@@ -518,8 +576,8 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     // Another employee's self route never serves the letter.
     expect((await app.inject({ method: "GET", url: `/documents/me/issued/${incomeId}` })).statusCode).toBe(404);
 
-    // documents.read + documents.manage (human_capital_admin): the full letter, audited, no-store.
-    permissions = ["documents.read", "documents.manage"];
+    // documents.read + documents.manage + a payroll per-person reader: the full letter, audited, no-store.
+    permissions = ["documents.read", "documents.manage", "payroll.calculate"];
     const full = await app.inject({ method: "GET", url: `/admin/documents/issued/${incomeId}` });
     expect(full.statusCode, full.body).toBe(200);
     expect(full.headers["cache-control"]).toBe("no-store");

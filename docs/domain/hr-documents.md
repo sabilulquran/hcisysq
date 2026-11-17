@@ -73,6 +73,7 @@ Termasuk (Paket 2, 2026-11-17):
 | D-23 | Angka yang dibaca per slip: **penghasilan bruto** dari baris berlabel "Total Bruto Gaji"/"Total Bruto" (impor tetap), "Total Penghasilan" (impor honorer), atau "Total pendapatan" (PAY-003); **penghasilan neto** dari baris "Gaji Neto"/"Gaji Netto" (impor) atau "Gaji bersih" (PAY-003). Label dicocokkan tanpa membedakan huruf besar/kecil dan spasi. "Gaji Neto 80%", "Gaji Prorata", dan "Nominal dibayar" sengaja **tidak** dipakai: itu jumlah yang dibayar setelah faktor bayar, bukan penghasilan. Nilai dibaca persis dari teks slip (format `Rp1.234.567`, `1.234.567`, `1,234,567`, atau angka polos); slip yang angka bruto atau netonya tidak terbaca menolak penerbitan dengan `409 DOCUMENT_INCOME_UNREADABLE` yang menyebut periodenya, bukan nominalnya. | DRAFT (2026-11-17) |
 | D-24 | Surat memuat, per bulan, periode, penghasilan bruto, dan penghasilan neto, ditambah **rata-rata per bulan** keduanya (dibulatkan ke rupiah terdekat, setengah ke atas). Angka dibekukan di snapshot saat terbit (§4.1, kunci `income`); revisi slip sesudahnya tidak mengubah surat yang sudah terbit. Surat hanya untuk pegawai **aktif** (seperti `KETERANGAN_KERJA`, D-06), dapat diminta sendiri atau diterbitkan langsung oleh HC. | DRAFT (2026-11-17) |
 | D-25 | Membaca isi surat keterangan oleh HC: `GET /admin/documents/issued/:id` dengan `documents.read`. Untuk **surat keterangan penghasilan** dibutuhkan juga `documents.manage`, karena isinya angka penghasilan: pemegang `documents.read` saja (`document_corrector`) melihat baris register (nomor, pegawai, status, tanggal, penandatangan, seperti D-18) dan tetap dapat membatalkannya (D-16), tetapi tidak membaca isinya (`403 DOCUMENT_FORBIDDEN`). Isi surat penghasilan hanya sampai ke pemegang `documents.manage` (`human_capital_admin`) dan ke pegawai ybs lewat D-20. Setiap pembacaan menulis `doc.opened` dengan `surface: "admin"`. Surat peringatan, surat tugas, dan SK panitia tidak dilayani endpoint ini (404). | DRAFT (2026-11-17) |
+| D-26 | **Isi surat keterangan penghasilan pegawai lain = angka gaji per orang**, sehingga disamakan dengan PAY-003 §7.3 (#357): **menerbitkan** surat penghasilan (dari permintaan maupun langsung) dan **membaca isinya** lewat D-25 mensyaratkan, di samping `documents.manage`, salah satu izin baca angka payroll per orang — `payroll.results.read.organization`, `payroll.calculate`, atau `payroll.inputs.manage`. Tanpa itu: `403 DOCUMENT_INCOME_FORBIDDEN`, tanpa angka di respons, tanpa nomor terpakai, permintaan tetap `APPROVED`, dan tanpa `doc.opened`. Menyetujui atau menolak permintaan tidak membuka angka sehingga tetap `documents.manage`. Pegawai tetap membaca suratnya sendiri lewat D-20 tanpa izin. Layar register hanya menawarkan **Lihat surat** untuk surat penghasilan kepada akun yang memegang keduanya. Menggantikan bagian D-25 yang menyatakan `documents.manage` saja cukup. | DRAFT (2026-11-17, permintaan koordinator) |
 | D-17 | Setiap migrasi yang menambahkan izin ke sebuah role harus dijalankan **setelah** build yang mengenal kunci izin itu berjalan. `canDelegateRole` menolak role yang membawa izin di luar allowlist-nya, sehingga build lama akan menolak pemberian/pencabutan role tersebut selama jendela antara migrasi dan restart. | ACCEPTED (2026-10-27) |
 
 ## 4. Objek
@@ -130,7 +131,7 @@ ISSUED/ACKNOWLEDGED -> EXPIRED  (turunan tanggal, bukan state tersimpan)
 | Permission | Arti |
 | --- | --- |
 | `documents.read` | Melihat register surat dan permintaan seluruh pegawai, serta isi surat keterangan selain surat keterangan penghasilan (D-25) |
-| `documents.manage` | Memutuskan permintaan surat keterangan dan menerbitkannya; bersama `documents.read`, membaca isi surat keterangan penghasilan (D-25) |
+| `documents.manage` | Memutuskan permintaan surat keterangan dan menerbitkannya; bersama `documents.read` **dan** izin baca angka payroll per orang, menerbitkan dan membaca isi surat keterangan penghasilan (D-25, D-26) |
 | `documents.discipline.manage` | Menerbitkan dan membaca surat peringatan |
 | `documents.correct` | Membatalkan surat yang sudah terbit |
 
@@ -196,7 +197,8 @@ DOC-001:
 - DOC-001-H: isi surat tidak memuat gaji, rekening, atau alamat rumah. Satu-satunya pengecualian adalah angka penghasilan pada surat keterangan penghasilan (D-15 revisi, D-24); surat itu pun tidak memuat NIK, NPWP, rekening, alamat, atau rincian komponen slip.
 - DOC-001-I: ~~jenis `KETERANGAN_PENGHASILAN` tidak dapat diajukan di Paket 1.~~ Sejak Paket 2 (migrasi 0154): pegawai aktif dapat mengajukan surat keterangan penghasilan; saat terbit, surat membekukan bruto dan neto setiap bulan dalam rentang D-22 dari slip resmi D-21 serta rata-ratanya, dan revisi slip sesudahnya tidak mengubah surat.
 - DOC-001-L: tanpa slip resmi terbit dalam rentang D-22, penerbitan ditolak `409 DOCUMENT_INCOME_UNAVAILABLE`, permintaan tetap `APPROVED`, dan nomor tidak terpakai; slip yang angkanya tidak terbaca ditolak `409 DOCUMENT_INCOME_UNREADABLE` dengan periode, tanpa nominal. Draf slip, slip yang digantikan revisi, slip bulan berjalan, dan slip pegawai lain tidak ikut dihitung. Pegawai nonaktif ditolak `DOCUMENT_EMPLOYMENT_STATE`.
-- DOC-001-M: isi surat keterangan penghasilan hanya terbaca oleh pegawai ybs (D-20) dan pemegang `documents.read` + `documents.manage` (D-25); pemegang `documents.read` saja menerima 403 tanpa isi tetapi tetap melihat baris register dan dapat membatalkannya; tanpa `documents.read` 403; surat peringatan 404. Audit, notifikasi, register, dan daftar surat pegawai tidak memuat nominal.
+- DOC-001-M: isi surat keterangan penghasilan hanya terbaca oleh pegawai ybs (D-20) dan pemegang `documents.read` + `documents.manage` + izin baca angka payroll per orang (D-25, D-26); pemegang `documents.read` saja menerima 403 tanpa isi tetapi tetap melihat baris register dan dapat membatalkannya; tanpa `documents.read` 403; surat peringatan 404. Audit, notifikasi, register, dan daftar surat pegawai tidak memuat nominal.
+- DOC-001-N: tanpa `payroll.results.read.organization`, `payroll.calculate`, atau `payroll.inputs.manage`, pemegang `documents.manage` tidak dapat menerbitkan surat penghasilan (permintaan maupun langsung) atau membaca isinya: `403 DOCUMENT_INCOME_FORBIDDEN`, tanpa angka, tanpa nomor terpakai; dengan salah satu izin itu keduanya berhasil; pegawai tetap membaca suratnya sendiri (D-26).
 
 DOC-002:
 
@@ -274,7 +276,7 @@ Bunyi surat (DRAFT, dapat disesuaikan HC lewat perubahan spesifikasi):
 - Keperluan: "Surat keterangan ini dibuat untuk keperluan: <keperluan pada permintaan>." (dilewati bila kosong).
 - Penutup: "Demikian surat keterangan ini dibuat untuk dipergunakan sebagaimana mestinya.", tanggal terbit (zona Asia/Jakarta), jabatan dan nama penandatangan dari blok penandatangan.
 
-## 14. Surat keterangan penghasilan (Paket 2, D-21..D-25)
+## 14. Surat keterangan penghasilan (Paket 2, D-21..D-26)
 
 Ditambahkan 2026-11-17. Seluruh aturan bisnis di bagian ini `DRAFT` sampai dikonfirmasi pemilik produk (§11 butir 7).
 
@@ -285,7 +287,7 @@ Ditambahkan 2026-11-17. Seluruh aturan bisnis di bagian ini `DRAFT` sampai dikon
 | Layar | Pegawai: `/app/documents`, jenis **Surat Keterangan Penghasilan** pada formulir permintaan, lalu **Lihat & cetak** seperti D-20. HC: `/admin/documents`, antrean permintaan (**Setujui**, **Terbitkan**), dan tombol **Lihat surat** di register yang hanya ditawarkan untuk surat penghasilan bila akun membawa `documents.manage`. |
 | Input | Keperluan (5–500 karakter) pada permintaan; HC dapat menerbitkan langsung lewat `POST /admin/documents/issue`. Angka penghasilan **tidak** diinput siapa pun; dibaca dari slip (D-21, D-23). |
 | Transisi | Sama dengan surat keterangan lain (§5.1). Penerbitan membaca slip, menyusun angka, mengalokasikan nomor `SKP`, dan menyimpan snapshot dalam satu transaksi. |
-| Permission | Lihat D-25 dan §6; pegawai lewat kepemilikan (D-20). |
+| Permission | Lihat D-25, D-26 dan §6; pegawai lewat kepemilikan (D-20). |
 | Audit | `doc.request.*`, `doc.issued` (dengan `payslipIds` dan `incomePeriods`, tanpa nominal), `doc.opened` (pegawai, atau HC dengan `surface: "admin"`), `doc.revoked`. |
 | Kegagalan | Tidak ada slip resmi dalam rentang → `409 DOCUMENT_INCOME_UNAVAILABLE`; angka slip tidak terbaca → `409 DOCUMENT_INCOME_UNREADABLE`; pegawai nonaktif → `409 DOCUMENT_EMPLOYMENT_STATE`; tanpa penandatangan → `409 DOCUMENT_SIGNER_UNAVAILABLE`. Pada semua kegagalan permintaan tetap `APPROVED` dan nomor tidak terpakai; pesan galat menyebut periode, tidak pernah nominal. HC tanpa `documents.manage` membuka isi → `403 DOCUMENT_FORBIDDEN`. |
 

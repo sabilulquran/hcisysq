@@ -65,7 +65,8 @@ describe("DOC-001 D-25 Lihat surat", () => {
     ...revokedCertificate, status: "ISSUED", revokedAt: null, revokeReason: null,
     documentCode: "KETERANGAN_PENGHASILAN", documentNumber: "1/SKP/YSQ/XI/2026",
   };
-  // Mirrors AdminDocumentsPage: an income letter only with documents.manage.
+  // Mirrors AdminDocumentsPage: an income letter only with documents.manage plus a payroll
+  // per-person reader (D-26); the boolean below is that combined decision.
   const viewWith = (canManage: boolean) => (entry: RegisterEntry) =>
     entry.documentCode !== "KETERANGAN_PENGHASILAN" || canManage;
   const viewRow = (entry: RegisterEntry, canManage: boolean) => renderToStaticMarkup(
@@ -73,7 +74,7 @@ describe("DOC-001 D-25 Lihat surat", () => {
       canView={viewWith(canManage)} onView={() => {}} /></ul>,
   );
 
-  it("offers an income letter only to an account that also manages documents", () => {
+  it("offers an income letter only to an account that manages documents and reads payroll figures", () => {
     expect(viewRow(incomeCertificate, true)).toContain("Lihat surat");
     expect(viewRow(incomeCertificate, false)).not.toContain("Lihat surat");
   });

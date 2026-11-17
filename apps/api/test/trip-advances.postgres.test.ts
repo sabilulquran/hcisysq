@@ -400,6 +400,24 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     expect(mine.map((row) => `${row.title} ${row.body} ${row.whatsappText}`).join(" ")).not.toMatch(/750|Rp/);
   });
 
+  it("TRIP-002-D/09: a cancelled trip is due 14 days after its cancellation event, not its last update", async () => {
+    const tripId = await insertTrip("APPROVED", today, daysBefore(today, -20));
+    const id = await approvedAdvance(tripId, 500_000);
+    expect((await finance("POST", `/admin/trip-advances/${id}/disburse`, transaction())).statusCode).toBe(201);
+    // Cancelled 20 days ago per TRIP-001's event; the row was touched again today.
+    await client.query(
+      "UPDATE business_trip_requests SET status = 'CANCELLED', cancel_reason = 'Acara dibatalkan penyelenggara', updated_at = now() WHERE id = $1",
+      [tripId],
+    );
+    await client.query(
+      `INSERT INTO business_trip_events (id, request_id, event_type, actor_account_id, note, occurred_at)
+       VALUES ($1, $2, 'trip.request.cancelled', $3, 'Acara dibatalkan penyelenggara', ($4::date + time '10:00') AT TIME ZONE 'Asia/Jakarta')`,
+      [randomUUID(), tripId, people.requester.accountId, daysBefore(today, 20)],
+    );
+    const register = await finance("GET", `/admin/trip-advances?employeeId=${people.requester.employeeId}`);
+    expect(register.json().items).toEqual([expect.objectContaining({ id, dueOn: daysBefore(today, 6), overdue: true })]);
+  });
+
   it("TRIP-002-I: permissions guard the register, the actions and the rate table", async () => {
     const tripId = await insertTrip();
     const id = await approvedAdvance(tripId, 500_000);

@@ -42,6 +42,9 @@ export const ENDED_TRIP_STATUSES = ["CANCELLED", "REJECTED"] as const;
 export const TRANSACTION_METHODS = ["CASH", "TRANSFER"] as const;
 export type TransactionMethod = (typeof TRANSACTION_METHODS)[number];
 
+/** The database ceiling of every settlement amount column (claims_total, per_diem_amount). */
+export const MAX_SETTLEMENT_AMOUNT = 1_000_000_000n;
+
 export const MAX_EXPORT_DAYS = 366;
 export const MAX_EXPORT_ROWS = 20_000;
 
@@ -51,7 +54,8 @@ export type TripAdvancePolicyCode =
   | "TRIP_ADVANCE_REDUCTION_NOTE_REQUIRED"
   | "TRIP_PER_DIEM_RATE_MISSING"
   | "TRIP_ADVANCE_PAYMENT_DATE"
-  | "TRIP_ADVANCE_REFUND_EXCEEDS_DUE";
+  | "TRIP_ADVANCE_REFUND_EXCEEDS_DUE"
+  | "TRIP_ADVANCE_SETTLEMENT_TOO_LARGE";
 
 export class TripAdvancePolicyError extends Error {
   constructor(readonly code: TripAdvancePolicyCode, message: string) {
@@ -101,9 +105,19 @@ export function settlementDueOn(trip: { status: string; endOn: string; cancelled
   return addDays(base, SETTLEMENT_DUE_DAYS);
 }
 
-/** D-09 in SQL over a `trip` alias of business_trip_requests: the same deadline as settlementDueOn. */
-export const DUE_ON_SQL = `(CASE WHEN trip.status = 'CANCELLED' AND (trip.updated_at AT TIME ZONE 'Asia/Jakarta')::date < trip.end_on
-  THEN (trip.updated_at AT TIME ZONE 'Asia/Jakarta')::date ELSE trip.end_on END + ${SETTLEMENT_DUE_DAYS})`;
+/** The day a cancelled `trip` was cancelled (WIB), from its TRIP-001 cancellation event. */
+export const CANCELLED_ON_SQL = `(SELECT (COALESCE(
+    (SELECT max(cancel_event.occurred_at) FROM business_trip_events cancel_event
+      WHERE cancel_event.request_id = trip.id AND cancel_event.event_type = 'trip.request.cancelled'),
+    trip.updated_at) AT TIME ZONE 'Asia/Jakarta')::date)`;
+
+/**
+ * D-09 in SQL over a `trip` alias of business_trip_requests: the same deadline as settlementDueOn.
+ * A cancelled trip is dated by its TRIP-001 cancellation event, falling back to the row's last
+ * update only for a trip cancelled without one.
+ */
+export const DUE_ON_SQL = `(CASE WHEN trip.status = 'CANCELLED' AND ${CANCELLED_ON_SQL} < trip.end_on
+  THEN ${CANCELLED_ON_SQL} ELSE trip.end_on END + ${SETTLEMENT_DUE_DAYS})`;
 
 export interface SettlementInput {
   advanceAmount: bigint;
@@ -144,6 +158,13 @@ export function settle(input: SettlementInput): SettlementResult {
   }
   const perDiemAmount = BigInt(input.perDiemDays) * (input.dailyRate ?? 0n);
   const claimsTotal = input.claims.reduce((sum, value) => sum + value, 0n);
+  // The stored columns are capped at Rp1.000.000.000 (migration 0160); refuse, never overflow.
+  if (claimsTotal > MAX_SETTLEMENT_AMOUNT || perDiemAmount > MAX_SETTLEMENT_AMOUNT) {
+    throw new TripAdvancePolicyError(
+      "TRIP_ADVANCE_SETTLEMENT_TOO_LARGE",
+      `Total klaim atau uang harian melebihi ${formatRupiah(MAX_SETTLEMENT_AMOUNT)}; selesaikan sebagian klaim di luar uang muka ini.`,
+    );
+  }
   const balance = perDiemAmount + claimsTotal - input.advanceAmount;
   const status = balance === 0n ? "SETTLED" : balance > 0n ? "AWAITING_TOP_UP" : "AWAITING_REFUND";
   return { perDiemAmount, claimsTotal, balance, status };

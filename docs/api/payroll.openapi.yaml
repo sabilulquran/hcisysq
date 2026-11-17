@@ -491,6 +491,7 @@ paths:
           description: >-
             PAYROLL_NOT_APPROVED_YET before approval; PPH21_TER_POLICY_MISSING when
             no PPH21_TER version is effective on the pay date;
+            PPH21_SETTINGS_POLICY_INVALID when the effective PPH21_SETTINGS row (§7.5) does not parse;
             PPH21_TER_POLICY_INVALID when the effective version does not have the
             required shape.
           content:
@@ -1055,6 +1056,13 @@ components:
               category: { type: string, enum: [EARNING, DEDUCTION, EMPLOYER_COST] }
               employeeCount: { type: integer }
               amount: { type: string }
+        employerCostSummary:
+          type: object
+          description: "BPJS Kesehatan (BPJS_KES_ALLOW) and PPh21 (PPH21_EMPLOYER, only when PPH21_SETTINGS.employerBorne) the yayasan bears; period aggregates (§7.5)."
+          properties:
+            bpjsKesehatan: { type: string }
+            pph21: { type: string }
+            total: { type: string }
 
     PayrollTransferRow:
       type: object
@@ -1203,6 +1211,7 @@ components:
             ptkpMissingCount: { type: integer }
             annualCalculationCount: { type: integer }
             nonPermanentCount: { type: integer }
+            dailyCount: { type: integer, description: "Rows taxed with daily TER under 21-100-03 (§7.5)." }
             skippedBlockedCount: { type: integer, description: 'Employment results with a blocker, not paid and not reported.' }
         rows:
           type: array
@@ -1226,7 +1235,9 @@ components:
         tax: { type: [string, 'null'] }
         flags:
           type: array
-          items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS] }
+          items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS, DAILY_DAYS_MISSING, DAILY_ABOVE_CEILING, MIXED_TERMS] }
+        objectCode: { type: string, description: "21-100-01, or 21-100-03 when taxed with daily TER (PAY-003 §7.5, PPH21_SETTINGS.nonPermanentDailyTer)." }
+        attendanceDays: { type: [number, 'null'], description: "Attendance days daily TER averaged over; null on monthly TER." }
         exclusionReason: { type: [string, 'null'] }
         note: { type: string, description: 'The flags in words, identical to the CSV note column.' }
 

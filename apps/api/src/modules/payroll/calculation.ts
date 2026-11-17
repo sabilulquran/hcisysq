@@ -28,7 +28,10 @@ import {
   type PerformanceLinkTrace,
 } from "./performance-link.js";
 import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
-import { resolvePolicy, type PolicyProblem } from "./policy.js";
+import { DEFAULT_PPH21_SETTINGS, parsePph21Settings, parsePph21TerPolicy, resolvePolicy, type PolicyProblem } from "./policy.js";
+import { needsAnnualCalculation, type Pph21SourceRow } from "./pph21.js";
+import { findPph21AnnualPolicy, loadAnnualMonths } from "./pph21-annual-store.js";
+import { employerPph21Lines } from "./pph21-employer.js";
 import { bindReimbursementHandoffs } from "./reimbursement-link.js";
 import { writeAudit } from "./store.js";
 
@@ -103,6 +106,8 @@ type ProfileRow = {
   bpjsExtraFamilyOverride: number | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
+  ptkpStatus: string | null;
+  pph21Excluded: boolean | null;
 };
 
 type InputRow = {
@@ -429,7 +434,8 @@ export async function calculatePeriod(
               bpjs_segment AS "bpjsSegment",
               to_char(bpjs_active_from, 'YYYY-MM-DD') AS "bpjsActiveFrom",
               bpjs_extra_family_override AS "bpjsExtraFamilyOverride",
-              bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName"
+              bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName",
+              ptkp_status AS "ptkpStatus", pph21_report_excluded AS "pph21Excluded"
        FROM payroll_compensation_profiles
        WHERE employment_id = ANY($1::uuid[])
          AND effective_from <= $2::date
@@ -476,6 +482,53 @@ export async function calculatePeriod(
     const skipped: CalculationOutcome["skipped"] = [];
     const resultRows: Array<Record<string, unknown>> = [];
     const lineRows: Array<Record<string, unknown>> = [];
+    const pph21Sources: Pph21SourceRow[] = [];
+    const resultByEmployment = new Map<
+      string,
+      { result: EmployeePayrollResult; row: Record<string, unknown>; resultId: string }
+    >();
+
+    // PPh21 switches (section 7.5). Read from the same policy rows as the rest of
+    // the run; an unreadable row or a borne tax without a TER table fails closed,
+    // like any other statutory policy missing for the pay date (section 5.4).
+    const settingsRow = policyRows.rows.find((row) => row.policyKey === "PPH21_SETTINGS");
+    const parsedSettings = settingsRow ? parsePph21Settings(settingsRow.payload) : null;
+    const terRow = policyRows.rows.find((row) => row.policyKey === "PPH21_TER");
+    const parsedTer = terRow ? parsePph21TerPolicy(terRow.payload) : null;
+    const pph21Problems: PolicyProblem[] = [];
+    if (parsedSettings && !parsedSettings.ok) {
+      pph21Problems.push({ policyKey: "PPH21_SETTINGS", code: "INVALID", message: `Isi kebijakan PPH21_SETTINGS tidak sesuai bentuk: ${parsedSettings.message}.` });
+    }
+    const pph21Settings = parsedSettings?.ok ? parsedSettings.settings : DEFAULT_PPH21_SETTINGS;
+    if (pph21Settings.employerBorne && !parsedTer?.ok) {
+      pph21Problems.push({
+        policyKey: "PPH21_TER",
+        code: parsedTer ? "INVALID" : "MISSING",
+        message: "PPh21 ditanggung yayasan aktif, tetapi tabel PPH21_TER tidak tersedia atau tidak valid untuk tanggal gajian ini.",
+      });
+    }
+    if (pph21Problems.length > 0) {
+      await client.query("ROLLBACK");
+      return { employeeCount: 0, blockerCount: 0, skipped: [], policyProblems: pph21Problems, conflict: false };
+    }
+    const terPolicy = parsedTer?.ok ? parsedTer.policy : null;
+    // Whether each person keeps an employment with this employer past the period:
+    // ending one of two is not a final masa pajak (section 7.2).
+    const continuingEmployees = new Set(
+      pph21Settings.employerBorne
+        ? (
+            await client.query<{ employeeId: string }>(
+              `SELECT DISTINCT e.employee_id AS "employeeId" FROM employments e
+               WHERE e.employee_id = ANY($1::uuid[])
+                 AND e.voided_by_action_id IS NULL
+                 AND coalesce(e.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                     = coalesce($2::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+                 AND (e.ended_on IS NULL OR e.ended_on > $3::date)`,
+              [employeeIds, period.legalEntityKey, period.periodEnd],
+            )
+          ).rows.map((row) => row.employeeId)
+        : [],
+    );
 
     for (const employment of employments) {
       const loan = loans.get(employment.employeeId) ?? { outstanding: 0, deduction: 0 };
@@ -588,6 +641,85 @@ export async function calculatePeriod(
           display_order: (index + 1) * 10,
         });
       }
+
+      const usedProfile = profileByEmployment.get(employment.employmentId);
+      pph21Sources.push({
+        employmentId: employment.employmentId,
+        employeeId: employment.employeeId,
+        employeeNumber: "",
+        fullName: "",
+        ptkpStatus: usedProfile?.ptkpStatus ?? null,
+        excluded: usedProfile?.pph21Excluded ?? false,
+        exclusionReason: null,
+        payFactor: result.payFactor,
+        blockerCount: result.blockers.length,
+        serviceEndDate: employment.serviceEndDate,
+        hasContinuingEmployment: continuingEmployees.has(employment.employeeId),
+        termCategory: employment.termCategory,
+        earnings: result.lines.filter((line) => line.category === "EARNING").map((line) => ({ code: line.code, amount: line.amount })),
+        deductions: result.lines.filter((line) => line.category === "DEDUCTION").map((line) => ({ code: line.code, amount: line.amount })),
+        attendanceDays: employmentInputs.contractAttendanceDays,
+      });
+      resultByEmployment.set(employment.employmentId, { result, row: resultRows[resultRows.length - 1]!, resultId });
+    }
+
+    // PAY-003 section 7.5 (P6): PPh21 borne by the yayasan. Off unless the
+    // PPH21_SETTINGS in force says so, and then written as one EMPLOYER_COST
+    // line per person; off, not one figure changes.
+    const pph21VersionIds: string[] = [];
+    if (pph21Settings.employerBorne && terPolicy) {
+      const year = Number(period.periodStart.slice(0, 4));
+      const reportPeriod = { periodMonth: period.periodStart, periodStart: period.periodStart, periodEnd: period.periodEnd };
+      // Only people whose service ends inside this period, or everyone in
+      // December, settle the year; nobody else needs the earlier months read.
+      const settling = pph21Sources.filter((source) =>
+        needsAnnualCalculation(reportPeriod, [source.serviceEndDate], source.hasContinuingEmployment),
+      );
+      let annual: Parameters<typeof employerPph21Lines>[0]["annual"] = null;
+      if (settling.length > 0) {
+        const annualPolicy = await findPph21AnnualPolicy(client, year);
+        if (annualPolicy.ok) {
+          const earlier = await loadAnnualMonths(client, year, annualPolicy.policy, {
+            beforeMonth: period.periodStart.slice(0, 7),
+          });
+          // An earlier month of the year that is not final (never approved, or
+          // reopened) or had no TER table leaves the year incomplete: the line
+          // stays on TER and says so, rather than settling on missing months.
+          if (earlier.pendingPeriods.length === 0 && earlier.periodsWithoutTer.length === 0) {
+            const settlingIds = new Set(settling.map((source) => source.employeeId));
+            annual = {
+              policy: annualPolicy.policy,
+              priorMonths: earlier.months.filter((month) => settlingIds.has(month.employeeId)),
+            };
+            pph21VersionIds.push(annualPolicy.versionId);
+          }
+        }
+      }
+      const employerLines = employerPph21Lines({
+        period: reportPeriod,
+        terPolicy,
+        settings: pph21Settings,
+        rows: pph21Sources,
+        annual,
+      });
+      // The results record every policy row the line was computed from (ADR-0003).
+      if (settingsRow) pph21VersionIds.push(settingsRow.id);
+      if (terRow) pph21VersionIds.push(terRow.id);
+      for (const [employmentId, line] of employerLines) {
+        const target = resultByEmployment.get(employmentId);
+        if (!target) continue;
+        target.result.employerCost += line.amount;
+        target.row.employer_cost = target.result.employerCost;
+        lineRows.push({
+          id: randomUUID(),
+          result_id: target.resultId,
+          component_code: "PPH21_EMPLOYER",
+          category: "EMPLOYER_COST",
+          amount: line.amount,
+          basis: line.basis,
+          display_order: 3000,
+        });
+      }
     }
 
     // Two statements rather than one per employee and one per line: a few hundred
@@ -609,7 +741,7 @@ export async function calculatePeriod(
            gross bigint, deductions bigint, net bigint, payable bigint, employer_cost bigint,
            pay_factor numeric, pay_factor_reason text, bpjs_base bigint, extra_family_members integer,
            blockers jsonb, input_snapshot jsonb, compensation_profile_id uuid)`,
-        [period.id, JSON.stringify(resultRows), JSON.stringify(resolved.versionIds)],
+        [period.id, JSON.stringify(resultRows), JSON.stringify([...resolved.versionIds, ...pph21VersionIds])],
       );
     }
 

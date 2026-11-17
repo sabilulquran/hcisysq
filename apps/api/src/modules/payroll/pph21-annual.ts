@@ -286,6 +286,8 @@ export function annualMonthsOfPeriod(input: {
   rows: readonly Pph21SourceRow[];
   /** Tax per employee from the monthly TER report, or null when the report could not be built. */
   terTaxByEmployee: ReadonlyMap<string, number | null> | null;
+  /** People taxed with daily TER under 21-100-03 that month: no annual settlement (section 7.5). */
+  dailyEmployeeIds?: ReadonlySet<string>;
   policy: Pick<Pph21AnnualPolicy, "lineByComponent" | "pensionContributionComponents">;
 }): AnnualMonth[] {
   const people = new Map<string, Pph21SourceRow[]>();
@@ -295,6 +297,7 @@ export function annualMonthsOfPeriod(input: {
   for (const [employeeId, employments] of people) {
     const paid = employments.filter((row) => row.blockerCount === 0);
     if (paid.length === 0 || paid.some((row) => row.excluded)) continue;
+    if (input.dailyEmployeeIds?.has(employeeId)) continue;
     const lines = emptyA1Lines();
     let gross = 0;
     let pension = 0;

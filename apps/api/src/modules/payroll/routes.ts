@@ -41,6 +41,7 @@ import {
   buildTransferList,
   buildVariance,
   findPph21Policy,
+  findPph21Settings,
   loadPph21SourceRows,
   pph21ReportToCsv,
   pph21RowNote,
@@ -806,10 +807,16 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 409, { code: lookup.code, message: lookup.message });
     }
 
+    const settings = await findPph21Settings(pool, period.payDate);
+    if (!settings.ok) {
+      return send(reply, 409, { code: settings.code, message: settings.message });
+    }
+
     const report = buildPph21Report({
       period: { periodMonth: period.periodMonth, periodStart: period.periodStart, periodEnd: period.periodEnd },
       policy: lookup.policy,
       rows: await loadPph21SourceRows(pool, period.id),
+      settings: settings.settings,
     });
     await recordSensitiveRead(
       actor.accountId,

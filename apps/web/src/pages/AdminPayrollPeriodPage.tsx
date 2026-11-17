@@ -330,6 +330,18 @@ export function AdminPayrollPeriodPage() {
                 <dt className="text-muted-foreground">Biaya yayasan</dt>
                 <dd className="font-medium">{formatRupiah(report.totals.employerCost)}</dd>
               </div>
+              {report.employerCostSummary ? (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground">BPJS Kesehatan ditanggung yayasan</dt>
+                    <dd className="font-medium">{formatRupiah(report.employerCostSummary.bpjsKesehatan)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">PPh21 ditanggung yayasan</dt>
+                    <dd className="font-medium">{formatRupiah(report.employerCostSummary.pph21)}</dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
           </section>
         ) : null}

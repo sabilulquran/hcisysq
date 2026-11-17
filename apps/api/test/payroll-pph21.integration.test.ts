@@ -138,6 +138,7 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
       lines: Array<{ code: string; category: string; amount: number }>;
       calculatedAt?: string;
       previousResultId?: string;
+      inputSnapshot?: unknown;
     },
   ): Promise<string> {
     const resultId = randomUUID();
@@ -148,7 +149,7 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
       `INSERT INTO payroll_results(
          id, period_id, employment_id, revision, previous_result_id, gross, deductions, net, payable, pay_factor,
          pay_factor_reason, blockers, input_snapshot, policy_version_ids, compensation_profile_id, calculated_at)
-       VALUES ($1, $2, $3, $4, $14, $5, $6, $7, $8, $9, $10, $11::jsonb, '{}'::jsonb, '["v1"]'::jsonb, $12,
+       VALUES ($1, $2, $3, $4, $14, $5, $6, $7, $8, $9, $10, $11::jsonb, $15::jsonb, '["v1"]'::jsonb, $12,
                $13::timestamptz)`,
       [
         resultId,
@@ -165,6 +166,7 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
         options.profileId,
         options.calculatedAt ?? "2026-09-20T00:00:00.000Z",
         options.previousResultId ?? null,
+        JSON.stringify(options.inputSnapshot ?? {}),
       ],
     );
     for (const [index, line] of options.lines.entries()) {
@@ -176,6 +178,37 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
     }
     return resultId;
   }
+
+  describe("daily TER inputs (section 7.5)", () => {
+    it("reads attendance days and deductions from what the calculation stored", async () => {
+      const periodId = await newPeriod("2026-09-01");
+      const employee = await newEmployee({ termCategory: "KONTRAK_HONORER" });
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        // The shape calculatePeriod writes: input_snapshot.inputs is PeriodInputs in camelCase.
+        inputSnapshot: { period_fingerprint: { input_count: 1 }, inputs: { contractAttendanceDays: 20 } },
+        lines: [
+          { code: "TEACH_FEE", category: "EARNING", amount: 11_000_000 },
+          { code: "LOAN", category: "DEDUCTION", amount: 250_000 },
+        ],
+      });
+      const [row] = await loadPph21SourceRows(pool, periodId);
+      expect(row).toMatchObject({ attendanceDays: 20, termCategory: "KONTRAK_HONORER" });
+      expect(row!.deductions).toEqual([{ code: "LOAN", amount: 250_000 }]);
+      // Filtered to one person in SQL (self routes, section 7.4).
+      expect(await loadPph21SourceRows(pool, periodId, employee.employeeId)).toHaveLength(1);
+    });
+
+    it("has no attendance days for a result written without the input", async () => {
+      const periodId = await newPeriod("2026-09-01");
+      const employee = await newEmployee();
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        lines: [{ code: "BASIC", category: "EARNING", amount: 3_000_000 }],
+      });
+      expect((await loadPph21SourceRows(pool, periodId))[0]!.attendanceDays).toBeNull();
+    });
+  });
 
   describe("report rows", () => {
     it("reads earnings, factor, blockers and the PTKP status of the calculated profile", async () => {

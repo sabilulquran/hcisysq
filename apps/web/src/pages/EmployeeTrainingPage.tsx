@@ -9,6 +9,7 @@ import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { EmployeeEvaluationSection } from "@/components/training/EmployeeEvaluationSection";
+import { OnlineModules } from "@/components/training/OnlineModules";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -211,6 +212,11 @@ export function EmployeeTrainingPage() {
               {selected?.id === programId ? (
                 <>
                   {selected.description ? <p className="text-sm text-muted-foreground">{selected.description}</p> : null}
+                  {selected.delivery === "ONLINE" ? (
+                    <div className={selected.description ? "mt-4" : ""}>
+                      <OnlineModules programId={selected.id} onProgramCompleted={() => void loadAll()} />
+                    </div>
+                  ) : null}
                   <ol className={`${selected.description ? "mt-4 " : ""}space-y-2`}>
                     {selected.sessions.map((session) => (
                       <li key={session.id} className="rounded-2xl border border-border/70 p-3 text-sm">

@@ -61,7 +61,7 @@ Approved leave/permission may feed attendance/payroll as a resolved fact. Submis
 - Employee read-only payslip — PAY-002.
 - Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
 - Reimbursement — REIMB-001. Package 1 (draft claims with encrypted receipts, optional link to a business trip, APR-001 approval, Finance verification per item, payment outside payroll, register, summary and CSV export) is implemented; see `docs/domain/reimbursement.md`. Payroll handoff stays behind a DRAFT switch that is off; advances and per diem are not included.
-- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is deferred until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
+- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is built behind `LOAN_PAYROLL_DEDUCTION_ENABLED=0` (`payroll-calculation-v1.md` §3.5); switching it on waits until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
 
 PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
 

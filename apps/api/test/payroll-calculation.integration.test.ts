@@ -10,8 +10,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { clearOwnPeriods } from "./support/payroll-cleanup.js";
 
+import { setLoanDeductions } from "../src/modules/payroll/admin-store.js";
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
-import { getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
+import { settleEmployeeLoanDeductions } from "../src/modules/payroll/employee-loan-link.js";
+import { applyTransition, getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -636,6 +638,274 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect((await latestResult(employmentId)).blockers.map((blocker) => blocker.code)).toContain(
         "PERFORMANCE_PREDICATE_UNMAPPED",
       );
+    });
+  });
+
+  // LOAN-001 Package 2 (employee-loans.md section 9, specification section
+  // 3.5): instalments proposed by the calculation, settled on approval,
+  // reversed on reopen. Payroll March 2031, far from any other suite.
+  describe("LOAN-001 deduction", () => {
+    let loanPeriodId: string;
+
+    const loanPeriod = () => ({
+      id: loanPeriodId,
+      legalEntityKey,
+      periodStart: "2031-03-01",
+      periodEnd: "2031-03-31",
+      payDate: "2031-03-25",
+    });
+
+    /** A disbursed LOAN-001 loan: Rp1.000.000 over 3 months from March 2031 (D-07). */
+    async function disbursedLoan(employeeId: string): Promise<string> {
+      const id = randomUUID();
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO employee_loans(
+             id, employee_id, principal_amount, tenor_months, purpose, status, idempotency_key,
+             final_decided_at, disbursed_on, disbursement_method, first_due_month,
+             disbursed_by_account_id, disbursed_at)
+           VALUES ($1, $2, 1000000, 3, 'Keperluan uji sintetis', 'DISBURSED', $3,
+                   now(), DATE '2031-02-10', 'TRANSFER', DATE '2031-03-01', $4, now())`,
+          [id, employeeId, randomUUID(), actorAccountId],
+        );
+        await client.query(
+          `INSERT INTO employee_loan_instalments(id, loan_id, sequence, due_month, amount)
+           VALUES ($1, $4, 1, DATE '2031-03-01', 333000),
+                  ($2, $4, 2, DATE '2031-04-01', 333000),
+                  ($3, $4, 3, DATE '2031-05-01', 334000)`,
+          [randomUUID(), randomUUID(), randomUUID(), id],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return id;
+    }
+
+    /** A cash repayment recorded outside payroll, as the LOAN-001 route writes it. */
+    async function cashPayment(loanId: string, amount: number) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO employee_loan_payments(
+             id, loan_id, amount, paid_on, method, idempotency_key, recorded_by_account_id)
+           VALUES ($1, $2, $3, DATE '2031-03-05', 'CASH', $4, $5)`,
+          [randomUUID(), loanId, amount, randomUUID(), actorAccountId],
+        );
+        await client.query("UPDATE employee_loans SET paid_total = paid_total + $2 WHERE id = $1", [loanId, amount]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    async function loanState(loanId: string) {
+      const loan = await pool.query<{ paidTotal: string; status: string }>(
+        `SELECT paid_total::text AS "paidTotal", status FROM employee_loans WHERE id = $1`,
+        [loanId],
+      );
+      const payments = await pool.query<{ amount: string; status: string; method: string; source: string | null }>(
+        `SELECT amount::text AS amount, status, method, source_payroll_period_id AS source
+         FROM employee_loan_payments WHERE loan_id = $1 ORDER BY recorded_at`,
+        [loanId],
+      );
+      return { ...loan.rows[0]!, payments: payments.rows };
+    }
+
+    async function loanLine(employmentId: string): Promise<number> {
+      const { rows } = await pool.query<{ amount: string }>(
+        `SELECT l.amount FROM payroll_result_lines l JOIN payroll_results r ON r.id = l.result_id
+         WHERE r.period_id = $1 AND r.employment_id = $2 AND l.component_code = 'LOAN'
+           AND r.revision = (SELECT max(revision) FROM payroll_results WHERE period_id = $1 AND employment_id = $2)`,
+        [loanPeriodId, employmentId],
+      );
+      return rows.reduce((total, row) => total + Number(row.amount), 0);
+    }
+
+    async function moveTo(state: string, extra = "") {
+      await pool.query(`UPDATE payroll_periods SET state = $2 ${extra} WHERE id = $1`, [loanPeriodId, state]);
+    }
+
+    async function transition(action: "approve" | "approve_reopen", nextState: "APPROVED" | "COLLECTING") {
+      const current = (await getPeriod(pool, loanPeriodId))!;
+      return applyTransition(pool, {
+        periodId: loanPeriodId,
+        action,
+        nextState,
+        auditAction: action === "approve" ? "payroll.period.approved" : "payroll.reopen.approved",
+        actorAccountId,
+        reason: null,
+        expectedVersion: current.version,
+        blockerCount: 0,
+        fromState: current.state,
+      });
+    }
+
+    beforeEach(async () => {
+      loanPeriodId = randomUUID();
+      ownedPeriodIds.push(loanPeriodId);
+      await pool.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+         VALUES ($1, $2, DATE '2031-03-01', DATE '2031-03-25', DATE '2031-03-01', DATE '2031-03-31',
+                 DATE '2031-02-23', DATE '2031-03-22', 'COLLECTING')`,
+        [loanPeriodId, legalEntityKey],
+      );
+    });
+
+    it("switched off, a LOAN-001 loan is not mirrored and nothing is deducted", async () => {
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      const loanId = await disbursedLoan(employeeId);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0);
+      expect(await loanLine(employmentId)).toBe(0);
+      const mirror = await pool.query("SELECT 1 FROM payroll_loans WHERE employee_loan_id = $1", [loanId]);
+      expect(mirror.rows).toHaveLength(0);
+    });
+
+    it("proposes the instalment, settles it once on approval, reverses on reopen, settles again", async () => {
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      const loanId = await disbursedLoan(employeeId);
+
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(await loanLine(employmentId)).toBe(333_000);
+      const deductions = await pool.query<{ origin: string }>(
+        `SELECT d.origin FROM payroll_loan_deductions d JOIN payroll_loans l ON l.id = d.loan_id
+         WHERE l.employee_loan_id = $1 AND d.period_id = $2`,
+        [loanId, loanPeriodId],
+      );
+      expect(deductions.rows.map((row) => row.origin)).toEqual(["PROPOSED"]);
+      // Nothing is paid while the period is only calculated.
+      expect((await loanState(loanId)).paidTotal).toBe("0");
+
+      await moveTo("SUBMITTED");
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      let state = await loanState(loanId);
+      expect(state.paidTotal).toBe("333000");
+      expect(state.payments).toEqual([
+        { amount: "333000", status: "ACTIVE", method: "PAYROLL_DEDUCTION", source: loanPeriodId },
+      ]);
+
+      // Idempotent: settling the same approved period again writes nothing.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const again = await settleEmployeeLoanDeductions(
+          client,
+          { id: loanPeriodId, periodMonth: "2031-03-01", payDate: "2031-03-25" },
+          actorAccountId,
+        );
+        await client.query("COMMIT");
+        expect(again.settled).toBe(0);
+      } finally {
+        client.release();
+      }
+
+      await moveTo("REOPEN_REQUESTED", ", state_before_reopen_request = 'APPROVED'");
+      expect((await transition("approve_reopen", "COLLECTING")).applied).toBe(true);
+      state = await loanState(loanId);
+      expect(state.paidTotal).toBe("0");
+      expect(state.payments.map((payment) => payment.status)).toEqual(["REVERSED"]);
+
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, (await getPeriod(pool, loanPeriodId))!.version, {
+        employeeLoanDeduction: true,
+      });
+      expect(await loanLine(employmentId)).toBe(333_000);
+      await moveTo("SUBMITTED");
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      state = await loanState(loanId);
+      expect(state.paidTotal).toBe("333000");
+      expect(state.payments.map((payment) => payment.status)).toEqual(["REVERSED", "ACTIVE"]);
+
+      const audit = await pool.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM payroll_audit_events WHERE period_id = $1 AND action = 'payroll.period.approved'`,
+        [loanPeriodId],
+      );
+      expect(audit.rows[0]!.payload.loan_payments_settled).toBe(1);
+      expect(JSON.stringify(audit.rows.map((row) => row.payload))).not.toContain("333000");
+    });
+
+    it("counts a cash repayment first and keeps Finance's own figure, including a skipped month", async () => {
+      const prepaid = await newEmployment({ category: "TETAP" });
+      const prepaidLoan = await disbursedLoan(prepaid.employeeId);
+      await cashPayment(prepaidLoan, 400_000);
+      const manual = await newEmployment({ category: "TETAP" });
+      const manualLoan = await disbursedLoan(manual.employeeId);
+
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      // March is covered by the cash payment: no deduction at all.
+      expect(await loanLine(prepaid.employmentId)).toBe(0);
+      expect(await loanLine(manual.employmentId)).toBe(333_000);
+
+      const mirror = await pool.query<{ id: string }>("SELECT id FROM payroll_loans WHERE employee_loan_id = $1", [manualLoan]);
+      expect((await setLoanDeductions(pool, loanPeriodId, [{ loanId: mirror.rows[0]!.id, amount: 0 }], actorAccountId)).ok).toBe(true);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, (await getPeriod(pool, loanPeriodId))!.version, {
+        employeeLoanDeduction: true,
+      });
+      expect(await loanLine(manual.employmentId)).toBe(0);
+
+      await moveTo("SUBMITTED");
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      expect((await loanState(manualLoan)).payments).toEqual([]);
+      expect((await loanState(prepaidLoan)).paidTotal).toBe("400000");
+    });
+
+    it("refuses approval when the loan balance moved after the calculation", async () => {
+      const { employeeId } = await newEmployment({ category: "TETAP" });
+      const loanId = await disbursedLoan(employeeId);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      await cashPayment(loanId, 900_000);
+
+      await moveTo("SUBMITTED");
+      const result = await transition("approve", "APPROVED");
+      expect(result.applied).toBe(false);
+      expect(result.refusal?.code).toBe("PAYROLL_LOAN_BALANCE_CHANGED");
+      expect((await getPeriod(pool, loanPeriodId))!.state).toBe("SUBMITTED");
+      expect((await loanState(loanId)).payments.map((payment) => payment.method)).toEqual(["CASH"]);
+    });
+
+    it("re-derives proposals: one left behind by an earlier run is neither settled nor blocking", async () => {
+      const leaver = await newEmployment({ category: "TETAP" });
+      const leaverLoan = await disbursedLoan(leaver.employeeId);
+      const prepaid = await newEmployment({ category: "TETAP" });
+      const prepaidLoan = await disbursedLoan(prepaid.employeeId);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(await loanLine(leaver.employmentId)).toBe(333_000);
+
+      // The leaver drops out of the run; the other repays in cash after the calculation.
+      await pool.query("UPDATE employments SET legal_entity_key = $2 WHERE id = $1", [leaver.employmentId, randomUUID()]);
+      await cashPayment(prepaidLoan, 700_000);
+      const outcome = await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(outcome.blockerCount).toBe(0);
+      expect(await loanLine(prepaid.employmentId)).toBe(0);
+      const left = await pool.query(
+        "SELECT 1 FROM payroll_loan_deductions WHERE period_id = $1 AND origin = 'PROPOSED'",
+        [loanPeriodId],
+      );
+      expect(left.rows).toHaveLength(0);
+
+      await moveTo("SUBMITTED");
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      expect((await loanState(leaverLoan)).payments).toEqual([]);
+      expect((await loanState(prepaidLoan)).payments.map((payment) => payment.method)).toEqual(["CASH"]);
+    });
+
+    it("drops its own proposals when the switch is turned off again", async () => {
+      const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
+      await disbursedLoan(employeeId);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(await loanLine(employmentId)).toBe(333_000);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, (await getPeriod(pool, loanPeriodId))!.version);
+      expect(await loanLine(employmentId)).toBe(0);
     });
   });
 });

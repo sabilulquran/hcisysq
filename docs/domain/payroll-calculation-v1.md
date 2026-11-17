@@ -23,6 +23,7 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 - Potongan: kasbon, iuran BPJS Kesehatan, iuran anggota keluarga tambahan, pendidikan anak, kekurangan jam, penyesuaian.
 - Insentif Pj. Media untuk pegawai aktif (input periode).
 - Netto 80% selama 2 bulan pertama masa kerja; prorata sebagai penyesuaian berwenang.
+- Pinjaman LOAN-001 dipotong lewat register yang sama bila sakelar §3.5 menyala; pelunasannya tercatat di LOAN-001 saat periode disahkan.
 - Potongan kasbon diambil dari register kasbon (§3.4), bukan diketik sebagai input periode: sisa pinjaman dihitung dari pokok dikurangi potongan pada periode lain, dan potongan periode berjalan dibandingkan dengan sisa itu.
 - Lifecycle periode dengan pengesahan Direktur, laporan untuk Keuangan/Direktur/Pengurus, publikasi slip lewat PAY-002, laporan PPh21 TER.
 
@@ -134,6 +135,33 @@ Jabatan fungsional dan struktural dibaca dari placement EMP-005 dan dipetakan ke
 ### 3.4 Kasbon
 
 Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan **final**, yaitu potongan yang melekat pada periode yang sudah mencapai `APPROVED` ke atas; potongan pada periode yang masih dikerjakan tidak mengurangi sisa. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
+
+### 3.5 Potongan cicilan LOAN-001 (dibangun 2026-11-17, sakelar default MATI)
+
+Kontrak: `docs/domain/employee-loans.md` §9.2. Implementasi: `apps/api/src/modules/payroll/employee-loan-link.ts`, migration 0156. Sakelar: variabel lingkungan `LOAN_PAYROLL_DEDUCTION_ENABLED` (bawaan `0`), pola yang sama dengan `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED`. **Menyalakannya menunggu keputusan owner bahwa PAY-003 menjadi jalur slip resmi** (LOAN-001 §9.2 butir 6) dan merupakan perubahan konfigurasi production yang dilaporkan.
+
+| Saat | Yang terjadi | Bergantung sakelar? |
+|---|---|---|
+| hitung | Usulan `PROPOSED` periode itu dibuang lalu diturunkan ulang, sehingga usulan lama (pegawai keluar dari periode, pinjaman lunas tunai) tidak tertinggal. Setiap pinjaman LOAN-001 `DISBURSED` milik pegawai di periode mendapat satu baris cermin di register kasbon (`payroll_loans.employee_loan_id`, unik). Cicilan yang jatuh pada bulan periode dan belum terbayar menurut D-11 diusulkan sebagai potongan periode (`payroll_loan_deductions.origin = PROPOSED`), dibatasi sisa pinjaman. Hitung ulang memperbarui usulan; potongan yang ditetapkan Keuangan (`MANUAL`) tidak pernah ditimpa. | ya; saat mati, hitung hanya membuang usulan `PROPOSED` periode itu sendiri, sehingga periode yang tidak pernah melihat sakelar menyala tidak tersentuh |
+| sahkan (`approve`) | Dalam transaksi yang sama, setiap potongan pada cermin LOAN-001 menjadi satu pembayaran `PAYROLL_DEDUCTION` dengan sumber `(period_id, loan_id)` — unik selama `ACTIVE`, sehingga mengulang tidak menggandakan. Tanggal bayar = tanggal gajian; referensi `Payroll YYYY-MM`; perekam = pengesah. Bila sisa LOAN-001 tidak lagi cukup (ada pembayaran tunai atau koreksi setelah hitung), pengesahan ditolak 409 `PAYROLL_LOAN_BALANCE_CHANGED`; Direktur mengembalikan periode dan HC menghitung ulang. Tidak ada pemangkasan diam-diam. | tidak — digerakkan data potongan, agar slip dan pinjaman selalu sama |
+| setujui buka ulang | Pembayaran yang bersumber dari periode itu dibalik (`REVERSED`, LOAN-001 D-12) dengan alasan otomatis; pengesahan berikutnya mencatatnya lagi. | tidak |
+
+Sisa yang dipakai untuk cermin LOAN-001 — oleh mesin (`LOAN_EXCEEDS_BALANCE`), oleh pengisian potongan Keuangan, dan oleh register kasbon — adalah sisa LOAN-001 (pokok − pembayaran berlaku, termasuk tunai/transfer), bukan pokok − potongan payroll final. Kasbon yang diketik Keuangan (tanpa `employee_loan_id`) tetap memakai aturan §3.4.
+
+**Keputusan `DRAFT` (default agent 2026-11-17):**
+
+| # | Keputusan | Default |
+|---|---|---|
+| L1 | Cicilan yang terlambat | Tidak ditarik otomatis ke bulan berjalan; hanya cicilan bulan periode yang diusulkan. Mengejar tunggakan adalah keputusan Keuangan (potongan `MANUAL`). |
+| L2 | Menunda satu bulan | Keuangan mengisi potongan 0 untuk cermin itu: tersimpan sebagai `MANUAL` bernilai 0 (satu-satunya baris bernilai 0 yang diizinkan), sehingga hitung ulang tidak mengusulkannya lagi. |
+| L3 | Tanggal dan perekam pembayaran | Tanggal gajian periode, tetapi tidak pernah setelah hari pengesahan (WIB); perekam = akun pengesah. Pemisahan tugas D-14 tidak berlaku karena pembayaran ini turunan slip yang disahkan, bukan pencatatan Keuangan; bila pengesah sendiri peminjamnya, event `loan.payment.recorded` menandainya (`approverIsBorrower`). Hanya potongan milik pegawai yang punya hasil di periode itu yang dicatat. |
+| L4 | Pencatatan manual `PAYROLL_DEDUCTION` di LOAN-001 | Ditolak `LOAN_PAYROLL_DEDUCTION_AUTOMATIC` selama sakelar menyala, dan untuk pinjaman yang sudah punya cermin payroll walau sakelar sudah dimatikan (mencegah dobel). Pembayaran tunai/transfer tetap boleh dan mengurangi usulan berikutnya. Pembayaran bersumber payroll tidak dapat dikoreksi dari register pinjaman (`LOAN_PAYMENT_FROM_PAYROLL`); koreksinya lewat buka ulang periode. |
+| L6 | Buka ulang bulan lama setelah bulan berikutnya disahkan | Usulan dihitung dari sisa saat itu (D-11 kumulatif): bila bulan berikutnya sudah membayar cicilannya, bulan yang dibuka ulang dapat mengusulkan 0. Total pinjaman tetap benar; potongan per slip dapat bergeser. Keuangan memakai potongan `MANUAL` bila ingin mempertahankan angka slip lama. |
+| L5 | Kasbon legacy ganda | Bila Keuangan juga mengetik kasbon yang sama secara manual di register PAY-003, keduanya terpotong. Sebelum menyalakan sakelar, Keuangan menutup kasbon manual yang sudah menjadi pinjaman LOAN-001. |
+
+Audit: `payroll.period.calculated` menambah `employee_loan_deduction_enabled` dan `employee_loan_proposed_count`; transisi `approve`/`approve_reopen` menambah `loan_payments_settled`/`loan_payments_reversed` — hitungan saja. Event dan notifikasi LOAN-001 tidak memuat nominal (D-15).
+
+Rollback: sakelar `0` menghentikan usulan baru tanpa rilis; pembayaran yang sudah tercatat tetap fakta dan tetap dibalik bila periodenya dibuka ulang. Skema: `-- Down:` migration 0156.
 
 ## 4. Input periode
 
@@ -320,12 +348,12 @@ DRAFT → COLLECTING → CALCULATED → SUBMITTED → APPROVED → PAYMENT_CONFI
 | hitung / hitung ulang | HC | COLLECTING atau CALCULATED | `payroll.period.calculated` (jumlah pegawai, total, blocker) |
 | ajukan | HC (`payroll.submit`) | CALCULATED, tanpa blocker, hasil terbaru | `payroll.period.submitted` |
 | kembalikan | Direktur | SUBMITTED, alasan wajib, tujuan COLLECTING | `payroll.period.returned` |
-| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED | `payroll.period.approved` |
+| sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED; potongan pinjaman LOAN-001 masih muat dalam sisanya (§3.5) | `payroll.period.approved` (+ `loan_payments_settled`) |
 | konfirmasi bayar | Keuangan (`payroll.payments.confirm`) | APPROVED | `payroll.payment.confirmed` |
 | siapkan slip | HC (`payroll.periods.manage`) | PAYMENT_CONFIRMED atau PUBLISHED, tanpa blocker | `payroll.payslips.drafted` |
 | terbitkan slip | pemegang `payslips.publish` | ada draft dari periode ini | `payroll.payslips.published` |
 | minta buka ulang | HC | APPROVED/PAYMENT_CONFIRMED/PUBLISHED, alasan wajib | `payroll.reopen.requested` |
-| setujui buka ulang | Direktur | REOPEN_REQUESTED | `payroll.reopen.approved` (periode kembali ke COLLECTING) |
+| setujui buka ulang | Direktur | REOPEN_REQUESTED | `payroll.reopen.approved` (periode kembali ke COLLECTING; pembayaran LOAN-001 dari periode ini dibalik, §3.5) |
 | tolak buka ulang | Direktur | REOPEN_REQUESTED, alasan wajib | `payroll.reopen.rejected` (periode kembali ke state sebelumnya) |
 
 Aturan:
@@ -469,6 +497,7 @@ Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payrol
 
 ### 9.3 Test minimum
 
+- Potongan LOAN-001 (§3.5): usulan cicilan eksak (bigint), sakelar mati tanpa cermin dan tanpa potongan, pengesahan mencatat sekali (idempoten), buka ulang membalik, pengesahan ulang mencatat lagi, pembayaran tunai dihitung lebih dulu, potongan `MANUAL` dan penundaan 0 dipertahankan, sisa berubah menolak pengesahan, route LOAN-001 menolak `PAYROLL_DEDUCTION` manual (`test/payroll-employee-loan-link.test.ts`, `test/payroll-calculation.integration.test.ts`, `test/loans.postgres.test.ts`).
 - Sambungan PERF-001 (§5.5): sakelar mati menghasilkan baris dan snapshot identik; pemetaan A–D tepat ke rupiah; urutan override > penilaian > profil; siklus terbuka, `UNRATED`, dan siklus ditutup setelah tanggal gajian tidak dibaca; predikat tanpa pemetaan memblokir (`test/payroll-performance-link.test.ts`, `test/payroll-calculation.integration.test.ts`).
 - Unit test fungsi perhitungan per komponen dengan kasus batas: MKG 0/27/28, jam 0/96/lebih/kurang, BPJS di bawah UMK dan di atas Rp12 juta, segmen PBI, anggota tambahan, masa kerja 1/2/3 bulan, kualifikasi khusus negatif, kasbon melebihi sisa.
 - Golden test dari data sintetis yang meniru struktur spreadsheet (bukan data produksi).

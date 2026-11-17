@@ -412,4 +412,71 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
     // A reader cannot move money.
     expect((await app.inject({ method: "POST", url: `/admin/loans/${page.json().items[0].id}/cancel`, payload: { reason: "tidak berwenang sama sekali" } })).statusCode).toBe(403);
   });
+
+  it("LOAN-001 Package 2: with payroll deduction on, no hand-recorded PAYROLL_DEDUCTION; payroll payments reverse only by reopen", async () => {
+    const loan = await disbursedLoan();
+    // Switched off (the default), Package 1 behaviour is unchanged.
+    const manual = await pay(loan.id, 100_000);
+    expect(manual.statusCode, manual.body).toBe(201);
+
+    const config = {
+      NODE_ENV: "test",
+      AUTH_ENCRYPTION_KEY: "11".repeat(32),
+      AUTH_SESSION_TTL_HOURS: 8,
+      LOAN_PAYROLL_DEDUCTION_ENABLED: "1",
+    } as ApiConfig;
+    const auth = {
+      getSession: async () => ({ principal, expiresAt: "2099-01-01T00:00:00Z" }),
+      getAuthorizationContext: async () => ({ organizationPermissions: permissions }),
+    } as never;
+    const switched = Fastify({ logger: false });
+    await registerLoanRoutes(switched, savepointPool(client), config, auth);
+    try {
+      actAs("finance", FINANCE);
+      const refused = await switched.inject({
+        method: "POST", url: `/admin/loans/${loan.id}/payments`,
+        payload: { amount: 100_000, paidOn: today, method: "PAYROLL_DEDUCTION", idempotencyKey: randomUUID() },
+      });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().code).toBe("LOAN_PAYROLL_DEDUCTION_AUTOMATIC");
+      const cash = await switched.inject({
+        method: "POST", url: `/admin/loans/${loan.id}/payments`,
+        payload: { amount: 50_000, paidOn: today, method: "CASH", idempotencyKey: randomUUID() },
+      });
+      expect(cash.statusCode, cash.body).toBe(201);
+
+      // A payment an approved payroll period wrote mirrors a slip: only a reopen undoes it.
+      const periodId = randomUUID();
+      await client.query(
+        `INSERT INTO payroll_periods(
+           id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+         VALUES ($1, $2, DATE '2031-03-01', DATE '2031-03-25', DATE '2031-03-01', DATE '2031-03-31',
+                 DATE '2031-02-23', DATE '2031-03-22', 'APPROVED')`,
+        [periodId, randomUUID()],
+      );
+      const paymentId = randomUUID();
+      await client.query(
+        `INSERT INTO employee_loan_payments(
+           id, loan_id, amount, paid_on, method, idempotency_key, recorded_by_account_id, source_payroll_period_id)
+         VALUES ($1, $2, 100000, $3::date, 'PAYROLL_DEDUCTION', $4, $5, $6)`,
+        [paymentId, loan.id, today, randomUUID(), people.finance.accountId, periodId],
+      );
+      await client.query("UPDATE employee_loans SET paid_total = paid_total + 100000 WHERE id = $1", [loan.id]);
+      await checkMoneyInvariants();
+      const reverse = await switched.inject({
+        method: "POST", url: `/admin/loans/${loan.id}/payments/${paymentId}/reverse`,
+        payload: { reason: "Dicoba dibalik dari register pinjaman" },
+      });
+      expect(reverse.statusCode).toBe(409);
+      expect(reverse.json().code).toBe("LOAN_PAYMENT_FROM_PAYROLL");
+      // The source of a payroll payment cannot be moved either (trigger, migration 0156).
+      await client.query("SAVEPOINT move_source");
+      await expect(
+        client.query("UPDATE employee_loan_payments SET source_payroll_period_id = NULL WHERE id = $1", [paymentId]),
+      ).rejects.toThrow();
+      await client.query("ROLLBACK TO SAVEPOINT move_source");
+    } finally {
+      await switched.close();
+    }
+  });
 });

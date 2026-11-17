@@ -471,7 +471,13 @@ components:
         note: { type: [string, 'null'] }
         closedAt: { type: [string, 'null'], format: date-time }
         deducted: { type: string }
-        outstanding: { type: string }
+        outstanding:
+          type: string
+          description: For a kasbon mirrored from LOAN-001 (employeeLoanId set), the LOAN-001 balance.
+        employeeLoanId:
+          type: [string, 'null']
+          format: uuid
+          description: LOAN-001 loan this kasbon mirrors (employee-loans.md section 9.2); null for a kasbon typed by Finance.
 
   responses:
     PayrollAdminUnauthenticated:

@@ -27,6 +27,7 @@ import {
   type LinkedReview,
   type PerformanceLinkTrace,
 } from "./performance-link.js";
+import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
 import { resolvePolicy, type PolicyProblem } from "./policy.js";
 import { writeAudit } from "./store.js";
 
@@ -233,14 +234,25 @@ async function loadLoans(
   periodId: string,
   employeeIds: readonly string[],
 ): Promise<Map<string, { outstanding: number; deduction: number }>> {
+  // A kasbon mirrored from LOAN-001 (employee_loan_id) takes its balance from
+  // LOAN-001 itself, which also counts cash and transfer repayments; only the
+  // payment this very period wrote (none while it is being worked on) is left
+  // out, as the period's own deduction is what the balance is checked against.
   const { rows } = await client.query<LoanRow>(
     `SELECT l.employee_id AS "employeeId",
             coalesce(sum(l.principal) - sum(coalesce(other.paid, 0)), 0)::text AS "outstanding",
             coalesce(sum(coalesce(mine.amount, 0)), 0)::text AS "deductionThisPeriod"
      FROM payroll_loans l
+     LEFT JOIN employee_loans el ON el.id = l.employee_loan_id
      LEFT JOIN LATERAL (
-       SELECT sum(d.amount) AS paid FROM payroll_loan_deductions d
-       WHERE d.loan_id = l.id AND d.period_id <> $1
+       SELECT CASE
+         WHEN l.employee_loan_id IS NULL THEN (
+           SELECT sum(d.amount) FROM payroll_loan_deductions d
+           WHERE d.loan_id = l.id AND d.period_id <> $1)
+         ELSE el.paid_total - coalesce((
+           SELECT sum(p.amount) FROM employee_loan_payments p
+           WHERE p.loan_id = el.id AND p.status = 'ACTIVE' AND p.source_payroll_period_id = $1), 0)
+       END AS paid
      ) other ON true
      LEFT JOIN LATERAL (
        SELECT sum(d.amount) AS amount FROM payroll_loan_deductions d
@@ -329,6 +341,8 @@ export async function calculatePeriod(
   },
   actorAccountId: string,
   expectedVersion: number,
+  /** Feature switches read from configuration by the caller; all default off. */
+  options: { employeeLoanDeduction?: boolean } = {},
 ): Promise<CalculationOutcome> {
   const client = await pool.connect();
   try {
@@ -374,6 +388,15 @@ export async function calculatePeriod(
     const employments = await loadEmployments(client, period);
     const employmentIds = employments.map((row) => row.employmentId);
     const employeeIds = [...new Set(employments.map((row) => row.employeeId))];
+    // LOAN-001 Package 2: propose this month's instalments before the loans are
+    // read, so the engine sees them like any other kasbon deduction.
+    const loanLink = await syncEmployeeLoanDeductions(
+      client,
+      { id: period.id, periodMonth: period.periodStart },
+      employeeIds,
+      actorAccountId,
+      options.employeeLoanDeduction === true,
+    );
     const loans = await loadLoans(client, period.id, employeeIds);
     // Switched off (no enabled PERFORMANCE_PERCENT version on the pay date):
     // not one review is read and every input stays exactly as it was.
@@ -602,6 +625,9 @@ export async function calculatePeriod(
         policy_version_count: resolved.versionIds.length,
         // Counts only: which predicate anyone received stays in the result row.
         ...(performancePolicy ? { performance_link_enabled: true, performance_linked_count: performanceLinkedCount } : {}),
+        ...(options.employeeLoanDeduction === true
+          ? { employee_loan_deduction_enabled: true, employee_loan_proposed_count: loanLink.proposed }
+          : {}),
       },
     });
 

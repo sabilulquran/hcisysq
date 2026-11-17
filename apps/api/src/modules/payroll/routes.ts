@@ -998,6 +998,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         },
         actor.accountId,
         period.version,
+        { employeeLoanDeduction: config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1" },
       );
       if (outcome.conflict) {
         return send(reply, 409, {
@@ -1026,6 +1027,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       fromState: period.state,
     });
 
+    if (!result.applied && result.refusal) {
+      return send(reply, 409, result.refusal);
+    }
     if (!result.applied) {
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",

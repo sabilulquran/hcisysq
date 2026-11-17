@@ -442,7 +442,12 @@ const LOAN_COLUMNS = `
   to_char(l.granted_on, 'YYYY-MM-DD') AS "grantedOn",
   l.principal::text AS principal, l.instalment::text AS instalment, l.note, l.closed_at AS "closedAt",
   coalesce(paid.total, 0)::text AS deducted,
-  (l.principal - coalesce(paid.total, 0))::text AS outstanding
+  -- A kasbon mirrored from LOAN-001 shows the LOAN-001 balance, which also
+  -- counts cash and transfer repayments (employee-loans.md section 9.2).
+  (CASE WHEN l.employee_loan_id IS NULL THEN l.principal - coalesce(paid.total, 0)
+        ELSE (SELECT el.principal_amount - el.paid_total FROM employee_loans el WHERE el.id = l.employee_loan_id)
+   END)::text AS outstanding,
+  l.employee_loan_id AS "employeeLoanId"
 `;
 
 /**
@@ -632,6 +637,25 @@ export async function setLoanDeductions(
 
     for (const write of writes) {
       if (write.amount === 0) {
+        // A LOAN-001 instalment the calculation would propose again is held
+        // off with a MANUAL zero rather than removed, so Finance can skip one
+        // month without the next recalculation putting it back.
+        const linked = await client.query(
+          "SELECT 1 FROM payroll_loans WHERE id = $1 AND employee_loan_id IS NOT NULL",
+          [write.loanId],
+        );
+        if (linked.rows.length > 0) {
+          await client.query(
+            `INSERT INTO payroll_loan_deductions(id, loan_id, period_id, amount, recorded_by_account_id, origin)
+             VALUES ($1, $2, $3, 0, $4, 'MANUAL')
+             ON CONFLICT (loan_id, period_id) DO UPDATE SET
+               amount = 0, origin = 'MANUAL',
+               recorded_by_account_id = EXCLUDED.recorded_by_account_id, recorded_at = now()`,
+            [randomUUID(), write.loanId, periodId, actorAccountId],
+          );
+          removed += 1;
+          continue;
+        }
         const { rowCount } = await client.query(
           "DELETE FROM payroll_loan_deductions WHERE loan_id = $1 AND period_id = $2",
           [write.loanId, periodId],
@@ -666,10 +690,11 @@ export async function setLoanDeductions(
         return { ok: false, code: "PAYROLL_LOAN_EXCEEDS_BALANCE" };
       }
       await client.query(
-        `INSERT INTO payroll_loan_deductions(id, loan_id, period_id, amount, recorded_by_account_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO payroll_loan_deductions(id, loan_id, period_id, amount, recorded_by_account_id, origin)
+         VALUES ($1, $2, $3, $4, $5, 'MANUAL')
          ON CONFLICT (loan_id, period_id) DO UPDATE SET
            amount = EXCLUDED.amount,
+           origin = 'MANUAL',
            recorded_by_account_id = EXCLUDED.recorded_by_account_id,
            recorded_at = now()`,
         [randomUUID(), write.loanId, periodId, write.amount, actorAccountId],
@@ -703,15 +728,22 @@ async function loanBalanceExcluding(
   loanId: string,
   periodId: string,
 ): Promise<number | null> {
+  // A LOAN-001 mirror is checked against the LOAN-001 balance, less nothing
+  // this period has itself written (it writes only when approved).
   const { rows } = await client.query<{ balance: string }>(
-    `SELECT (l.principal - coalesce((
+    `SELECT (CASE WHEN l.employee_loan_id IS NULL THEN l.principal - coalesce((
        SELECT sum(d.amount)
        FROM payroll_loan_deductions d
        JOIN payroll_periods p ON p.id = d.period_id
        WHERE d.loan_id = l.id
          AND d.period_id <> $2
          AND p.state = ANY($3::text[])
-     ), 0))::text AS balance
+     ), 0)
+     ELSE (SELECT el.principal_amount - el.paid_total + coalesce((
+              SELECT sum(pay.amount) FROM employee_loan_payments pay
+              WHERE pay.loan_id = el.id AND pay.status = 'ACTIVE' AND pay.source_payroll_period_id = $2), 0)
+           FROM employee_loans el WHERE el.id = l.employee_loan_id)
+     END)::text AS balance
      FROM payroll_loans l WHERE l.id = $1 AND l.closed_at IS NULL`,
     [loanId, periodId, FINAL_PERIOD_STATES],
   );

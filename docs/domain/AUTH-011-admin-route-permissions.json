@@ -5734,5 +5734,179 @@
     "permissions": [
       "training.read"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/training/me/programs/:id/modules",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/training/me/materials/:id/playbacks",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/training/me/playbacks/:id/heartbeat",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/training/me/materials/:id/stream",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/training/me/materials/:id/read",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/training/me/modules/:id/quiz",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/training/me/modules/:id/quiz/attempts",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/online/storage",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/modules",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/modules",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/modules/:id",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/modules/:id/publish",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/modules/:id/archive",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/modules/:id/materials",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/materials/:id/remove",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "PUT",
+    "url": "/admin/training/materials/:id/video",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/materials/:id/stream",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/online-progress",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/materials/:id/progress/:employeeId/complete",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/online-routes.ts",
+    "method": "POST",
+    "url": "/admin/training/modules/:id/quiz/:employeeId/extra-attempt",
+    "permissions": [
+      "training.manage"
+    ]
   }
 ]

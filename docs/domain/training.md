@@ -5,7 +5,7 @@
 **Tanggal:** 2026-11-02
 **Terkait:** EMP-008, PERF-001, ORG-004, CAL-001, LEAVE-001, TRIP-001, NOTIF-004, AUTH-011, ENG-LIST-001, ADR-0002
 **Discovery:** `docs/domain/training-lms-discovery.md` (arah jangka panjang R1–R4; keputusan Product Owner 2026-10-20 tetap berlaku)
-**Lanjutan:** R3 evaluasi — `docs/domain/training-evaluation.md`
+**Lanjutan:** R3 evaluasi — `docs/domain/training-evaluation.md`; R4 modul daring — `docs/domain/training-online-modules.md`
 
 ## 1. Tujuan
 
@@ -47,7 +47,7 @@ Termasuk (Paket 1 = R1 + inti R2 discovery):
 
 | Di luar lingkup | Rencana |
 | --- | --- |
-| Materi, video, modul daring, kuis | R4 discovery. Butuh port `ObjectStorage` (ADR-0002) dan kebijakan kapasitas video. |
+| Materi, video, modul daring, kuis | **R4 dibangun** di `docs/domain/training-online-modules.md` (2026-11-17), di balik sakelar `TRAINING_ONLINE_ENABLED` yang mati sampai kapasitas video disediakan. |
 | Kuesioner reaksi, tes, rubrik, nilai, evaluasi penerapan | **R3 dibangun** di `docs/domain/training-evaluation.md` (2026-11-17). RTL dan bank soal tetap discovery. |
 | Sertifikat yang diterbitkan sistem | R4 discovery. Paket 1 hanya sertifikat unggahan. |
 | Pegawai mendaftar sendiri ke program | Paket 2 (D-03). |

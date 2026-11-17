@@ -16,7 +16,8 @@
     "employment:baseline": "node --env-file=.env.local --import tsx src/modules/employment/cli/employment-baseline.ts",
     "payroll:initial-load": "node --env-file=.env.local --import tsx src/modules/payroll/cli/payroll-initial-load.ts",
     "employment:refresh-projection": "node --env-file=.env.local --import tsx src/modules/employment/cli/employment-refresh-projection.ts",
-    "auth:break-glass": "node --env-file=.env.local --import tsx src/modules/auth/cli/break-glass.ts"
+    "auth:break-glass": "node --env-file=.env.local --import tsx src/modules/auth/cli/break-glass.ts",
+    "documents:export-doc003": "node --env-file=.env.local --import tsx src/modules/documents/cli/export-doc003.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

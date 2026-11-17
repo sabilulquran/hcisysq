@@ -893,11 +893,16 @@ export async function calculatePeriod(
         // the figure can be audited again later (performance-review.md
         // section 11 item 5). Absent while the link is switched off, so a
         // switched-off period stores exactly what it stored before.
-        input_snapshot: performanceTrace
-          ? { period_fingerprint: periodFingerprint, inputs: employmentInputs, performance_link: performanceTrace }
-          : thrAverageWage
-          ? { period_fingerprint: periodFingerprint, inputs: employmentInputs, thr_average_wage: thrAverageWage }
-          : { period_fingerprint: periodFingerprint, inputs: employmentInputs },
+        // Each trace is present only when there is one, so a period with neither stores exactly
+        // what it stored before the links were built. They are spread rather than branched: a row
+        // that ever carries both must keep both, since the THR approval guard keys on
+        // thr_average_wage and would silently stop guarding if a branch dropped it.
+        input_snapshot: {
+          period_fingerprint: periodFingerprint,
+          inputs: employmentInputs,
+          ...(performanceTrace ? { performance_link: performanceTrace } : {}),
+          ...(thrAverageWage ? { thr_average_wage: thrAverageWage } : {}),
+        },
       });
 
       for (const [index, line] of result.lines.entries()) {

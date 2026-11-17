@@ -1641,7 +1641,8 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       it("pays the average of the approved months: twelve of them, or the months in service", async () => {
         const permanent = await newEmployment({ category: "TETAP" });
         const honorarium = await newEmployment({ category: "KONTRAK_HONORER" });
-        // TMT 20 December 2026: two whole months at the holiday; December to February are averaged.
+        // TMT 20 December 2026: two whole months at the holiday. December is worked in part, so
+        // January and February are averaged and December's wage is left out of both sides (H2).
         const daily = await newEmployment({ category: "LEPAS", startedOn: "2026-12-20" });
         // Ended before the holiday: the grace days are for PKWTT only (H7).
         const dailyLeft = await newEmployment({
@@ -1686,10 +1687,17 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
           hcInput: null,
         });
         expect((rows.get(honorarium.employmentId)!.averageWage!.periods as unknown[]).length).toBe(12);
-        // (120 000 + 330 000 + 300 000) / 3 = 250 000; x 2 / 12 = 41 666.67, rounded up.
-        expect(rows.get(daily.employmentId)).toMatchObject({ payable: "41667" });
+        // December (8 days, 120 000) is the part month and drops out: (330 000 + 300 000) / 2 =
+        // 315 000; x 2 / 12 = 52 500.
+        expect(rows.get(daily.employmentId)).toMatchObject({ payable: "52500" });
         expect(rows.get(daily.employmentId)!.averageWage).toMatchObject({
-          source: "SYSTEM", windowStart: "2026-12", requiredMonths: 3, coveredMonths: 3, systemAverage: 250_000,
+          source: "SYSTEM",
+          windowStart: "2027-01",
+          requiredMonths: 2,
+          coveredMonths: 2,
+          monthsWithPay: 2,
+          systemTotal: 630_000,
+          systemAverage: 315_000,
         });
 
         // Aggregates only on the audit trail.
@@ -1726,7 +1734,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
           ]),
         );
         const transfers = await buildTransferList(pool, thr2027Id);
-        expect(transfers.map((row) => row.payable).sort()).toEqual(["3000000", "41667", "993334"]);
+        expect(transfers.map((row) => row.payable).sort()).toEqual(["3000000", "52500", "993334"]);
         const sources = await loadPph21MonthSources(pool, thr2027Id);
         expect(sources.rows.find((row) => row.employmentId === honorarium.employmentId)).toMatchObject({
           periodKind: "THR",

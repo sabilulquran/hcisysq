@@ -145,15 +145,21 @@ export function proportionalThr(wage: Rupiah, serviceMonths: number, fullService
 
 /**
  * Section 2.1 H2: the months whose wages are averaged. The `windowLength` calendar months before
- * the month of the THR period, never earlier than the month service started in. Calendar
- * arithmetic on the strings alone; months come back as YYYY-MM, oldest first.
+ * the month of the THR period, never earlier than the first WHOLE month of service: a TMT after
+ * the first of a month leaves that month worked in part, and its smaller wage would otherwise be
+ * divided as if a whole month had been worked, which understates the monthly wage every time (an
+ * understated THR carries a 5% penalty, PP 36/2021 Pasal 62). The partial month is therefore left
+ * out of the numerator and the divisor alike, so "bulan" means the same thing in both. A TMT on
+ * the first of a month keeps that month, as before.
+ *
+ * Calendar arithmetic on the strings alone; months come back as YYYY-MM, oldest first.
  */
 export function thrAverageWageMonths(thrPeriodMonth: string, serviceStartDate: string, windowLength: number): string[] {
   const period = /^(\d{4})-(\d{2})/.exec(thrPeriodMonth);
-  const start = /^(\d{4})-(\d{2})/.exec(serviceStartDate);
+  const start = /^(\d{4})-(\d{2})-(\d{2})/.exec(serviceStartDate);
   if (!period || !start || !Number.isInteger(windowLength) || windowLength <= 0) return [];
   const periodIndex = Number(period[1]) * 12 + (Number(period[2]) - 1);
-  const startIndex = Number(start[1]) * 12 + (Number(start[2]) - 1);
+  const startIndex = Number(start[1]) * 12 + (Number(start[2]) - 1) + (Number(start[3]) > 1 ? 1 : 0);
   const months: string[] = [];
   for (let index = Math.max(periodIndex - windowLength, startIndex); index < periodIndex; index += 1) {
     months.push(`${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`);
@@ -310,6 +316,16 @@ function calculateHonorariumThr(input: ThrInput, serviceMonths: number): ThrResu
     blockers.push({
       code: "INPUT_INVALID",
       message: "Input rata-rata upah THR harus rupiah bulat lebih dari nol.",
+    });
+  } else if (averageWage.source === "SYSTEM" && averageWage.monthsWithPay === 0) {
+    // Section 2.1 H5: the months are all there and none of them paid this person. The average is
+    // arithmetically Rp0, but paying Rp0 to somebody the rule says is entitled is a statutory
+    // non-payment, so it is never done quietly: either the wage was paid outside HCIS (human
+    // capital types it) or the person does not belong in this period.
+    blockers.push({
+      code: "THR_AVERAGE_WAGE_NO_PAID_MONTH",
+      message:
+        `Sistem tidak menemukan upah yang dibayar pada ${averageWage.requiredMonths} bulan yang diminta, sehingga rata-ratanya nol; isi input rata-rata upah THR pegawai ini atau periksa apakah upahnya dibayar di luar HCIS.`,
     });
   } else if (averageWage.source === "NONE") {
     blockers.push({

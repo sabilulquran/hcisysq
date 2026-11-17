@@ -37,6 +37,13 @@ export type ThrPaidWages = {
  * The approved monthly periods of the `windowLength` calendar months before the THR pay month,
  * for one legal entity, with what they paid the given employments. Earnings only: the average is
  * taken over gross wages (H4).
+ *
+ * Deliberately takes no row lock. A FOR SHARE here would be held for the whole calculate
+ * transaction (minutes on a phone, for a few hundred employees) and would block a reopen or an
+ * approval of any of the twelve salary periods for that long. It buys nothing: this read and the
+ * reopen_count it records come from one snapshot, so they are consistent with each other, and a
+ * reopen that commits afterwards is caught where it matters — assertThrWageSourcesStand refuses
+ * to approve the THR period whose figures it would have changed.
  */
 export async function loadThrPaidWages(
   client: Pick<PoolClient, "query">,
@@ -57,10 +64,7 @@ export async function loadThrPaidWages(
            = coalesce($1::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
        AND p.period_month < date_trunc('month', $2::date)::date
        AND p.period_month >= (date_trunc('month', $2::date) - make_interval(months => $4::int))::date
-     ORDER BY p.period_month, p.id
-     -- Held until the THR results commit: a reopen of one of these periods waits for this run,
-     -- and the approval of the THR period then notices it (assertThrWageSourcesStand).
-     FOR SHARE OF p`,
+     ORDER BY p.period_month, p.id`,
     [input.legalEntityKey, input.payDate, THR_WAGE_SOURCE_STATES, input.windowLength],
   );
 
@@ -124,6 +128,10 @@ export class ThrAverageWageRefusal extends Error {
  * one of them has since been reopened, the average rests on figures that are no longer facts, and
  * the approval is refused until the THR period is recalculated. A figure typed by human capital
  * rests on no period and is not checked.
+ *
+ * This is where the share lock belongs instead of on the calculation: it is taken for the few
+ * statements of the approval, and it holds the source periods still between this check and the
+ * commit that makes the THR period approved.
  */
 export async function assertThrWageSourcesStand(client: Pick<PoolClient, "query">, thrPeriodId: string): Promise<void> {
   const { rows: sources } = await client.query<{ id: string; reopenCount: number }>(

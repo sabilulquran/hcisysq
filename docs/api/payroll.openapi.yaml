@@ -66,7 +66,11 @@ paths:
         THR on the average of what the approved salary periods before the THR
         month paid them (payroll-thr.md T5, section 2.1); a row the system does
         not fully cover and nobody typed THR_AVERAGE_WAGE for carries the blocker
-        THR_AVERAGE_WAGE_INCOMPLETE.
+        THR_AVERAGE_WAGE_INCOMPLETE; a row whose months are all covered but paid
+        no wage at all carries THR_AVERAGE_WAGE_NO_PAID_MONTH rather than a
+        silent Rp0 THR (section 2.1 H9b). The average is taken over whole months
+        of service only: a first month worked in part is left out of both the
+        wages and the divisor (section 2.2).
       requestBody:
         required: true
         content:

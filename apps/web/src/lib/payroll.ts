@@ -128,6 +128,12 @@ export interface PayrollThrAverageWage {
   /** The month of wages the THR was taken from; 0 when blocked. */
   monthlyWage: number;
   hcInput: number | null;
+  /**
+   * The approved salary periods the system figure read, with the reopen count they were read at.
+   * Optional only for an older API build; the screen shows no figure from it, but a reviewer
+   * reading the row in the network tab can tell which months it rests on.
+   */
+  periods?: Array<{ id: string; month: string; reopenCount: number }>;
 }
 
 export interface PayrollResult {
@@ -639,7 +645,15 @@ export function thrAverageWageNote(wage: PayrollThrAverageWage): string {
         ? ` (${wage.windowStart})`
         : ` (${wage.windowStart} s.d. ${wage.windowEnd})`
       : "";
-  const coverage = `Sistem mencakup ${wage.coveredMonths} dari ${wage.requiredMonths} bulan${window}`;
+  const coverage =
+    `Sistem mencakup ${wage.coveredMonths} dari ${wage.requiredMonths} bulan${window}`
+    + `, berisi upah pada ${wage.monthsWithPay} bulan`;
+  // Covered months that paid nothing are the reason a figure can look complete and still be too
+  // low, so the gap is said out loud rather than left to be read off two numbers.
+  const gap =
+    wage.monthsWithPay < wage.coveredMonths
+      ? " Periksa bulan tanpa upah bila pegawai ini dibayar di luar HCIS."
+      : "";
   const reference =
     wage.systemAverage !== null
       ? `rata-rata sistem ${formatRupiah(String(wage.systemAverage))}`
@@ -647,7 +661,7 @@ export function thrAverageWageNote(wage: PayrollThrAverageWage): string {
         ? `rata-rata ${wage.coveredMonths} bulan itu ${formatRupiah(String(wage.partialAverage))} (pembanding)`
         : "belum ada angka sistem";
   if (wage.source === "SYSTEM") {
-    return `Rata-rata upah ${formatRupiah(String(wage.monthlyWage))} dari sistem. ${coverage}.`;
+    return `Rata-rata upah ${formatRupiah(String(wage.monthlyWage))} dari sistem. ${coverage}.${gap}`;
   }
   if (wage.source === "HC_INPUT") {
     return `Rata-rata upah ${formatRupiah(String(wage.monthlyWage))} dari input HC. ${coverage}; ${reference}.`;

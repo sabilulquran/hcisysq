@@ -279,12 +279,26 @@ describe("PAY-003-THR average wage of honorarium workers (T5, section 2.1)", () 
     });
 
     it("never reaches before the month service started in", () => {
-      expect(thrAverageWageMonths("2027-03-01", "2026-12-20", 12)).toEqual(["2026-12", "2027-01", "2027-02"]);
-      expect(thrAverageWageMonths("2027-03-01", "2027-02-05", 12)).toEqual(["2027-02"]);
+      expect(thrAverageWageMonths("2027-03-01", "2026-12-01", 12)).toEqual(["2026-12", "2027-01", "2027-02"]);
+      expect(thrAverageWageMonths("2027-03-01", "2027-02-01", 12)).toEqual(["2027-02"]);
       // Service started in the THR month itself, or the dates are unusable: no month at all.
       expect(thrAverageWageMonths("2027-03-01", "2027-03-01", 12)).toEqual([]);
       expect(thrAverageWageMonths("bukan-tanggal", "2026-12-20", 12)).toEqual([]);
       expect(thrAverageWageMonths("2027-03-01", "2026-12-20", 0)).toEqual([]);
+      expect(thrAverageWageMonths("2027-03-01", "2026-12", 12)).toEqual([]);
+    });
+
+    it("leaves out a first month worked only in part, so the divisor counts whole months", () => {
+      // TMT 20 December: December is worked from the 20th, so its smaller wage must not be
+      // divided as a whole month. January and February are the whole months before the THR.
+      expect(thrAverageWageMonths("2027-03-01", "2026-12-20", 12)).toEqual(["2027-01", "2027-02"]);
+      // The second of the month is already a part month; the first is not.
+      expect(thrAverageWageMonths("2027-03-01", "2026-12-02", 12)).toEqual(["2027-01", "2027-02"]);
+      expect(thrAverageWageMonths("2027-03-01", "2026-12-01", 12)).toEqual(["2026-12", "2027-01", "2027-02"]);
+      // Only a part month lies before the THR month: nothing to average, which blocks the row.
+      expect(thrAverageWageMonths("2027-03-01", "2027-02-05", 12)).toEqual([]);
+      // Far enough back that the part month falls outside the window anyway: twelve months.
+      expect(thrAverageWageMonths("2027-03-01", "2024-07-15", 12)).toEqual(WINDOW);
     });
 
     it("crosses a year boundary without losing a month", () => {
@@ -324,16 +338,37 @@ describe("PAY-003-THR average wage of honorarium workers (T5, section 2.1)", () 
     expect(amount(result, "THR")).toBe(500_000);
   });
 
-  it("pays a proportional THR on the average of the months in service below twelve months", () => {
-    // TMT 20 December 2026: two whole months to the holiday; December, January, February are averaged.
+  it("pays a proportional THR on the average of the whole months of service below twelve months", () => {
+    // TMT 20 December 2026: two whole months of service at the holiday. December is worked from
+    // the 20th, so its part-month wage is left out of both the numerator and the divisor; the
+    // average is of January and February, the months the service factor also counts.
     const months = ["2026-12", "2027-01", "2027-02"];
     const paid = [paidMonth("2026-12", 300_000), paidMonth("2027-01", 900_000), paidMonth("2027-02", 900_000)];
     const result = honorer({ coveredMonths: months, paid }, { serviceStartDate: "2026-12-20" });
     expect(result.serviceMonths).toBe(2);
-    expect(result.averageWage).toMatchObject({ source: "SYSTEM", requiredMonths: 3, coveredMonths: 3, systemAverage: 700_000 });
-    // 700 000 x 2 / 12 = 116 666.67, rounded up.
-    expect(amount(result, "THR")).toBe(116_667);
-    expect(result.lines[0]!.basis).toBe("rata-rata upah 700000 (sistem, 3 bulan) x 2/12, masa kerja 2 bulan");
+    expect(result.averageWage).toMatchObject({
+      source: "SYSTEM",
+      windowStart: "2027-01",
+      requiredMonths: 2,
+      coveredMonths: 2,
+      monthsWithPay: 2,
+      systemTotal: 1_800_000,
+      systemAverage: 900_000,
+    });
+    // 900 000 x 2 / 12 = 150 000.
+    expect(amount(result, "THR")).toBe(150_000);
+    expect(result.lines[0]!.basis).toBe("rata-rata upah 900000 (sistem, 2 bulan) x 2/12, masa kerja 2 bulan");
+  });
+
+  it("keeps the first month when service started on the first of it", () => {
+    // The same wages one day earlier in the month: December is a whole month of work, so it is
+    // averaged with the rest and the service factor counts it too.
+    const months = ["2026-12", "2027-01", "2027-02"];
+    const paid = [paidMonth("2026-12", 900_000), paidMonth("2027-01", 900_000), paidMonth("2027-02", 900_000)];
+    const result = honorer({ coveredMonths: months, paid }, { serviceStartDate: "2026-12-01" });
+    expect(result.serviceMonths).toBe(3);
+    expect(result.averageWage).toMatchObject({ windowStart: "2026-12", requiredMonths: 3, systemAverage: 900_000 });
+    expect(amount(result, "THR")).toBe(225_000);
   });
 
   it("blocks a partly covered window without a typed figure, and pays nothing", () => {
@@ -493,17 +528,41 @@ describe("PAY-003-THR average wage of honorarium workers (T5, section 2.1)", () 
     expect(averageMonthlyWage(source(999_999, WINDOW.slice(0, 3)), counted).systemAverage).toBe(333_333);
     // A large total stays exact: 12 x 123 456 789 + 1.
     expect(averageMonthlyWage(source(1_481_481_469, WINDOW), counted).systemAverage).toBe(123_456_790);
-    // Nothing paid in a fully covered window is an average of zero, not a missing one.
+    // Nothing paid in a fully covered window is an average of zero, not a missing one. The
+    // arithmetic says so; calculateEmployeeThr is what refuses to pay it (H5).
     expect(averageMonthlyWage({ ...source(0, WINDOW), paid: [] }, counted)).toMatchObject({
       source: "SYSTEM", systemAverage: 0, monthsWithPay: 0, monthlyWage: 0,
     });
   });
 
-  it("pays nothing, without a blocker, when the fully covered average is zero", () => {
+  it("blocks a fully covered window that paid nothing, rather than paying a silent Rp0", () => {
     const result = honorer({ coveredMonths: WINDOW, paid: [] });
-    expect(result.blockers).toEqual([]);
+    expect(result.blockers).toEqual([
+      {
+        code: "THR_AVERAGE_WAGE_NO_PAID_MONTH",
+        message:
+          "Sistem tidak menemukan upah yang dibayar pada 12 bulan yang diminta, sehingga rata-ratanya nol; isi input rata-rata upah THR pegawai ini atau periksa apakah upahnya dibayar di luar HCIS.",
+      },
+    ]);
     expect(result.lines).toEqual([]);
     expect(result.payable).toBe(0);
+    expect(result.averageWage).toMatchObject({ source: "SYSTEM", monthsWithPay: 0, systemAverage: 0, monthlyWage: 0 });
+  });
+
+  it("clears that blocker once human capital types the wage", () => {
+    const result = honorer({ coveredMonths: WINDOW, paid: [], hcInput: 750_000 });
+    expect(result.blockers).toEqual([]);
+    expect(amount(result, "THR")).toBe(750_000);
+  });
+
+  it("pays on, without a blocker, when only some covered months paid a wage", () => {
+    // Four of twelve months paid: the average is low but it is a fact, not a gap. The screen
+    // shows monthsWithPay beside the coverage so a reviewer sees what it rests on.
+    const paid = WINDOW.slice(0, 4).map((month) => paidMonth(month, 1_200_000));
+    const result = honorer({ coveredMonths: WINDOW, paid });
+    expect(result.blockers).toEqual([]);
+    expect(result.averageWage).toMatchObject({ monthsWithPay: 4, systemAverage: 400_000 });
+    expect(amount(result, "THR")).toBe(400_000);
   });
 
   it("adds an authorised adjustment and still refuses a missing account", () => {
@@ -522,13 +581,20 @@ describe("PAY-003-THR average wage of honorarium workers (T5, section 2.1)", () 
       thr({ employmentId: "employment-baru", serviceStartDate: "2026-12-05" }),
       honorer({ coveredMonths: WINDOW, paid }),
       honorer({ coveredMonths: WINDOW.slice(9), paid: paid.slice(9) }, { employmentId: "employment-honorer-baru-di-sistem" }),
+      // Hired on the 20th: January and February are averaged, December is not.
+      honorer(
+        { coveredMonths: ["2026-12", "2027-01", "2027-02"], paid: paid.slice(9) },
+        { employmentId: "employment-honorer-pertengahan-bulan", serviceStartDate: "2026-12-20" },
+      ),
     ];
-    expect(results.map((result) => amount(result, "THR"))).toEqual([3_235_000, 625_000, 1_200_000, 0]);
+    expect(results.map((result) => amount(result, "THR"))).toEqual([3_235_000, 625_000, 1_200_000, 0, 200_000]);
     expect(results.map((result) => result.blockers.map((blocker) => blocker.code))).toEqual([
-      [], [], [], ["THR_AVERAGE_WAGE_INCOMPLETE"],
+      [], [], [], ["THR_AVERAGE_WAGE_INCOMPLETE"], [],
     ]);
     // Only honorarium rows carry the average-wage trace.
-    expect(results.map((result) => result.averageWage?.source ?? null)).toEqual([null, null, "SYSTEM", "NONE"]);
+    expect(results.map((result) => result.averageWage?.source ?? null)).toEqual([
+      null, null, "SYSTEM", "NONE", "SYSTEM",
+    ]);
   });
 
   it("accepts the policy version of migration 0167 and the one before it", () => {

@@ -103,7 +103,7 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       ]);
     });
 
-    it("marks basic salary and the fixed allowances as the THR wage (migration 0158, T6)", async () => {
+    it("marks basic salary and the fixed allowances as the THR wage (migration 0159, T6)", async () => {
       const { rows } = await client.query<{ code: string }>(
         "SELECT code FROM payroll_components WHERE is_thr_wage ORDER BY code",
       );

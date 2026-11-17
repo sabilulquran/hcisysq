@@ -18,7 +18,7 @@ THR berada di luar PAY-003 v1 (`payroll-calculation-v1.md` §1.2). Spesifikasi i
 | Waktu bayar | paling lambat 7 hari sebelum hari raya | `THR.paymentDeadlineDaysBeforeHoliday` = 7 |
 | PKWTT yang berakhir ≤ 30 hari sebelum hari raya | tetap berhak | `THR.terminationGraceDays` = 30, `THR.terminationGraceTermCategories` |
 
-Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta kode), seperti kebijakan statutori lain (`payroll-calculation-v1.md` §10 butir 9). Migration 0158 memuat satu versi awal bertanda `DRAFT` yang berlaku sejak 2026-01-01; perubahan dilakukan dengan menambah versi.
+Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta kode), seperti kebijakan statutori lain (`payroll-calculation-v1.md` §10 butir 9). Migration 0159 memuat satu versi awal bertanda `DRAFT` yang berlaku sejak 2026-01-01; perubahan dilakukan dengan menambah versi.
 
 ## 2. Keputusan (`DRAFT`, default agent 2026-11-17)
 
@@ -41,7 +41,7 @@ Semua angka di atas disimpan sebagai **versi kebijakan `THR`** (bukan konstanta 
 
 ## 3. Data
 
-Migration `0158_payroll_thr.sql`:
+Migration `0159_payroll_thr.sql`:
 
 - `payroll_periods.period_kind` (`REGULAR` default, `THR`), `holiday_date`, `holiday_name`; CHECK: periode THR wajib punya keduanya dan tanggal bayar sebelum hari raya; periode bulanan tidak punya keduanya. Exclusion constraint `payroll_periods_unique_month` diganti `payroll_periods_unique_month_per_kind`.
 - `payroll_components.is_thr_wage` + CHECK hanya `EARNING`; komponen baru `THR`.

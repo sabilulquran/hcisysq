@@ -14,7 +14,9 @@ import { setLoanDeductions } from "../src/modules/payroll/admin-store.js";
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
 import { settleEmployeeLoanDeductions } from "../src/modules/payroll/employee-loan-link.js";
 import { draftPayslipsFromPeriod } from "../src/modules/payroll/publication.js";
-import { loadPph21MonthSources } from "../src/modules/payroll/reports.js";
+import { parsePph21TerPolicy } from "../src/modules/payroll/policy.js";
+import { buildPph21Report } from "../src/modules/payroll/pph21.js";
+import { findPph21Settings, loadPph21MonthSources, loadPph21SourceRows } from "../src/modules/payroll/reports.js";
 import { applyTransition, getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
 import { createSyntheticActor } from "./support/synthetic-actor.js";
 
@@ -1176,35 +1178,41 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
 
   // PAY-003 section 7.6 (owner decision 2026-11-17). In this file for the same reason as THR
   // below: the monthly policy rows are this suite's. November 2037 is a month of its own, with
-  // PPH21_TER and PPH21_SETTINGS effective only in it, so no other test calculates under them.
-  describe("employer-paid BPJS Kesehatan premium in the PPh21 the yayasan bears (section 7.6)", () => {
+  // PPH21_SETTINGS effective only in it, so no other test calculates or reports under it.
+  //
+  // No PPH21_TER row is written here: that key belongs to payroll-admin.integration, which
+  // clears it before each of its tests and opens open-ended versions of it. The TER table is
+  // handed to the pure report in memory instead, and the PPH21_EMPLOYER line computed from
+  // that same report is covered by hand in payroll-pph21-employer.test.ts.
+  describe("employer-paid BPJS Kesehatan premium in the PPh21 base (section 7.6)", () => {
     const MONTH = "2037-11";
+    const TER = (() => {
+      const parsed = parsePph21TerPolicy({
+        source: "Tabel uji sintetis",
+        objectCode: "21-100-01",
+        ptkpCategory: { "TK/0": "A" },
+        // 4.100.000 of pay is in the first layer; with the 205.000 premium the gross is not.
+        categories: {
+          A: [{ upTo: 4_200_000, rate: 0.01 }, { upTo: null, rate: 0.1 }],
+          B: [{ upTo: null, rate: 0.02 }],
+          C: [{ upTo: null, rate: 0.03 }],
+        },
+      });
+      if (!parsed.ok) throw new Error(parsed.message);
+      return parsed.policy;
+    })();
 
-    async function runMonth(settings: Record<string, unknown>) {
-      const policyIds = [randomUUID(), randomUUID()];
-      await pool.query(
-        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
-         VALUES ($1, 'PPH21_TER', DATE '2037-11-01', DATE '2037-11-30', $3::jsonb, 'uji sintetis'),
-                ($2, 'PPH21_SETTINGS', DATE '2037-11-01', DATE '2037-11-30', $4::jsonb, 'uji sintetis')`,
-        [
-          policyIds[0],
-          policyIds[1],
-          JSON.stringify({
-            source: "Tabel uji sintetis",
-            objectCode: "21-100-01",
-            ptkpCategory: { "TK/0": "A" },
-            // 4.100.000 of pay is in the first layer; with the 205.000 premium the gross is not.
-            categories: {
-              A: [{ upTo: 4_200_000, rate: 0.01 }, { upTo: null, rate: 0.1 }],
-              B: [{ upTo: null, rate: 0.02 }],
-              C: [{ upTo: null, rate: 0.03 }],
-            },
-          }),
-          JSON.stringify({ source: "uji sintetis", ...settings }),
-        ],
-      );
+    async function runMonth(settings: Record<string, unknown> | null) {
+      const settingsId = randomUUID();
+      if (settings) {
+        await pool.query(
+          `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+           VALUES ($1, 'PPH21_SETTINGS', DATE '2037-11-01', DATE '2037-11-30', $2::jsonb, 'uji sintetis')`,
+          [settingsId, JSON.stringify({ source: "uji sintetis", ...settings })],
+        );
+      }
       try {
-        const { employmentId } = await newEmployment({ category: "TETAP" });
+        const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
         await pool.query(
           `UPDATE payroll_compensation_profiles
               SET ptkp_status = 'TK/0', bpjs_segment = 'PPU_YAYASAN', bpjs_active_from = DATE '2016-07-01'
@@ -1220,13 +1228,14 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
                    DATE '2037-10-23', DATE '2037-11-22', 'COLLECTING')`,
           [monthPeriodId, legalEntityKey],
         );
+        const reportPeriod = { periodMonth: `${MONTH}-01`, periodStart: `${MONTH}-01`, periodEnd: `${MONTH}-30` };
         const outcome = await calculatePeriod(
           pool,
-          { id: monthPeriodId, legalEntityKey, periodStart: `${MONTH}-01`, periodEnd: `${MONTH}-30`, payDate: `${MONTH}-25` },
+          { id: monthPeriodId, legalEntityKey, periodStart: reportPeriod.periodStart, periodEnd: reportPeriod.periodEnd, payDate: `${MONTH}-25` },
           actorAccountId,
           0,
         );
-        expect(outcome.policyProblems ?? []).toEqual([]);
+        expect(outcome.policyProblems).toEqual([]);
         const result = await pool.query<{ gross: string; deductions: string; net: string; payable: string; employerCost: string }>(
           `SELECT gross::text, deductions::text, net::text, payable::text, employer_cost::text AS "employerCost"
            FROM payroll_results WHERE period_id = $1`,
@@ -1238,9 +1247,25 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
            WHERE r.period_id = $1 ORDER BY l.display_order`,
           [monthPeriodId],
         );
-        return { result: result.rows[0]!, lines: lines.rows };
+        // The monthly report as the route builds it: the stored lines through the SQL loader,
+        // and the settings in force on the pay date.
+        const found = await findPph21Settings(pool, `${MONTH}-25`);
+        if (!found.ok) throw new Error(found.message);
+        const report = buildPph21Report({
+          period: reportPeriod,
+          policy: TER,
+          rows: await loadPph21SourceRows(pool, monthPeriodId),
+          settings: found.settings,
+        });
+        return {
+          result: result.rows[0]!,
+          lines: lines.rows,
+          settingsVersionId: found.versionId,
+          expectedSettingsId: settingsId,
+          row: report.rows.find((entry) => entry.employeeId === employeeId)!,
+        };
       } finally {
-        await pool.query("DELETE FROM payroll_policy_versions WHERE id = ANY($1::uuid[])", [policyIds]);
+        await pool.query("DELETE FROM payroll_policy_versions WHERE id = $1", [settingsId]);
       }
     }
 
@@ -1250,24 +1275,30 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       { code: "BPJS_KES_ALLOW", category: "EARNING", amount: "205000" },
       { code: "BPJS_KES", category: "DEDUCTION", amount: "205000" },
     ];
+    const PAY = { gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "0" };
 
-    it("bears TER on the pay alone while the premium is not taxable: 4.100.000 x 1% = 41.000", async () => {
-      const { result, lines } = await runMonth({ employerBorne: true });
-      expect(lines).toEqual([...PAY_LINES, { code: "PPH21_EMPLOYER", category: "EMPLOYER_COST", amount: "41000" }]);
-      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "41000" });
-    });
-
-    it("bears TER on the pay and the premium once it is taxable: 4.305.000 x 10% = 430.500, pay untouched", async () => {
-      const { result, lines } = await runMonth({ employerBorne: true, employerHealthPremiumTaxable: true });
-      // The employee's lines, gross, deductions, net and payable are exactly those of the test above.
-      expect(lines).toEqual([...PAY_LINES, { code: "PPH21_EMPLOYER", category: "EMPLOYER_COST", amount: "430500" }]);
-      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "430500" });
-    });
-
-    it("writes no employer line for a taxable premium alone, and changes nothing the employee is paid", async () => {
-      const { result, lines } = await runMonth({ employerHealthPremiumTaxable: true });
+    it("keeps the allowance out of the PPh21 gross while no settings version is in force: 4.100.000 x 1%", async () => {
+      const { result, lines, row, settingsVersionId } = await runMonth(null);
+      expect(settingsVersionId).toBeNull();
       expect(lines).toEqual(PAY_LINES);
-      expect(result).toEqual({ gross: "4305000", deductions: "205000", net: "4100000", payable: "4100000", employerCost: "0" });
+      expect(result).toEqual(PAY);
+      expect(row).toMatchObject({ gross: 4_100_000, rate: 0.01, tax: 41_000, employerHealthPremium: 0 });
+    });
+
+    it("stays out under a version that says nothing about the premium", async () => {
+      const { row } = await runMonth({ nonPermanentDailyTer: false });
+      expect(row).toMatchObject({ gross: 4_100_000, tax: 41_000, employerHealthPremium: 0 });
+    });
+
+    it("joins the PPh21 gross once a version makes it taxable: 4.305.000 x 10%, and the pay does not move", async () => {
+      const { result, lines, row, settingsVersionId, expectedSettingsId } = await runMonth({
+        employerHealthPremiumTaxable: true,
+      });
+      expect(settingsVersionId).toBe(expectedSettingsId);
+      // The stored lines, gross, deductions, net and payable are exactly those without the setting.
+      expect(lines).toEqual(PAY_LINES);
+      expect(result).toEqual(PAY);
+      expect(row).toMatchObject({ gross: 4_305_000, rate: 0.1, tax: 430_500, employerHealthPremium: 205_000 });
     });
   });
 

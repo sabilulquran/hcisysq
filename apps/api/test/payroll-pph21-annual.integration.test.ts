@@ -9,6 +9,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { findPph21AnnualPolicy, loadAnnualYear, loadTaxIdentities } from "../src/modules/payroll/pph21-annual-store.js";
+import { findPph21Settings } from "../src/modules/payroll/reports.js";
 import { sealTaxIdentity } from "../src/modules/payroll/tax-identity.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -63,6 +64,20 @@ describe.skipIf(!allowed)("PAY-003 annual PPh21 against PostgreSQL", () => {
       const annual = await loadAnnualYear(client as unknown as Pool, 2099, lookup.policy);
       expect(annual).toEqual({ year: 2099, segments: [], pendingPeriods: [], periodsWithoutTer: [] });
       expect((await findPph21AnnualPolicy(client as unknown as Pool, 2098)).ok).toBe(false);
+    });
+  });
+
+  it("accepts a PPH21_SETTINGS row (migration 0158) and reads it back as settings", async () => {
+    await inRollback(async (client) => {
+      await client.query(
+        `INSERT INTO payroll_policy_versions(id, policy_key, effective_from, effective_to, payload, source)
+         VALUES ($1, 'PPH21_SETTINGS', DATE '2099-01-01', DATE '2099-12-31', $2::jsonb, 'uji sintetis')`,
+        [randomUUID(), JSON.stringify({ source: "uji", employerBorne: true })],
+      );
+      const found = await findPph21Settings(client, "2099-06-25");
+      expect(found).toMatchObject({ ok: true, settings: { employerBorne: true, nonPermanentDailyTer: false } });
+      // No row: both switches off.
+      expect(await findPph21Settings(client, "2098-06-25")).toMatchObject({ ok: true, versionId: null, settings: { employerBorne: false } });
     });
   });
 

@@ -143,6 +143,16 @@ describe("daily TER for pegawai tidak tetap (P10)", () => {
     expect(high.rows[0]!.tax).toBeNull();
   });
 
+  it("keeps a person with a permanent and an honorer employment on monthly TER for the whole gross", () => {
+    const on = settings({ nonPermanentDailyTer: true, daily: DAILY });
+    const mixed = [row(), { ...HONORER, employeeId: "person-1", employmentId: "employment-9" }];
+    const report = buildPph21Report({ period: JUNE, policy: TER, rows: mixed, settings: on });
+    // 10 jt + 11 jt = 21 jt in category A → 2% = 420.000 under 21-100-01, never divided by 20 days.
+    expect(report.rows[0]).toMatchObject({ objectCode: "21-100-01", gross: 21_000_000, tax: 420_000, attendanceDays: null });
+    expect(report.rows[0]!.flags).toEqual(expect.arrayContaining(["MIXED_TERMS", "NON_PERMANENT_TERMS"]));
+    expect(dailyTaxedEmployees(mixed, on).size).toBe(0);
+  });
+
   it("never asks for an annual settlement on a daily-taxed row, and leaves it out of the annual months", () => {
     const report = buildPph21Report({
       period: DECEMBER,

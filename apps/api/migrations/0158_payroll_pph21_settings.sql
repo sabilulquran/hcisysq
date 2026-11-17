@@ -6,7 +6,7 @@
 -- calculation and the reports behave exactly as before. This migration only lets
 -- the key be written; it inserts no row.
 --
--- Down (restores the 0155 constraint):
+-- Down (restores the constraint of 0157):
 --   DELETE FROM payroll_policy_versions WHERE policy_key = 'PPH21_SETTINGS';  -- record the rows first
 --   ALTER TABLE payroll_policy_versions DROP CONSTRAINT IF EXISTS payroll_policy_versions_policy_key_check;
 --   ALTER TABLE payroll_policy_versions ADD CONSTRAINT payroll_policy_versions_policy_key_check

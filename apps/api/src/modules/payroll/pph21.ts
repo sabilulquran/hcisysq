@@ -46,7 +46,9 @@ export type Pph21Flag =
   /** Daily TER (21-100-03) is on, but the month has no attendance days to average over. */
   | "DAILY_DAYS_MISSING"
   /** Average daily gross above the policy ceiling: the Pasal 17 rule applies, not computed in v1. */
-  | "DAILY_ABOVE_CEILING";
+  | "DAILY_ABOVE_CEILING"
+  /** Daily TER is on, but the person also has a permanent employment this month: monthly TER for the whole gross. */
+  | "MIXED_TERMS";
 
 /** One employment's latest result of the period, as the report needs it. */
 export type Pph21SourceRow = {
@@ -214,12 +216,16 @@ export function buildPph21Report(input: {
     const ptkpStatus = statuses.size === 0 ? null : [...statuses.values()].join(" / ");
     const category = conflicting ? null : terCategoryFor(policy, ptkpStatus);
 
-    const nonPermanent = paid.some(
-      (source) => source.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(source.termCategory),
-    );
+    const isNonPermanent = (source: Pph21SourceRow) =>
+      source.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(source.termCategory);
+    const nonPermanent = paid.some(isNonPermanent);
+    const dailyOn = settings.nonPermanentDailyTer && settings.daily !== null;
     // P10 switched on: a pegawai tidak tetap is taxed per attendance day under
     // 21-100-03, which needs no PTKP and has no annual settlement (section 7.5).
-    const daily = nonPermanent && settings.nonPermanentDailyTer && settings.daily !== null ? settings.daily : null;
+    // Only when every paid employment is non-permanent: a permanent salary in the
+    // same month is never divided by honorarium days (review 2026-11-17).
+    const daily = dailyOn && paid.every(isNonPermanent) ? settings.daily : null;
+    if (dailyOn && nonPermanent && !daily) flags.push("MIXED_TERMS");
     const attendanceDays = daily
       ? paid.reduce((total, source) => total + (source.attendanceDays ?? 0), 0)
       : null;

@@ -29,7 +29,7 @@ import {
 } from "./performance-link.js";
 import { syncEmployeeLoanDeductions } from "./employee-loan-link.js";
 import { DEFAULT_PPH21_SETTINGS, parsePph21Settings, parsePph21TerPolicy, resolvePolicy, type PolicyProblem } from "./policy.js";
-import type { Pph21SourceRow } from "./pph21.js";
+import { needsAnnualCalculation, type Pph21SourceRow } from "./pph21.js";
 import { findPph21AnnualPolicy, loadAnnualMonths } from "./pph21-annual-store.js";
 import { employerPph21Lines } from "./pph21-employer.js";
 import { writeAudit } from "./store.js";
@@ -648,23 +648,45 @@ export async function calculatePeriod(
     // PAY-003 section 7.5 (P6): PPh21 borne by the yayasan. Off unless the
     // PPH21_SETTINGS in force says so, and then written as one EMPLOYER_COST
     // line per person; off, not one figure changes.
+    const pph21VersionIds: string[] = [];
     if (pph21Settings.employerBorne && terPolicy) {
       const year = Number(period.periodStart.slice(0, 4));
-      const annual = await findPph21AnnualPolicy(client, year);
-      const needsAnnual = pph21Sources.some((source) => source.serviceEndDate !== null) || period.periodStart.slice(5, 7) === "12";
+      const reportPeriod = { periodMonth: period.periodStart, periodStart: period.periodStart, periodEnd: period.periodEnd };
+      // Only people whose service ends inside this period, or everyone in
+      // December, settle the year; nobody else needs the earlier months read.
+      const settling = pph21Sources.filter((source) =>
+        needsAnnualCalculation(reportPeriod, [source.serviceEndDate], source.hasContinuingEmployment),
+      );
+      let annual: Parameters<typeof employerPph21Lines>[0]["annual"] = null;
+      if (settling.length > 0) {
+        const annualPolicy = await findPph21AnnualPolicy(client, year);
+        if (annualPolicy.ok) {
+          const earlier = await loadAnnualMonths(client, year, annualPolicy.policy, {
+            beforeMonth: period.periodStart.slice(0, 7),
+          });
+          // An earlier month of the year that is not final (never approved, or
+          // reopened) or had no TER table leaves the year incomplete: the line
+          // stays on TER and says so, rather than settling on missing months.
+          if (earlier.pendingPeriods.length === 0 && earlier.periodsWithoutTer.length === 0) {
+            const settlingIds = new Set(settling.map((source) => source.employeeId));
+            annual = {
+              policy: annualPolicy.policy,
+              priorMonths: earlier.months.filter((month) => settlingIds.has(month.employeeId)),
+            };
+            pph21VersionIds.push(annualPolicy.versionId);
+          }
+        }
+      }
       const employerLines = employerPph21Lines({
-        period: { periodMonth: period.periodStart, periodStart: period.periodStart, periodEnd: period.periodEnd },
+        period: reportPeriod,
         terPolicy,
         settings: pph21Settings,
         rows: pph21Sources,
-        annual:
-          annual.ok && needsAnnual
-            ? {
-                policy: annual.policy,
-                priorMonths: (await loadAnnualMonths(client, year, annual.policy, { beforeMonth: period.periodStart.slice(0, 7) })).months,
-              }
-            : null,
+        annual,
       });
+      // The results record every policy row the line was computed from (ADR-0003).
+      if (settingsRow) pph21VersionIds.push(settingsRow.id);
+      if (terRow) pph21VersionIds.push(terRow.id);
       for (const [employmentId, line] of employerLines) {
         const target = resultByEmployment.get(employmentId);
         if (!target) continue;
@@ -701,7 +723,7 @@ export async function calculatePeriod(
            gross bigint, deductions bigint, net bigint, payable bigint, employer_cost bigint,
            pay_factor numeric, pay_factor_reason text, bpjs_base bigint, extra_family_members integer,
            blockers jsonb, input_snapshot jsonb, compensation_profile_id uuid)`,
-        [period.id, JSON.stringify(resultRows), JSON.stringify(resolved.versionIds)],
+        [period.id, JSON.stringify(resultRows), JSON.stringify([...resolved.versionIds, ...pph21VersionIds])],
       );
     }
 

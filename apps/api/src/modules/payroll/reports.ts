@@ -547,8 +547,11 @@ export function pph21RowNote(row: Pph21Row): string {
     notes.push(
       row.objectCode === PPH21_NON_PERMANENT_OBJECT_CODE
         ? `Pegawai tidak tetap: TER harian 21-100-03 atas rata-rata bruto per hari hadir (${row.attendanceDays ?? 0} hari)`
-        : "Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT; TER harian 21-100-03 di balik kebijakan PPH21_SETTINGS yang mati)",
+        : "Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap",
     );
+  }
+  if (row.flags.includes("MIXED_TERMS")) {
+    notes.push("Pegawai ini juga memiliki employment tetap bulan ini; seluruh bruto memakai TER bulanan 21-100-01");
   }
   if (row.flags.includes("DAILY_DAYS_MISSING")) {
     notes.push("TER harian aktif tetapi jumlah hari hadir periode ini kosong; PPh21 belum dapat dihitung");

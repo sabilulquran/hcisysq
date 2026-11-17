@@ -165,7 +165,8 @@ export type PayrollPph21Flag =
   | "ANNUAL_CALCULATION_REQUIRED"
   | "NON_PERMANENT_TERMS"
   | "DAILY_DAYS_MISSING"
-  | "DAILY_ABOVE_CEILING";
+  | "DAILY_ABOVE_CEILING"
+  | "MIXED_TERMS";
 
 /**
  * One person on the PPh21 TER report: two employments in the period are one row
@@ -373,9 +374,10 @@ const PPH21_FLAG_LABELS: Record<PayrollPph21Flag, string> = {
   PTKP_CONFLICT: "PTKP berbeda antar-employment",
   EXCLUDED: "Dikecualikan",
   ANNUAL_CALCULATION_REQUIRED: "Masa pajak terakhir — bukan angka final",
-  NON_PERMANENT_TERMS: "Honorer/lepas (pegawai tidak tetap)",
+  NON_PERMANENT_TERMS: "Honorer/lepas — aturan menunggu konfirmasi",
   DAILY_DAYS_MISSING: "TER harian — hari hadir kosong",
   DAILY_ABOVE_CEILING: "TER harian — di atas batas harian",
+  MIXED_TERMS: "Campuran tetap dan tidak tetap — TER bulanan",
 };
 
 export function payrollPph21FlagLabel(flag: PayrollPph21Flag): string {

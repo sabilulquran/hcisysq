@@ -94,10 +94,19 @@ export async function loadAnnualYear(
 /** Who is taxed with daily TER under 21-100-03 in this period (section 7.5). */
 export function dailyTaxedEmployees(rows: readonly Pph21SourceRow[], settings: Pph21Settings): Set<string> {
   if (!settings.nonPermanentDailyTer || settings.daily === null) return new Set();
+  // Same rule as the monthly report: daily only when every paid employment of
+  // the person that month is non-permanent (MIXED_TERMS stays on monthly TER).
+  const paidByPerson = new Map<string, Pph21SourceRow[]>();
+  for (const row of rows) {
+    if (row.blockerCount !== 0) continue;
+    paidByPerson.set(row.employeeId, [...(paidByPerson.get(row.employeeId) ?? []), row]);
+  }
   return new Set(
-    rows
-      .filter((row) => row.blockerCount === 0 && row.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(row.termCategory))
-      .map((row) => row.employeeId),
+    [...paidByPerson]
+      .filter(([, paid]) =>
+        paid.every((row) => row.termCategory !== null && NON_PERMANENT_TERM_CATEGORIES.includes(row.termCategory)),
+      )
+      .map(([employeeId]) => employeeId),
   );
 }
 

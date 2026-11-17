@@ -16,7 +16,7 @@ THR berada di luar PAY-003 v1 (`payroll-calculation-v1.md` §1.2). Spesifikasi i
 | Masa kerja < 1 bulan | tidak berhak | — |
 | Upah | gaji pokok + tunjangan tetap | penanda katalog `payroll_components.is_thr_wage` |
 | Upah pekerja lepas/honorer, masa kerja ≥ 12 bulan (Pasal 3 ayat (3) huruf a) | rata-rata upah yang diterima dalam 12 bulan terakhir sebelum hari raya | hasil periode gaji yang sudah disahkan; komponen di `THR.averageWageComponents` (T5) |
-| Upah pekerja lepas/honorer, masa kerja < 12 bulan (Pasal 3 ayat (3) huruf b) | rata-rata upah yang diterima tiap bulan selama masa kerja | sama dengan baris di atas |
+| Upah pekerja lepas/honorer, masa kerja < 12 bulan (Pasal 3 ayat (3) huruf b) | rata-rata upah yang diterima tiap **bulan kerja penuh** selama masa kerja (§2.2) | sama dengan baris di atas |
 | Waktu bayar | paling lambat 7 hari sebelum hari raya | `THR.paymentDeadlineDaysBeforeHoliday` = 7 |
 | PKWTT yang berakhir ≤ 30 hari sebelum hari raya | tetap berhak | `THR.terminationGraceDays` = 30, `THR.terminationGraceTermCategories` |
 

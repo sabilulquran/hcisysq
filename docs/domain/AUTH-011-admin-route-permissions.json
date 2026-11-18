@@ -6102,6 +6102,30 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "GET",
+    "url": "/admin/trip-per-diem-golongan",
+    "permissions": [
+      "trip_advances.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "PUT",
+    "url": "/admin/trip-per-diem-golongan",
+    "permissions": [
+      "trip_per_diem.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trip-advances/routes.ts",
+    "method": "DELETE",
+    "url": "/admin/trip-per-diem-golongan/:code",
+    "permissions": [
+      "trip_per_diem.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/rewards/routes.ts",
     "method": "GET",
     "url": "/admin/rewards/source",

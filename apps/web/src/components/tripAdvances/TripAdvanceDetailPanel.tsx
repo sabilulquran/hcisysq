@@ -46,7 +46,7 @@ export function TripAdvanceDetailPanel({ advance, actions }: { advance: AdvanceD
           {advance.employeeName} · {advance.employeeNumber}{advance.unitName ? ` · ${advance.unitName}` : ""}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {advance.tripStartOn} – {advance.tripEndOn} · {advance.zoneLabel}
+          {advance.tripStartOn} – {advance.tripEndOn} · {advance.wilayahLabel}
         </p>
         {advance.overdue ? (
           <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-danger-ink">
@@ -68,7 +68,10 @@ export function TripAdvanceDetailPanel({ advance, actions }: { advance: AdvanceD
         <Figure label={advance.amount === 0 ? "Uang muka (hanya uang harian)" : "Uang muka"} value={formatRupiah(advance.amount)} />
         {settled ? (
           <>
-            <Figure label={`Uang harian (${advance.perDiemDays} hari × ${formatRupiah(advance.perDiemRate ?? 0)})`} value={formatRupiah(advance.perDiemAmount ?? 0)} />
+            <Figure
+              label={`Uang harian (${advance.perDiemDays} hari × ${formatRupiah(advance.perDiemRate ?? 0)}${advance.perDiemGolonganLabel ? ` · ${advance.perDiemGolonganLabel}` : ""})`}
+              value={formatRupiah(advance.perDiemAmount ?? 0)}
+            />
             <Figure label="Klaim diperhitungkan" value={formatRupiah(advance.claimsTotal ?? 0)} />
             <Figure label={`Selisih · ${balanceLabel(advance.settlementBalance)}`} value={formatRupiah(Math.abs(advance.settlementBalance ?? 0))} />
             {advance.settlementBalance !== null && advance.settlementBalance < 0 ? (
@@ -78,6 +81,23 @@ export function TripAdvanceDetailPanel({ advance, actions }: { advance: AdvanceD
         ) : null}
       </dl>
       {advance.settlementFinanceNote ? <p className="text-sm text-muted-foreground">Catatan Keuangan: {advance.settlementFinanceNote}</p> : null}
+      {/* D-21: siapa yang menyatakan adalah fakta audit, jadi pernyataan pegawai dan penetapan
+          Keuangan tidak pernah ditulis sebagai hal yang sama. */}
+      {advance.organizerPerDiemDeclared ? (
+        <p className="text-sm text-muted-foreground">
+          Pegawai menyatakan uang saku untuk penugasan ini sudah diterima dari penyelenggara.
+        </p>
+      ) : null}
+      {advance.organizerPerDiemSource === "FINANCE" ? (
+        <p className="text-sm text-muted-foreground">
+          Keuangan {advance.organizerPerDiemApplied ? "menetapkan" : "mengoreksi menjadi"} uang saku
+          {advance.organizerPerDiemApplied ? " sudah" : " belum"} diterima dari penyelenggara
+          {advance.organizerPerDiemOverrideReason ? `: ${advance.organizerPerDiemOverrideReason}` : ""}.
+        </p>
+      ) : null}
+      {advance.perDiemWaiveReason ? (
+        <p className="text-sm text-muted-foreground">Alasan uang harian ditahan: {advance.perDiemWaiveReason}</p>
+      ) : null}
 
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
 

@@ -16,16 +16,45 @@ export type AdvanceStatus = (typeof ADVANCE_STATUSES)[number];
 /** D-13: an advance that has not been settled yet holds the trip's claims for its settlement. */
 export const UNSETTLED_STATUSES: readonly AdvanceStatus[] = ["IN_REVIEW", "APPROVED", "DISBURSED", "SETTLEMENT_SUBMITTED"];
 
-export const ZONE_KEYS = ["LOCAL", "PROVINCIAL", "NATIONAL", "INTERNATIONAL"] as const;
-export type ZoneKey = (typeof ZONE_KEYS)[number];
+export const WILAYAH_KEYS = ["DALAM_DAERAH", "LUAR_DAERAH", "LUAR_NEGERI"] as const;
+export type WilayahKey = (typeof WILAYAH_KEYS)[number];
 
-/** D-01 DRAFT. */
-export const ZONES: Record<ZoneKey, string> = {
-  LOCAL: "Dalam kabupaten/kota",
-  PROVINCIAL: "Luar kabupaten/kota, dalam provinsi",
-  NATIONAL: "Luar provinsi",
-  INTERNATIONAL: "Luar negeri",
+/**
+ * D-01 (SK 01.111/YSQ/VII/2026, Lampiran 1). SK hanya mengenal dua wilayah. `LUAR_NEGERI`
+ * dipertahankan sebagai kode supaya perjalanan luar negeri tetap dapat diajukan, tetapi SK tidak
+ * menetapkan tarifnya: kode ini harus berperilaku "tarif belum ditetapkan", bukan Rp0.
+ */
+export const WILAYAH: Record<WilayahKey, string> = {
+  DALAM_DAERAH: "Dalam Daerah (Wilayah III Cirebon)",
+  LUAR_DAERAH: "Luar Daerah (di luar Wilayah III Cirebon)",
+  LUAR_NEGERI: "Luar negeri (belum diatur SK)",
 };
+
+export const GOLONGAN_KEYS = ["PIMPINAN", "KEPALA_UNIT", "STAF"] as const;
+export type GolonganKey = (typeof GOLONGAN_KEYS)[number];
+
+/** D-01 (SK 01.111/YSQ/VII/2026, Lampiran 1). */
+export const GOLONGAN: Record<GolonganKey, string> = {
+  PIMPINAN: "Pimpinan / Yayasan",
+  KEPALA_UNIT: "Kepala Unit Kerja",
+  STAF: "Staf",
+};
+
+/**
+ * D-20 DRAFT: seseorang yang memegang lebih dari satu klasifikasi (guru yang juga kepala unit)
+ * memakai golongan tertinggi yang terpetakan. SK tidak mengatur rangkap jabatan.
+ */
+const GOLONGAN_RANK: Record<GolonganKey, number> = { PIMPINAN: 3, KEPALA_UNIT: 2, STAF: 1 };
+
+export function highestGolongan(values: readonly GolonganKey[]): GolonganKey | null {
+  let best: GolonganKey | null = null;
+  for (const value of values) if (best === null || GOLONGAN_RANK[value] > GOLONGAN_RANK[best]) best = value;
+  return best;
+}
+
+export function isGolongan(value: string): value is GolonganKey {
+  return (GOLONGAN_KEYS as readonly string[]).includes(value);
+}
 
 /** D-02 DRAFT: the per-day ceiling the rate table accepts. */
 export const MAX_DAILY_RATE = 5_000_000n;
@@ -53,6 +82,7 @@ export type TripAdvancePolicyCode =
   | "TRIP_ADVANCE_PER_DIEM_DAYS"
   | "TRIP_ADVANCE_REDUCTION_NOTE_REQUIRED"
   | "TRIP_PER_DIEM_RATE_MISSING"
+  | "TRIP_PER_DIEM_NOT_PAYABLE_TWICE"
   | "TRIP_ADVANCE_PAYMENT_DATE"
   | "TRIP_ADVANCE_REFUND_EXCEEDS_DUE"
   | "TRIP_ADVANCE_SETTLEMENT_TOO_LARGE";
@@ -70,8 +100,8 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
-export function isZone(value: string): value is ZoneKey {
-  return (ZONE_KEYS as readonly string[]).includes(value);
+export function isWilayah(value: string): value is WilayahKey {
+  return (WILAYAH_KEYS as readonly string[]).includes(value);
 }
 
 /** D-03: calendar days of a trip, both ends inclusive. */
@@ -126,6 +156,8 @@ export interface SettlementInput {
   maxDays: number;
   dailyRate: bigint | null;
   note: string | null;
+  /** D-21 (Diktum Keempat): uang saku dari penyelenggara untuk penugasan yang sama. */
+  organizerPerDiemPaid?: boolean;
 }
 
 export interface SettlementResult {
@@ -140,6 +172,14 @@ export interface SettlementResult {
  * diem without a rate are refused; nothing is guessed.
  */
 export function settle(input: SettlementInput): SettlementResult {
+  // D-21: uang saku tidak dibayar dua kali. Bila pegawai sudah menerimanya dari penyelenggara
+  // atau pihak lain untuk penugasan yang sama, uang harian tidak dibayar sama sekali.
+  if (input.organizerPerDiemPaid && input.perDiemDays > 0) {
+    throw new TripAdvancePolicyError(
+      "TRIP_PER_DIEM_NOT_PAYABLE_TWICE",
+      "Uang saku sudah diterima dari penyelenggara untuk penugasan ini, jadi uang harian tidak dibayar lagi. Isi 0 hari.",
+    );
+  }
   if (!Number.isInteger(input.perDiemDays) || input.perDiemDays < 0 || input.perDiemDays > input.maxDays) {
     throw new TripAdvancePolicyError(
       "TRIP_ADVANCE_PER_DIEM_DAYS", `Hari uang harian antara 0 dan ${input.maxDays} hari.`,
@@ -153,7 +193,7 @@ export function settle(input: SettlementInput): SettlementResult {
   if (input.perDiemDays > 0 && input.dailyRate === null) {
     throw new TripAdvancePolicyError(
       "TRIP_PER_DIEM_RATE_MISSING",
-      "Tarif uang harian zona ini belum ditetapkan untuk tanggal berangkat. Minta HC/Keuangan mengisi tarif, atau isi 0 hari.",
+      "Tarif uang harian golongan dan wilayah ini belum ditetapkan untuk tanggal berangkat. Minta HC/Keuangan mengisi tarif, atau isi 0 hari.",
     );
   }
   const perDiemAmount = BigInt(input.perDiemDays) * (input.dailyRate ?? 0n);
@@ -212,6 +252,10 @@ export function exportWindowOk(from: string, to: string): boolean {
   return Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) < MAX_EXPORT_DAYS * DAY_MS;
 }
 
-export function zoneCatalog() {
-  return ZONE_KEYS.map((key) => ({ key, label: ZONES[key] }));
+export function wilayahCatalog() {
+  return WILAYAH_KEYS.map((key) => ({ key, label: WILAYAH[key] }));
+}
+
+export function golonganCatalog() {
+  return GOLONGAN_KEYS.map((key) => ({ key, label: GOLONGAN[key] }));
 }

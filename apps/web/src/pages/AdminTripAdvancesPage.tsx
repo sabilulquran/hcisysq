@@ -29,6 +29,9 @@ import {
   rejectAdvance,
   searchAdvanceClaimants,
   settleAdvance,
+  getGolonganMap,
+  mapGolongan,
+  unmapGolongan,
   todayInJakarta,
   TripAdvanceApiError,
   type AdvanceDetail,
@@ -38,7 +41,9 @@ import {
   type Pagination,
   type PerDiemRate,
   type TransactionMethod,
-  type ZoneKey,
+  type WilayahKey,
+  type GolonganKey,
+  type GolonganMapping,
 } from "@/lib/tripAdvances";
 import type { AuthSession } from "@/types/hcis";
 
@@ -85,7 +90,16 @@ export function AdminTripAdvancesPage() {
   const [current, setCurrent] = useState<CurrentRate[]>([]);
   const [ratePaging, setRatePaging] = useState<Pagination | null>(null);
   const [ratePage, setRatePage] = useState(1);
-  const [rateForm, setRateForm] = useState({ zone: "NATIONAL" as ZoneKey, effectiveFrom: todayInJakarta(), dailyAmount: "", note: "" });
+  const [rateForm, setRateForm] = useState({
+    golongan: "STAF" as GolonganKey, wilayah: "LUAR_DAERAH" as WilayahKey,
+    effectiveFrom: todayInJakarta(), dailyAmount: "", note: "",
+  });
+  const [golonganMap, setGolonganMap] = useState<GolonganMapping[]>([]);
+  const [unmappedCodes, setUnmappedCodes] = useState<Array<{ code: string; name: string }>>([]);
+  const [mapForm, setMapForm] = useState({ jobClassificationCode: "", golongan: "STAF" as GolonganKey, note: "" });
+  const [organizerPaid, setOrganizerPaid] = useState(false);
+  const [waiveReason, setWaiveReason] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const canManage = hasPermission(session, "trip_advances.manage");
   const canRead = hasPermission(session, "trip_advances.read");
   const canManageRates = hasPermission(session, "trip_per_diem.manage");
@@ -116,12 +130,49 @@ export function AdminTripAdvancesPage() {
     }
   };
 
+  const loadGolonganMap = async () => {
+    try {
+      const result = await getGolonganMap();
+      setGolonganMap(result.items);
+      setUnmappedCodes(result.unmapped);
+    } catch {
+      setGolonganMap([]);
+      setUnmappedCodes([]);
+    }
+  };
+
+  const saveMapping = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = mapForm.jobClassificationCode.trim().toUpperCase();
+    if (!code) return;
+    setBusy(true);
+    void mapGolongan({ jobClassificationCode: code, golongan: mapForm.golongan, note: mapForm.note.trim() || null })
+      .then(async () => {
+        setNotice(`Klasifikasi ${code} dipetakan ke golongan uang saku.`);
+        setError(null);
+        setMapForm({ jobClassificationCode: "", golongan: "STAF", note: "" });
+        await loadGolonganMap();
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Pemetaan golongan tidak dapat disimpan."))
+      .finally(() => setBusy(false));
+  };
+
+  const removeMapping = (code: string) => {
+    if (!window.confirm(`Hapus pemetaan golongan untuk klasifikasi ${code}? Perkiraan uang harian pegawai dengan klasifikasi ini akan terhenti sampai dipetakan lagi.`)) return;
+    setBusy(true);
+    void unmapGolongan(code)
+      .then(async () => { setNotice(`Pemetaan ${code} dihapus.`); setError(null); await loadGolonganMap(); })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Pemetaan golongan tidak dapat dihapus."))
+      .finally(() => setBusy(false));
+  };
+
   useEffect(() => {
     void getCurrentSession().then(setSession).catch(() => {
       setSession(null);
       setError("Izin akun tidak dapat dibaca, sehingga tombol tindakan disembunyikan. Muat ulang halaman.");
     });
     void loadRates(1);
+    void loadGolonganMap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,6 +194,11 @@ export function AdminTripAdvancesPage() {
       setTransactionKey(crypto.randomUUID());
       setPerDiemDays(String(advance.settlementPreview.maxPerDiemDays));
       setSettleNote("");
+      // D-21: the declaration, the waiver reason and the correction reason belong to THIS advance.
+      // Carrying them to the next one would withhold someone else's uang saku on A's grounds.
+      setOrganizerPaid(advance.organizerPerDiemDeclared);
+      setWaiveReason("");
+      setOverrideReason("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Uang muka tidak dapat dibuka.");
     }
@@ -190,7 +246,14 @@ export function AdminTripAdvancesPage() {
     const days = Number(perDiemDays);
     if (!Number.isInteger(days) || days < 0) return;
     void run(async () => {
-      const result = await settleAdvance(advance.id, { perDiemDays: days, note: settleNote.trim() || null, idempotencyKey: transactionKey });
+      const result = await settleAdvance(advance.id, {
+        perDiemDays: days,
+        note: settleNote.trim() || null,
+        organizerPerDiemPaid: organizerPaid,
+        waiveReason: waiveReason.trim() || null,
+        organizerOverrideReason: overrideReason.trim() || null,
+        idempotencyKey: transactionKey,
+      });
       return `Diselesaikan. Uang harian ${formatRupiah(result.perDiemAmount)}, klaim ${formatRupiah(result.claimsTotal)}, selisih ${formatRupiah(result.settlementBalance)}.`;
     }, advance);
   };
@@ -222,7 +285,10 @@ export function AdminTripAdvancesPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    void createPerDiemRate({ zone: rateForm.zone, effectiveFrom: rateForm.effectiveFrom, dailyAmount: rateAmount, note: rateForm.note.trim() || null })
+    void createPerDiemRate({
+      golongan: rateForm.golongan, wilayah: rateForm.wilayah, effectiveFrom: rateForm.effectiveFrom,
+      dailyAmount: rateAmount, note: rateForm.note.trim() || null,
+    })
       .then(async () => {
         setNotice("Tarif baru dicatat.");
         setRateForm({ ...rateForm, dailyAmount: "", note: "" });
@@ -270,12 +336,13 @@ export function AdminTripAdvancesPage() {
       <section className="mb-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-sm font-bold text-brand-heading">Tarif uang harian</h2>
         <p className="text-xs text-muted-foreground">
-          Tarif per hari per zona, berversi. Perjalanan memakai tarif yang berlaku pada tanggal berangkat. Tanpa tarif, uang harian tidak dapat dihitung.
+          Tarif per hari per orang menurut golongan dan wilayah (SK Yayasan Sabilul Qur’an Nomor 01.111/YSQ/VII/2026, Lampiran 1),
+          berversi. Perjalanan memakai tarif yang berlaku pada tanggal berangkat. Tanpa tarif, uang harian tidak dapat dihitung.
         </p>
-        <dl className="mt-3 grid grid-cols-2 gap-2 text-sm lg:grid-cols-4">
+        <dl className="mt-3 grid grid-cols-2 gap-2 text-sm lg:grid-cols-3">
           {current.map((rate) => (
-            <div key={rate.zone} className="rounded-xl border border-border/70 bg-surface px-3 py-2">
-              <dt className="text-xs text-muted-foreground">{rate.label}</dt>
+            <div key={`${rate.golongan}-${rate.wilayah}`} className="rounded-xl border border-border/70 bg-surface px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{rate.golonganLabel} · {rate.label}</dt>
               <dd className="font-bold tabular-nums text-brand-heading">
                 {rate.dailyAmount === null ? "Belum ditetapkan" : `${formatRupiah(rate.dailyAmount)}/hari`}
               </dd>
@@ -285,9 +352,16 @@ export function AdminTripAdvancesPage() {
         </dl>
         {canManageRates ? (
           <form onSubmit={saveRate} className="mt-4 grid gap-3 sm:grid-cols-4">
-            <label className="text-xs font-semibold text-muted-foreground">Zona
-              <select value={rateForm.zone} className={field} onChange={(event) => setRateForm({ ...rateForm, zone: event.target.value as ZoneKey })}>
-                {current.map((rate) => <option key={rate.zone} value={rate.zone}>{rate.label}</option>)}
+            <label className="text-xs font-semibold text-muted-foreground">Golongan
+              <select value={rateForm.golongan} className={field} onChange={(event) => setRateForm({ ...rateForm, golongan: event.target.value as GolonganKey })}>
+                {[...new Map(current.map((rate) => [rate.golongan, rate.golonganLabel])).entries()]
+                  .map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-muted-foreground">Wilayah
+              <select value={rateForm.wilayah} className={field} onChange={(event) => setRateForm({ ...rateForm, wilayah: event.target.value as WilayahKey })}>
+                {[...new Map(current.map((rate) => [rate.wilayah, rate.label])).entries()]
+                  .map(([key, label]) => <option key={key} value={key}>{label}</option>)}
               </select>
             </label>
             <label className="text-xs font-semibold text-muted-foreground">Berlaku mulai
@@ -311,15 +385,16 @@ export function AdminTripAdvancesPage() {
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[32rem] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
-                <tr><th className="py-1 pr-2">Zona</th><th className="py-1 pr-2">Berlaku mulai</th><th className="py-1 pr-2 text-right">Per hari</th><th className="py-1 pr-2">Dicatat</th><th className="py-1">Catatan</th></tr>
+                <tr><th className="py-1 pr-2">Golongan</th><th className="py-1 pr-2">Wilayah</th><th className="py-1 pr-2">Berlaku mulai</th><th className="py-1 pr-2 text-right">Per hari</th><th className="py-1 pr-2">Dicatat</th><th className="py-1">Catatan</th></tr>
               </thead>
               <tbody className="divide-y divide-border/70">
                 {rates.map((rate) => (
                   <tr key={rate.id}>
-                    <td className="py-1.5 pr-2">{rate.zoneLabel}</td>
+                    <td className="py-1.5 pr-2">{rate.golonganLabel}</td>
+                    <td className="py-1.5 pr-2">{rate.wilayahLabel}</td>
                     <td className="py-1.5 pr-2">{rate.effectiveFrom}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">{formatRupiah(rate.dailyAmount)}</td>
-                    <td className="py-1.5 pr-2 text-xs text-muted-foreground">{rate.createdByName ?? "-"}</td>
+                    <td className="py-1.5 pr-2 text-xs text-muted-foreground">{rate.createdByName ?? rate.decreeReference ?? "-"}</td>
                     <td className="py-1.5 text-xs">{rate.note ?? ""}</td>
                   </tr>
                 ))}
@@ -332,6 +407,70 @@ export function AdminTripAdvancesPage() {
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">Belum ada tarif yang dicatat.</p>
+        )}
+      </section>
+
+      <section className="mb-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+        <h2 className="text-sm font-bold text-brand-heading">Golongan uang saku per klasifikasi jabatan</h2>
+        <p className="text-xs text-muted-foreground">
+          Golongan seorang pegawai berasal dari klasifikasi jabatannya (ORG-011), bukan dari teks jabatan. Klasifikasi yang
+          belum dipetakan membuat perkiraan uang harian pegawai itu berhenti dengan galat konfigurasi, bukan memakai tarif termurah.
+        </p>
+        {unmappedCodes.length > 0 ? (
+          <p role="status" className="mt-3 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-brand-heading">
+            Belum dipetakan: {unmappedCodes.map((row) => row.code).join(", ")}
+          </p>
+        ) : null}
+        {canManageRates ? (
+          <form onSubmit={saveMapping} className="mt-4 grid gap-3 sm:grid-cols-4">
+            <label className="text-xs font-semibold text-muted-foreground">Kode klasifikasi
+              <input required maxLength={48} value={mapForm.jobClassificationCode} className={field}
+                onChange={(event) => setMapForm({ ...mapForm, jobClassificationCode: event.target.value.toUpperCase() })} />
+            </label>
+            <label className="text-xs font-semibold text-muted-foreground">Golongan
+              <select value={mapForm.golongan} className={field} onChange={(event) => setMapForm({ ...mapForm, golongan: event.target.value as GolonganKey })}>
+                <option value="PIMPINAN">Pimpinan / Yayasan</option>
+                <option value="KEPALA_UNIT">Kepala Unit Kerja</option>
+                <option value="STAF">Staf</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-muted-foreground">Catatan (opsional)
+              <input maxLength={500} value={mapForm.note} className={field} onChange={(event) => setMapForm({ ...mapForm, note: event.target.value })} />
+            </label>
+            <div className="sm:col-span-4">
+              <button type="submit" disabled={busy || !mapForm.jobClassificationCode.trim()} className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                Simpan pemetaan
+              </button>
+            </div>
+          </form>
+        ) : null}
+        {golonganMap.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr><th className="py-1 pr-2">Kode</th><th className="py-1 pr-2">Klasifikasi</th><th className="py-1 pr-2">Golongan</th><th className="py-1 pr-2">Diubah</th><th className="py-1" /></tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {golonganMap.map((row) => (
+                  <tr key={row.jobClassificationCode}>
+                    <td className="py-1.5 pr-2 font-semibold">{row.jobClassificationCode}</td>
+                    <td className="py-1.5 pr-2 text-xs">{row.classificationName ?? "-"}</td>
+                    <td className="py-1.5 pr-2">{row.golonganLabel}</td>
+                    <td className="py-1.5 pr-2 text-xs text-muted-foreground">{row.updatedByName ?? "-"}</td>
+                    <td className="py-1.5 text-right">
+                      {canManageRates ? (
+                        <button type="button" disabled={busy} onClick={() => removeMapping(row.jobClassificationCode)} className="text-xs font-bold text-danger-ink disabled:opacity-50">
+                          Hapus
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Belum ada klasifikasi jabatan yang dipetakan ke golongan.</p>
         )}
       </section>
 
@@ -420,9 +559,17 @@ export function AdminTripAdvancesPage() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selected.settlementPreview.verifiedClaims} klaim terverifikasi diperhitungkan
                         {selected.settlementPreview.pendingClaims > 0 ? `; ${selected.settlementPreview.pendingClaims} klaim belum selesai — verifikasi dulu di Reimbursement` : ""}.
+                        {" "}Golongan: {selected.settlementPreview.golonganLabel ?? "belum dipetakan"}.
                         {" "}Tarif: {selected.settlementPreview.dailyRate === null ? "belum ditetapkan" : `${formatRupiah(selected.settlementPreview.dailyRate)}/hari`}.
                         {" "}Paling banyak {selected.settlementPreview.maxPerDiemDays} hari.
                       </p>
+                      {selected.organizerPerDiemDeclared ? (
+                        <p role="status" className="mt-1 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-brand-heading">
+                          Pegawai menyatakan sudah menerima uang saku dari penyelenggara untuk penugasan ini. Diktum Keempat SK
+                          01.111/YSQ/VII/2026: uang harian tidak dibayar lagi. Isi 0 hari dan tulis alasannya. Bila pernyataan itu
+                          keliru, hapus centang di bawah dan tulis alasan koreksinya.
+                        </p>
+                      ) : null}
                       {selected.settlementNote ? <p className="mt-1 text-xs text-foreground">Catatan pegawai: {selected.settlementNote}</p> : null}
                       <div className="mt-2 grid gap-3 sm:grid-cols-2">
                         <label className="text-xs font-semibold text-muted-foreground">Hari uang harian
@@ -431,6 +578,25 @@ export function AdminTripAdvancesPage() {
                         </label>
                         <label className="text-xs font-semibold text-muted-foreground">Catatan (wajib bila hari dikurangi)
                           <input maxLength={500} value={settleNote} className={field} onChange={(event) => { setSettleNote(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground sm:col-span-2">
+                          <input type="checkbox" checked={organizerPaid}
+                            onChange={(event) => { setOrganizerPaid(event.target.checked); setTransactionKey(crypto.randomUUID()); }} />
+                          Uang saku sudah diterima dari penyelenggara atau pihak lain (tidak dibayar dua kali)
+                        </label>
+                        {organizerPaid !== selected.organizerPerDiemDeclared ? (
+                          <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
+                            {selected.organizerPerDiemDeclared
+                              ? "Alasan mengoreksi pernyataan pegawai (10\u2013500 karakter, wajib)"
+                              : "Alasan menetapkan uang saku sudah diterima dari penyelenggara (10\u2013500 karakter, wajib)"}
+                            <input maxLength={500} value={overrideReason} className={field}
+                              onChange={(event) => { setOverrideReason(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
+                          </label>
+                        ) : null}
+                        <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
+                          Alasan uang harian ditahan atau dikurangi (10–500 karakter, wajib bila ditahan)
+                          <input maxLength={500} value={waiveReason} className={field}
+                            onChange={(event) => { setWaiveReason(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
                         </label>
                       </div>
                       <button type="button" disabled={busy} onClick={() => settle(selected)} className={primary}>Selesaikan</button>

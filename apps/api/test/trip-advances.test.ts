@@ -16,7 +16,9 @@ import {
   settlementDueOn,
   TripAdvancePolicyError,
   tripDays,
-  zoneCatalog,
+  golonganCatalog,
+  highestGolongan,
+  wilayahCatalog,
 } from "../src/modules/trip-advances/domain.js";
 
 function code(work: () => unknown) {
@@ -87,6 +89,31 @@ describe("TRIP-002 domain", () => {
     expect(approvalRequestStatus("DISBURSED")).toBe("approved");
     expect(exportWindowOk("2026-01-01", "2026-12-31")).toBe(true);
     expect(exportWindowOk("2025-01-01", "2026-12-31")).toBe(false);
-    expect(zoneCatalog().map((zone) => zone.key)).toEqual(["LOCAL", "PROVINCIAL", "NATIONAL", "INTERNATIONAL"]);
+    expect(wilayahCatalog().map((wilayah) => wilayah.key)).toEqual(["DALAM_DAERAH", "LUAR_DAERAH", "LUAR_NEGERI"]);
+  });
+
+  it("names the golongan of SK 01.111/YSQ/VII/2026 and takes the highest one held (D-20)", () => {
+    expect(golonganCatalog()).toEqual([
+      { key: "PIMPINAN", label: "Pimpinan / Yayasan" },
+      { key: "KEPALA_UNIT", label: "Kepala Unit Kerja" },
+      { key: "STAF", label: "Staf" },
+    ]);
+    expect(highestGolongan([])).toBeNull();
+    expect(highestGolongan(["STAF"])).toBe("STAF");
+    // A teacher who also heads a unit is paid as the unit head, not as staff.
+    expect(highestGolongan(["STAF", "KEPALA_UNIT"])).toBe("KEPALA_UNIT");
+    expect(highestGolongan(["KEPALA_UNIT", "PIMPINAN", "STAF"])).toBe("PIMPINAN");
+  });
+
+  it("never pays uang saku twice (D-21, Diktum Keempat SK 01.111/YSQ/VII/2026)", () => {
+    const base = { advanceAmount: 500_000n, claims: [], maxDays: 3, dailyRate: 140_000n, note: "Uang saku ditanggung penyelenggara" };
+    expect(code(() => settle({ ...base, perDiemDays: 3, organizerPerDiemPaid: true }))).toBe("TRIP_PER_DIEM_NOT_PAYABLE_TWICE");
+    expect(code(() => settle({ ...base, perDiemDays: 1, organizerPerDiemPaid: true }))).toBe("TRIP_PER_DIEM_NOT_PAYABLE_TWICE");
+    // Nothing is paid: the whole advance comes back.
+    expect(settle({ ...base, perDiemDays: 0, organizerPerDiemPaid: true })).toEqual({
+      perDiemAmount: 0n, claimsTotal: 0n, balance: -500_000n, status: "AWAITING_REFUND",
+    });
+    // Without the declaration the same trip earns its three days.
+    expect(settle({ ...base, perDiemDays: 3 }).perDiemAmount).toBe(420_000n);
   });
 });

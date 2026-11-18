@@ -81,7 +81,7 @@ export function TripAdvanceApprovalsSection() {
                     {item.requesterName} · {item.amount === 0 ? "Hanya uang harian" : formatRupiah(item.amount)}
                   </p>
                   <p className="mt-1 text-sm text-foreground">
-                    {item.tripDestination} · {item.tripStartOn} – {item.tripEndOn} · {item.zoneLabel}{item.unitName ? ` · ${item.unitName}` : ""}
+                    {item.tripDestination} · {item.tripStartOn} – {item.tripEndOn} · {item.wilayahLabel}{item.unitName ? ` · ${item.unitName}` : ""}
                   </p>
                   <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{item.purpose}</p>
                   <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>

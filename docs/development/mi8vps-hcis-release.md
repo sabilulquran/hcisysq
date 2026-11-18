@@ -114,6 +114,43 @@ free space, candidate ports free, biometric gate, the database name in `DATABASE
 configured one, and the list of **pending migrations** (bundle files not in `schema_migrations`).
 It stops first if another operator holds the release lock (§4.10).
 
+#### 4.2.1 Release gate: TRIP-002 uang saku (migration `0172`, SK 01.111/YSQ/VII/2026)
+
+Two **release-stopping** checks in the script, not steps anyone has to remember. They run only
+when the bundle carries `0172_trip_per_diem_decree.sql`.
+
+1. **`trip_per_diem_rates` must be empty** — in `preflight`, while `0172` is still pending. A
+   DRAFT-zone rate row has no golongan and no one may guess one, so the migration itself aborts;
+   the gate stops the release before it gets that far. The check is `trip_002_gate_pre_migrate`.
+
+2. **`trip_per_diem_golongan_map` must cover everything in play** — in `candidate`, after
+   `migrate` and before `cutover`, beside the HTTP checks. The check is `trip_002_gate_mapped`,
+   and it covers two populations, because `resolveGolongan` resolves on the **departure date**,
+   not today:
+   - every job classification **in force today** (what new advances will resolve against), and
+   - every **live advance** (`status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')`) resolved on
+     **its own `start_on`** — a classification that was in force when an old trip departed but has
+     since been closed never shows up in the first list, yet its settlement still answers 409.
+
+   The screen shows the first list too ("Belum dipetakan: …"), so HC does not need the queries.
+
+Until the map covers them, every per diem estimate, every new advance and every settlement
+answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee: a module-wide outage from the
+minute of cutover. There is therefore no "carry on and tell people afterwards" path in prose. The
+only way past the gate is `--allow-unmapped-golongan`, typed by the operator on the command line,
+which prints the offending list and an `OPERATOR OVERRIDE` line into this run's output — the
+release evidence of §8. Use it only when Keuangan and HC have agreed to the outage beforehand.
+
+Informational, and **pre-migrate only** (after `0172` the column is `wilayah`, not `zone`):
+
+```sql
+-- How many advances are mid-flight; their zone is mapped to a wilayah deterministically.
+SELECT status, zone, count(*) FROM trip_advances
+ WHERE status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED') GROUP BY 1, 2;
+```
+
+Record its result in the release evidence either way.
+
 ### 4.3 upload
 
 `scp` the bundle to `mi8vps:/tmp/`, then as root: verify sha256, extract into

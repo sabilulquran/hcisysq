@@ -791,6 +791,10 @@
       "reason": "TRIP-002 D-19: rentang tanggal wajib maks. 366 hari; lebih dari 20.000 baris ditolak 422, tidak dipotong."
     },
     {
+      "url": "/admin/trip-per-diem-golongan",
+      "list": "paged"
+    },
+    {
       "url": "/admin/trip-per-diem-rates",
       "list": "paged"
     },

@@ -50,6 +50,8 @@ Penamaan mengikuti `<resource>.<action>[.<scope>]`; `payroll.reopen.approve` ada
 
 **Batas Pengurus Yayasan (`DRAFT`, perbaikan review 2026-10-27).** ORG-003-F dan ORG-010-F melarang Pengurus melihat agregat payroll, dan PAYSLIP-001-F melarang akses slip perorangan. Batas itu **tetap berlaku**: v1 tidak memberi Pengurus Yayasan permission payroll apa pun. Membuka akses laporan payroll untuk Pengurus adalah perubahan batas governance tersendiri yang membutuhkan ADR baru, review keamanan, dan test otorisasi; tidak boleh diturunkan dari spesifikasi ini.
 
+*Amandemen 2026-11-18 (ADR-0008).* ADR baru itu sudah ada: keputusan owner B5 membuka hasil payroll **per orang** dan baris slip untuk periode `APPROVED` atau sesudahnya kepada Pengurus Yayasan, lewat permission `payroll.governance.results.read`, role `governance_payroll_reader` (migrasi 0180), dan route organ `GET /governance/payroll/*`. Yang di atas tetap berlaku sejauh tidak diubah ADR itu: v1 tidak memberi Pengurus permission payroll yang lain, agregat payroll tetap tertutup (ORG-003-F/ORG-010-F), daftar transfer §7 tetap terpisah dan tertutup, dan jalur slip PAY-001/PAY-002 tetap tertutup (PAYSLIP-001-F).
+
 Aturan:
 
 - Tidak ada self-approval: akun yang mengajukan (`payroll.submit`) tidak dapat mengesahkan periode yang sama.

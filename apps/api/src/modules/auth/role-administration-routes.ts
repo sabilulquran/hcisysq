@@ -488,7 +488,8 @@ export function registerRoleAdministrationRoutes(
           description: role.description,
           permissions: role.permissions,
           allowedScopes: allowedScopes(role.roleKey),
-          // ORG-013-2, ORG-013-5: a governance approver role goes to an organ account; nothing else does.
+          // ORG-013-2, ORG-013-5, ADR-0008 D-3: a governance organ role goes to an organ
+          // account; nothing else does.
           targetPrincipalTypes: isGovernanceOrganRole(role.roleKey) ? ["FOUNDATION_BOARD"] : ["EMPLOYEE"],
           endDateRequired: isGovernanceOrganRole(role.roleKey),
           mandateRequired: MANDATE_REQUIRED.has(role.roleKey),

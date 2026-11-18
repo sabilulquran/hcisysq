@@ -204,6 +204,19 @@ export const BOARD_READ_PERMISSION = "board.read";
 export const BOARD_VIEWER_ROLE_KEY = "foundation_board_viewer";
 
 /**
+ * ADR-0008 (owner decision 2026-11-18, B5): per-person payroll figures for an organ account, on the
+ * Portal Organ Yayasan surface only. Migration 0180 creates the key and the role; no account holds
+ * either until one is granted.
+ *
+ * Deliberately placed here beside BOARD_READ_PERMISSION rather than in PAYROLL_PERMISSIONS: like
+ * board.read it sits outside every HC bundle and outside legacy Super Admin compatibility, and an
+ * employee account may never receive it (ADR-0008 D-3). It is not a payroll role key either — the
+ * lifecycle, the inputs, the policy and the transfer list stay exactly where they were.
+ */
+export const GOVERNANCE_PAYROLL_READ_PERMISSION = "payroll.governance.results.read";
+export const GOVERNANCE_PAYROLL_READER_ROLE_KEY = "governance_payroll_reader";
+
+/**
  * RPT-001 (docs/domain/hr-reports.md D-01, D-02): finance ("Pembaca Laporan") carries read,
  * management ("Pimpinan (Laporan)") carries both. Outside every HC bundle and outside legacy Super
  * Admin compatibility (D-13). Despite the ".organization" suffix from migration 0004, the report

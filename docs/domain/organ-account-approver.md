@@ -35,7 +35,7 @@ Tidak termasuk:
 
 - aturan workflow, role, permission, atau route baru;
 - akses organ ke `/app` atau `/admin`. `FOUNDATION_BOARD` tetap ditolak di sana;
-- akses payroll untuk Pengurus. ADR-0003 (amandemen 2026-10-27), ORG-003-F, dan ORG-010-F tetap berlaku;
+- akses payroll untuk Pengurus. ADR-0003 (amandemen 2026-10-27), ORG-003-F, dan ORG-010-F tetap berlaku. *(Amandemen 2026-11-18, ADR-0008: akses payroll untuk Pengurus tetap di luar ruang lingkup ORG-013 — ORG-013 tidak memberinya, dan `governance_leave_approver` tetap tidak membawa payroll. Pembacaan gaji per orang diputuskan tersendiri oleh ADR-0008, lewat role `governance_payroll_reader` dan route `GET /governance/payroll/*`. ORG-003-F dan ORG-010-F tetap berlaku untuk dasbor dan ringkasan.)*
 - token hasil token exchange pada route keputusan (lihat ORG-013-3);
 - aktivasi `STRUCTURE`. ORG-013 hanya berpengaruh bila rollout workflow tersebut sudah `STRUCTURE`, dan aktivasi itu tetap melalui `org004-operational-validation.md`;
 - persetujuan akhir MPP di Karir SQ (REC-IMPL-006). Aplikasi itu memakai mesinnya sendiri dan mengikuti keputusan yang sama di repository-nya.
@@ -63,7 +63,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 - Role yang dipakai adalah `governance_leave_approver` yang sudah ada. Tidak ada role atau migrasi role baru.
 - Role ini tidak membawa `board.read`, data pribadi, atau payroll. Akses baca dasbor tetap lewat ORG-003/ORG-010.
 - Pemberian memakai kanal SQ Hub AUTH-014, dengan pengecualian eksplisit pada invarian 7 (target wajib `EMPLOYEE`). Target `FOUNDATION_BOARD` diizinkan **hanya** dengan syarat berikut:
-  - role termasuk allowlist {`governance_leave_approver`};
+  - role termasuk allowlist {`governance_leave_approver`} *(amandemen 2026-11-18, ADR-0008: allowlist menjadi {`governance_leave_approver`, `governance_payroll_reader`}; syarat lain pada daftar ini berlaku sama untuk keduanya)*;
   - scope `organization`;
   - alasan wajib, misalnya nomor SK kepengurusan;
   - tanggal berakhir wajib, yaitu akhir masa jabatan;

@@ -642,6 +642,9 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
       expect(rows.map((row) => row.permission_key)).toEqual([
         "payroll.approve",
         "payroll.calculate",
+        // ADR-0008 (migration 0180): the organ read. Not a v1 payroll permission and carried by no
+        // payroll role — it belongs to governance_payroll_reader alone, for organ accounts.
+        "payroll.governance.results.read",
         "payroll.inputs.manage",
         "payroll.loans.manage",
         "payroll.payments.confirm",
@@ -706,6 +709,34 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
          WHERE r.role_key = 'foundation_board_viewer' AND rp.permission_key LIKE 'payroll.%'`,
       );
       expect(rows).toEqual([]);
+    });
+
+    // ADR-0008: the owner opened per-person pay to Pengurus Yayasan through a role of its own, so
+    // the assertion above still holds — foundation_board_viewer gained nothing. What the organ
+    // reads it reads through governance_payroll_reader, and that role carries one key and no more.
+    it("gives the organ read to governance_payroll_reader alone (migration 0180)", async () => {
+      const holders = await client.query<{ role_key: string }>(
+        `SELECT r.role_key FROM role_permissions rp
+         JOIN roles r ON r.id = rp.role_id
+         WHERE rp.permission_key = 'payroll.governance.results.read'
+         ORDER BY r.role_key`,
+      );
+      expect(holders.rows.map((row) => row.role_key)).toEqual(["governance_payroll_reader"]);
+
+      const bundle = await client.query<{ permission_key: string }>(
+        `SELECT rp.permission_key FROM role_permissions rp
+         JOIN roles r ON r.id = rp.role_id
+         WHERE r.role_key = 'governance_payroll_reader'
+         ORDER BY rp.permission_key`,
+      );
+      expect(bundle.rows.map((row) => row.permission_key)).toEqual(["payroll.governance.results.read"]);
+
+      // Nobody holds it until the owner assigns it.
+      const assignments = await client.query(
+        `SELECT 1 FROM account_role_assignments ara JOIN roles r ON r.id = ara.role_id
+         WHERE r.role_key = 'governance_payroll_reader'`,
+      );
+      expect(assignments.rowCount).toBe(0);
     });
 
     it("gives the per-person read to the director and the finance lead only (migration 0151)", async () => {

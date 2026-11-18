@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
+  APPROVED_ONWARDS,
   availableActions,
   availableOperations,
   decideTransition,
@@ -164,9 +165,6 @@ const NON_NEGATIVE_INPUTS: readonly string[] = [
   "ANNUAL_PERFORMANCE_OVERRIDE",
   "MONTHLY_PERFORMANCE_OVERRIDE",
 ];
-
-/** Report readers see a period's figures only from this state onwards (section 6). */
-const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
 
 /**
  * The two permissions whose holders build a period's per-person figures while it is still being

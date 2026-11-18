@@ -8,6 +8,7 @@ import {
   ACCESS_REACTIVATION_PERMISSION,
   DOCUMENT_PERMISSIONS,
   EMPLOYMENT_PERMISSIONS,
+  GOVERNANCE_PAYROLL_READ_PERMISSION,
   HC_ADMIN_PERMISSIONS,
   LOAN_PERMISSIONS,
   REIMBURSEMENT_PERMISSIONS,
@@ -132,15 +133,19 @@ describe("AUTH-011 route manifest coverage", () => {
     expect(keys.filter((key) => PUBLIC_ROUTE(key.split(" ")[1]!))).toEqual([]);
   });
 
-  it("lists exactly the ORG-010 board-access routes, the ORG-014 employee list and the ORG-015 decisions", async () => {
+  it("lists exactly the ORG-010 board-access routes, the ORG-014 employee list, the ORG-015 decisions and the ADR-0008 payroll reads", async () => {
     const board = (await manifest()).filter((entry) => entry.access === "board" || entry.access === "governance-bearer")
       .map((entry) => `${entry.access} ${entry.method} ${entry.url}`);
     expect(board).toEqual([
       "board GET /board/dashboard",
       // ORG-015: the only bearer routes that mutate anything, and the only ones restricted to
-      // organ accounts. A fourth governance-bearer route has to be argued for here first.
+      // organ accounts. A further governance-bearer route has to be argued for here first.
       "governance-bearer GET /governance/decisions",
       "governance-bearer POST /governance/decisions/:stepId",
+      // ADR-0008: per-person pay, organ accounts only, and only with the capability the ADR
+      // created. Board access alone opens neither of these two.
+      "governance-bearer GET /governance/payroll/periods",
+      "governance-bearer GET /governance/payroll/periods/:periodId/results",
       "governance-bearer GET /governance/employees",
       "governance-bearer GET /governance/summary",
     ]);
@@ -221,6 +226,16 @@ describe("AUTH-011 route manifest coverage", () => {
         expect(entry.principals, label).toEqual(["FOUNDATION_BOARD"]);
         expect(entry.permissions, label).toEqual(["leave.governance.approve"]);
         expect(known.has("leave.governance.approve"), label).toBe(false);
+        continue;
+      }
+      // ADR-0008: narrower than board access in the same way the decision routes are. Only an
+      // organ account reaches them, and only while it holds the payroll read capability the ADR
+      // created — which no HC bundle, no payroll role and no Super Admin compatibility carries.
+      if (entry.url.startsWith("/governance/payroll/")) {
+        expect(entry.access, label).toBe("governance-bearer");
+        expect(entry.principals, label).toEqual(["FOUNDATION_BOARD"]);
+        expect(entry.permissions, label).toEqual([GOVERNANCE_PAYROLL_READ_PERMISSION]);
+        expect(known.has(GOVERNANCE_PAYROLL_READ_PERMISSION), label).toBe(false);
         continue;
       }
       // ORG-010: board access is FOUNDATION_BOARD, or EMPLOYEE with board.read; never an admin permission.

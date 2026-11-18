@@ -33,7 +33,7 @@ Yang **tidak** pernah dikembalikan:
 
 - email, telepon, pendidikan, tanggal lahir, nomor identitas, alamat, dan rekening;
 - dokumen, presensi, cuti, dan slip gaji;
-- payroll dalam bentuk apa pun (ORG-003-F dan ADR-0003 tetap berlaku);
+- payroll dalam bentuk apa pun (ORG-003-F dan ADR-0003 tetap berlaku). *(Amandemen 2026-11-18, ADR-0008: daftar pegawai ini tetap tidak memuat payroll sama sekali — enam kolomnya tidak berubah. Angka gaji per orang untuk Pengurus Yayasan ada di route tersendiri, `GET /governance/payroll/*`, dengan permission `payroll.governance.results.read` yang tidak dimiliki pembaca daftar ini.)*
 - catatan internal HC dan `management_scope`.
 
 ## Endpoint

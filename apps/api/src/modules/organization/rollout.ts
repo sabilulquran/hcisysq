@@ -87,6 +87,7 @@ export class OrganizationRolloutService {
     return this.resolver.resolveLineAuthorities(
       { ...input, effectiveDate },
       input.authorityRequirement ?? "LINE_AND_UNIT",
+      input.approvalSeats ?? [],
     );
   }
 
@@ -109,6 +110,9 @@ export class OrganizationRolloutService {
         positionKey: null,
       });
     };
+    // LOAN-002: `UNIT_AND_APPROVAL_SEATS` takes this branch too, on purpose. LEGACY knows nothing
+    // about seats — it has only the two columns — so a workflow on the new chain keeps resolving
+    // exactly as it did before while its rollout mode is LEGACY.
     if (input.authorityRequirement !== "UNIT_ONLY") {
       add(input.legacy.directManagerEmployeeId, "DIRECT_MANAGER");
     }

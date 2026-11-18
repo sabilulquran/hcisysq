@@ -1,7 +1,17 @@
+/**
+ * The semantic rungs an APR-001 chain can carry. The `SEAT_*` ones are LOAN-002's fixed approval
+ * seats (migration 0177): Leave never produces them, but the snapshot helpers here are shared with
+ * the loan routes, so the type has to admit them.
+ */
 export type LeaveApprovalSource =
   | "DIRECT_MANAGER"
   | "UNIT_APPROVER"
-  | "GOVERNANCE_APPROVER";
+  | "GOVERNANCE_APPROVER"
+  | "SEAT_KEPALA_KEUANGAN"
+  | "SEAT_DIREKTUR"
+  | "SEAT_KETUA_YAYASAN"
+  | "SEAT_BENDAHARA_YAYASAN"
+  | "SEAT_PEMBINA";
 
 export interface LeaveApprovalStep {
   principalType?: "EMPLOYEE" | "ACCOUNT";
@@ -24,6 +34,13 @@ export interface ResolvedLeaveAuthorityInput {
     accountId?: string | null;
     source: LeaveApprovalSource;
   }>;
+  /**
+   * LOAN-002 M2 (D-20 DRAFT): false keeps one step per rung even when the same person holds two of
+   * them. Leave leaves this unset and keeps merging, which is right there — its rungs are a line of
+   * authority, so one person standing on two of them is one approval. A fixed seat chain is a list
+   * of mandates: collapsing two of them would shorten the chain the owner decided, silently.
+   */
+  mergeDuplicates?: boolean | undefined;
 }
 
 export class LeaveApprovalConfigurationError extends Error {
@@ -49,6 +66,8 @@ function addStep(
     accountId?: string | null;
   },
   source: LeaveApprovalSource,
+  /** LOAN-002 M2: false keeps one step per rung even when the same principal already has one. */
+  merge = true,
 ) {
   const principalType = principal.principalType ?? "EMPLOYEE";
   const hasEmployee = Boolean(principal.employeeId);
@@ -62,9 +81,9 @@ function addStep(
     );
   }
   const key = principalType === "ACCOUNT" ? principal.accountId! : principal.employeeId!;
-  const existing = steps.find((step) =>
+  const existing = merge ? steps.find((step) =>
     (step.principalType ?? "EMPLOYEE") === principalType &&
-    (principalType === "ACCOUNT" ? step.accountId === key : step.employeeId === key));
+    (principalType === "ACCOUNT" ? step.accountId === key : step.employeeId === key)) : undefined;
   if (existing) {
     if (!existing.sources.includes(source)) existing.sources.push(source);
     return;
@@ -132,11 +151,14 @@ export function resolveLeaveLineApprovalChain(
 export function snapshotResolvedLeaveAuthorities(
   input: ResolvedLeaveAuthorityInput,
 ): LeaveApprovalStep[] {
+  const merge = input.mergeDuplicates ?? true;
   const steps: LeaveApprovalStep[] = [];
   for (const authority of input.authorities) {
     if ((authority.principalType ?? "EMPLOYEE") === "EMPLOYEE"
         && authority.employeeId === input.requesterEmployeeId) continue;
-    addStep(steps, authority, authority.source);
+    // Without merging each rung still goes through the same principal validation, so an ambiguous
+    // or empty principal is refused exactly as it is on the merging path.
+    addStep(steps, authority, authority.source, merge);
   }
 
   if (steps.length === 0) {

@@ -9,11 +9,39 @@ export type AuthorityBindingType =
   | "GOVERNANCE_APPROVER"
   | "OVERSIGHT_PARENT";
 export type OrganizationRolloutMode = "LEGACY" | "SHADOW" | "STRUCTURE";
+/**
+ * LOAN-002: one source per approval seat (migration 0177). A seat is a position stable key HC
+ * mapped, never a job title, so the source names the seat and the step keeps saying which rung of
+ * the owner's chain it is.
+ */
+export type ApprovalSeatAuthoritySource =
+  | "SEAT_KEPALA_KEUANGAN"
+  | "SEAT_DIREKTUR"
+  | "SEAT_KETUA_YAYASAN"
+  | "SEAT_BENDAHARA_YAYASAN"
+  | "SEAT_PEMBINA";
+
 export type ResolvedAuthoritySource =
   | "DIRECT_MANAGER"
   | "UNIT_APPROVER"
   | "GOVERNANCE_APPROVER"
-  | "OVERSIGHT_PARENT";
+  | "OVERSIGHT_PARENT"
+  | ApprovalSeatAuthoritySource;
+
+/**
+ * Which chain a workflow's policy asks the resolver for.
+ * - `LINE_AND_UNIT` / `UNIT_ONLY`: the Leave shapes, unchanged.
+ * - `UNIT_AND_APPROVAL_SEATS` (LOAN-002): the requester's unit approver followed by the fixed
+ *   seats the caller names, in the caller's order. The caller knows the amount, so it decides
+ *   whether the Pembina seat is on the list.
+ */
+export type AuthorityRequirement = "LINE_AND_UNIT" | "UNIT_ONLY" | "UNIT_AND_APPROVAL_SEATS";
+
+/** LOAN-002: one seat of a `UNIT_AND_APPROVAL_SEATS` chain, already looked up in the registry. */
+export interface ApprovalSeatTarget {
+  source: ApprovalSeatAuthoritySource;
+  positionKey: string;
+}
 
 export interface EffectivePeriod {
   effectiveFrom: string;
@@ -151,6 +179,13 @@ export interface AuthorityEligibilityValidator {
 /** ORG-013-2: the capability an account principal needs for a Leave step (migration 0023). */
 export const LEAVE_GOVERNANCE_CAPABILITY = "leave.governance.approve";
 
+/**
+ * ORG-013-5 / LOAN-002: the capability an account principal needs for an employee-loan step
+ * (migration 0178). Holding the seat never confers it: the account must also hold
+ * `governance_loan_approver`.
+ */
+export const LOAN_GOVERNANCE_CAPABILITY = "loans.governance.approve";
+
 export interface AccountEligibilityContext {
   effectiveDate: string;
   /** Null for an informational recipient (oversight), which needs no capability. */
@@ -221,7 +256,9 @@ export interface LegacyAuthorityInput {
 export interface RolloutAuthorityInput extends AuthorityResolutionInput {
   workflowKey: string;
   legacy: LegacyAuthorityInput;
-  authorityRequirement?: "LINE_AND_UNIT" | "UNIT_ONLY" | undefined;
+  authorityRequirement?: AuthorityRequirement | undefined;
+  /** LOAN-002: required by `UNIT_AND_APPROVAL_SEATS`, ignored by every other requirement. */
+  approvalSeats?: readonly ApprovalSeatTarget[] | undefined;
 }
 
 export interface StructuralResolutionDiagnostic {

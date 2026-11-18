@@ -107,10 +107,10 @@ describe("LOAN-001 money rules", () => {
 });
 
 describe("LOAN-001 route guards", () => {
-  async function appFor(principal: AuthPrincipal | null, permissions: string[] = []) {
+  async function appFor(principal: AuthPrincipal | null, permissions: string[] = [], pool: Pool = {} as Pool) {
     const app = Fastify({ logger: false });
     // Guards answer before any query, so an inert pool proves no data is read.
-    await registerLoanRoutes(app, {} as Pool, { NODE_ENV: "test", AUTH_ENCRYPTION_KEY: "11".repeat(32) } as ApiConfig, {
+    await registerLoanRoutes(app, pool, { NODE_ENV: "test", AUTH_ENCRYPTION_KEY: "11".repeat(32) } as ApiConfig, {
       getSession: async () => (principal ? { principal, expiresAt: "2099-01-01T00:00:00Z" } : null),
       getAuthorizationContext: async () => ({ organizationPermissions: permissions }),
     } as never);
@@ -121,9 +121,30 @@ describe("LOAN-001 route guards", () => {
     const anonymous = await appFor(null);
     expect((await anonymous.inject({ method: "GET", url: "/loans/me" })).statusCode).toBe(401);
     const board = await appFor({ id: "b", email: "b@example.invalid", principalType: "FOUNDATION_BOARD" });
-    expect((await board.inject({ method: "GET", url: "/loans/approvals" })).statusCode).toBe(403);
+    expect((await board.inject({ method: "GET", url: "/loans/me" })).statusCode).toBe(403);
     const legacy = await appFor({ id: "s", email: "s@example.invalid", principalType: "SUPER_ADMIN" });
     expect((await legacy.inject({ method: "POST", url: "/loans/me", payload: {} })).statusCode).toBe(403);
+    expect((await legacy.inject({ method: "GET", url: "/loans/approvals" })).statusCode).toBe(403);
+  });
+
+  // LOAN-002 / ORG-013-5: an organ session reaches the two approval routes, and nothing else,
+  // and only while it holds loans.governance.approve. Holding the seat is never the capability.
+  it("refuses an organ account without the loan governance capability", async () => {
+    const statements: Array<{ text: string; values: unknown[] }> = [];
+    const pool = {
+      query: async (text: string, values: unknown[] = []) => {
+        statements.push({ text: String(text), values });
+        return { rows: [{ allowed: false }] };
+      },
+    } as unknown as Pool;
+    const organ = await appFor({ id: "b", email: "b@example.invalid", principalType: "FOUNDATION_BOARD" }, [], pool);
+    const response = await organ.inject({ method: "GET", url: "/loans/approvals" });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("APPROVAL_FORBIDDEN");
+    // The capability is checked before any loan row is read.
+    expect(statements).toHaveLength(1);
+    expect(statements[0]!.text).toContain("account_role_assignments");
+    expect(statements[0]!.values).toContain("loans.governance.approve");
   });
 
   it("LOAN-001-J: admin routes need loans.read or loans.manage before validating anything", async () => {

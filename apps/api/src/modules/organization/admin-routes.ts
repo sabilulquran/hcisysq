@@ -45,7 +45,8 @@ import { classificationOn } from "./job-classification-service.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { linkedUnitChain, searchPositions } from "./structure-lookups.js";
 import { openPositionOvertimeRules, overtimeRuleSeatWarnings } from "./overtime-rule-seat-warnings.js";
-import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
+import { assertIsoDate, effectiveDateOrToday, jakartaBusinessDate } from "./jakarta-date.js";
+import { approvalSeatReadiness, loadApprovalSeatMappings } from "./approval-seats.js";
 
 const uuid = z.string().uuid();
 const ORGAN_ACCOUNT_LABEL = "Akun Organ Yayasan";
@@ -735,6 +736,51 @@ export async function registerOrganizationAdminRoutes(
     return reply.send(computeOrganizationReadiness({
       rows: context.rows, snapshot: context.snapshot, asOf: context.asOf,
     }));
+  });
+
+  /**
+   * LOAN-002 / APR-002: the approval seat registry's readiness (migration 0177). With a fixed
+   * chain one unmapped or vacant seat blocks every kasbon in the institution, so HC needs to see
+   * the state of all five seats before anyone is blocked. Read-only: it warns, it never blocks and
+   * it never edits a mapping, like the ATT-011 seat warnings it is modelled on.
+   */
+  app.get("/admin/organization/approval-seats", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({ asOf: date.optional(), employeeId: uuid.optional() }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_APPROVAL_SEAT_QUERY", "Invalid approval seat query.");
+    const asOf = effectiveDateOrToday(query.data.asOf);
+    // LOAN-002 D-19: asked about one employee, the answer says which seat that person holds, so HC
+    // can tell them what has to be arranged instead of leaving them with a refusal and no reason.
+    // The organ accounts that are the same person are matched by ORG-013-1 butir 5's e-mail rule.
+    const requester = query.data.employeeId
+      ? {
+          employeeId: query.data.employeeId,
+          accountIds: (await pool.query<{ id: string }>(
+            `SELECT organ.id
+               FROM accounts organ
+               JOIN employees requester ON requester.id = $1
+               LEFT JOIN accounts linked
+                 ON linked.employee_id = requester.id AND linked.principal_type = 'EMPLOYEE'
+              WHERE organ.principal_type = 'FOUNDATION_BOARD' AND organ.employee_id IS NULL
+                AND NULLIF(lower(btrim(organ.email)), '') IS NOT NULL
+                AND NULLIF(lower(btrim(organ.email)), '') IN (
+                  NULLIF(lower(btrim(requester.email)), ''), NULLIF(lower(btrim(linked.email)), '')
+                )`,
+            [query.data.employeeId],
+          )).rows.map((row) => row.id),
+        }
+      : undefined;
+    const [mappings, snapshot] = await Promise.all([
+      loadApprovalSeatMappings(pool, asOf),
+      repository.loadEffectiveSnapshot(asOf),
+    ]);
+    const items = approvalSeatReadiness(mappings, snapshot, asOf, requester);
+    return reply.send({
+      asOf,
+      structurePublished: snapshot !== null,
+      ready: items.every((item) => item.state === "READY"),
+      items,
+    });
   });
 
   app.get("/admin/organization/explanation", async (request, reply) => {

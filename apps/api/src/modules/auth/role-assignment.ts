@@ -19,10 +19,26 @@ import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-a
  * `leave.governance.approve`, and no employee account may receive it.
  */
 export const GOVERNANCE_LEAVE_APPROVER_ROLE_KEY = "governance_leave_approver";
-const GOVERNANCE_LEAVE_APPROVE_PERMISSION = "leave.governance.approve";
+/**
+ * ORG-013-5 / LOAN-002 (owner decision 2026-11-18): the employee-loan twin (migration 0178). The
+ * kasbon chain now ends in organ seats, so an organ account needs its own capability for it. It is
+ * a separate role on purpose: approving leave and approving a loan are different mandates.
+ */
+export const GOVERNANCE_LOAN_APPROVER_ROLE_KEY = "governance_loan_approver";
+
+/** Role key -> the single permission it may carry. These, and only these, go to organ accounts. */
+const GOVERNANCE_ORGAN_ROLES: Readonly<Record<string, string>> = {
+  [GOVERNANCE_LEAVE_APPROVER_ROLE_KEY]: "leave.governance.approve",
+  [GOVERNANCE_LOAN_APPROVER_ROLE_KEY]: "loans.governance.approve",
+};
+
+export function isGovernanceOrganRole(roleKey: string): boolean {
+  return Object.prototype.hasOwnProperty.call(GOVERNANCE_ORGAN_ROLES, roleKey);
+}
 
 const HCIS_ROLES = [
   GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
+  GOVERNANCE_LOAN_APPROVER_ROLE_KEY,
   "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
   HC_LEAD_ROLE_KEY, DOCUMENT_CORRECTOR_ROLE_KEY, MODULE_ADMIN_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
 ];
@@ -108,12 +124,13 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean, channe
   if (carriesIdentityPermission(role)) return false;
   // ORG-013-2 / ORG-013-E: the governance role carries exactly its one permission. A bundle that
   // grew is refused, so an organ account can never receive anything else through it.
-  if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY
-      && (role.permissions.length !== 1 || role.permissions[0] !== GOVERNANCE_LEAVE_APPROVE_PERMISSION)) return false;
-  // The governance Leave permission is grantable only inside its own role, so a changed bundle
-  // that slips it into another role is refused like any unknown permission.
+  const governancePermission = GOVERNANCE_ORGAN_ROLES[role.roleKey];
+  if (governancePermission
+      && (role.permissions.length !== 1 || role.permissions[0] !== governancePermission)) return false;
+  // A governance permission is grantable only inside its own role, so a changed bundle that slips
+  // one into another role is refused like any unknown permission.
   if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key)
-    || (key === GOVERNANCE_LEAVE_APPROVE_PERMISSION && role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY))) return false;
+    || key === governancePermission)) return false;
   // AUTH-014 §2.5: on either channel the authority comes from the channel, not from a permission
   // the actor holds. Keeping the old `delegated` requirement here would make the whole thing
   // unusable: access.roles.assign was removed from every role by migration 0057 and may never be
@@ -135,7 +152,7 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean, channe
  */
 export function isSeatLinkableRole(role: AssignableRole): boolean {
   if (!canDelegateRole(role, false, "break_glass")) return false;
-  if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) return false;
+  if (isGovernanceOrganRole(role.roleKey)) return false;
   if (role.permissions.some((key) => key.startsWith("access."))) return false;
   const scopes = allowedScopes(role.roleKey);
   return scopes.length === 1 && scopes[0] === "organization";
@@ -195,8 +212,8 @@ async function requireDelegation(
 
 interface LockedTarget { principalType: string; employeeId: string | null }
 
-// AUTH-014 invariant 7, amended by ORG-013-2: the target is an employee account, except that a
-// Foundation Board account may hold the governance Leave approver role and nothing else.
+// AUTH-014 invariant 7, amended by ORG-013-2 and ORG-013-5: the target is an employee account,
+// except that a Foundation Board account may hold a governance approver role and nothing else.
 async function lockTargetAccount(db: PoolClient, accountId: string): Promise<LockedTarget> {
   const result = await db.query<LockedTarget>(
     `SELECT account.principal_type AS "principalType", account.employee_id AS "employeeId"
@@ -210,10 +227,10 @@ async function lockTargetAccount(db: PoolClient, accountId: string): Promise<Loc
 }
 
 function assertTargetForRole(target: LockedTarget, roleKey: string): void {
-  const governance = roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY;
+  const governance = isGovernanceOrganRole(roleKey);
   if (governance ? target.principalType !== "FOUNDATION_BOARD" || target.employeeId : target.principalType !== "EMPLOYEE") {
     throw new AuthError(403, "ROLE_TARGET_INVALID", governance
-      ? "Peran penyetuju cuti governance hanya untuk akun Organ Yayasan."
+      ? "Peran penyetuju governance hanya untuk akun Organ Yayasan."
       : "Peran ini hanya dapat diberikan ke akun pegawai.");
   }
 }
@@ -277,9 +294,9 @@ export async function createRoleAssignment(
     const role = await requireDelegation(db, actor, accountId, input.roleId, context.channel);
     assertTargetForRole(target, role.roleKey);
     // ORG-013-2: organization scope, the SK as reason, and an end date at the end of the term.
-    if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) {
+    if (isGovernanceOrganRole(role.roleKey)) {
       if (input.scopeType !== "organization" || input.organizationalUnitId) {
-        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Penyetuju cuti governance hanya dapat diberikan dengan scope organisasi.");
+        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Penyetuju governance hanya dapat diberikan dengan scope organisasi.");
       }
       if (!input.reason?.trim()) {
         throw new AuthError(400, "ROLE_REASON_REQUIRED", "Alasan penugasan wajib diisi, misalnya nomor SK kepengurusan.");

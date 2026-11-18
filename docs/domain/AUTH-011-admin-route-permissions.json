@@ -2692,6 +2692,14 @@
   {
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "GET",
+    "url": "/admin/organization/approval-seats",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
     "url": "/admin/organization/explanation",
     "permissions": [
       "organization.manage"
@@ -3802,7 +3810,8 @@
     "url": "/loans/approvals",
     "access": "self-service",
     "principals": [
-      "EMPLOYEE"
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
     ],
     "permissions": []
   },
@@ -3812,7 +3821,8 @@
     "url": "/loans/approvals/:stepId/decision",
     "access": "self-service",
     "principals": [
-      "EMPLOYEE"
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
     ],
     "permissions": []
   },

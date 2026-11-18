@@ -1,5 +1,7 @@
 import type {
+  ApprovalSeatTarget,
   AuthorityBindingType,
+  AuthorityRequirement,
   AuthorityEligibilityValidator,
   AuthorityResolutionInput,
   OrganizationAuthorityBinding,
@@ -54,9 +56,13 @@ export class OrganizationAuthorityResolver {
 
   async resolveLineAuthorities(
     input: AuthorityResolutionInput,
-    authorityRequirement: "LINE_AND_UNIT" | "UNIT_ONLY" = "LINE_AND_UNIT",
+    authorityRequirement: AuthorityRequirement = "LINE_AND_UNIT",
+    approvalSeats: readonly ApprovalSeatTarget[] = [],
   ): Promise<ResolvedLineAuthorities> {
     const context = await this.context(input);
+    if (authorityRequirement === "UNIT_AND_APPROVAL_SEATS") {
+      return this.resolveSeatChainInContext(context, approvalSeats);
+    }
     const governance = await this.resolveGovernanceInContext(context);
     if (governance) {
       return {
@@ -74,6 +80,45 @@ export class OrganizationAuthorityResolver {
     const authorities: ResolvedAuthority[] = [];
     if (directManager) appendAuthority(authorities, directManager);
     if (unitApprover) appendAuthority(authorities, unitApprover);
+    return {
+      effectiveDate: context.effectiveDate,
+      changeSetId: context.snapshot.changeSet.id,
+      governanceApplied: false,
+      authorities,
+    };
+  }
+
+  /**
+   * LOAN-002 (owner decision 2026-11-18): the requester's unit approver, then the fixed seats the
+   * caller names, in the caller's order.
+   *
+   * Three deliberate differences from the Leave chains:
+   * - No GOVERNANCE_APPROVER short-circuit. That binding replaces the whole chain, which would
+   *   silently drop the seats the owner put in it.
+   * - A seat never climbs to its parent. `BLOCK` is forced whatever the position's own vacancy
+   *   policy says, so a vacant Direktur never resolves to whoever sits above Direktur.
+   * - Self-approval fails closed instead of dropping the step. A seatholder's own request would
+   *   otherwise travel a chain shorter than the one the owner decided (employee-loans.md §16 D-19).
+   */
+  private async resolveSeatChainInContext(
+    context: ResolutionContext,
+    approvalSeats: readonly ApprovalSeatTarget[],
+  ): Promise<ResolvedLineAuthorities> {
+    // LOAN-002 M2 (D-20 DRAFT): rungs are NOT merged here, unlike every other chain. If one person
+    // holds two of them — the likeliest case being a Staf Keuangan whose unit approver is the
+    // Kepala Keuangan — merging would quietly turn the owner's five approvals into four, with one
+    // signature carrying two mandates and nothing on screen, in the audit or in the history saying
+    // so. The owner named five seats, not "five seats unless it is the same person". So both rungs
+    // stand, the same person approves twice, and that is visible.
+    const authorities: ResolvedAuthority[] = [];
+    const unitApprover = await this.resolveUnitApproverInContext(context, true);
+    if (unitApprover) authorities.push({ ...unitApprover, sources: [unitApprover.source] });
+    for (const seat of approvalSeats) {
+      const authority = await this.resolvePosition(
+        context, seat.positionKey, "BLOCK", seat.source, [`seat:${seat.source}`],
+      );
+      authorities.push({ ...authority, sources: [authority.source] });
+    }
     return {
       effectiveDate: context.effectiveDate,
       changeSetId: context.snapshot.changeSet.id,
@@ -232,8 +277,18 @@ export class OrganizationAuthorityResolver {
     );
   }
 
+  /**
+   * LOAN-002 M1: `selfIsError` tells apart two things the caller used to see as one.
+   *
+   * Dropping the unit approver when it resolves to the requester is right for Leave, where the
+   * direct-manager rung still carries the request. On a chain where the unit approver is the first
+   * rung, dropping it reads downstream as "unit approver not configured" — so a unit head's own
+   * request would blame a configuration that is in fact correct, and HC would hunt a fault that
+   * does not exist. The seat chain asks for the error instead, and says what is actually the case.
+   */
   private async resolveUnitApproverInContext(
     context: ResolutionContext,
+    selfIsError = false,
   ): Promise<ResolvedAuthority | null> {
     const membership = this.primaryMembership(context);
     const { binding, path } = this.findNodeBinding(context, membership.nodeKey, "UNIT_APPROVER");
@@ -245,6 +300,14 @@ export class OrganizationAuthorityResolver {
       path,
       true,
     );
+    if (selfIsError && authority.employeeId !== null
+        && authority.employeeId === context.requesterEmployeeId) {
+      throw new OrganizationResolutionError(
+        "AUTHORITY_SELF_RESOLUTION",
+        "The unit approver of this request is the requester.",
+        { employeeId: authority.employeeId, source: "UNIT_APPROVER", positionKey: authority.positionKey },
+      );
+    }
     return authority.employeeId !== null && authority.employeeId === context.requesterEmployeeId
       ? null
       : authority;

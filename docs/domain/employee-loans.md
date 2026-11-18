@@ -24,7 +24,7 @@ Yang dituju Paket 1:
 Termasuk (Paket 1):
 
 - pengajuan oleh pegawai untuk dirinya sendiri, dengan pratinjau cicilan dan penyetuju;
-- persetujuan berurutan oleh atasan langsung lalu approver unit (APR-001);
+- persetujuan berurutan lewat APR-001 (rantai §16 di `STRUCTURE`, rantai lama di `LEGACY`);
 - pencairan, jadwal cicilan, pencatatan pembayaran, pelunasan, dan koreksi pembayaran oleh Keuangan;
 - pembatalan sebelum pencairan oleh pegawai atau Keuangan;
 - register Keuangan/HC dengan filter status dan pencarian peminjam (typeahead);
@@ -47,7 +47,7 @@ Termasuk (Paket 1):
 
 | # | Keputusan | Status |
 | --- | --- | --- |
-| D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan dan TRIP-001. Kunci alur rollout ORG-004: `LOAN`; tanpa baris rollout, mode `LEGACY`. **Keuangan bukan tahap approval**, tetapi pencairan oleh Keuangan adalah gerbang terakhir: Keuangan dapat membatalkan pinjaman yang sudah disetujui sebelum mencairkannya. Legacy memakai rantai lebih panjang (versi lama: slot tetap HCM → Keuangan → Yayasan; versi baru: garis atasan → Kepala HCM → Kepala Keuangan → Direktur) yang tidak dapat dipetakan tanpa resolver jabatan; resolver APR-001 tidak boleh membaca teks jabatan. | DRAFT |
+| D-01 | **Digantikan keputusan pemilik 2026-11-18 (LOAN-002, §16).** Rantai kasbon menjadi **approver unit → Kepala Keuangan → Direktur → Ketua Yayasan → Bendahara Yayasan**, ditambah **Pembina** sebagai langkah teratas bila pokok melebihi ambang (D-17). Atasan langsung keluar dari rantai. Kunci alur rollout ORG-004 tetap `LOAN`; tanpa baris rollout, mode `LEGACY`, dan di `LEGACY` rantai lama (atasan langsung → approver unit) berlaku tanpa perubahan sama sekali. **Keuangan tetap bukan tahap approval**: Staf Keuangan hanya mencairkan (D-14), dan pencairan oleh Keuangan tetap gerbang terakhir. Resolver APR-001 tetap tidak boleh membaca teks jabatan — kursi dipetakan HC ke stable key jabatan ORG-004 di registri kursi (D-16). | DRAFT |
 | D-02 | **Tanpa bunga**, sesuai praktik lembaga keagamaan dan legacy. Total cicilan = pokok. | DRAFT |
 | D-03 | Pokok **Rp100.000 sampai Rp10.000.000**, bilangan bulat rupiah. Batas bawah dari legacy; legacy tidak punya batas atas. | DRAFT |
 | D-04 | Tenor **3, 6, atau 12 bulan**, sama dengan pilihan legacy. | DRAFT |
@@ -272,7 +272,12 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 
 | # | Pertanyaan | Default yang dipakai | Legacy |
 | --- | --- | --- | --- |
-| D-01 | Siapa yang menyetujui? | Atasan langsung → approver unit; Keuangan mencairkan | Garis atasan → Kepala HCM → Kepala Keuangan → Direktur |
+| D-01 | Siapa yang menyetujui? | **Dijawab pemilik 2026-11-18 (§16):** approver unit → Kepala Keuangan → Direktur → Ketua Yayasan → Bendahara Yayasan (+ Pembina di atas ambang); Keuangan mencairkan | Garis atasan → Kepala HCM → Kepala Keuangan → Direktur |
+| D-17 | Berapa ambang Pembina? | `DRAFT` Rp5.000.000 — pemilik belum menetapkan angkanya. Disimpan sebagai baris konfigurasi bertanggal, bukan konstanta kode | Tidak ada |
+| D-18 | Kursi belum dipetakan atau kosong? | `DRAFT` gagal tertutup dengan kode yang menyebut kursinya; HC melihatnya lebih dulu di layar kesiapan kursi | Tidak ada |
+| D-19 | Pemohon menduduki salah satu kursi? | `DRAFT` pengajuannya ditolak; rantai tidak dipendekkan | Tidak ada |
+| D-20 | Satu orang menduduki dua rung? | `DRAFT` kedua langkah tetap berdiri; ia menyetujui dua kali, dan itu terlihat | Tidak ada |
+| D-21 | Kepala unit mengajukan kasbon? | `DRAFT` ditolak dengan `LOAN_UNIT_APPROVER_SELF`; HC menunjuk pejabat pengganti | Tidak ada |
 | D-02 | Ada bunga? | Tidak | Tidak |
 | D-03 | Batas pokok? | Rp100.000 – Rp10.000.000 | Min Rp100.000, tanpa maksimum |
 | D-04 | Pilihan tenor? | 3, 6, 12 bulan | 3, 6, 12 bulan |
@@ -283,3 +288,154 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 | D-10 | Cara bayar dan pelunasan dipercepat? | Tunai, transfer, potong gaji (dicatat manual); sebagian dan pelunasan dipercepat boleh | Tandai satu cicilan lunas |
 | D-12 | Koreksi pembayaran? | Ditandai dikoreksi dengan alasan, tidak dihapus | Tidak ada |
 | D-13 | Siapa mengelola? | Staf Keuangan (Kasbon); HC hanya membaca | Kepala Keuangan/HCM |
+
+## 16. LOAN-002 — rantai persetujuan kasbon (keputusan pemilik 2026-11-18)
+
+**Status:** `DRAFT` — ditulis dari keputusan pemilik, angka ambang belum ditetapkan.
+**Tanggal:** 2026-11-18
+**Terkait:** APR-001, ORG-004, ORG-013, AUTH-010-K, ATT-011 D-10 (pola registri kursi)
+
+Pemilik menolak ketiga pilihan yang ditawarkan untuk pertanyaan B2 daftar sign-off HC ("Pinjaman
+pegawai: siapa yang menyetujui?") dan menetapkan rantai baru:
+
+> Atasan langsung tidak perlu. approver unit, ka. keu, Direktur, ketua yayasan, bendahara yayasan.
+> staf keuangan untuk pencairan saja. ada misalnya plafon tertentu pembina juga masuk approval teratas.
+
+### 16.1 Rantai
+
+| Urutan | Langkah | Dari mana |
+| --- | --- | --- |
+| 1 | Approver unit | Unit pemohon, lewat resolver ORG-004 (tidak berubah) |
+| 2 | Kepala Keuangan | Kursi `KEPALA_KEUANGAN` di registri kursi |
+| 3 | Direktur | Kursi `DIREKTUR` |
+| 4 | Ketua Yayasan | Kursi `KETUA_YAYASAN` |
+| 5 | Bendahara Yayasan | Kursi `BENDAHARA_YAYASAN` |
+| 6 | Pembina | Kursi `PEMBINA`, **hanya bila pokok melebihi ambang** (D-17) |
+
+Atasan langsung keluar dari rantai. **Staf Keuangan tidak pernah menjadi tahap approval**: ia hanya
+mencairkan, dan D-14 (penyetuju tidak boleh mencairkan) berlaku apa adanya — siapa pun yang duduk di
+rantai pinjaman ini, memutuskan atau belum, tidak dapat sekaligus menyerahkan uangnya.
+
+Rantai ini hanya berlaku saat rollout ORG-004 untuk `LOAN` berada di `STRUCTURE`. Di `LEGACY` — yang
+dijalankan produksi hari ini untuk setiap workflow — dan di `SHADOW`, perilaku tidak berubah sama
+sekali: atasan langsung lalu approver unit, dari dua kolom legacy.
+
+### 16.2 Registri kursi (D-16)
+
+Resolver APR-001 **tidak boleh membaca teks jabatan** (AUTH-010-K; `access-model.md` §342;
+`dynamic-organization-structure.md` §786). Ketua Yayasan, Bendahara Yayasan, dan Pembina juga tidak
+dimodelkan di mana pun sebagai principal yang dapat menyetujui. Jadi lima kursi di atas adalah
+**kunci kursi** dalam himpunan tertutup, dan Human Capital memetakan tiap kunci ke **stable key
+jabatan ORG-004** di tabel `organization_approval_seats` (migrasi 0177), bertanggal, tambah-dan-akhiri
+saja, dengan audit — persis pola `attendance_overtime_eligibility_rules` (ATT-011 D-10, migrasi 0146).
+Sistem tidak pernah menebak pemetaannya, dan tidak ada seed: repo tidak memegang stable key produksi
+mana pun.
+
+`approvalSeatReadiness()` (`apps/api/src/modules/organization/approval-seats.ts`) memberi HC keadaan
+tiap kursi terhadap struktur yang berlaku: `READY`, `UNMAPPED`, `POSITION_NOT_IN_FORCE`, atau `VACANT`.
+Ini permukaan baca, dibuka lewat `GET /admin/organization/approval-seats` (permission `organization.manage`); ia memperingatkan, tidak pernah memblokir atau menyunting apa pun.
+
+**Belum dibangun di PR ini:** jalur tulis pemetaan kursi (layar HC dan route-nya). Sampai itu ada, pemetaan hanya dapat ditulis lewat SQL — lihat §16.6 butir 1.
+
+### 16.3 Ambang Pembina (D-17, `DRAFT`)
+
+Pemilik menyebut "plafon tertentu" tanpa angka. Default `DRAFT` **Rp5.000.000** dipakai, dan pokok
+harus **melebihi** ambang (Rp5.000.000 tepat tidak memanggil Pembina). Angkanya disimpan sebagai baris
+konfigurasi bertanggal di `employee_loan_approval_policy_versions` (migrasi 0177), **bukan konstanta
+TypeScript**, sehingga mengubahnya adalah satu baris baru, bukan rilis. Tidak ada baris sama sekali
+adalah galat konfigurasi (`LOAN_APPROVAL_POLICY_NOT_CONFIGURED`), bukan "tidak ada ambang".
+
+### 16.4 Principal akun Organ Yayasan (ORG-013-5)
+
+Kursi Ketua Yayasan, Bendahara Yayasan, dan Pembina biasanya dipegang akun (`holderSource = ACCOUNT`),
+bukan pegawai. Migrasi 0178 mencerminkan 0023: `employee_loan_approval_steps.approver_employee_id`
+menjadi NULL-able, mendapat `approver_account_id`, dengan CHECK XOR. Aturan ORG-013-1 berlaku utuh:
+
+- memegang kursi **tidak pernah** memberi capability; akun harus aktif **dan** memegang role
+  `governance_loan_approver` (permission `loans.governance.approve`, migrasi 0178);
+- akun organ yang emailnya cocok dengan pegawai aktif ditolak (`CONFLICT`), dan self-approval
+  diperiksa ulang saat keputusan lewat pencocokan email yang sama dengan cuti;
+- principal akun memutuskan lewat `/loans/approvals` yang sudah ada dengan sesi cookie Organ
+  Yayasan, dengan transisi dan audit APR-001 yang sama; `/loans/me`, register, dan pencairan tetap
+  tertutup untuknya.
+
+Notifikasi NOTIF-004 berkunci pegawai, jadi langkah milik akun tidak menghasilkan notifikasi
+in-app. Hitungan "menunggu keputusan Anda" di `GET /governance/summary` sudah menghitung langkah
+kasbon milik akun (tidak hanya cuti), sehingga Panel Organ Yayasan memperlihatkannya. Tidak ada
+nominal di jalur mana pun.
+
+**Yang belum ada, dan harus ada sebelum rantai ini dipakai di produksi.** Pintu API-nya lengkap:
+`GET /loans/approvals` dan `POST /loans/approvals/:stepId/decision` menerima sesi cookie Organ
+Yayasan, dan ringkasan portal menghitung langkahnya. **Layar keputusannya belum ada.** Portal Organ
+Yayasan hidup di repo `sq-organ`; layar kasbon di sana adalah **kode di repo lain**, bukan
+konfigurasi, dan belum dibangun. Sampai layar itu ada, kasbon yang sampai ke langkah Ketua Yayasan,
+Bendahara Yayasan, atau Pembina di `STRUCTURE` akan berhenti di situ: akunnya melihat ada yang
+menunggu, tetapi tidak punya tempat untuk memutuskannya. Lihat §16.6 butir 4.
+
+### 16.5 Konsekuensi yang disengaja (D-18, D-19)
+
+Dengan kursi tetap, **satu kursi yang belum dipetakan atau kosong memblokir setiap kasbon di lembaga**,
+bukan pengajuan satu orang. Hari ini approver yang hilang adalah masalah satu orang. Perilaku yang
+dipilih tetap **gagal tertutup**, konsisten dengan aturan all-or-nothing APR-001 yang sudah ada: tidak
+ada yang disimpan, dan pesan galat **menyebut kursinya** (`LOAN_APPROVAL_SEAT_UNMAPPED`,
+`LOAN_APPROVAL_SEAT_UNAVAILABLE`), supaya HC tahu persis apa yang harus diperbaiki. Permukaan kesiapan
+di §16.2 ada supaya HC melihatnya sebelum ada yang terblokir. Kursi **tidak pernah memanjat ke jabatan
+induknya**: Direktur yang kosong tidak boleh diselesaikan menjadi siapa pun di atas Direktur.
+
+Pemohon yang menduduki salah satu kursi membuat pengajuannya ditolak (`LOAN_APPROVAL_SEAT_SELF`),
+bukan rantainya dipendekkan: rantai yang lebih pendek dari yang diputuskan pemilik bukan rantai itu.
+Ini berlaku untuk kursi yang dipegang pegawai maupun yang dipegang akun Organ Yayasan: pemohon yang
+punya akun organ terpisah pemegang salah satu kursi ditolak **saat pengajuan**, dicocokkan dengan
+aturan email yang sama dengan ORG-013-1 butir 5. Kalau tidak, pengajuannya lolos lalu mengunci —
+pada tahap keputusan `governanceActorIsRequester` menolak approve maupun reject, dan kasbon
+menggantung di `IN_REVIEW` tanpa ada yang dapat bertindak.
+
+Catatan yang perlu diketahui orang berikutnya: **hari ini jalur itu tidak terjangkau**, karena aturan
+`CONFLICT` ORG-013-1 lebih dulu menolak akun organ yang emailnya cocok dengan pegawai aktif, sehingga
+kursinya tidak pernah teresolusi. Pemeriksaan di route tetap dipertahankan dan **bukan kode mati**.
+Alasannya dua. Pertama, yang menutup celah itu adalah aturan **pemberian role**, bukan invarian
+resolver; aturan pemberian dapat dilonggarkan orang lain kelak tanpa menyadari ada yang
+bergantung padanya, sementara yang ditahan di sini adalah kasbon yang terkunci permanen tanpa jalan
+keluar. Kedua, predikatnya sama persis dengan gerbang keputusan, sehingga pengajuan tidak akan pernah
+mulai menerima principal yang nanti ditolak saat memutuskan.
+
+**D-21 (`DRAFT`) — kepala unit tidak dapat mengambil kasbon, dan sistem mengatakannya apa adanya.**
+Approver unit adalah rung pertama, dan seorang kepala unit adalah approver unit bagi dirinya
+sendiri. Rantainya karena itu tidak dapat dibentuk. Dulu hal ini tidak terlihat karena masih ada
+rung atasan langsung yang menanggung pengajuannya; setelah rung itu dibuang oleh keputusan pemilik,
+setiap kepala unit terkena. Kodenya **`LOAN_UNIT_APPROVER_SELF`**, bukan `UNIT_APPROVER_MISSING`:
+konfigurasinya benar, dan pesan "Approver unit belum dikonfigurasi" hanya akan membuat HC mengejar
+salah konfigurasi yang tidak ada. Jalan keluarnya sampai ada keputusan lain: HC menunjuk pejabat
+pengganti untuk pengajuan itu.
+
+**D-20 (`DRAFT`) — langkah tidak digabungkan.** Di setiap rantai lain, satu orang yang menduduki dua
+rung menghasilkan satu langkah. Untuk rantai kursi, **tidak**. Kasus yang paling mungkin justru yang
+paling sensitif: Staf Keuangan mengajukan kasbon, dan approver unitnya adalah Kepala Keuangan — rung
+1 dan rung 2 pemilik akan menjadi satu langkah, lima persetujuan menjadi empat, satu tanda tangan
+menanggung dua mandat, dan tidak ada apa pun di layar, audit, maupun riwayat yang mengatakannya.
+Pemilik menyebut lima kursi, bukan "lima kursi kecuali orangnya sama". Jadi kedua langkah tetap
+berdiri, orang yang sama menyetujui dua kali, dan itu terlihat. Jalur cuti tidak ikut berubah: di
+sana rung adalah garis kewenangan, sehingga satu orang di dua rung memang satu persetujuan.
+
+### 16.6 Yang harus benar sebelum ini dapat berjalan di produksi
+
+Produksi menjalankan rollout ORG-004 `LEGACY` untuk setiap workflow. Sampai ketiganya benar, rantai
+ini tidak pernah dijalankan dan perilaku kasbon tidak berubah:
+
+1. **Kursi dipetakan.** HC memetakan kelima kunci kursi ke stable key jabatan ORG-004 yang benar.
+2. **Akun organ ada dan memegang role.** Ketua Yayasan, Bendahara Yayasan, dan Pembina punya akun
+   `FOUNDATION_BOARD` aktif, menduduki kursinya di struktur terbit, dan diberi
+   `governance_loan_approver` lewat kanal AUTH-014 (dengan alasan dan tanggal berakhir).
+3. **Rollout `LOAN` di `STRUCTURE`.** Selama `LEGACY` atau `SHADOW`, rantai lama yang berlaku.
+4. **Layar keputusan kasbon di Portal Organ Yayasan (repo `sq-organ`).** Ini **kode di repo lain**,
+   bukan konfigurasi, dan belum dibangun. Pintu API-nya sudah ada dan ringkasan portal sudah
+   menghitung langkah kasbon milik akun, tetapi tanpa layarnya kasbon akan berhenti di langkah
+   kursi yang dipegang akun. Lihat §16.4.
+
+### 16.7 Tindak lanjut yang dicatat agar tidak hilang
+
+| # | Temuan | Rencana |
+| --- | --- | --- |
+| F-1 | Pemetaan kursi yang sudah berakhir dapat **tumpang tindih** dengan pemetaan lain pada tanggal yang sama. Indeks unik hanya menjaga satu baris *terbuka* per kursi, sehingga dua baris tertutup yang periodenya beririsan membuat `loadApprovalSeatMappings` memilih salah satunya secara non-deterministik. | Ditutup **sebelum PR jalur tulis masuk**, idealnya dengan exclusion constraint `daterange` per `seat_key`. |
+| F-2 | Kasbon **tidak mencatat versi ambang** yang membentuk rantainya. Tidak ada risiko retroaktif — rantainya sudah disnapshot — tetapi kalau kelak ada baris ambang yang bertanggal mundur, merekonstruksi mengapa sebuah kasbon mendapat (atau tidak mendapat) langkah Pembina menjadi menebak. | Simpan id baris ambang di `approval_snapshot` saat pengajuan. |
+| F-3 | Aturan identitas e-mail ORG-013-1 butir 5 kini ditulis tangan di **lima tempat**: `assertOrganAccountIsNotEmployee`, `governanceActorIsRequester`, pemeriksaan submit kasbon, penjaga pencairan D-14, dan lookup kesiapan kursi. Lima salinan satu aturan identitas pasti menyimpang, dan menyimpangnya tidak akan terlihat sampai ada yang lolos atau tertolak keliru. | Satukan menjadi satu fragmen SQL bersama (atau satu helper yang mengembalikannya), dipakai kelima tempat itu. |

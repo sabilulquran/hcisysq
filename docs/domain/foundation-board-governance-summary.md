@@ -439,7 +439,7 @@ Still to verify on Mi8VPS with owner approval (unchanged): the realm signing alg
 SQ Hub ADR-0012 and ORGAN-IMPL-001 (ACCEPTED 2026-11-12) move the organs to `organ.sabilulquran.or.id`. For R1 HCIS changes two things; ORG-010-E and every other rule above are unchanged.
 
 1. **Second allowed client.** `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` adds `sq-organ`. This is configuration only: the verifier already reads the allowlist. The audience, the bearer-only rule, and the per-request Application Access check stay as they are.
-2. **`decisions` block (contract v1.1).** The summary adds, for the caller only, at most one item `{ label: "Cuti menunggu keputusan Anda", count, oldestAgeDays, href }` when the caller holds pending leave steps on requests in review:
+2. **`decisions` block (contract v1.1).** The summary adds, for the caller only, at most one item `{ label: "Persetujuan menunggu keputusan Anda", count, oldestAgeDays, href }` when the caller holds pending approval steps on requests in review. **Amendment 2026-11-18 (LOAN-002 M3):** the count covers employee-loan steps as well as leave ones, each judged against its own capability (`leave.governance.approve`, `loans.governance.approve`), so the label no longer names one workflow. It stays a count, never a breakdown. The conditions below apply per workflow:
    - an organ account counts steps with `approver_account_id` = its account, only while it holds `leave.governance.approve`, and links to `/board`;
    - an Employee with board access counts steps with `approver_employee_id` = its employee and links to `/app/approvals`;
    - age is whole 24-hour periods since the request was submitted (the step has no own pending timestamp);

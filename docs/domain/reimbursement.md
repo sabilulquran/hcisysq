@@ -40,6 +40,7 @@ Termasuk (Paket 1):
 | Koreksi/pembatalan pembayaran yang sudah dicatat | D-18. Satu klaim satu pembayaran; kesalahan dicatat Keuangan di luar HCIS sampai ada keputusan. |
 | Ambang nominal legacy (Kabid > Rp1 jt, Direktur > Rp3 jt, Finance Head sebagai tahap) | Resolver APR-001 tidak boleh membaca teks jabatan (D-01). |
 | Migrasi klaim legacy | Arsip saja, sama dengan LOAN-001 D5 (§11). |
+| Pengadaan barang atas nama yayasan | Dirancang sebagai **REIMB-002** (`docs/domain/procurement-reimbursement.md`, masih `DRAFT`): jenis klaim tersendiri dengan izin sebelum belanja, tahap Kepala Keuangan, bukti barang diterima, dan penyerahan ke pencatatan aset Aset SQ. Kategori `OPERATIONAL` REIMB-001 tetap untuk perlengkapan kecil yang tidak menjadi aset. |
 | Integrasi bank/transfer otomatis, akuntansi | Di luar HCIS. |
 
 ## 3. Keputusan

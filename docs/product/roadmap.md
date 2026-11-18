@@ -214,6 +214,8 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - TRIP-001 Business travel — Package 1 implemented, `docs/domain/business-travel.md`;
 - ASSET-001 Employee assets;
 - REIMB-001 Reimbursement — Package 1 implemented, `docs/domain/reimbursement.md`; paid outside payroll, payroll handoff behind an off switch;
+- REIMB-002 Reimbursement pengadaan atas nama yayasan — `docs/domain/procurement-reimbursement.md`, masih `DRAFT` dan belum diimplementasikan; menunggu jawaban owner (§13);
+- PAY-004 Penjagaan honorarium yang dibayar dari kehadiran — `docs/domain/honorarium-attendance-guard.md`, masih `DRAFT` dan belum diimplementasikan; menunggu jawaban owner (§15);
 - LOAN-001 Employee loan — Package 1 implemented, `docs/domain/employee-loans.md`; payroll deduction is Package 2;
 - DOC-001/DOC-002 HR documents — Package 1 implemented, `docs/domain/hr-documents.md`;
 - NOTIF-001/002/003 external notification, announcements, reminders. NOTIF-002 Package 1 implemented, `docs/domain/announcements-and-reminders.md`.

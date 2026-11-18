@@ -31,8 +31,8 @@ import {
   type AdvanceEstimate,
   type AdvanceSummary,
   type Pagination,
-  type Zone,
-  type ZoneKey,
+  type Wilayah,
+  type WilayahKey,
 } from "@/lib/tripAdvances";
 
 /** `?uangmuka=baru` opens the request form; any other value is an advance id. */
@@ -41,14 +41,14 @@ const NEW_ADVANCE = "baru";
 export function EmployeeTripAdvancesPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [items, setItems] = useState<AdvanceSummary[]>([]);
-  const [zones, setZones] = useState<Zone[]>([]);
+  const [wilayahs, setWilayahs] = useState<Wilayah[]>([]);
   const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get("page")) || 1));
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [param, showAdvance, closeAdvance] = useDialogParam("uangmuka");
   const [selected, setSelected] = useState<AdvanceDetail | null>(null);
   const [trips, setTrips] = useState<AdvanceableTrip[]>([]);
   const [tripPaging, setTripPaging] = useState<Pagination | null>(null);
-  const [form, setForm] = useState({ tripId: "", zone: "NATIONAL" as ZoneKey, amount: "", perDiemOnly: false, purpose: "" });
+  const [form, setForm] = useState({ tripId: "", wilayah: "LUAR_DAERAH" as WilayahKey, amount: "", perDiemOnly: false, purpose: "" });
   const [estimate, setEstimate] = useState<AdvanceEstimate | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [loading, setLoading] = useState(true);
@@ -62,7 +62,7 @@ export function EmployeeTripAdvancesPage() {
     const result = await getMyAdvances(target);
     setItems(result.items);
     setPaging(result.pagination);
-    setZones(result.zones);
+    setWilayahs(result.wilayahs);
   };
 
   const loadTrips = async (target: number) => {
@@ -82,7 +82,7 @@ export function EmployeeTripAdvancesPage() {
   useEffect(() => {
     setSelected(null);
     if (param === NEW_ADVANCE) {
-      setForm({ tripId: "", zone: "NATIONAL", amount: "", perDiemOnly: false, purpose: "" });
+      setForm({ tripId: "", wilayah: "LUAR_DAERAH", amount: "", perDiemOnly: false, purpose: "" });
       setEstimate(null);
       setIdempotencyKey(crypto.randomUUID());
       void loadTrips(1).catch(() => setTrips([]));
@@ -92,18 +92,18 @@ export function EmployeeTripAdvancesPage() {
     }
   }, [param]);
 
-  // The estimate follows the picked trip and zone; the API computes it from the rate table.
+  // The estimate follows the picked trip and wilayah; the API computes it from the rate table.
   useEffect(() => {
     if (param !== NEW_ADVANCE || !form.tripId) {
       setEstimate(null);
       return;
     }
     let current = true;
-    void estimateAdvance(form.tripId, form.zone)
+    void estimateAdvance(form.tripId, form.wilayah)
       .then((result) => { if (current) setEstimate(result); })
       .catch((cause: unknown) => { if (current) { setEstimate(null); setError(cause instanceof Error ? cause.message : "Perkiraan tidak dapat dihitung."); } });
     return () => { current = false; };
-  }, [param, form.tripId, form.zone]);
+  }, [param, form.tripId, form.wilayah]);
 
   const changePage = (next: number) => {
     setPage(next);
@@ -134,7 +134,7 @@ export function EmployeeTripAdvancesPage() {
     if (!formValid || amount === null) return;
     void run(async () => {
       const created = await requestAdvance({
-        businessTripId: form.tripId, zone: form.zone, amount, purpose: form.purpose.trim(), idempotencyKey,
+        businessTripId: form.tripId, wilayah: form.wilayah, amount, purpose: form.purpose.trim(), idempotencyKey,
       });
       setNotice("Pengajuan terkirim ke penyetuju perjalanan Anda.");
       setPage(1);
@@ -155,9 +155,15 @@ export function EmployeeTripAdvancesPage() {
 
   const settle = (advance: AdvanceDetail) => {
     if (!window.confirm("Ajukan pertanggungjawaban sekarang? Pastikan semua biaya perjalanan sudah diklaim lewat Reimbursement.")) return;
+    // D-21 (Diktum Keempat SK 01.111/YSQ/VII/2026): uang saku tidak dibayar dua kali.
+    const organizerPerDiemReceived = window.confirm(
+      "Apakah Anda sudah menerima uang saku dari penyelenggara atau pihak lain untuk penugasan ini?\n\nOK = sudah menerima (uang harian tidak dibayar lagi). Batal = belum menerima.",
+    );
     void run(async () => {
-      await submitSettlement(advance.id, null);
-      setNotice("Pertanggungjawaban diajukan. Keuangan akan menghitung uang harian dan klaim Anda.");
+      await submitSettlement(advance.id, null, organizerPerDiemReceived);
+      setNotice(organizerPerDiemReceived
+        ? "Pertanggungjawaban diajukan dengan pernyataan uang saku sudah diterima dari penyelenggara."
+        : "Pertanggungjawaban diajukan. Keuangan akan menghitung uang harian dan klaim Anda.");
       await Promise.all([loadList(), getMyAdvance(advance.id).then(setSelected)]);
     }, "Pertanggungjawaban tidak dapat diajukan.");
   };
@@ -203,7 +209,7 @@ export function EmployeeTripAdvancesPage() {
                     <span className="block font-semibold text-brand-heading">
                       {advance.tripDestination} · <span className="tabular-nums">{advance.amount === 0 ? "Hanya uang harian" : formatRupiah(advance.amount)}</span>
                     </span>
-                    <span className="block text-xs text-muted-foreground">{advance.tripStartOn} – {advance.tripEndOn} · {advance.zoneLabel}</span>
+                    <span className="block text-xs text-muted-foreground">{advance.tripStartOn} – {advance.tripEndOn} · {advance.wilayahLabel}</span>
                     <span className={`mt-1 block text-[11px] font-semibold ${advance.overdue ? "text-danger-ink" : "text-muted-foreground"}`}>
                       {advanceStatusLabel(advance.status)}{advance.overdue ? " · terlambat" : ""}
                       {advance.currentApproverName ? ` · menunggu ${advance.currentApproverName}` : ""}
@@ -241,17 +247,20 @@ export function EmployeeTripAdvancesPage() {
                   </button>
                 ) : null}
               </label>
-              <label className="block text-xs font-semibold text-muted-foreground">Zona perjalanan
-                <select value={form.zone} className={input} onChange={(event) => setForm({ ...form, zone: event.target.value as ZoneKey })}>
-                  {zones.map((zone) => <option key={zone.key} value={zone.key}>{zone.label}</option>)}
+              <label className="block text-xs font-semibold text-muted-foreground">Wilayah perjalanan
+                <select value={form.wilayah} className={input} onChange={(event) => setForm({ ...form, wilayah: event.target.value as WilayahKey })}>
+                  {wilayahs.map((wilayah) => <option key={wilayah.key} value={wilayah.key}>{wilayah.label}</option>)}
                 </select>
               </label>
               {estimate ? (
                 <div className="rounded-2xl border border-border/70 bg-surface p-3 text-sm">
                   <p className="font-semibold text-brand-heading">
                     Perkiraan uang harian: {estimate.dailyRate === null
-                      ? "tarif zona ini belum ditetapkan HC/Keuangan"
+                      ? "tarif golongan dan wilayah ini belum ditetapkan HC/Keuangan"
                       : `${estimate.days} hari × ${formatRupiah(estimate.dailyRate)} = ${formatRupiah(estimate.perDiemEstimate)}`}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Golongan uang saku Anda: {estimate.golonganLabel} (SK 01.111/YSQ/VII/2026).
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Uang muka paling banyak {formatRupiah(estimate.maxAmount)}. Uang harian final dihitung Keuangan saat pertanggungjawaban.

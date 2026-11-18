@@ -10,17 +10,19 @@ export { approverRoleLabel, formatRupiah, formatTimestamp, parseRupiahInput, tod
 export type AdvanceStatus =
   | "IN_REVIEW" | "APPROVED" | "DISBURSED" | "SETTLEMENT_SUBMITTED"
   | "AWAITING_TOP_UP" | "AWAITING_REFUND" | "SETTLED" | "REJECTED" | "CANCELLED";
-export type ZoneKey = "LOCAL" | "PROVINCIAL" | "NATIONAL" | "INTERNATIONAL";
+export type WilayahKey = "DALAM_DAERAH" | "LUAR_DAERAH" | "LUAR_NEGERI";
+export type GolonganKey = "PIMPINAN" | "KEPALA_UNIT" | "STAF";
 export type TransactionMethod = "CASH" | "TRANSFER";
 
-export interface Zone { key: ZoneKey; label: string }
+export interface Wilayah { key: WilayahKey; label: string }
+export interface Golongan { key: GolonganKey; label: string }
 
 /** Amounts are whole rupiah as JSON integers; the API refuses anything else. */
 export interface AdvanceSummary {
   id: string;
   status: AdvanceStatus;
-  zone: ZoneKey;
-  zoneLabel: string;
+  wilayah: WilayahKey;
+  wilayahLabel: string;
   amount: number;
   purpose: string;
   submittedAt: string;
@@ -81,6 +83,9 @@ export interface LinkedClaim {
 export interface SettlementPreview {
   maxPerDiemDays: number;
   tripDays: number;
+  golongan: GolonganKey | null;
+  golonganLabel: string | null;
+  classificationCodes: string[];
   dailyRate: number | null;
   rateEffectiveFrom: string | null;
   verifiedClaims: number;
@@ -98,6 +103,9 @@ export interface AdvanceDetail extends AdvanceSummary {
   settlementSubmittedAt: string | null;
   settlementNote: string | null;
   perDiemDays: number | null;
+  perDiemGolonganLabel: string | null;
+  organizerPerDiemDeclared: boolean;
+  perDiemWaiveReason: string | null;
   perDiemRate: number | null;
   perDiemAmount: number | null;
   claimsTotal: number | null;
@@ -127,7 +135,9 @@ export interface AdvanceableTrip {
 
 export interface AdvanceEstimate {
   tripId: string;
-  zone: ZoneKey;
+  wilayah: WilayahKey;
+  golongan: GolonganKey;
+  golonganLabel: string;
   days: number;
   dailyRate: number | null;
   rateEffectiveFrom: string | null;
@@ -143,8 +153,8 @@ export interface AdvanceApprovalItem {
   requesterName: string;
   requesterNumber: string;
   unitName: string | null;
-  zone: ZoneKey;
-  zoneLabel: string;
+  wilayah: WilayahKey;
+  wilayahLabel: string;
   amount: number;
   purpose: string;
   tripDestination: string;
@@ -155,8 +165,11 @@ export interface AdvanceApprovalItem {
 
 export interface PerDiemRate {
   id: string;
-  zone: ZoneKey;
-  zoneLabel: string;
+  wilayah: WilayahKey;
+  wilayahLabel: string;
+  golongan: GolonganKey;
+  golonganLabel: string;
+  decreeReference: string | null;
   effectiveFrom: string;
   dailyAmount: number;
   note: string | null;
@@ -164,7 +177,25 @@ export interface PerDiemRate {
   createdByName: string | null;
 }
 
-export interface CurrentRate { zone: ZoneKey; label: string; dailyAmount: number | null; effectiveFrom: string | null }
+export interface CurrentRate {
+  golongan: GolonganKey;
+  golonganLabel: string;
+  wilayah: WilayahKey;
+  label: string;
+  dailyAmount: number | null;
+  effectiveFrom: string | null;
+}
+
+/** D-20: the classification-to-golongan map Human Capital keeps. */
+export interface GolonganMapping {
+  jobClassificationCode: string;
+  classificationName: string | null;
+  golongan: GolonganKey;
+  golonganLabel: string;
+  note: string | null;
+  updatedAt: string;
+  updatedByName: string | null;
+}
 
 export interface Claimant { id: string; fullName: string; employeeNumber: string; unitName: string | null }
 
@@ -196,6 +227,15 @@ async function get<T>(path: string) {
   return readJson<T>(await fetch(`/api${path}`, { credentials: "include", headers: { Accept: "application/json" } }));
 }
 
+async function send<T>(method: "PUT" | "DELETE", path: string, payload?: unknown) {
+  return readJson<T>(await fetch(`/api${path}`, {
+    method,
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  }));
+}
+
 async function post<T>(path: string, payload: unknown) {
   return readJson<T>(await fetch(`/api${path}`, {
     method: "POST",
@@ -215,20 +255,23 @@ function query(params: Record<string, string | number | boolean | undefined | nu
 // ---------------------------------------------------------------- employee
 
 export const getMyAdvances = (page = 1) =>
-  get<{ items: AdvanceSummary[]; pagination: Pagination; zones: Zone[]; policy: { maxAdvanceExpenses: number; settlementDueDays: number } }>(
+  get<{
+    items: AdvanceSummary[]; pagination: Pagination; wilayahs: Wilayah[]; golongans: Golongan[];
+    policy: { maxAdvanceExpenses: number; settlementDueDays: number };
+  }>(
     `/trip-advances/me${query({ page })}`,
   );
 export const getMyAdvance = (id: string) => get<AdvanceDetail>(`/trip-advances/me/${id}`);
 export const getAdvanceableTrips = (page = 1) =>
   get<{ items: AdvanceableTrip[]; pagination: Pagination }>(`/trip-advances/me/trips${query({ page, pageSize: 50 })}`);
-export const estimateAdvance = (tripId: string, zone: ZoneKey) =>
-  get<AdvanceEstimate>(`/trip-advances/me/estimate${query({ tripId, zone })}`);
-export const requestAdvance = (input: { businessTripId: string; zone: ZoneKey; amount: number; purpose: string; idempotencyKey: string }) =>
+export const estimateAdvance = (tripId: string, wilayah: WilayahKey) =>
+  get<AdvanceEstimate>(`/trip-advances/me/estimate${query({ tripId, wilayah })}`);
+export const requestAdvance = (input: { businessTripId: string; wilayah: WilayahKey; amount: number; purpose: string; idempotencyKey: string }) =>
   post<{ id: string; status: AdvanceStatus }>("/trip-advances/me", input);
 export const cancelMyAdvance = (id: string, reason: string) =>
   post<{ status: AdvanceStatus }>(`/trip-advances/me/${id}/cancel`, { reason });
-export const submitSettlement = (id: string, note: string | null) =>
-  post<{ status: AdvanceStatus }>(`/trip-advances/me/${id}/settlement`, { note });
+export const submitSettlement = (id: string, note: string | null, organizerPerDiemReceived = false) =>
+  post<{ status: AdvanceStatus }>(`/trip-advances/me/${id}/settlement`, { note, organizerPerDiemReceived });
 
 // ---------------------------------------------------------------- approver
 
@@ -240,7 +283,7 @@ export const decideAdvanceApproval = (stepId: string, decision: "approve" | "rej
 // ------------------------------------------------------------------- admin
 
 export const getAdminAdvances = (filter: { page?: number; status?: AdvanceStatus | ""; employeeId?: string | null; overdue?: boolean }) =>
-  get<{ items: AdvanceSummary[]; pagination: Pagination; zones: Zone[] }>(`/admin/trip-advances${query({
+  get<{ items: AdvanceSummary[]; pagination: Pagination; wilayahs: Wilayah[] }>(`/admin/trip-advances${query({
     page: filter.page ?? 1, status: filter.status, employeeId: filter.employeeId, overdue: filter.overdue ? true : undefined,
   })}`);
 export const getAdminAdvance = (id: string) => get<AdvanceDetail>(`/admin/trip-advances/${id}`);
@@ -253,17 +296,30 @@ export const rejectAdvance = (id: string, reason: string) =>
 /** Never carries an amount: the API disburses the approved amount. */
 export const disburseAdvance = (id: string, input: TransactionInput) =>
   post<{ status: AdvanceStatus; amount: number }>(`/admin/trip-advances/${id}/disburse`, input);
-export const settleAdvance = (id: string, input: { perDiemDays: number; note: string | null; idempotencyKey: string }) =>
+export const settleAdvance = (id: string, input: {
+  perDiemDays: number; note: string | null; organizerPerDiemPaid?: boolean; waiveReason?: string | null; idempotencyKey: string;
+}) =>
   post<{ status: AdvanceStatus; perDiemAmount: number; claimsTotal: number; settlementBalance: number }>(`/admin/trip-advances/${id}/settle`, input);
 /** Never carries an amount: the API pays the settlement balance. */
 export const payTopUp = (id: string, input: TransactionInput) =>
   post<{ status: AdvanceStatus; amount: number }>(`/admin/trip-advances/${id}/top-up`, input);
 export const recordRefund = (id: string, input: TransactionInput & { amount: number }) =>
   post<{ status: AdvanceStatus; refundOutstanding: number }>(`/admin/trip-advances/${id}/refunds`, input);
-export const getPerDiemRates = (page = 1, zone?: ZoneKey | "") =>
-  get<{ items: PerDiemRate[]; pagination: Pagination; current: CurrentRate[] }>(`/admin/trip-per-diem-rates${query({ page, zone })}`);
-export const createPerDiemRate = (input: { zone: ZoneKey; effectiveFrom: string; dailyAmount: number; note: string | null }) =>
-  post<{ id: string }>("/admin/trip-per-diem-rates", input);
+export const getPerDiemRates = (page = 1, wilayah?: WilayahKey | "", golongan?: GolonganKey | "") =>
+  get<{ items: PerDiemRate[]; pagination: Pagination; current: CurrentRate[]; golongans: Golongan[]; wilayahs: Wilayah[] }>(
+    `/admin/trip-per-diem-rates${query({ page, wilayah, golongan })}`,
+  );
+export const createPerDiemRate = (input: {
+  golongan: GolonganKey; wilayah: WilayahKey; effectiveFrom: string; dailyAmount: number; note: string | null;
+}) => post<{ id: string }>("/admin/trip-per-diem-rates", input);
+export const getGolonganMap = (page = 1) =>
+  get<{ items: GolonganMapping[]; pagination: Pagination; unmapped: Array<{ code: string; name: string }>; golongans: Golongan[] }>(
+    `/admin/trip-per-diem-golongan${query({ page })}`,
+  );
+export const mapGolongan = (input: { jobClassificationCode: string; golongan: GolonganKey; note: string | null }) =>
+  send<{ jobClassificationCode: string }>("PUT", "/admin/trip-per-diem-golongan", input);
+export const unmapGolongan = (code: string) =>
+  send<{ jobClassificationCode: string }>("DELETE", `/admin/trip-per-diem-golongan/${encodeURIComponent(code)}`);
 
 // ------------------------------------------------------------------ labels
 
@@ -304,6 +360,8 @@ const EVENT_LABELS: Record<string, string> = {
   "trip_advance.top_up.paid": "Kekurangan dibayar",
   "trip_advance.refund.recorded": "Pengembalian dicatat",
   "trip_advance.closed": "Selesai",
+  "trip_advance.golongan.mapped": "Golongan klasifikasi dipetakan",
+  "trip_advance.golongan.unmapped": "Pemetaan golongan dihapus",
 };
 
 export function advanceEventLabel(eventType: string) {

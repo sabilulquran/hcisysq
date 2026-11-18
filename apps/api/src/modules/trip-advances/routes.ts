@@ -23,6 +23,7 @@ import type { TripAdvancePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { decideLeaveApprovalStep, LeaveWorkflowError, type LeaveApprovalStepState } from "../leave/domain/request-workflow.js";
+import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
   ACTIVE_TRIP_STATUSES,
@@ -51,11 +52,17 @@ import {
   TripAdvancePolicyError,
   tripDays,
   UNSETTLED_STATUSES,
-  ZONE_KEYS,
-  zoneCatalog,
-  ZONES,
+  WILAYAH_KEYS,
+  wilayahCatalog,
+  WILAYAH,
+  GOLONGAN,
+  GOLONGAN_KEYS,
+  golonganCatalog,
+  highestGolongan,
+  isGolongan,
+  type GolonganKey,
   type AdvanceStatus,
-  type ZoneKey,
+  type WilayahKey,
 } from "./domain.js";
 
 type Queryable = Pool | PoolClient;
@@ -69,12 +76,18 @@ const optionalText = (max: number) => z.string().trim().max(max).nullable().opti
 
 const createBody = z.object({
   businessTripId: z.string().uuid(),
-  zone: z.enum(ZONE_KEYS),
+  wilayah: z.enum(WILAYAH_KEYS),
   amount: rupiah(0),
   purpose: text(10, 1000),
   idempotencyKey: z.string().uuid(),
 });
-const estimateQuery = z.object({ tripId: z.string().uuid(), zone: z.enum(ZONE_KEYS) });
+const estimateQuery = z.object({ tripId: z.string().uuid(), wilayah: z.enum(WILAYAH_KEYS) });
+const golonganMapBody = z.object({
+  jobClassificationCode: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/),
+  golongan: z.enum(GOLONGAN_KEYS),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+const golonganUnmapParams = z.object({ code: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/) });
 const idParams = z.object({ id: z.string().uuid() });
 const stepParams = z.object({ stepId: z.string().uuid() });
 const decisionBody = z.discriminatedUnion("decision", [
@@ -82,7 +95,8 @@ const decisionBody = z.discriminatedUnion("decision", [
   z.object({ decision: z.literal("reject"), note: z.string().trim().min(5).max(1000) }),
 ]);
 const employeeCancelBody = z.object({ reason: text(5, 500) });
-const settlementRequestBody = z.object({ note: optionalText(1000) });
+// D-21 (Diktum Keempat): the employee declares whether the organiser already paid their uang saku.
+const settlementRequestBody = z.object({ note: optionalText(1000), organizerPerDiemReceived: z.boolean().optional() });
 const financeReasonBody = z.object({ reason: text(10, 500) });
 const transactionBody = z.object({
   paidOn: isoDate,
@@ -95,10 +109,15 @@ const refundBody = transactionBody.extend({ amount: rupiah(1) });
 const settleBody = z.object({
   perDiemDays: z.number().int().min(0).max(30),
   note: optionalText(500),
+  // D-21: Keuangan may record that the organiser paid, and may withhold or cut the per diem
+  // with a written reason (10-500) of its own.
+  organizerPerDiemPaid: z.boolean().optional(),
+  waiveReason: z.string().trim().max(500).nullable().optional(),
   idempotencyKey: z.string().uuid(),
 });
 const rateBody = z.object({
-  zone: z.enum(ZONE_KEYS),
+  golongan: z.enum(GOLONGAN_KEYS),
+  wilayah: z.enum(WILAYAH_KEYS),
   effectiveFrom: isoDate,
   dailyAmount: z.number().int().min(0).max(5_000_000),
   note: optionalText(500),
@@ -112,7 +131,10 @@ const adminListQuery = pageQuerySchema.extend({
 });
 const periodQuery = z.object({ from: isoDate, to: isoDate, status: statusFilter.optional() });
 const claimantQuery = pageQuerySchema.extend({ q: z.string().trim().min(2).max(100) });
-const rateListQuery = pageQuerySchema.extend({ zone: z.enum(ZONE_KEYS).optional() });
+const rateListQuery = pageQuerySchema.extend({
+  wilayah: z.enum(WILAYAH_KEYS).optional(),
+  golongan: z.enum(GOLONGAN_KEYS).optional(),
+});
 
 class TripAdvanceError extends Error {
   constructor(readonly statusCode: number, readonly code: string, message: string) {
@@ -215,18 +237,65 @@ async function loadTrip(db: Queryable, tripId: string, lock: "" | "FOR SHARE" = 
   return found.rows[0] ?? null;
 }
 
-/** D-02: the latest version of the zone's rate effective on `on`; a same-day correction wins. */
-async function rateInForce(db: Queryable, zone: string, on: string) {
+/**
+ * D-02: the latest version of the (golongan, wilayah) rate effective on `on`; a same-day
+ * correction wins. `LUAR_NEGERI` has no rate in the decree, so it simply resolves to null.
+ */
+async function rateInForce(db: Queryable, golongan: GolonganKey | null, wilayah: string, on: string) {
+  if (golongan === null) return null;
   const found = await db.query<{ id: string; dailyAmount: string; effectiveFrom: string }>(
     `SELECT id, daily_amount::text AS "dailyAmount", to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom"
        FROM trip_per_diem_rates
-      WHERE zone = $1 AND effective_from <= $2::date
+      WHERE golongan = $1 AND wilayah = $2 AND effective_from <= $3::date
       ORDER BY effective_from DESC, created_at DESC, id DESC
       LIMIT 1`,
-    [zone, on],
+    [golongan, wilayah, on],
   );
   const row = found.rows[0];
   return row ? { id: row.id, dailyAmount: toRupiah(row.dailyAmount), effectiveFrom: row.effectiveFrom } : null;
+}
+
+/**
+ * D-20: the employee's golongan on `onDate`, from the ORG-011 job classifications bound to their
+ * employments and the mapping Human Capital recorded. Never inferred from a job-title string:
+ * that is forbidden repo-wide (AUTH-010-K, docs/domain/organization-mapping.md).
+ *
+ * An employee whose classifications are not mapped (or who has none bound) gets no golongan, and
+ * every caller refuses rather than falling back to the cheapest tier.
+ */
+async function resolveGolongan(db: Queryable, employeeId: string, onDate: string): Promise<{
+  golongan: GolonganKey | null; codes: string[]; mappedCodes: string[];
+}> {
+  const employments = await db.query<{ id: string }>(
+    `SELECT id FROM employments
+      WHERE employee_id = $1 AND voided_by_action_id IS NULL
+        AND (started_on IS NULL OR started_on <= $2::date)
+        AND (ended_on IS NULL OR ended_on >= $2::date)
+      ORDER BY started_on NULLS FIRST, id`,
+    [employeeId, onDate],
+  );
+  const codes = new Set<string>();
+  for (const employment of employments.rows) {
+    for (const binding of await bindingsOn(db, employment.id, onDate)) codes.add(binding.code);
+  }
+  if (codes.size === 0) return { golongan: null, codes: [], mappedCodes: [] };
+  const mapped = await db.query<{ code: string; golongan: string }>(
+    `SELECT job_classification_code AS code, golongan FROM trip_per_diem_golongan_map
+      WHERE job_classification_code = ANY($1::text[])`,
+    [[...codes]],
+  );
+  const values = mapped.rows.map((row) => row.golongan).filter(isGolongan);
+  return { golongan: highestGolongan(values), codes: [...codes].sort(), mappedCodes: mapped.rows.map((row) => row.code).sort() };
+}
+
+function golonganMissing(codes: string[]): TripAdvanceError {
+  return new TripAdvanceError(
+    409,
+    "TRIP_PER_DIEM_GOLONGAN_UNMAPPED",
+    codes.length === 0
+      ? "Pegawai ini belum punya klasifikasi jabatan yang berlaku pada tanggal berangkat, sehingga golongan uang saku tidak dapat ditentukan. Minta HC melengkapi penempatan pegawai."
+      : `Klasifikasi jabatan ${codes.join(", ")} belum dipetakan ke golongan uang saku. Minta HC memetakannya di halaman Uang Muka Dinas.`,
+  );
 }
 
 interface ChainStep { employeeId: string; name: string; sources: string[] }
@@ -289,7 +358,7 @@ async function addEvent(
 }
 
 const SUMMARY_COLUMNS = `
-  advance.id, advance.status, advance.zone, advance.amount::text AS amount, advance.purpose,
+  advance.id, advance.status, advance.wilayah, advance.amount::text AS amount, advance.purpose,
   advance.submitted_at AS "submittedAt", advance.settlement_balance::text AS "settlementBalance",
   advance.business_trip_id AS "businessTripId", trip.destination AS "tripDestination", trip.status AS "tripStatus",
   to_char(trip.start_on, 'YYYY-MM-DD') AS "tripStartOn", to_char(trip.end_on, 'YYYY-MM-DD') AS "tripEndOn",
@@ -302,11 +371,11 @@ const SUMMARY_JOINS = `
     ON current_step.advance_id = advance.id AND current_step.status = 'pending'
   LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id`;
 
-type SummaryRow = { amount: string; settlementBalance: string | null; zone: ZoneKey; total?: number } & Record<string, unknown>;
+type SummaryRow = { amount: string; settlementBalance: string | null; wilayah: WilayahKey; total?: number } & Record<string, unknown>;
 
 function summary({ amount: value, settlementBalance, total, ...row }: SummaryRow) {
   void total;
-  return { ...row, zoneLabel: ZONES[row.zone] ?? row.zone, amount: amount(value), settlementBalance: optionalAmount(settlementBalance) };
+  return { ...row, wilayahLabel: WILAYAH[row.wilayah] ?? row.wilayah, amount: amount(value), settlementBalance: optionalAmount(settlementBalance) };
 }
 
 /**
@@ -317,7 +386,8 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
   const on = today();
   const found = await db.query<SummaryRow & {
     employeeId: string; perDiemDays: number | null; perDiemRate: string | null; perDiemAmount: string | null;
-    claimsTotal: string | null; tripStatus: string; tripStartOn: string; tripEndOn: string; zone: ZoneKey;
+    claimsTotal: string | null; tripStatus: string; tripStartOn: string; tripEndOn: string; wilayah: WilayahKey;
+    perDiemGolongan: string | null;
   }>(
     `SELECT ${SUMMARY_COLUMNS},
             advance.employee_id AS "employeeId", employee.full_name AS "employeeName",
@@ -327,6 +397,8 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
             advance.per_diem_days AS "perDiemDays", advance.per_diem_rate::text AS "perDiemRate",
             advance.per_diem_amount::text AS "perDiemAmount", advance.claims_total::text AS "claimsTotal",
             advance.settlement_finance_note AS "settlementFinanceNote", advance.settled_at AS "settledAt",
+            advance.per_diem_golongan AS "perDiemGolongan", advance.organizer_per_diem_declared AS "organizerPerDiemDeclared",
+            advance.per_diem_waive_reason AS "perDiemWaiveReason",
             advance.closed_at AS "closedAt", advance.rejected_by AS "rejectedBy", advance.reject_reason AS "rejectReason",
             advance.cancel_reason AS "cancelReason"
        FROM trip_advances advance
@@ -339,7 +411,7 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
   const row = found.rows[0];
   if (!row) return null;
   const owner = ownerEmployeeId !== null;
-  const [steps, transactions, settled, linked, events, rate] = await Promise.all([
+  const [steps, transactions, settled, linked, events, perDiem] = await Promise.all([
     db.query(
       `SELECT step.id, step.step_order AS "order", step.status, step.sources, approver.full_name AS "approverName",
               step.acted_at AS "actedAt", step.decision_note AS "decisionNote"
@@ -388,7 +460,8 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
         ORDER BY event.occurred_at ASC, event.id ASC`,
       [id],
     ),
-    rateInForce(db, row.zone, row.tripStartOn),
+    resolveGolongan(db, row.employeeId, row.tripStartOn)
+      .then(async (resolved) => ({ resolved, rate: await rateInForce(db, resolved.golongan, row.wilayah, row.tripStartOn) })),
   ]);
   const refunded = transactions.rows
     .filter((transaction) => transaction.kind === "REFUND")
@@ -398,6 +471,7 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
   return {
     ...summary(row),
     perDiemDays: row.perDiemDays,
+    perDiemGolonganLabel: row.perDiemGolongan && isGolongan(row.perDiemGolongan) ? GOLONGAN[row.perDiemGolongan] : null,
     perDiemRate: optionalAmount(row.perDiemRate),
     perDiemAmount: optionalAmount(row.perDiemAmount),
     claimsTotal: optionalAmount(row.claimsTotal),
@@ -413,8 +487,11 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
     settlementPreview: {
       maxPerDiemDays: maxDays,
       tripDays: tripDays(row.tripStartOn, row.tripEndOn),
-      dailyRate: rate ? rupiahToJson(rate.dailyAmount) : null,
-      rateEffectiveFrom: rate?.effectiveFrom ?? null,
+      golongan: perDiem.resolved.golongan,
+      golonganLabel: perDiem.resolved.golongan ? GOLONGAN[perDiem.resolved.golongan] : null,
+      classificationCodes: perDiem.resolved.codes,
+      dailyRate: perDiem.rate ? rupiahToJson(perDiem.rate.dailyAmount) : null,
+      rateEffectiveFrom: perDiem.rate?.effectiveFrom ?? null,
       verifiedClaims: linked.rows.filter((claim) => claim.status === "VERIFIED").length,
       pendingClaims: linked.rows.filter((claim) => claim.status === "IN_REVIEW" || claim.status === "APPROVED").length,
       openClaims: linked.rows.filter((claim) => claim.status === "DRAFT" || claim.status === "IN_REVIEW").length,
@@ -506,7 +583,7 @@ export async function registerTripAdvanceRoutes(
     employeeId: string;
     businessTripId: string;
     status: AdvanceStatus;
-    zone: ZoneKey;
+    wilayah: WilayahKey;
     amount: string;
     decidedOn: string | null;
     settledOn: string | null;
@@ -514,15 +591,17 @@ export async function registerTripAdvanceRoutes(
     perDiemDays: number | null;
     settlementFinanceNote: string | null;
     settlementBalance: string | null;
+    organizerPerDiemDeclared: boolean;
   }
 
   async function lockAdvance(client: PoolClient, id: string, ownerEmployeeId: string | null): Promise<LockedAdvance> {
     const found = await client.query<LockedAdvance>(
-      `SELECT employee_id AS "employeeId", business_trip_id AS "businessTripId", status, zone, amount::text AS amount,
+      `SELECT employee_id AS "employeeId", business_trip_id AS "businessTripId", status, wilayah, amount::text AS amount,
               to_char(final_decided_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "decidedOn",
               to_char(settled_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "settledOn",
               settlement_key AS "settlementKey", settlement_balance::text AS "settlementBalance",
-              per_diem_days AS "perDiemDays", settlement_finance_note AS "settlementFinanceNote"
+              per_diem_days AS "perDiemDays", settlement_finance_note AS "settlementFinanceNote",
+              organizer_per_diem_declared AS "organizerPerDiemDeclared"
          FROM trip_advances
         WHERE id = $1 AND ($2::uuid IS NULL OR employee_id = $2)
         FOR UPDATE`,
@@ -567,11 +646,18 @@ export async function registerTripAdvanceRoutes(
     return trip;
   }
 
-  async function estimate(db: Queryable, trip: TripRow, zone: ZoneKey) {
+  /**
+   * D-04 / D-20: the per diem estimate. The golongan comes from the employee's ORG-011
+   * classifications on the departure date; an unmapped classification stops the estimate with a
+   * configuration error instead of quietly costing the cheapest tier.
+   */
+  async function estimate(db: Queryable, trip: TripRow, wilayah: WilayahKey, employeeId: string) {
     const days = tripDays(trip.startOn, trip.endOn);
-    const rate = await rateInForce(db, zone, trip.startOn);
+    const resolved = await resolveGolongan(db, employeeId, trip.startOn);
+    if (resolved.golongan === null) throw golonganMissing(resolved.codes);
+    const rate = await rateInForce(db, resolved.golongan, wilayah, trip.startOn);
     const limit = advanceLimit(days, rate?.dailyAmount ?? null);
-    return { days, rate, ...limit };
+    return { days, rate, golongan: resolved.golongan, ...limit };
   }
 
   app.get("/trip-advances/me", async (request, reply) => {
@@ -592,7 +678,8 @@ export async function registerTripAdvanceRoutes(
       return send(reply, 200, {
         items: result.rows.map(summary),
         pagination: pagination(query.data, result.rows[0]?.total ?? 0),
-        zones: zoneCatalog(),
+        wilayahs: wilayahCatalog(),
+        golongans: golonganCatalog(),
         policy: { maxAdvanceExpenses: rupiahToJson(MAX_ADVANCE_EXPENSES), settlementDueDays: SETTLEMENT_DUE_DAYS },
       });
     });
@@ -627,15 +714,17 @@ export async function registerTripAdvanceRoutes(
     const principal = await requireEmployee(request, reply);
     if (!principal) return;
     const query = estimateQuery.safeParse(request.query);
-    if (!query.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE", message: "Pilih perjalanan dan zona." });
+    if (!query.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE", message: "Pilih perjalanan dan wilayah." });
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
       const trip = await eligibleTrip(pool, query.data.tripId, employee.id);
-      const result = await estimate(pool, trip, query.data.zone);
+      const result = await estimate(pool, trip, query.data.wilayah, employee.id);
       const chain = await copyTripChain(pool, trip.id);
       return send(reply, 200, {
         tripId: trip.id,
-        zone: query.data.zone,
+        wilayah: query.data.wilayah,
+        golongan: result.golongan,
+        golonganLabel: GOLONGAN[result.golongan],
         days: result.days,
         dailyRate: result.rate ? rupiahToJson(result.rate.dailyAmount) : null,
         rateEffectiveFrom: result.rate?.effectiveFrom ?? null,
@@ -667,21 +756,21 @@ export async function registerTripAdvanceRoutes(
     if (!body.success) {
       return send(reply, 400, {
         code: "INVALID_TRIP_ADVANCE",
-        message: "Perjalanan, zona, nominal bilangan bulat rupiah, dan rincian perkiraan (10–1000 karakter) wajib diisi.",
+        message: "Perjalanan, wilayah, nominal bilangan bulat rupiah, dan rincian perkiraan (10–1000 karakter) wajib diisi.",
       });
     }
     return transact(reply, async (client) => {
       // Locking the employee row serializes this employee's requests (idempotency, one per trip).
       const employee = await loadEmployeeContext(client, principal.id, true);
-      const replay = await client.query<{ id: string; status: AdvanceStatus; tripId: string; zone: string; amount: string; purpose: string }>(
-        `SELECT id, status, business_trip_id AS "tripId", zone, amount::text AS amount, purpose
+      const replay = await client.query<{ id: string; status: AdvanceStatus; tripId: string; wilayah: string; amount: string; purpose: string }>(
+        `SELECT id, status, business_trip_id AS "tripId", wilayah, amount::text AS amount, purpose
            FROM trip_advances WHERE employee_id = $1 AND idempotency_key = $2`,
         [employee.id, body.data.idempotencyKey],
       );
       const previous = replay.rows[0];
       if (previous) {
         // A retry replays only with the same terms; a reused key with other terms is refused.
-        if (previous.tripId !== body.data.businessTripId || previous.zone !== body.data.zone
+        if (previous.tripId !== body.data.businessTripId || previous.wilayah !== body.data.wilayah
           || toRupiah(previous.amount) !== toRupiah(body.data.amount) || previous.purpose !== body.data.purpose) {
           throw new TripAdvanceError(409, "IDEMPOTENCY_KEY_REUSED", "Pengajuan ini sudah terkirim dengan isian lain. Muat ulang halaman.");
         }
@@ -694,15 +783,15 @@ export async function registerTripAdvanceRoutes(
       );
       if (live.rows[0]) throw new TripAdvanceError(409, "TRIP_ADVANCE_EXISTS", "Perjalanan ini sudah punya pengajuan uang muka.");
       const value = toRupiah(body.data.amount);
-      const limit = await estimate(client, trip, body.data.zone);
+      const limit = await estimate(client, trip, body.data.wilayah, employee.id);
       assertAdvanceAmount(value, limit.maxAmount);
       const chain = await copyTripChain(client, trip.id);
       const id = randomUUID();
       await client.query(
-        `INSERT INTO trip_advances (id, employee_id, business_trip_id, zone, amount, purpose, status, idempotency_key, approval_snapshot)
+        `INSERT INTO trip_advances (id, employee_id, business_trip_id, wilayah, amount, purpose, status, idempotency_key, approval_snapshot)
          VALUES ($1, $2, $3, $4, $5::bigint, $6, 'IN_REVIEW', $7, $8::jsonb)`,
         [
-          id, employee.id, trip.id, body.data.zone, value.toString(), body.data.purpose, body.data.idempotencyKey,
+          id, employee.id, trip.id, body.data.wilayah, value.toString(), body.data.purpose, body.data.idempotencyKey,
           JSON.stringify({ source: "TRIP", tripId: trip.id, steps: chain.map((step) => ({ employeeId: step.employeeId, sources: step.sources })) }),
         ],
       );
@@ -717,7 +806,7 @@ export async function registerTripAdvanceRoutes(
         steps.push({ id: stepId, employeeId: step.employeeId, name: step.name });
       }
       await addEvent(client, id, principal.id, "trip_advance.request.submitted", null, {
-        tripId: trip.id, zone: body.data.zone, perDiemOnly: value === 0n, approvers: steps.length,
+        tripId: trip.id, wilayah: body.data.wilayah, perDiemOnly: value === 0n, approvers: steps.length,
       });
       const first = steps[0]!;
       await notifyEmployee(client, first.employeeId, {
@@ -766,7 +855,12 @@ export async function registerTripAdvanceRoutes(
     const params = idParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_ID", message: "Uang muka tidak valid." });
     const body = settlementRequestBody.safeParse(request.body ?? {});
-    if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_SETTLEMENT", message: "Catatan paling banyak 1000 karakter." });
+    if (!body.success) {
+      return send(reply, 400, {
+        code: "INVALID_TRIP_ADVANCE_SETTLEMENT",
+        message: "Catatan paling banyak 1000 karakter, dan pernyataan uang saku dari penyelenggara harus ya atau tidak.",
+      });
+    }
     return transact(reply, async (client) => {
       const employee = await loadEmployeeContext(client, principal.id);
       const advance = await lockAdvance(client, params.data.id, employee.id);
@@ -787,13 +881,19 @@ export async function registerTripAdvanceRoutes(
         throw new TripAdvanceError(409, "TRIP_ADVANCE_CLAIMS_OPEN", "Kirim atau buang draf klaim perjalanan ini, dan tunggu klaim yang dikirim selesai disetujui atasan.");
       }
       const note = body.data.note?.trim() || null;
+      // D-21 (Diktum Keempat): the employee states whether the organiser already paid uang saku
+      // for this assignment. Declared here, applied by Finance at settlement.
+      const organizerPaid = body.data.organizerPerDiemReceived === true;
       await client.query(
-        `UPDATE trip_advances SET status = 'SETTLEMENT_SUBMITTED', settlement_submitted_at = now(), settlement_note = $2, updated_at = now()
+        `UPDATE trip_advances SET status = 'SETTLEMENT_SUBMITTED', settlement_submitted_at = now(), settlement_note = $2,
+                organizer_per_diem_declared = $3, updated_at = now()
           WHERE id = $1`,
-        [params.data.id, note],
+        [params.data.id, note, organizerPaid],
       );
-      await addEvent(client, params.data.id, principal.id, "trip_advance.settlement.submitted", note);
-      return [200, { id: params.data.id, status: "SETTLEMENT_SUBMITTED" }];
+      await addEvent(client, params.data.id, principal.id, "trip_advance.settlement.submitted", note, {
+        organizerPerDiemReceived: organizerPaid,
+      });
+      return [200, { id: params.data.id, status: "SETTLEMENT_SUBMITTED", organizerPerDiemReceived: organizerPaid }];
     });
   });
 
@@ -806,10 +906,10 @@ export async function registerTripAdvanceRoutes(
     if (!query.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_FILTER", message: "Filter tidak valid." });
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
-      const result = await pool.query<{ amount: string; zone: ZoneKey; total: number }>(
+      const result = await pool.query<{ amount: string; wilayah: WilayahKey; total: number }>(
         `SELECT step.id AS "stepId", advance.id AS "advanceId", step.sources,
                 requester.full_name AS "requesterName", requester.employee_number AS "requesterNumber",
-                unit.name AS "unitName", advance.zone, advance.amount::text AS amount, advance.purpose,
+                unit.name AS "unitName", advance.wilayah, advance.amount::text AS amount, advance.purpose,
                 trip.destination AS "tripDestination", to_char(trip.start_on, 'YYYY-MM-DD') AS "tripStartOn",
                 to_char(trip.end_on, 'YYYY-MM-DD') AS "tripEndOn", advance.submitted_at AS "submittedAt",
                 count(*) OVER ()::int AS total
@@ -826,7 +926,7 @@ export async function registerTripAdvanceRoutes(
       return send(reply, 200, {
         items: result.rows.map(({ total, amount: value, ...row }) => {
           void total;
-          return { ...row, zoneLabel: ZONES[row.zone] ?? row.zone, amount: amount(value) };
+          return { ...row, wilayahLabel: WILAYAH[row.wilayah] ?? row.wilayah, amount: amount(value) };
         }),
         pagination: pagination(query.data, result.rows[0]?.total ?? 0),
       });
@@ -970,7 +1070,7 @@ export async function registerTripAdvanceRoutes(
       return send(reply, 200, {
         items: result.rows.map(summary),
         pagination: pagination(query.data, result.rows[0]?.total ?? 0),
-        zones: zoneCatalog(),
+        wilayahs: wilayahCatalog(),
       });
     });
   });
@@ -1024,7 +1124,7 @@ export async function registerTripAdvanceRoutes(
         `SELECT advance.id, employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
                 unit.name AS "unitName", trip.destination,
                 to_char(trip.start_on, 'YYYY-MM-DD') AS "startOn", to_char(trip.end_on, 'YYYY-MM-DD') AS "endOn",
-                advance.zone, to_char(advance.submitted_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "submittedOn",
+                advance.wilayah, to_char(advance.submitted_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "submittedOn",
                 advance.status, advance.amount::text AS amount, advance.per_diem_days::text AS "perDiemDays",
                 advance.per_diem_amount::text AS "perDiemAmount", advance.claims_total::text AS "claimsTotal",
                 advance.settlement_balance::text AS balance,
@@ -1044,14 +1144,14 @@ export async function registerTripAdvanceRoutes(
         from: query.data.from, to: query.data.to, status: query.data.status ?? null, rows: rows.rows.length,
       });
       const header = [
-        "ID uang muka", "NIP", "Nama", "Unit", "Tujuan", "Berangkat", "Kembali", "Zona", "Tanggal ajuan", "Status",
+        "ID uang muka", "NIP", "Nama", "Unit", "Tujuan", "Berangkat", "Kembali", "Wilayah", "Tanggal ajuan", "Status",
         "Uang muka", "Hari uang harian", "Uang harian", "Klaim diperhitungkan", "Selisih", "Pengembalian diterima", "Tenggat",
       ];
       const lines = [header.map(quoteCsvCell).join(",")];
       for (const row of rows.rows) {
         lines.push([
           row.id, row.employeeNumber, row.employeeName, row.unitName, row.destination, row.startOn, row.endOn,
-          row.zone, row.submittedOn, row.status, row.amount, row.perDiemDays, row.perDiemAmount, row.claimsTotal,
+          row.wilayah, row.submittedOn, row.status, row.amount, row.perDiemDays, row.perDiemAmount, row.claimsTotal,
           row.balance, row.refunded, row.dueOn,
         ].map((cell) => quoteCsvCell(cell ?? "")).join(","));
       }
@@ -1189,7 +1289,12 @@ export async function registerTripAdvanceRoutes(
     const params = idParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_ID", message: "Uang muka tidak valid." });
     const body = settleBody.safeParse(request.body);
-    if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_SETTLEMENT", message: "Hari uang harian (bilangan bulat 0–30) dan kunci pengiriman wajib diisi." });
+    if (!body.success) {
+      return send(reply, 400, {
+        code: "INVALID_TRIP_ADVANCE_SETTLEMENT",
+        message: "Hari uang harian (bilangan bulat 0–30) dan kunci pengiriman wajib diisi; alasan penahanan paling banyak 500 karakter.",
+      });
+    }
     return transact(reply, async (client) => {
       const advance = await lockAdvance(client, params.data.id, null);
       await assertNotOwn(client, principal.id, advance.employeeId);
@@ -1236,15 +1341,34 @@ export async function registerTripAdvanceRoutes(
       }
       const verified = claims.rows.map((claim) => ({ id: claim.id, total: toRupiah(claim.verifiedTotal!) }));
       const maxDays = maxPerDiemDays(trip);
-      const rate = body.data.perDiemDays > 0 ? await rateInForce(client, advance.zone, trip.startOn) : null;
+      // D-21: the employee's declaration or Finance's own flag closes the per diem entirely.
+      const organizerPaid = advance.organizerPerDiemDeclared || body.data.organizerPerDiemPaid === true;
+      // D-20: the golongan of the departure date decides the rate; an unmapped classification
+      // refuses the settlement rather than paying the cheapest tier.
+      const resolved = body.data.perDiemDays > 0 ? await resolveGolongan(client, advance.employeeId, trip.startOn) : null;
+      if (resolved && resolved.golongan === null) throw golonganMissing(resolved.codes);
+      const rate = resolved ? await rateInForce(client, resolved.golongan, advance.wilayah, trip.startOn) : null;
       const note = body.data.note?.trim() || null;
+      const waiveReason = body.data.waiveReason?.trim() || null;
+      // D-21: withholding or cutting the per diem is recorded in words, never silently.
+      if (organizerPaid && body.data.perDiemDays === 0 && (!waiveReason || [...waiveReason].length < 10)) {
+        throw new TripAdvanceError(
+          400, "INVALID_TRIP_ADVANCE_SETTLEMENT",
+          "Tulis alasan (minimal 10 karakter) saat uang harian ditahan karena sudah diterima dari penyelenggara.",
+        );
+      }
+      if (waiveReason && [...waiveReason].length < 10) {
+        throw new TripAdvanceError(400, "INVALID_TRIP_ADVANCE_SETTLEMENT", "Alasan penahanan uang harian minimal 10 karakter.");
+      }
       const result = settle({
         advanceAmount: toRupiah(advance.amount),
         claims: verified.map((claim) => claim.total),
         perDiemDays: body.data.perDiemDays,
         maxDays,
         dailyRate: rate?.dailyAmount ?? null,
-        note,
+        // A withheld per diem explains itself through its own reason (D-21).
+        note: note ?? waiveReason,
+        organizerPerDiemPaid: organizerPaid,
       });
       const settledOn = today();
       for (const claim of verified) {
@@ -1270,16 +1394,19 @@ export async function registerTripAdvanceRoutes(
             SET status = $2, settlement_key = $3, per_diem_days = $4, per_diem_rate_id = $5, per_diem_rate = $6::bigint,
                 per_diem_amount = $7::bigint, claims_total = $8::bigint, settlement_balance = $9::bigint,
                 settlement_finance_note = $10, settled_at = now(), settled_by_account_id = $11,
+                per_diem_golongan = $12, organizer_per_diem_declared = $13, per_diem_waive_reason = $14,
                 closed_at = CASE WHEN $2 = 'SETTLED' THEN now() END, updated_at = now()
           WHERE id = $1`,
         [
           params.data.id, result.status, body.data.idempotencyKey, body.data.perDiemDays, rate?.id ?? null,
           rate ? rate.dailyAmount.toString() : null, result.perDiemAmount.toString(), result.claimsTotal.toString(),
           result.balance.toString(), note, principal.id,
+          rate ? resolved!.golongan : null, organizerPaid, waiveReason,
         ],
       );
       await addEvent(client, params.data.id, principal.id, "trip_advance.settled", note, {
         claims: verified.length, perDiemDays: body.data.perDiemDays, maxPerDiemDays: maxDays, outcome: result.status,
+        golongan: rate ? resolved!.golongan : null, organizerPerDiemPaid: organizerPaid,
       });
       if (result.status === "SETTLED") await addEvent(client, params.data.id, principal.id, "trip_advance.closed");
       await notifyEmployee(client, advance.employeeId, {
@@ -1391,29 +1518,40 @@ export async function registerTripAdvanceRoutes(
     return handle(reply, async () => {
       const on = today();
       const [history, current] = await Promise.all([
-        pool.query<{ dailyAmount: string; total: number; zone: ZoneKey }>(
-          `SELECT rate.id, rate.zone, to_char(rate.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
-                  rate.daily_amount::text AS "dailyAmount", rate.note, rate.created_at AS "createdAt",
+        pool.query<{ dailyAmount: string; total: number; wilayah: WilayahKey; golongan: GolonganKey }>(
+          `SELECT rate.id, rate.wilayah, rate.golongan, to_char(rate.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+                  rate.daily_amount::text AS "dailyAmount", rate.note, rate.decree_reference AS "decreeReference",
+                  rate.created_at AS "createdAt",
                   creator.full_name AS "createdByName", count(*) OVER ()::int AS total
              FROM trip_per_diem_rates rate
              LEFT JOIN accounts account ON account.id = rate.created_by_account_id
              LEFT JOIN employees creator ON creator.id = account.employee_id
-            WHERE ($1::text IS NULL OR rate.zone = $1)
+            WHERE ($1::text IS NULL OR rate.wilayah = $1) AND ($4::text IS NULL OR rate.golongan = $4)
             ORDER BY rate.effective_from DESC, rate.created_at DESC, rate.id DESC
             LIMIT $2 OFFSET $3`,
-          [query.data.zone ?? null, query.data.pageSize, pageOffset(query.data)],
+          [query.data.wilayah ?? null, query.data.pageSize, pageOffset(query.data), query.data.golongan ?? null],
         ),
-        Promise.all(ZONE_KEYS.map(async (zone) => ({ zone, rate: await rateInForce(pool, zone, on) }))),
+        Promise.all(GOLONGAN_KEYS.flatMap((golongan) => WILAYAH_KEYS.map(async (wilayah) => ({
+          golongan, wilayah, rate: await rateInForce(pool, golongan, wilayah, on),
+        })))),
       ]);
       return send(reply, 200, {
         items: history.rows.map(({ total, dailyAmount, ...row }) => {
           void total;
-          return { ...row, zoneLabel: ZONES[row.zone] ?? row.zone, dailyAmount: amount(dailyAmount) };
+          return {
+            ...row,
+            wilayahLabel: WILAYAH[row.wilayah] ?? row.wilayah,
+            golonganLabel: GOLONGAN[row.golongan] ?? row.golongan,
+            dailyAmount: amount(dailyAmount),
+          };
         }),
         pagination: pagination(query.data, history.rows[0]?.total ?? 0),
-        current: current.map(({ zone, rate }) => ({
-          zone, label: ZONES[zone], dailyAmount: rate ? rupiahToJson(rate.dailyAmount) : null, effectiveFrom: rate?.effectiveFrom ?? null,
+        current: current.map(({ golongan, wilayah, rate }) => ({
+          golongan, wilayah, golonganLabel: GOLONGAN[golongan], label: WILAYAH[wilayah],
+          dailyAmount: rate ? rupiahToJson(rate.dailyAmount) : null, effectiveFrom: rate?.effectiveFrom ?? null,
         })),
+        golongans: golonganCatalog(),
+        wilayahs: wilayahCatalog(),
       });
     });
   });
@@ -1423,27 +1561,139 @@ export async function registerTripAdvanceRoutes(
     if (!principal) return;
     const body = rateBody.safeParse(request.body);
     if (!body.success) {
-      return send(reply, 400, { code: "INVALID_TRIP_PER_DIEM_RATE", message: "Zona, tanggal berlaku, dan nominal per hari (bilangan bulat Rp0–Rp5.000.000) wajib diisi." });
+      return send(reply, 400, { code: "INVALID_TRIP_PER_DIEM_RATE", message: "Golongan, wilayah, tanggal berlaku, dan nominal per hari (bilangan bulat Rp0–Rp5.000.000) wajib diisi." });
     }
     return transact(reply, async (client) => {
-      // D-02: a version may start in the past only as the first rate of its zone (the initial fill);
-      // afterwards a back-dated row could change the per diem of advances already submitted.
+      // D-02: a version may start in the past only as the first rate of its (golongan, wilayah)
+      // pair (the initial fill); afterwards a back-dated row could change the per diem of advances
+      // already submitted. The decree's own six rates were seeded by migration 0168.
       if (body.data.effectiveFrom < today()) {
-        const existing = await client.query(`SELECT 1 FROM trip_per_diem_rates WHERE zone = $1 LIMIT 1`, [body.data.zone]);
+        const existing = await client.query(
+          `SELECT 1 FROM trip_per_diem_rates WHERE golongan = $1 AND wilayah = $2 LIMIT 1`,
+          [body.data.golongan, body.data.wilayah],
+        );
         if (existing.rows[0]) {
-          throw new TripAdvanceError(409, "TRIP_PER_DIEM_RATE_BACKDATED", "Versi tarif baru berlaku paling cepat hari ini. Hanya tarif pertama suatu zona yang boleh berlaku mundur.");
+          throw new TripAdvanceError(409, "TRIP_PER_DIEM_RATE_BACKDATED", "Versi tarif baru berlaku paling cepat hari ini. Hanya tarif pertama suatu golongan dan wilayah yang boleh berlaku mundur.");
         }
       }
       const id = randomUUID();
       await client.query(
-        `INSERT INTO trip_per_diem_rates (id, zone, effective_from, daily_amount, note, created_by_account_id)
-         VALUES ($1, $2, $3::date, $4::bigint, $5, $6)`,
-        [id, body.data.zone, body.data.effectiveFrom, String(body.data.dailyAmount), body.data.note?.trim() || null, principal.id],
+        `INSERT INTO trip_per_diem_rates (id, golongan, wilayah, effective_from, daily_amount, note, created_by_account_id)
+         VALUES ($1, $2, $3, $4::date, $5::bigint, $6, $7)`,
+        [
+          id, body.data.golongan, body.data.wilayah, body.data.effectiveFrom,
+          String(body.data.dailyAmount), body.data.note?.trim() || null, principal.id,
+        ],
       );
       await addEvent(client, null, principal.id, "trip_advance.rate.created", null, {
-        rateId: id, zone: body.data.zone, effectiveFrom: body.data.effectiveFrom,
+        rateId: id, golongan: body.data.golongan, wilayah: body.data.wilayah, effectiveFrom: body.data.effectiveFrom,
       });
-      return [201, { id, zone: body.data.zone, effectiveFrom: body.data.effectiveFrom, dailyAmount: body.data.dailyAmount }];
+      return [201, {
+        id, golongan: body.data.golongan, wilayah: body.data.wilayah,
+        effectiveFrom: body.data.effectiveFrom, dailyAmount: body.data.dailyAmount,
+      }];
+    });
+  });
+  // ------------------------------------------------------------ golongan
+
+  /**
+   * D-20: the classification-to-golongan map. Human Capital states it; nothing is derived from a
+   * job-title string. The map is current-state (a remap applies from the next resolution on), and
+   * every change is audited.
+   */
+  app.get("/admin/trip-per-diem-golongan", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "trip_advances.read", "trip_per_diem.manage"))) return;
+    const query = pageQuerySchema.safeParse(request.query);
+    if (!query.success) return send(reply, 400, { code: "INVALID_TRIP_ADVANCE_FILTER", message: "Halaman tidak valid." });
+    return handle(reply, async () => {
+      const on = today();
+      const result = await pool.query<{ golongan: GolonganKey; total: number }>(
+        `SELECT map.job_classification_code AS "jobClassificationCode", map.golongan, map.note,
+                map.updated_at AS "updatedAt", editor.full_name AS "updatedByName",
+                classification.name AS "classificationName", count(*) OVER ()::int AS total
+           FROM trip_per_diem_golongan_map map
+           LEFT JOIN accounts account ON account.id = map.updated_by_account_id
+           LEFT JOIN employees editor ON editor.id = account.employee_id
+           LEFT JOIN LATERAL (
+             SELECT name FROM job_classifications
+              WHERE code = map.job_classification_code AND effective_from <= $1::date
+                AND (effective_to IS NULL OR effective_to >= $1::date)
+              LIMIT 1
+           ) classification ON true
+          ORDER BY map.job_classification_code ASC
+          LIMIT $2 OFFSET $3`,
+        [on, query.data.pageSize, pageOffset(query.data)],
+      );
+      // The classifications in force today that nobody has mapped yet: the configuration gap that
+      // stops an estimate (D-20), shown before an employee runs into it.
+      const unmapped = await pool.query<{ code: string; name: string }>(
+        `SELECT DISTINCT classification.code, classification.name
+           FROM job_classifications classification
+          WHERE classification.active AND classification.effective_from <= $1::date
+            AND (classification.effective_to IS NULL OR classification.effective_to >= $1::date)
+            AND NOT EXISTS (SELECT 1 FROM trip_per_diem_golongan_map map
+                             WHERE map.job_classification_code = classification.code)
+          ORDER BY classification.code ASC
+          LIMIT 100`,
+        [on],
+      );
+      return send(reply, 200, {
+        items: result.rows.map(({ total, ...row }) => { void total; return { ...row, golonganLabel: GOLONGAN[row.golongan] }; }),
+        pagination: pagination(query.data, result.rows[0]?.total ?? 0),
+        unmapped: unmapped.rows,
+        golongans: golonganCatalog(),
+      });
+    });
+  });
+
+  app.put("/admin/trip-per-diem-golongan", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "trip_per_diem.manage");
+    if (!principal) return;
+    const body = golonganMapBody.safeParse(request.body);
+    if (!body.success) {
+      return send(reply, 400, {
+        code: "INVALID_TRIP_PER_DIEM_GOLONGAN",
+        message: "Kode klasifikasi jabatan dan golongan (Pimpinan/Yayasan, Kepala Unit Kerja, atau Staf) wajib diisi.",
+      });
+    }
+    return transact(reply, async (client) => {
+      const known = await client.query(
+        `SELECT 1 FROM job_classifications WHERE code = $1 LIMIT 1`, [body.data.jobClassificationCode],
+      );
+      if (!known.rows[0]) {
+        throw new TripAdvanceError(409, "JOB_CLASSIFICATION_NOT_FOUND", "Kode klasifikasi jabatan ini tidak ada di katalog ORG-011.");
+      }
+      await client.query(
+        `INSERT INTO trip_per_diem_golongan_map (job_classification_code, golongan, note, updated_by_account_id, updated_at)
+         VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (job_classification_code) DO UPDATE
+           SET golongan = EXCLUDED.golongan, note = EXCLUDED.note,
+               updated_by_account_id = EXCLUDED.updated_by_account_id, updated_at = now()`,
+        [body.data.jobClassificationCode, body.data.golongan, body.data.note?.trim() || null, principal.id],
+      );
+      await addEvent(client, null, principal.id, "trip_advance.golongan.mapped", null, {
+        jobClassificationCode: body.data.jobClassificationCode, golongan: body.data.golongan,
+      });
+      return [200, { jobClassificationCode: body.data.jobClassificationCode, golongan: body.data.golongan }];
+    });
+  });
+
+  app.delete("/admin/trip-per-diem-golongan/:code", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "trip_per_diem.manage");
+    if (!principal) return;
+    const params = golonganUnmapParams.safeParse(request.params);
+    if (!params.success) return send(reply, 400, { code: "INVALID_TRIP_PER_DIEM_GOLONGAN", message: "Kode klasifikasi jabatan tidak valid." });
+    return transact(reply, async (client) => {
+      const removed = await client.query(
+        `DELETE FROM trip_per_diem_golongan_map WHERE job_classification_code = $1`, [params.data.code],
+      );
+      if (removed.rowCount === 0) {
+        throw new TripAdvanceError(404, "TRIP_PER_DIEM_GOLONGAN_NOT_FOUND", "Pemetaan golongan ini tidak ditemukan.");
+      }
+      await addEvent(client, null, principal.id, "trip_advance.golongan.unmapped", null, {
+        jobClassificationCode: params.data.code,
+      });
+      return [200, { jobClassificationCode: params.data.code }];
     });
   });
 }

@@ -46,7 +46,7 @@ export function TripAdvanceDetailPanel({ advance, actions }: { advance: AdvanceD
           {advance.employeeName} · {advance.employeeNumber}{advance.unitName ? ` · ${advance.unitName}` : ""}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {advance.tripStartOn} – {advance.tripEndOn} · {advance.zoneLabel}
+          {advance.tripStartOn} – {advance.tripEndOn} · {advance.wilayahLabel}
         </p>
         {advance.overdue ? (
           <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-danger-ink">

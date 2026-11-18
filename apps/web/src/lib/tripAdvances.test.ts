@@ -62,7 +62,7 @@ describe("TRIP-002 client", () => {
   });
 
   it("builds register filters and the export link", async () => {
-    const fetchMock = stubFetch(200, { items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 1 }, zones: [] });
+    const fetchMock = stubFetch(200, { items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 1 }, wilayahs: [] });
     await getAdminAdvances({ page: 2, status: "DISBURSED", overdue: true });
     expect(call(fetchMock)[0]).toBe("/api/admin/trip-advances?page=2&status=DISBURSED&overdue=true");
     expect(advanceExportHref("2026-11-01", "2026-11-17", "")).toBe("/api/admin/trip-advances/export.csv?from=2026-11-01&to=2026-11-17");

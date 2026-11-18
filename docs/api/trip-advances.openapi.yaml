@@ -12,7 +12,8 @@ info:
     string is refused with 400, never rounded. Payroll is not touched; disbursements, top-ups
     and refunds are CASH or TRANSFER outside payroll.
 
-    Per diem: days x the versioned rate of the advance's zone effective on the departure date.
+    Per diem (uang saku, SK 01.111/YSQ/VII/2026): days x the versioned rate of the employee's
+    golongan and the advance's wilayah, effective on the departure date.
     The rate table starts empty; a settlement that counts per diem days without a rate is refused
     with 409 TRIP_PER_DIEM_RATE_MISSING.
 
@@ -29,7 +30,7 @@ paths:
     get:
       tags: [Trip Advances]
       operationId: listMyTripAdvances
-      summary: The signed-in employee's advances, newest first, with the zone catalog
+      summary: The signed-in employee's advances, newest first, with the wilayah and golongan catalogs
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -43,11 +44,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, pagination, zones, policy]
+                required: [items, pagination, wilayahs, golongans, policy]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/AdvanceSummary' } }
                   pagination: { $ref: '#/components/schemas/Pagination' }
-                  zones: { type: array, items: { $ref: '#/components/schemas/Zone' } }
+                  wilayahs: { type: array, items: { $ref: '#/components/schemas/Wilayah' } }
+                  golongans: { type: array, items: { $ref: '#/components/schemas/Golongan' } }
                   policy:
                     type: object
                     properties:
@@ -66,10 +68,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [businessTripId, zone, amount, purpose, idempotencyKey]
+              required: [businessTripId, wilayah, amount, purpose, idempotencyKey]
               properties:
                 businessTripId: { type: string, format: uuid }
-                zone: { $ref: '#/components/schemas/ZoneKey' }
+                wilayah: { $ref: '#/components/schemas/WilayahKey' }
                 amount: { type: integer, minimum: 0, maximum: 1000000000 }
                 purpose: { type: string, minLength: 10, maxLength: 1000 }
                 idempotencyKey: { type: string, format: uuid }
@@ -96,10 +98,10 @@ paths:
     get:
       tags: [Trip Advances]
       operationId: estimateTripAdvance
-      summary: Per diem estimate, advance ceiling and approvers for one trip and zone; stores nothing
+      summary: Per diem estimate (golongan resolved from ORG-011), advance ceiling and approvers for one trip and wilayah; stores nothing
       parameters:
         - { name: tripId, in: query, required: true, schema: { type: string, format: uuid } }
-        - { name: zone, in: query, required: true, schema: { $ref: '#/components/schemas/ZoneKey' } }
+        - { name: wilayah, in: query, required: true, schema: { $ref: '#/components/schemas/WilayahKey' } }
       responses:
         '200':
           description: Estimate
@@ -342,11 +344,12 @@ paths:
     get:
       tags: [Trip Advances]
       operationId: listTripPerDiemRates
-      summary: Rate versions (trip_advances.read or trip_per_diem.manage) and the rate in force today per zone
+      summary: Rate versions (trip_advances.read or trip_per_diem.manage) and the rate in force today per golongan and wilayah
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
-        - { name: zone, in: query, schema: { $ref: '#/components/schemas/ZoneKey' } }
+        - { name: wilayah, in: query, schema: { $ref: '#/components/schemas/WilayahKey' } }
+        - { name: golongan, in: query, schema: { $ref: '#/components/schemas/GolonganKey' } }
       responses:
         '200': { description: One page of rate versions with the current rates }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -360,9 +363,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [zone, effectiveFrom, dailyAmount]
+              required: [golongan, wilayah, effectiveFrom, dailyAmount]
               properties:
-                zone: { $ref: '#/components/schemas/ZoneKey' }
+                golongan: { $ref: '#/components/schemas/GolonganKey' }
+                wilayah: { $ref: '#/components/schemas/WilayahKey' }
                 effectiveFrom: { type: string, format: date }
                 dailyAmount: { type: integer, minimum: 0, maximum: 5000000 }
                 note: { type: [string, 'null'], maxLength: 500 }
@@ -370,6 +374,48 @@ paths:
         '201': { description: Stored }
         '400': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/trip-per-diem-golongan:
+    get:
+      tags: [Trip Advances]
+      operationId: listTripPerDiemGolongan
+      summary: Classification-to-golongan map and the classifications nobody has mapped yet
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: One page of mappings plus the unmapped classifications in force today }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Trip Advances]
+      operationId: mapTripPerDiemGolongan
+      summary: Map one ORG-011 job classification to a golongan (trip_per_diem.manage); never inferred from a job title
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jobClassificationCode, golongan]
+              properties:
+                jobClassificationCode: { type: string, pattern: '^[A-Z][A-Z0-9_]{0,47}$' }
+                golongan: { $ref: '#/components/schemas/GolonganKey' }
+                note: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200': { description: Stored }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/trip-per-diem-golongan/{code}:
+    delete:
+      tags: [Trip Advances]
+      operationId: unmapTripPerDiemGolongan
+      summary: Remove one mapping (trip_per_diem.manage); estimates for that classification stop until it is mapped again
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, pattern: '^[A-Z][A-Z0-9_]{0,47}$' } }
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -385,11 +431,19 @@ components:
     AdvanceStatus:
       type: string
       enum: [IN_REVIEW, APPROVED, DISBURSED, SETTLEMENT_SUBMITTED, AWAITING_TOP_UP, AWAITING_REFUND, SETTLED, REJECTED, CANCELLED]
-    ZoneKey: { type: string, enum: [LOCAL, PROVINCIAL, NATIONAL, INTERNATIONAL] }
-    Zone:
+    # SK 01.111/YSQ/VII/2026 Lampiran 1. LUAR_NEGERI has no rate in the decree and behaves as
+    # "no rate set", never as Rp0.
+    WilayahKey: { type: string, enum: [DALAM_DAERAH, LUAR_DAERAH, LUAR_NEGERI] }
+    GolonganKey: { type: string, enum: [PIMPINAN, KEPALA_UNIT, STAF] }
+    Wilayah:
       type: object
       properties:
-        key: { $ref: '#/components/schemas/ZoneKey' }
+        key: { $ref: '#/components/schemas/WilayahKey' }
+        label: { type: string }
+    Golongan:
+      type: object
+      properties:
+        key: { $ref: '#/components/schemas/GolonganKey' }
         label: { type: string }
     TransactionInput:
       type: object
@@ -405,8 +459,8 @@ components:
       properties:
         id: { type: string, format: uuid }
         status: { $ref: '#/components/schemas/AdvanceStatus' }
-        zone: { $ref: '#/components/schemas/ZoneKey' }
-        zoneLabel: { type: string }
+        wilayah: { $ref: '#/components/schemas/WilayahKey' }
+        wilayahLabel: { type: string }
         amount: { type: integer }
         purpose: { type: string }
         settlementBalance: { type: [integer, 'null'] }

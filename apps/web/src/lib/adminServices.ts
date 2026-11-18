@@ -159,7 +159,7 @@ export const adminServices: AdminServiceDefinition[] = [
     details: [
       "Pengajuan pegawai disetujui rantai yang sama dengan perjalanannya",
       "Pencairan, penyelesaian dengan klaim Reimbursement, pembayaran kekurangan, dan pengembalian",
-      "Tarif uang harian per zona dikelola HC/Keuangan; di luar slip gaji",
+      "Tarif uang saku per golongan dan wilayah dikelola HC/Keuangan; di luar slip gaji",
     ],
   },
   {

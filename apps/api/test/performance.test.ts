@@ -11,12 +11,14 @@ import {
   finalScore,
   PerformancePolicyError,
   predicateFor,
+  selectRubricVersion,
   statusOnClose,
   trendFrom,
   validateCyclePeriod,
   validateRubric,
   validateScores,
   type Rubric,
+  type RubricVersion,
 } from "../src/modules/performance/domain.js";
 import { registerPerformanceRoutes } from "../src/modules/performance/routes.js";
 
@@ -78,6 +80,47 @@ describe("PERF-001 domain rules", () => {
       .toThrow(PerformancePolicyError);
     expect(() => validateCyclePeriod({ kind: "MONTHLY", periodStart: "2026-02-01", periodEnd: "2026-02-28", selfDueOn: "2026-03-05", reviewDueOn: "2026-03-01" }))
       .toThrow(PerformancePolicyError);
+  });
+
+  it("D-18: a semester cycle follows the school calendar, ganjil or genap", () => {
+    expect(() => validateCyclePeriod({ kind: "SEMESTER", periodStart: "2026-07-01", periodEnd: "2026-12-31", selfDueOn: "2026-12-20", reviewDueOn: "2026-12-31" })).not.toThrow();
+    expect(() => validateCyclePeriod({ kind: "SEMESTER", periodStart: "2027-01-01", periodEnd: "2027-06-30", selfDueOn: "2027-06-20", reviewDueOn: "2027-06-30" })).not.toThrow();
+    // Half a year that is not a school semester, and a semester spanning two calendar years.
+    for (const period of [
+      { periodStart: "2026-04-01", periodEnd: "2026-09-30" },
+      { periodStart: "2026-07-01", periodEnd: "2027-06-30" },
+      { periodStart: "2026-01-01", periodEnd: "2026-12-31" },
+    ]) {
+      expect(() => validateCyclePeriod({ kind: "SEMESTER", ...period, selfDueOn: period.periodEnd, reviewDueOn: period.periodEnd }))
+        .toThrow(expect.objectContaining({ code: "PERFORMANCE_PERIOD_INVALID" }));
+    }
+  });
+
+  it("D-20: a job-group rubric beats the default, the later version beats the earlier, no job still scores", () => {
+    const version = (overrides: Partial<RubricVersion>): RubricVersion => ({
+      id: `id-${overrides.version}`, version: 1, scope: "DEFAULT", name: "Rubrik",
+      effectiveFrom: "2026-11-03", jobCodes: [], rubric: DEFAULT_RUBRIC, ...overrides,
+    });
+    const base = version({ version: 1 });
+    const tahfizh = version({ version: 2, scope: "JOB_GROUP", jobCodes: ["GURU_TAHFIZH"], effectiveFrom: "2026-11-18" });
+    const support = version({ version: 3, scope: "JOB_GROUP", jobCodes: ["OFFICE_BOY", "SATPAM"], effectiveFrom: "2026-11-18" });
+    const all_ = [base, tahfizh, support];
+
+    expect(selectRubricVersion(all_, ["GURU_TAHFIZH"], "2026-11-20")?.version).toBe(2);
+    expect(selectRubricVersion(all_, ["OFFICE_BOY"], "2026-11-20")?.version).toBe(3);
+    // No classification at all, and one nobody scoped: both fall back to the default version.
+    expect(selectRubricVersion(all_, [], "2026-11-20")?.version).toBe(1);
+    expect(selectRubricVersion(all_, ["BENDAHARA"], "2026-11-20")?.version).toBe(1);
+    // A version that has not started yet is not in force, so the day stays reproducible.
+    expect(selectRubricVersion(all_, ["GURU_TAHFIZH"], "2026-11-17")?.version).toBe(1);
+    // Two versions naming the same job: the later start wins, then the higher version number.
+    const newer = version({ version: 4, scope: "JOB_GROUP", jobCodes: ["GURU_TAHFIZH"], effectiveFrom: "2026-12-01" });
+    const sameDay = version({ version: 5, scope: "JOB_GROUP", jobCodes: ["GURU_TAHFIZH"], effectiveFrom: "2026-12-01" });
+    expect(selectRubricVersion([...all_, newer], ["GURU_TAHFIZH"], "2026-12-02")?.version).toBe(4);
+    expect(selectRubricVersion([...all_, newer, sameDay], ["GURU_TAHFIZH"], "2026-12-02")?.version).toBe(5);
+    // An employee holding two jobs resolves deterministically, never to nothing.
+    expect(selectRubricVersion(all_, ["OFFICE_BOY", "GURU_TAHFIZH"], "2026-11-20")?.version).toBe(3);
+    expect(selectRubricVersion([], ["GURU_TAHFIZH"], "2026-11-20")).toBeNull();
   });
 
   it("D-08: the rater waits for the self-assessment or its deadline", () => {

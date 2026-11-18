@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { eventLabel, formatScore, monthlyDefaults, raterSourceLabel, reviewStatusLabel } from "@/lib/performance";
+import { cycleDefaults, eventLabel, formatScore, raterSourceLabel, reviewStatusLabel } from "@/lib/performance";
 
 describe("PERF-001 client helpers", () => {
   it("defaults a new cycle to the whole current month with deadlines on its last day", () => {
-    const input = monthlyDefaults();
+    const input = cycleDefaults();
     expect(input.kind).toBe("MONTHLY");
     expect(input.periodStart).toMatch(/^\d{4}-\d{2}-01$/);
     expect(input.periodEnd.slice(0, 7)).toBe(input.periodStart.slice(0, 7));

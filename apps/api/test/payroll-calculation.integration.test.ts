@@ -431,9 +431,11 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       const id = randomUUID();
       const final = status === "FINALIZED" || status === "HC_VALIDATION";
       await pool.query(
+        // PERF-001 D-20: the rubric a review is scored against is frozen onto the review, so a
+        // synthetic one carries it too. Payroll never reads it; it reads the predicate.
         `INSERT INTO performance_reviews(
-           id, cycle_id, employee_id, status, final_score, predicate_code, predicate_label, trend, finalized_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)`,
+           id, cycle_id, employee_id, status, final_score, predicate_code, predicate_label, trend, finalized_at, rubric)
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9::jsonb)`,
         [
           id,
           cycleId,
@@ -443,6 +445,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
           final ? predicate : null,
           status === "FINALIZED" ? "FIRST" : null,
           status === "FINALIZED" ? "2031-03-02T03:00:00Z" : null,
+          JSON.stringify(RUBRIC),
         ],
       );
       return id;

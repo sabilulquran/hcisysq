@@ -670,6 +670,10 @@
       "list": "paged"
     },
     {
+      "url": "/admin/performance/rubric-versions",
+      "list": "paged"
+    },
+    {
       "url": "/admin/performance/cycles",
       "list": "paged"
     },

@@ -64,6 +64,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
   let app: ReturnType<typeof Fastify>;
   let principal: AuthPrincipal;
   let permissions: string[];
+  let unitId: string;
   const people = {} as Record<"hc" | "manager" | "employee" | "other" | "outsider", { employeeId: string; accountId: string }>;
 
   async function insertEmployee(name: string, unitId: string) {
@@ -118,6 +119,33 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     return { cycleId, reviewOf };
   }
 
+  /**
+   * ORG-011: a live employment with one placement carrying a job classification code, which is
+   * what D-20 resolves a participant's rubric from. No catalog row is needed: the binding reads
+   * the code off the placement.
+   */
+  async function bindJob(employeeId: string, classificationCode: string) {
+    const employmentId = randomUUID();
+    const actionId = randomUUID();
+    await client.query(
+      `INSERT INTO employments(id, employee_id, staff_type, started_on, start_basis, service_start_on, source, opened_by_action_id)
+       VALUES ($1, $2, 'PENDIDIK', '2020-01-06'::date, 'RECORDED', '2020-01-06'::date, 'BASELINE_FROM_MASTER', $3)`,
+      [employmentId, employeeId, actionId],
+    );
+    await client.query(
+      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, recorded_at)
+       VALUES ($1, $2, $3, 'BASELINE', now())`,
+      [actionId, employeeId, employmentId],
+    );
+    await client.query(
+      `INSERT INTO employment_placements
+         (id, employment_id, kind, legacy_unit_id, job_title_label, effective_from, effective_from_basis,
+          opened_by_action_id, job_classification_code)
+       VALUES ($1, $2, 'PRIMARY', $3, 'Jabatan sintetis', '2020-01-06'::date, 'RECORDED', $4, $5)`,
+      [randomUUID(), employmentId, unitId, actionId, classificationCode],
+    );
+  }
+
   async function reviewRow(id: string) {
     return (await client.query<{ status: string; predicateCode: string | null; finalScore: string | null; raterEmployeeId: string | null }>(
       `SELECT status, predicate_code AS "predicateCode", final_score AS "finalScore", rater_employee_id AS "raterEmployeeId"
@@ -145,7 +173,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
   beforeEach(async () => {
     client = await pool.connect();
     await client.query("BEGIN");
-    const unitId = randomUUID();
+    unitId = randomUUID();
     await client.query(
       "INSERT INTO organizational_units(id, normalized_name, name) VALUES ($1,$2,'Unit Kinerja Sintetis')",
       [unitId, `unit-perf-${unitId}`],
@@ -193,7 +221,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
       method: "POST", url: `/admin/performance/cycles/${cycleId}/participants`,
       payload: { employeeIds: [people.employee.employeeId, people.other.employeeId] },
     });
-    expect(added.json()).toEqual({ added: 2, readded: 0, alreadyIn: 0, withoutRater: 1 });
+    expect(added.json()).toEqual({ added: 2, readded: 0, alreadyIn: 0, withoutRater: 1, withoutJobRubric: 0 });
 
     const reviews = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?raterMissing=false` });
     expect(reviews.json().pagination.total).toBe(1);
@@ -441,6 +469,211 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     actAs("outsider");
     const raterView = await app.inject({ method: "GET", url: `/performance/team/${other}` });
     expect(raterView.json().events.find((event: { eventType: string }) => event.eventType === "performance.review.rater_assigned").note).toBeNull();
+  });
+
+  it("D-19: migration 0175 seeds version 1, and the database refuses a rubric that does not add up to 100", async () => {
+    const seeded = await client.query<{ version: number; scope: string; total: string }>(
+      `SELECT version, scope, performance_rubric_weight_total(payload)::text AS total
+         FROM performance_rubric_versions ORDER BY version ASC LIMIT 1`,
+    );
+    expect(seeded.rows[0]).toMatchObject({ version: 1, scope: "DEFAULT", total: "100" });
+    // The seeded payload is exactly the rubric the code has been using, so nothing moved.
+    const payload = await client.query<{ payload: typeof DEFAULT_RUBRIC }>(
+      "SELECT payload FROM performance_rubric_versions WHERE version = 1",
+    );
+    expect(payload.rows[0]!.payload).toEqual(DEFAULT_RUBRIC);
+
+    // A refused statement aborts the transaction, so each one runs inside its own savepoint.
+    async function refused(sql: string, params: unknown[] = []) {
+      await client.query("SAVEPOINT refused_statement");
+      try {
+        await client.query(sql, params);
+        throw new Error(`statement was accepted but should not be: ${sql}`);
+      } catch (cause) {
+        await client.query("ROLLBACK TO SAVEPOINT refused_statement");
+        return cause as { code?: string };
+      } finally {
+        await client.query("RELEASE SAVEPOINT refused_statement");
+      }
+    }
+
+    const insert = `INSERT INTO performance_rubric_versions (id, version, scope, name, effective_from, payload, source)
+       VALUES (gen_random_uuid(), 99, 'DEFAULT', 'Rubrik tidak sah', '2026-12-01'::date,
+               jsonb_build_object('indicators', $1::jsonb, 'predicates', '[]'::jsonb), 'uji')`;
+    // 90, not 100; a payload with no indicators at all; and a weight that is not a number.
+    for (const indicators of [[{ code: "A", weight: 90 }], [], [{ code: "A", weight: "seratus" }]]) {
+      expect((await refused(insert, [JSON.stringify(indicators)])).code, JSON.stringify(indicators)).toBe("23514");
+    }
+
+    // Append-only: a version is never edited or deleted, only superseded.
+    expect((await refused("UPDATE performance_rubric_versions SET source = 'diubah' WHERE version = 1")).code).toBe("23514");
+    expect((await refused("DELETE FROM performance_rubric_versions WHERE version = 1")).code).toBe("23514");
+  });
+
+  it("PERF-001-L/D-18: a semester cycle follows the school calendar and owns its period", async () => {
+    actAs("hc", HC);
+    const bad = await app.inject({
+      method: "POST", url: "/admin/performance/cycles",
+      payload: { name: "Semester salah", kind: "SEMESTER", periodStart: "2026-04-01", periodEnd: "2026-09-30", selfDueOn: "2026-09-30", reviewDueOn: "2026-09-30" },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().code).toBe("PERFORMANCE_PERIOD_INVALID");
+
+    const ganjil = await app.inject({
+      method: "POST", url: "/admin/performance/cycles",
+      payload: { name: "Penilaian semester ganjil 2026", kind: "SEMESTER", periodStart: "2026-07-01", periodEnd: "2026-12-31", selfDueOn: "2026-12-20", reviewDueOn: "2026-12-31" },
+    });
+    expect(ganjil.statusCode, ganjil.body).toBe(201);
+    // D-19: a cycle created without its own rubric records the DEFAULT version it copied.
+    expect(ganjil.json().rubricVersion).toBe(1);
+    // D-02 still holds for the new kind: one non-cancelled cycle per kind and period.
+    const twice = await app.inject({
+      method: "POST", url: "/admin/performance/cycles",
+      payload: { name: "Penilaian semester ganjil 2026 (lagi)", kind: "SEMESTER", periodStart: "2026-07-01", periodEnd: "2026-12-31", selfDueOn: "2026-12-20", reviewDueOn: "2026-12-31" },
+    });
+    expect(twice.json().code).toBe("PERFORMANCE_CYCLE_PERIOD_TAKEN");
+    // An annual cycle starting the same day is a different kind and is accepted.
+    const annual = await app.inject({
+      method: "POST", url: "/admin/performance/cycles",
+      payload: { name: "Penilaian tahun ajaran 2026/2027", kind: "ANNUAL", periodStart: "2026-07-01", periodEnd: "2027-06-30", selfDueOn: "2027-06-20", reviewDueOn: "2027-06-30" },
+    });
+    expect(annual.statusCode, annual.body).toBe(201);
+  });
+
+  it("PERF-001-M/N D-20: each job group is scored against its own rubric, and a later version leaves existing reviews alone", async () => {
+    const suffix = randomUUID().slice(0, 8).toUpperCase().replace(/[^A-Z0-9]/g, "X");
+    const tahfizh = `GURU_TAHFIZH_${suffix}`;
+    await bindJob(people.employee.employeeId, tahfizh);
+
+    actAs("hc", HC);
+    // Akhlak weighs more for a guru tahfizh than in the default rubric (the owner's example).
+    const akhlakHeavy = {
+      indicators: [
+        { code: "TASK_RESULT", label: "Hasil kerja", description: "", weight: 40 },
+        { code: "AKHLAK", label: "Akhlak dan adab", description: "", weight: 60 },
+      ],
+      predicates: DEFAULT_RUBRIC.predicates,
+    };
+    const rejected = await app.inject({
+      method: "POST", url: "/admin/performance/rubric-versions",
+      payload: { name: "Rubrik guru tahfizh", scope: "JOB_GROUP", effectiveFrom: "2026-11-18", source: "Keputusan owner 18 Nov 2026", ...akhlakHeavy },
+    });
+    // A JOB_GROUP version must name the jobs it covers.
+    expect(rejected.statusCode).toBe(400);
+
+    const created = await app.inject({
+      method: "POST", url: "/admin/performance/rubric-versions",
+      payload: {
+        name: "Rubrik guru tahfizh", scope: "JOB_GROUP", effectiveFrom: "2026-11-18",
+        source: "Keputusan owner 18 Nov 2026", jobClassificationCodes: [tahfizh], ...akhlakHeavy,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const scopedVersion = created.json().version as number;
+
+    // Weights that do not add up to 100 never reach the database.
+    const unbalanced = await app.inject({
+      method: "POST", url: "/admin/performance/rubric-versions",
+      payload: {
+        name: "Rubrik tidak seimbang", scope: "DEFAULT", effectiveFrom: "2026-11-18", source: "uji",
+        indicators: [{ code: "TASK_RESULT", label: "Hasil kerja", description: "", weight: 99 }],
+        predicates: DEFAULT_RUBRIC.predicates,
+      },
+    });
+    expect(unbalanced.json().code).toBe("PERFORMANCE_RUBRIC_INVALID");
+
+    // A version that would start before the newest one would move a day already scored.
+    const backdated = await app.inject({
+      method: "POST", url: "/admin/performance/rubric-versions",
+      payload: { name: "Rubrik mundur", scope: "DEFAULT", effectiveFrom: "2026-11-04", source: "uji", ...DEFAULT_RUBRIC },
+    });
+    expect(backdated.json().code).toBe("PERFORMANCE_RUBRIC_VERSION_BACKDATED");
+
+    const { cycleId, reviewOf } = await openCycleWith(0, ["employee", "other"]);
+    const mine = reviewOf("employee");
+    const theirs = reviewOf("other");
+    actAs("hc", HC);
+    const detail = await app.inject({ method: "GET", url: `/admin/performance/reviews/${mine}` });
+    expect(detail.json().rubricVersion).toBe(scopedVersion);
+    expect(detail.json().rubric.indicators.map((item: { code: string }) => item.code)).toEqual(["TASK_RESULT", "AKHLAK"]);
+    // The colleague has no classification at all and still gets scored, on the DEFAULT version.
+    const other = await app.inject({ method: "GET", url: `/admin/performance/reviews/${theirs}` });
+    expect(other.json().rubricVersion).toBe(1);
+    expect(other.json().rubric).toEqual(DEFAULT_RUBRIC);
+
+    const recap = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}` });
+    expect(recap.json().recap.byRubricVersion.map((item: { version: number }) => item.version).sort())
+      .toEqual([1, scopedVersion]);
+
+    // The employee is held to this review's rubric just as the rater is.
+    expect((await selfAssess(mine, all(3))).json().code).toBe("PERFORMANCE_SCORES_INVALID");
+    expect((await selfAssess(mine, { TASK_RESULT: 3, AKHLAK: 4 })).statusCode).toBe(200);
+    // The rater likewise: the default five indicators do not fit this rubric.
+    expect((await rate(mine, all(4))).json().code).toBe("PERFORMANCE_SCORES_INVALID");
+    // 40x4 + 60x3 = 340 -> 3.40, which is B under the same predicate bands.
+    const rated = await rate(mine, { TASK_RESULT: 4, AKHLAK: 3 });
+    expect(rated.json()).toMatchObject({ finalScore: 3.4, predicateCode: "B" });
+
+    // A rubric added now does not reach a review that already exists.
+    actAs("hc", HC);
+    const newer = await app.inject({
+      method: "POST", url: "/admin/performance/rubric-versions",
+      payload: {
+        name: "Rubrik guru tahfizh, revisi", scope: "JOB_GROUP", effectiveFrom: "2026-11-18",
+        source: "uji", jobClassificationCodes: [tahfizh],
+        indicators: [{ code: "AKHLAK", label: "Akhlak dan adab", description: "", weight: 100 }],
+        predicates: DEFAULT_RUBRIC.predicates,
+      },
+    });
+    expect(newer.statusCode, newer.body).toBe(201);
+    const after = await app.inject({ method: "GET", url: `/admin/performance/reviews/${mine}` });
+    expect(after.json()).toMatchObject({ rubricVersion: scopedVersion, finalScore: 3.4 });
+
+    const versions = await app.inject({ method: "GET", url: "/admin/performance/rubric-versions" });
+    expect(versions.json().defaultVersion).toBe(1);
+    expect(versions.json().items[0]).toMatchObject({ scope: "JOB_GROUP", jobClassificationCodes: [tahfizh] });
+  });
+
+  it("D-20: a rubric corrected while the cycle is still DRAFT reaches the participants already added", async () => {
+    const created = await createCycle(0);
+    const cycleId = created.json().id as string;
+    const added = await app.inject({
+      method: "POST", url: `/admin/performance/cycles/${cycleId}/participants`,
+      payload: { employeeIds: [people.employee.employeeId] },
+    });
+    expect(added.statusCode, added.body).toBe(200);
+    const reviewId = (await client.query<{ id: string }>(
+      "SELECT id FROM performance_reviews WHERE cycle_id = $1", [cycleId],
+    )).rows[0]!.id;
+
+    // The sequence from the review: HC adds everyone, then spots a wrong weight and fixes it.
+    const corrected = {
+      ...DEFAULT_RUBRIC,
+      indicators: [
+        { code: "TASK_RESULT", label: "Hasil kerja", description: "", weight: 50 },
+        { code: "AKHLAK", label: "Akhlak dan adab", description: "", weight: 50 },
+      ],
+    };
+    expect((await app.inject({ method: "PATCH", url: `/admin/performance/cycles/${cycleId}`, payload: { rubric: corrected } })).statusCode).toBe(200);
+    // Until the cycle opens the review still carries the rubric it was added with.
+    expect((await client.query<{ rubric: typeof DEFAULT_RUBRIC }>(
+      "SELECT rubric FROM performance_reviews WHERE id = $1", [reviewId],
+    )).rows[0]!.rubric).toEqual(DEFAULT_RUBRIC);
+
+    const opened = await app.inject({ method: "POST", url: `/admin/performance/cycles/${cycleId}/open` });
+    expect(opened.statusCode, opened.body).toBe(200);
+    // Opening re-freezes it, so nobody is scored against the weights HC already corrected.
+    const detail = await app.inject({ method: "GET", url: `/admin/performance/reviews/${reviewId}` });
+    expect(detail.json().rubric.indicators.map((item: { code: string; weight: number }) => [item.code, item.weight]))
+      .toEqual([["TASK_RESULT", 50], ["AKHLAK", 50]]);
+    // A cycle rubric HC typed belongs to no version, and the review follows it.
+    expect(detail.json().rubricVersion).toBeNull();
+    expect(detail.json().events.map((event: { eventType: string }) => event.eventType))
+      .toContain("performance.review.rubric_refrozen");
+
+    // 50x4 + 50x2 = 300 -> 3.00, which only the corrected rubric can produce.
+    expect((await selfAssess(reviewId, { TASK_RESULT: 3, AKHLAK: 3 })).statusCode).toBe(200);
+    expect((await rate(reviewId, { TASK_RESULT: 4, AKHLAK: 2 })).json()).toMatchObject({ finalScore: 3, predicateCode: "B" });
   });
 
   it("adds every active employee at once and skips those already in", async () => {

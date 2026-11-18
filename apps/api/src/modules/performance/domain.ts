@@ -1,8 +1,12 @@
 // PERF-001 Package 1 rules: rubric, scoring, predicate, state transitions. No database, no HTTP.
 // Spec: docs/domain/performance-review.md.
 
-export const CYCLE_KINDS = ["MONTHLY", "ANNUAL"] as const;
+export const CYCLE_KINDS = ["MONTHLY", "SEMESTER", "ANNUAL"] as const;
 export type CycleKind = (typeof CYCLE_KINDS)[number];
+
+/** D-20: a rubric version covers every job (`DEFAULT`) or a named group of them (`JOB_GROUP`). */
+export const RUBRIC_SCOPES = ["DEFAULT", "JOB_GROUP"] as const;
+export type RubricScope = (typeof RUBRIC_SCOPES)[number];
 
 export const CYCLE_STATUSES = ["DRAFT", "OPEN", "CLOSED", "CANCELLED"] as const;
 export type CycleStatus = (typeof CYCLE_STATUSES)[number];
@@ -154,6 +158,43 @@ export function predicateFor(rubric: Rubric, score: number): RubricPredicate {
   return sorted.find((predicate) => score >= predicate.minScore) ?? sorted[sorted.length - 1]!;
 }
 
+export interface RubricVersion {
+  id: string;
+  version: number;
+  scope: RubricScope;
+  name: string;
+  effectiveFrom: string;
+  /** The job classification codes a `JOB_GROUP` version covers; empty for `DEFAULT`. */
+  jobCodes: string[];
+  rubric: Rubric;
+}
+
+/**
+ * D-20 DRAFT: which rubric an employee is scored against. The owner's rule is that weights differ
+ * by kind of job — akhlak weighs more for a guru tahfizh than for an office boy — while some
+ * indicators are shared, so a version covers a group of ORG-011 job classification codes and the
+ * `DEFAULT` version covers everyone it does not name.
+ *
+ * Deterministic by construction, which is what makes a scored cycle reproducible: among the
+ * versions already in force on `onDate`, a version naming one of the employee's classification
+ * codes beats the default, and the later `(effectiveFrom, version)` beats the earlier. An
+ * employee whose job maps to no classification at all still gets the default, never nothing.
+ */
+export function selectRubricVersion(candidates: RubricVersion[], jobCodes: readonly string[], onDate: string): RubricVersion | null {
+  const started = candidates.filter((candidate) => candidate.effectiveFrom <= onDate);
+  const codes = new Set(jobCodes);
+  const latest = (rows: RubricVersion[]) =>
+    rows.reduce<RubricVersion | null>(
+      (best, row) =>
+        best === null || row.effectiveFrom > best.effectiveFrom
+          || (row.effectiveFrom === best.effectiveFrom && row.version > best.version)
+          ? row : best,
+      null,
+    );
+  const scoped = started.filter((candidate) => candidate.scope === "JOB_GROUP" && candidate.jobCodes.some((code) => codes.has(code)));
+  return latest(scoped) ?? latest(started.filter((candidate) => candidate.scope === "DEFAULT"));
+}
+
 /** True only for a real calendar date written `YYYY-MM-DD` (rejects 2026-02-30). */
 export function isCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -162,9 +203,27 @@ export function isCalendarDate(value: string): boolean {
 }
 
 /**
+ * D-18 DRAFT: a SEMESTER cycle follows the Indonesian school calendar — `GANJIL` runs 1 July to
+ * 31 December and `GENAP` 1 January to 30 June, so two of them tile the academic year an ANNUAL
+ * cycle covers. Nothing in the scoring code knows about it: it is one more period shape.
+ */
+export const SEMESTER_TERMS = {
+  GANJIL: { label: "Ganjil", start: "07-01", end: "12-31" },
+  GENAP: { label: "Genap", start: "01-01", end: "06-30" },
+} as const;
+export type SemesterTerm = keyof typeof SEMESTER_TERMS;
+
+/** The term a period is, or null when it is not a whole semester of one calendar year. */
+export function semesterTermOf(periodStart: string, periodEnd: string): SemesterTerm | null {
+  if (periodStart.slice(0, 4) !== periodEnd.slice(0, 4)) return null;
+  const entries = Object.entries(SEMESTER_TERMS) as Array<[SemesterTerm, { start: string; end: string }]>;
+  return entries.find(([, shape]) => periodStart.slice(5) === shape.start && periodEnd.slice(5) === shape.end)?.[0] ?? null;
+}
+
+/**
  * D-02 DRAFT: a MONTHLY cycle is one calendar month (the legacy period); an ANNUAL cycle is one
- * academic year, 1 July to 30 June. The self-assessment deadline comes first, inside or after the
- * period, and the rater's deadline on or after it.
+ * academic year, 1 July to 30 June; a SEMESTER cycle is one half of it (D-18). The self-assessment
+ * deadline comes first, inside or after the period, and the rater's deadline on or after it.
  */
 export function validateCyclePeriod(input: {
   kind: CycleKind; periodStart: string; periodEnd: string; selfDueOn: string; reviewDueOn: string;
@@ -179,6 +238,10 @@ export function validateCyclePeriod(input: {
     const year = Number(input.periodStart.slice(0, 4));
     if (input.periodStart !== `${year}-07-01` || input.periodEnd !== `${year + 1}-06-30`) {
       fail("Periode tahunan adalah satu tahun ajaran: 1 Juli sampai 30 Juni.");
+    }
+  } else if (input.kind === "SEMESTER") {
+    if (semesterTermOf(input.periodStart, input.periodEnd) === null) {
+      fail("Periode semesteran mengikuti kalender pendidikan: ganjil 1 Juli sampai 31 Desember, genap 1 Januari sampai 30 Juni.");
     }
   } else {
     const month = input.periodStart.slice(0, 7);

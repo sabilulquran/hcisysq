@@ -1892,26 +1892,6 @@
     ]
   },
   {
-    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
-    "method": "GET",
-    "url": "/leave/hc/critical-reviews",
-    "access": "hc-operational",
-    "permissions": [
-      "leave.validate",
-      "leave.hc.approve"
-    ]
-  },
-  {
-    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
-    "method": "POST",
-    "url": "/leave/hc/critical-reviews/:reviewId/decision",
-    "access": "hc-operational",
-    "permissions": [
-      "leave.validate",
-      "leave.hc.approve"
-    ]
-  },
-  {
     "file": "apps/api/src/modules/leave/special-leave-routes.ts",
     "method": "GET",
     "url": "/leave/hc/validation-queue",

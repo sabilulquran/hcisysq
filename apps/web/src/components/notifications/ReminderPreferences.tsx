@@ -91,7 +91,7 @@ export function ReminderPreferences() {
     <section className="mt-5 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
       <h2 className="text-sm font-bold text-brand-heading">Pengaturan pengingat</h2>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Pengingat selalu masuk ke Notifikasi ini antara pukul 06.00 dan 21.00 WIB. Pilih pengingat yang juga dikirim lewat WhatsApp ke
+        Pengingat selalu masuk ke Notifikasi ini antara pukul 04.00 dan 23.00 WIB. Pilih pengingat yang juga dikirim lewat WhatsApp ke
         nomor di Data Saya. Pengingat hanya Anda terima bila menyangkut tugas atau data Anda.
       </p>
       {message ? <p role="alert" className="mt-3 text-sm text-danger-ink">{message}</p> : null}

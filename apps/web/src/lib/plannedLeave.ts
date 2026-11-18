@@ -71,7 +71,6 @@ export interface PlannedLeavePreview {
     sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
   }>;
   criticalPeriods: CriticalPeriodMatch[];
-  criticalReviewRequired: boolean;
   nextAction: string;
 }
 

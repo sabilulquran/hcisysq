@@ -7,6 +7,14 @@ export type TripStatus = (typeof TRIP_STATUSES)[number];
 /** D-03 DRAFT: at most 30 calendar days per request, counted inclusively. */
 export const MAX_TRIP_DAYS = 30;
 
+/**
+ * D-18 (2026-11-18, replaces D-04): a trip may be submitted up to 7 calendar days after it
+ * started, the same window and the same rule as tugas luar (ATT-015 D-05,
+ * `FIELD_ASSIGNMENT_LOOKBACK_DAYS`), because sudden trips happen and HC should no longer
+ * record them outside the system. The surat tugas is then issued after the trip.
+ */
+export const TRIP_LOOKBACK_DAYS = 7;
+
 /** D-05: a trip in one of these states still occupies the employee's dates. */
 export const OCCUPYING_TRIP_STATUSES: readonly TripStatus[] = ["IN_REVIEW", "APPROVED", "ISSUED", "COMPLETED"];
 
@@ -47,13 +55,20 @@ export function tripDays(startOn: string, endOn: string): number {
   return epochDay(endOn) - epochDay(startOn) + 1;
 }
 
-/** D-03 and D-04. `today` is the Asia/Jakarta date. */
+export function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** D-03 and D-18 (replacing D-04). `today` is the Asia/Jakarta date. */
 export function validateTripDates(input: { startOn: string; endOn: string; today: string }): { days: number } {
   if (!isCalendarDate(input.startOn) || !isCalendarDate(input.endOn) || input.endOn < input.startOn) {
     throw new TripPolicyError("TRIP_DATE_RANGE", "Tanggal kembali tidak boleh sebelum tanggal berangkat.");
   }
-  if (input.startOn < input.today) {
-    throw new TripPolicyError("TRIP_START_IN_PAST", "Tanggal berangkat paling cepat hari ini.");
+  if (input.startOn < addDays(input.today, -TRIP_LOOKBACK_DAYS)) {
+    throw new TripPolicyError(
+      "TRIP_START_IN_PAST",
+      `Perjalanan dinas dapat diajukan paling lambat ${TRIP_LOOKBACK_DAYS} hari setelah berangkat.`,
+    );
   }
   const days = tripDays(input.startOn, input.endOn);
   if (days > MAX_TRIP_DAYS) {

@@ -137,7 +137,7 @@ export function ProposeAlternativeDates({
           {preview ? (
             <div className="mt-2 rounded-xl bg-brand-primary-pale/45 p-2 text-xs text-brand-heading">
               {formatLeaveRange(preview.proposedStartOn, preview.proposedEndOn)} · <b>{preview.workingDays} hari kerja</b>. Tanggal ini memenuhi aturan cuti pegawai.
-              {preview.criticalReviewRequired ? <CriticalPeriodNotice periods={preview.criticalPeriods} /> : null}
+              <CriticalPeriodNotice periods={preview.criticalPeriods} />
             </div>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">

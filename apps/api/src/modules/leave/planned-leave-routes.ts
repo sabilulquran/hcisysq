@@ -27,7 +27,7 @@ import {
 import { getLeavePolicy } from "./domain/policy-catalog.js";
 import { criticalPeriodTreatment } from "./domain/critical-period.js";
 import { notifyApprovalRequested } from "./approver-notifications.js";
-import { attachCriticalReview, loadApplicableCriticalPeriods } from "./critical-period-store.js";
+import { loadApplicableCriticalPeriods } from "./critical-period-store.js";
 import { postponementColumns, postponementJoin, type PostponementView } from "./postponement-store.js";
 import {
   calculateWorkingDays,
@@ -134,7 +134,6 @@ interface PlannedSummaryRow {
     | "approved"
     | "rejected"
     | null;
-  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
   canCancel: boolean;
   /** LEAVE-008 */
   postponement: PostponementView | null;
@@ -401,23 +400,20 @@ export async function buildPlannedPreview(
     input.policyKey,
     jakartaToday(),
   );
-  // LEAVE-009 D-02: Cuti Tanpa Gaji only records the match; the other planned types get a review.
-  const criticalTreatment = criticalPeriodTreatment(input.policyKey);
-  const criticalPeriods = criticalTreatment === "none"
+  // LEAVE-009 D-02 with D-12: cuti khusus LEAVE-005 is untouched; the rest only record the match.
+  const criticalPeriods = criticalPeriodTreatment(input.policyKey) === "none"
     ? []
     : await loadApplicableCriticalPeriods(db, {
       unitId: employee.unitId,
       startOn: input.startOn,
       endOn: input.endOn,
     });
-  const criticalReviewRequired = criticalTreatment === "review" && criticalPeriods.length > 0;
   return {
     calculation,
     validation,
     approvalChain,
     authorityResolution,
     criticalPeriods,
-    criticalReviewRequired,
   };
 }
 
@@ -564,7 +560,6 @@ function nextAction(item: PlannedSummaryRow) {
   if (item.status === "rejected") return "Pengajuan ditolak";
   if (item.status === "cancelled") return "Pengajuan dibatalkan";
   if (item.currentApproverName) return `Menunggu persetujuan ${item.currentApproverName}`;
-  if (item.criticalReviewStatus === "pending") return "Menunggu tinjauan Human Capital (masa kritis)";
   if (item.hcTaskStatus === "pending") {
     return item.hcTaskKind === "approve"
       ? "Menunggu keputusan Human Capital"
@@ -581,7 +576,7 @@ export type PlannedEvidenceSource =
 
 /**
  * Validates and stores one planned-leave request with its approval snapshot (APR-001), HC task,
- * critical review (LEAVE-009), evidence, audit event and first-approver notification. Shared by
+ * critical periods recorded (LEAVE-009), evidence, audit event and first-approver notification. Shared by
  * the submit route and by LEAVE-008 acceptance, which passes the original request as
  * `replacement`. The caller owns the transaction and has locked the employee row.
  */
@@ -667,14 +662,6 @@ export async function insertPlannedRequest(
       replacement?.replacesRequestId ?? null,
     ],
   );
-  if (preview.criticalReviewRequired) {
-    await attachCriticalReview(client, {
-      requestId,
-      actorAccountId: input.actorAccountId,
-      periods: preview.criticalPeriods,
-    });
-  }
-
   let evidence: { id: string; fileName: string; contentType: string; byteSize: number } | null = null;
   if (input.evidence?.kind === "upload") {
     evidence = await storeEvidence(client, requestId, input.actorAccountId, input.evidence.input, input.encryptionKey);
@@ -874,7 +861,6 @@ export async function registerPlannedLeaveRoutes(
           END AS "currentApproverName",
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus",
-          critical_review.status AS "criticalReviewStatus",
           (request.status = 'in_review' AND request.line_handling = 'approval') AS "canCancel",
           ${postponementColumns("request")}
         FROM leave_requests request
@@ -882,8 +868,6 @@ export async function registerPlannedLeaveRoutes(
           ON active_step.leave_request_id = request.id AND active_step.status = 'pending'
         LEFT JOIN employees approver ON approver.id = active_step.approver_employee_id
         LEFT JOIN leave_request_hc_tasks task ON task.leave_request_id = request.id
-        LEFT JOIN leave_request_critical_reviews critical_review
-          ON critical_review.leave_request_id = request.id
         ${postponementJoin("request")}
         WHERE request.employee_id = $1
           AND request.policy_key = ANY($2::text[])
@@ -940,7 +924,6 @@ export async function registerPlannedLeaveRoutes(
         approvalChain: preview.approvalChain,
         authorityResolution: preview.authorityResolution,
         criticalPeriods: preview.criticalPeriods,
-        criticalReviewRequired: preview.criticalReviewRequired,
         nextAction: "Kirim pengajuan untuk memulai persetujuan",
       });
     } catch (error) {
@@ -1001,7 +984,6 @@ export async function registerPlannedLeaveRoutes(
           unpaid: preview.validation.unpaid,
           evidence,
           approvalChain: insertedSteps,
-          criticalReviewRequired: preview.criticalReviewRequired,
           nextAction: firstStep
             ? `Menunggu persetujuan ${firstStep.name}`
             : "Menunggu proses berikutnya",

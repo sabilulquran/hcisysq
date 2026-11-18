@@ -30,6 +30,13 @@ import {
 
 const emptyForm = () => ({ destination: "", purpose: "", startOn: todayInJakarta(), endOn: todayInJakarta() });
 
+/** D-18 DRAFT, mirrored for the date picker only; the API decides. Same 7 days as tugas luar. */
+function earliestTripStart() {
+  const base = new Date(`${todayInJakarta()}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() - 7);
+  return base.toISOString().slice(0, 10);
+}
+
 export function EmployeeTripsPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [items, setItems] = useState<TripSummary[]>([]);
@@ -164,7 +171,7 @@ export function EmployeeTripsPage() {
             </label>
             <label className="text-sm font-semibold text-brand-heading">
               Berangkat
-              <input type="date" required min={todayInJakarta()} value={form.startOn}
+              <input type="date" required min={earliestTripStart()} value={form.startOn}
                 onChange={(event) => update({ startOn: event.target.value, endOn: event.target.value > form.endOn ? event.target.value : form.endOn })}
                 className={input} />
             </label>

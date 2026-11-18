@@ -740,7 +740,7 @@ features:
 
   - id: LEAVE-009
     module: leave
-    name: Critical periods that require Human Capital approval for leave
+    name: Critical periods for leave (HC-defined warning; no HC approval step since 2026-11-18)
     legacy_evidence: >-
       Legacy Laravel hcis-ysq: CriticalPeriod model (label, start/end date, optional unit,
       active), Admin/CriticalPeriodController at admin/critical-periods, and
@@ -751,11 +751,13 @@ features:
     risk: medium
     notes: >-
       Implemented 2026-11-03 (docs/domain/leave-critical-periods.md). HC Admin manages periods
-      for the whole foundation or one unit; Cuti Tahunan and planned line-approval leave whose
-      dates overlap an active period are never blocked and get an HC review step after line
-      approval, snapshotted at submission (APR-001). Cuti Tanpa Gaji only records the match;
-      special leave is untouched. Periods also show in the CAL-001 calendar. Owner-facing DRAFT
-      defaults: review only (never block), overlap instead of start date, review after the line.
+      for the whole foundation or one unit; Cuti Tahunan, planned line-approval leave and Cuti
+      Tanpa Gaji whose dates overlap an active period are never blocked, warn the employee and
+      record the match on the request (APR-001 snapshot at submission); special leave is
+      untouched. Periods also show in the CAL-001 calendar. Owner decision 2026-11-18 (D-12):
+      the extra HC review step, its queue and its screen are removed - the unit head approves
+      and carries the responsibility. Owner-facing DRAFT defaults left: overlap instead of start
+      date, and pending reviews treated as approved on deploy (migration 0174).
     docs:
       - docs/domain/leave-critical-periods.md
       - docs/api/leave-critical-periods.openapi.yaml
@@ -1153,7 +1155,7 @@ features:
       Package 1 ACCEPTED and implemented 2026-11-11 (docs/domain/reminders.md): one in-process
       engine behind the CAL-001 runner switch, ten DRAFT rules (approval digest, HC leave and
       document queues, contract/probation ending, certificate and EMP-011 document expiry, performance self/review
-      due, payroll cutoff and pay date), idempotent per rule/occurrence/recipient, 06:00-21:00
+      due, payroll cutoff and pay date), idempotent per rule/occurrence/recipient, 04:00-23:00
       WIB send window, in-app always plus WhatsApp per rule default and per-account preference,
       allowlist respected. The meeting reminder stays in the CAL-001 runner. Not carried: daily
       check-in reminder, warning-letter expiry (D-09). Migration 0145.

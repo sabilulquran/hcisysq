@@ -85,8 +85,6 @@ export interface LeaveRequestSummary extends LeavePostponementFields {
   submittedAt: string;
   finalDecidedAt: string | null;
   currentApproverName: string | null;
-  /** LEAVE-009: null when the request touched no critical period. */
-  criticalReviewStatus?: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
   /** LEAVE-010: the API says whether the requester may still withdraw it. */
   canCancel: boolean;
 }
@@ -108,7 +106,6 @@ export interface AnnualLeavePreview {
     sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
   }>;
   criticalPeriods: CriticalPeriodMatch[];
-  criticalReviewRequired: boolean;
 }
 
 export interface LeaveApprovalInboxItem {
@@ -252,7 +249,6 @@ export interface LeavePostponementPreview {
   workingDates: string[];
   nonWorkingDates: string[];
   criticalPeriods: CriticalPeriodMatch[];
-  criticalReviewRequired: boolean;
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {

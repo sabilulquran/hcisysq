@@ -193,7 +193,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     // 475 on main + 4 PAY-003 §7.4 routes (annual recap, 1721-A1, tax identity GET/PUT).
     expect(manifest.filter((route) => route.access === undefined)).toHaveLength(516); // + 13 TRAIN-001 R4 HC routes, + 11 TRIP-002 admin routes, + 13 REWARD-001 admin routes
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
-    expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
+    // LEAVE-009 D-12 (2026-11-18): the two /leave/hc/critical-reviews routes were removed with the stage.
+    expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     // 155 on main + the two own-1721-A1 routes.
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(176); // + 7 TRAIN-001 R4 employee routes, + 9 TRIP-002 employee routes, + 3 REWARD-001 self-service routes
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
@@ -217,7 +218,6 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       "/leave/hc/tasks/:taskId/administration-decision": { action: "validate_all", note: hcNote },
       "/leave/planned/hc/tasks/:taskId/validation-decision": { action: "validate" },
       "/leave/planned/hc/tasks/:taskId/approval-decision": { decision: "approve" },
-      "/leave/hc/critical-reviews/:reviewId/decision": { decision: "approve" },
       "/attendance/resolutions/hc/:caseId/decision": { action: "manual_review", note: hcNote },
     };
     for (const route of manifest) {

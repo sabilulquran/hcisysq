@@ -205,9 +205,7 @@ export function canAccessBoard(session: AuthSession | null): boolean {
 
 export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType !== "EMPLOYEE") return false;
-  // LEAVE-009: the critical-leave queue opens for HC; deciding also needs leave.hc.approve,
-  // which the page explains when the API refuses it.
-  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave" || path === "/app/hc/critical-leave") {
+  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {
     return hasPermission(session, "leave.validate");
   }
   if (path === "/app/hc/attendance-resolution") {

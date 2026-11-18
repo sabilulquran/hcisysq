@@ -228,9 +228,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/planned-leave")).toBe(true);
-    // LEAVE-009: the critical-leave queue opens for HC; the API checks leave.hc.approve.
-    expect(canAccessEmployeeHcPath(actor, "/app/hc/critical-leave")).toBe(true);
-    expect(canAccessEmployeeHcPath(session("EMPLOYEE", []), "/app/hc/critical-leave")).toBe(false);
+    // LEAVE-009 D-12: the critical-period review queue is gone; only the admin screen remains.
     expect(canAccessAdminPath(actor, "/admin/leave/critical-periods")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["leave.validate"]), "/admin/leave/critical-periods")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/attendance-resolution")).toBe(true);

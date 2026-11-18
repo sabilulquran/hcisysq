@@ -182,7 +182,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
       return digestToHolders(await accountsWithPermission(db, ["leave.validate"], today), {
         today,
         title: `${pending} cuti menunggu tindakan HC`,
-        body: "Cuti khusus atau cuti masa kritis menunggu validasi atau persetujuan Human Capital.",
+        body: "Cuti khusus atau cuti terencana menunggu validasi atau persetujuan Human Capital.",
         href: "/app/hc/leave",
         whatsappText: `HCIS: ${pending} cuti menunggu tindakan Human Capital. Buka menu Validasi Cuti di HCIS.`,
       });

@@ -8,7 +8,8 @@ describe("LEAVE-009 critical period wording", () => {
     const message = criticalPeriodWarning([{ label: "Ujian Akhir" }, { label: "PPDB" }]);
     expect(message).toContain("Ujian Akhir, PPDB");
     expect(message).toContain("tetap bisa dikirim");
-    expect(message).toContain("Human Capital");
+    // D-12 (2026-11-18): no HC review follows, so the warning no longer promises one.
+    expect(message).not.toContain("Human Capital");
   });
 
   it("shows one date for a one-day period and a range otherwise", () => {

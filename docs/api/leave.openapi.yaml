@@ -84,7 +84,6 @@ paths:
                       LEAVE-009 active critical periods for the whole foundation or the employee's unit
                       that overlap the requested dates. Never blocks; see leave-critical-periods.openapi.yaml.
                     items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
-                  criticalReviewRequired: { type: boolean }
         '400': { $ref: '#/components/responses/InvalidAnnualLeaveRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -342,7 +341,12 @@ paths:
                   proposedStartOn: { type: string, format: date }
                   proposedEndOn: { type: string, format: date }
                   proposedWorkingDays: { type: integer, minimum: 1 }
-                  criticalReviewRequired: { type: boolean }
+                  criticalPeriods:
+                    type: array
+                    description: >-
+                      LEAVE-009 critical periods the proposed dates fall in. A warning only; since
+                      D-12 (2026-11-18) they add no HC step.
+                    items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
         '400': { description: 'INVALID_LEAVE_POSTPONEMENT: dates malformed or note shorter than 5 / longer than 1000 characters' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -404,7 +408,9 @@ paths:
                       properties:
                         id: { type: string, format: uuid }
                         name: { type: string }
-                  criticalReviewRequired: { type: boolean }
+                  criticalPeriods:
+                    type: array
+                    items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
                   idempotentReplay: { const: false }
         '400': { description: 'INVALID_LEAVE_POSTPONEMENT: idempotencyKey missing or not a UUID' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
@@ -511,7 +517,6 @@ components:
         criticalPeriods:
           type: array
           items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
-        criticalReviewRequired: { type: boolean }
     Postponement:
       type: object
       properties:

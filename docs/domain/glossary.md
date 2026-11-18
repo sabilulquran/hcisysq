@@ -67,8 +67,8 @@ Ditetapkan di [SQ-Hub ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main
 | Payroll Period | Periode perhitungan dan penerbitan payroll; window input dapat memakai cutoff yang berbeda dari bulan kalender bila kebijakan menetapkan. |
 | Payslip | Dokumen hasil payroll untuk satu pegawai dan satu periode dengan akses sangat terbatas. |
 | Loan | Pinjaman pegawai dengan principal, tenor/cicilan, status, approval, dan rekonsiliasi. |
-| Masa kritis | LEAVE-009: rentang tanggal (pekan ujian, PPDB, pembagian rapor, akhir tahun ajaran) yang ditetapkan HC untuk seluruh yayasan atau satu unit. Cuti Tahunan dan cuti terencana yang beririsan dengannya tidak diblokir, tetapi mendapat tahap tinjauan HC setelah persetujuan atasan. |
-| Tinjauan masa kritis | LEAVE-009: keputusan setuju/tolak oleh HC pemegang mandat persetujuan (`leave.hc.approve`) atas cuti di masa kritis. Disnapshot saat pengajuan dikirim. |
+| Masa kritis | LEAVE-009: rentang tanggal (pekan ujian, PPDB, pembagian rapor, akhir tahun ajaran) yang ditetapkan HC untuk seluruh yayasan atau satu unit. Cuti Tahunan dan cuti terencana yang beririsan dengannya tidak diblokir; pegawai diperingatkan dan masa kritisnya dicatat pada pengajuan. Sejak D-12 (2026-11-18) tidak ada tahap tinjauan HC tambahan: kepala unit yang menyetujui yang bertanggung jawab. |
+| Tinjauan masa kritis | LEAVE-009, **dihapus 2026-11-18 (D-12)**: dulu keputusan setuju/tolak oleh HC pemegang mandat persetujuan (`leave.hc.approve`) atas cuti di masa kritis. Tinjauan yang sudah diputus tetap tersimpan sebagai riwayat. |
 | Pinjaman / Kasbon | LOAN-001: pinjaman pegawai tanpa bunga. Pokok (principal) dibayar dalam tenor 3/6/12 cicilan bulanan. "Kasbon" dan "pinjaman" adalah hal yang sama. |
 | Pencairan | LOAN-001: Keuangan menyerahkan uang pinjaman yang sudah disetujui; saat itu jadwal cicilan ditetapkan dan tidak dapat diubah. |
 | Cicilan / Angsuran | LOAN-001: satu baris jadwal per bulan. Pembayaran mengisi cicilan paling awal lebih dulu. |

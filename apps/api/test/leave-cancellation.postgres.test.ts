@@ -268,32 +268,21 @@ describe.skipIf(!allowed)("LEAVE-010 approver notification and requester cancell
     expect((await inbox("unitApprover")).map((item) => item.title)).not.toContain("Pengajuan cuti dibatalkan");
   });
 
-  it("LEAVE-010-C: cancelling during the critical-period review closes the review and tells HC", async () => {
+  it("LEAVE-010-C: leave in a critical period cancels like any other (LEAVE-009 D-12)", async () => {
     const period = await call("hcAdmin", "POST", "/admin/leave/critical-periods", {
       label: "Ujian Yayasan", startOn: "2099-02-02", endOn: "2099-02-06", unitId: null,
     });
     expect(period.statusCode, period.body).toBe(201);
     const request = await submitAnnual();
-    const [first, second] = request.approvalChain;
-    await call("manager", "POST", `/leave/approvals/${first!.id}/decision`, { decision: "approve" });
-    const line = await call("unitApprover", "POST", `/leave/approvals/${second!.id}/decision`, { decision: "approve" });
-    expect(line.json()).toMatchObject({ requestStatus: "in_review", criticalReviewStatus: "pending" });
     const before = await call("requester", "GET", "/leave/me/requests");
     expect(before.json().requests.find((item: { id: string }) => item.id === request.id)).toMatchObject({ canCancel: true });
 
     const cancelled = await call("requester", "POST", `/leave/me/requests/${request.id}/cancel`, {});
     expect(cancelled.statusCode, cancelled.body).toBe(200);
-    expect(await statusOf("leave_request_approval_steps", request.id)).toEqual(["approved", "approved"]);
-    expect(await statusOf("leave_request_critical_reviews", request.id)).toEqual(["cancelled"]);
-    expect((await cancelEvent(request.id))[0]!.payload).toEqual({ policyKey: "annual", stage: "critical_review" });
-    const outbox = await client.query(
-      `SELECT target_type, target_key FROM leave_notification_outbox
-        WHERE leave_request_id = $1 AND event_type = 'leave.request.cancelled'`,
-      [request.id],
-    );
-    expect(outbox.rows).toEqual([{ target_type: "role", target_key: "human_capital" }]);
-    const queue = await call("hcReviewer", "GET", "/leave/hc/critical-reviews");
-    expect(queue.json().items.map((item: { requestId: string }) => item.requestId)).not.toContain(request.id);
+    expect(await statusOf("leave_request_approval_steps", request.id)).toEqual(["cancelled", "cancelled"]);
+    // No review row was ever created, so nothing extra has to be closed.
+    expect(await statusOf("leave_request_critical_reviews", request.id)).toEqual([]);
+    expect((await cancelEvent(request.id))[0]!.payload).toMatchObject({ policyKey: "annual", stage: "line" });
   });
 
   it("LEAVE-010-D: only my own request, only while it awaits a decision, only line-approval leave", async () => {

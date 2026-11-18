@@ -139,7 +139,7 @@ Tidak ada permission baru (`docs/domain/leave-critical-periods.md` §6, D-07 DRA
 | Tindakan | Permission | Pemegang hari ini |
 |---|---|---|
 | Kelola masa kritis (`/admin/leave/critical-periods`) | `leave.configuration.manage` | HC Admin (`human_capital_admin`) |
-| Putus tinjauan masa kritis (`/leave/hc/critical-reviews`) | `leave.validate` + `leave.hc.approve` (organisasi) | HC yang juga memegang mandat persetujuan HC (`special_approver`), sama seperti Cuti Tanpa Gaji |
+| ~~Putus tinjauan masa kritis (`/leave/hc/critical-reviews`)~~ | — | Dihapus 2026-11-18 (LEAVE-009 D-12): masa kritis tidak menambah tahap HC. `leave.hc.approve` tetap dipakai Cuti Tanpa Gaji (LEAVE-007). |
 
 ### Pinjaman pegawai (LOAN-001)
 

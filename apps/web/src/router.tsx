@@ -118,7 +118,6 @@ import { EmployeeServicesPage } from "@/pages/EmployeeServicesPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
-import { HcCriticalLeavePage } from "@/pages/HcCriticalLeavePage";
 import { HcPlannedLeavePage } from "@/pages/HcPlannedLeavePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -443,13 +442,6 @@ const hcPlannedLeaveRoute = createRoute({
   path: "/app/hc/planned-leave",
   beforeLoad: ({ location }) => requireEmployeeHcPath(location, "/app/hc/planned-leave"),
   component: HcPlannedLeavePage,
-});
-
-const hcCriticalLeaveRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/app/hc/critical-leave",
-  beforeLoad: ({ location }) => requireEmployeeHcPath(location, "/app/hc/critical-leave"),
-  component: HcCriticalLeavePage,
 });
 
 const hcAttendanceResolutionRoute = createRoute({
@@ -1005,7 +997,6 @@ const routeTree = rootRoute.addChildren([
   employeeComingSoonRoute,
   hcLeaveValidationRoute,
   hcPlannedLeaveRoute,
-  hcCriticalLeaveRoute,
   hcAttendanceResolutionRoute,
   adminRoute,
   adminEmployeesRoute,

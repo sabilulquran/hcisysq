@@ -296,7 +296,7 @@ export const adminServices: AdminServiceDefinition[] = [
     details: [
       "Pengumuman organisasi dengan sasaran unit",
       "Notifikasi in-app dan WhatsApp lewat Kirim SQ",
-      "Pengingat terjadwal 06.00–21.00 WIB: persetujuan, antrean HC, kontrak, sertifikat, kinerja, payroll",
+      "Pengingat terjadwal 04.00–23.00 WIB: persetujuan, antrean HC, kontrak, sertifikat, kinerja, payroll",
       "Email tidak dipakai HCIS (NOTIF-001 D-10)",
     ],
   },

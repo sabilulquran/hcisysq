@@ -1,5 +1,6 @@
-// LEAVE-009 client: HC manages critical periods (masa kritis) and decides the extra review they
-// add to leave. Spec: docs/domain/leave-critical-periods.md. The API owns every rule.
+// LEAVE-009 client: HC manages critical periods (masa kritis). Since D-12 (2026-11-18) a critical
+// period only warns and is recorded; it adds no HC review step. Spec:
+// docs/domain/leave-critical-periods.md. The API owns every rule.
 
 export interface Pagination {
   page: number;
@@ -38,24 +39,6 @@ export interface CriticalPeriodInput {
   startOn: string;
   endOn: string;
   unitId: string | null;
-}
-
-export interface CriticalReviewQueueItem {
-  reviewId: string;
-  requestId: string;
-  requesterEmployeeId: string;
-  requesterName: string;
-  employeeNumber: string;
-  unitName: string | null;
-  positionName: string | null;
-  policyKey: string;
-  policyName: string;
-  startOn: string;
-  endOn: string;
-  workingDays: number;
-  reason: string | null;
-  submittedAt: string;
-  periods: CriticalPeriodMatch[];
 }
 
 export class CriticalPeriodApiError extends Error {
@@ -116,21 +99,6 @@ export async function updateCriticalPeriod(
   return readJson(await send("PATCH", `/admin/leave/critical-periods/${id}`, input));
 }
 
-export async function getCriticalReviewQueue(input: { page: number; pageSize: number }): Promise<{
-  items: CriticalReviewQueueItem[];
-  pagination: Pagination;
-}> {
-  const query = new URLSearchParams({ page: String(input.page), pageSize: String(input.pageSize) });
-  return readJson(await get(`/leave/hc/critical-reviews?${query}`));
-}
-
-export async function decideCriticalReview(
-  reviewId: string,
-  input: { decision: "approve" | "reject"; note: string | null },
-): Promise<{ requestStatus: "in_review" | "approved" | "rejected"; hcTaskStatus: "pending" | null }> {
-  return readJson(await send("POST", `/leave/hc/critical-reviews/${reviewId}/decision`, input));
-}
-
 export function formatCriticalDate(value: string) {
   return new Intl.DateTimeFormat("id-ID", {
     day: "numeric",
@@ -150,5 +118,5 @@ export function criticalPeriodRange(period: { startOn: string; endOn: string }) 
 export function criticalPeriodWarning(periods: readonly Pick<CriticalPeriodMatch, "label">[]) {
   if (periods.length === 0) return null;
   const labels = periods.map((period) => period.label).join(", ");
-  return `Tanggal ini masuk masa kritis ${labels}. Pengajuan tetap bisa dikirim; setelah atasan menyetujui, Human Capital akan meninjaunya.`;
+  return `Tanggal ini masuk masa kritis ${labels}. Pengajuan tetap bisa dikirim dan diputus atasan seperti biasa; pertimbangkan dampaknya ke unit Anda.`;
 }

@@ -1,9 +1,13 @@
 // NOTIF-003 pure rules: Jakarta clock, send window, threshold windows, preferences.
 // Spec: docs/domain/reminders.md §3–§4.
 
-/** D-04: reminders are made and handed over only between 06:00 and 21:00 WIB (Kirim SQ jam kirim). */
-export const SEND_WINDOW_START_HOUR = 6;
-export const SEND_WINDOW_END_HOUR = 21;
+/**
+ * D-15 (2026-11-18, menggantikan D-04): reminders are made and handed over only between
+ * 04:00 and 23:00 WIB. Owner widened the window from 06:00–21:00 so the early-morning and
+ * late-evening rules reach people who read HCIS outside office hours.
+ */
+export const SEND_WINDOW_START_HOUR = 4;
+export const SEND_WINDOW_END_HOUR = 23;
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -32,7 +36,7 @@ export function insideSendWindow(now: Date): boolean {
   return hour >= SEND_WINDOW_START_HOUR && hour < SEND_WINDOW_END_HOUR;
 }
 
-/** D-12: a reminder's WhatsApp message expires at 21:00 WIB on the day it was made. */
+/** D-12 (as widened by D-15): a reminder's WhatsApp message expires at 23:00 WIB on the day it was made. */
 export function endOfSendWindow(now: Date): Date {
   const { date } = jakartaClock(now);
   return new Date(`${date}T${String(SEND_WINDOW_END_HOUR).padStart(2, "0")}:00:00+07:00`);

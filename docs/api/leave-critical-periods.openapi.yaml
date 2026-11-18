@@ -3,16 +3,16 @@ info:
   title: HCIS Leave Critical Periods (LEAVE-009)
   version: 1.0.0
   description: |
-    Critical periods (masa kritis) managed by Human Capital and the extra HC review they add to
-    leave, as implemented in apps/api/src/modules/leave/critical-period-routes.ts.
+    Critical periods (masa kritis) managed by Human Capital, as implemented in
+    apps/api/src/modules/leave/critical-period-routes.ts. Since LEAVE-009 D-12 (2026-11-18) a
+    critical period adds no HC review step, so the review queue and its decision route are gone.
     Spec: docs/domain/leave-critical-periods.md.
     All routes use the session cookie and answer with Cache-Control: no-store.
     Errors use { code, message }.
 
     Related changes in other contracts: the annual-leave preview (leave.openapi.yaml) and the
-    planned-leave preview add `criticalPeriods` and `criticalReviewRequired`; leave summaries add
-    `criticalReviewStatus`; GET /me/calendar (meeting-calendar.openapi.yaml) adds
-    `CalendarCriticalPeriod` items.
+    planned-leave preview add `criticalPeriods`; GET /me/calendar
+    (meeting-calendar.openapi.yaml) adds `CalendarCriticalPeriod` items.
 paths:
   /admin/leave/critical-periods:
     get:
@@ -116,81 +116,6 @@ paths:
         '401': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
-  /leave/hc/critical-reviews:
-    get:
-      tags: [Leave]
-      operationId: listLeaveCriticalReviews
-      summary: Pending critical-period reviews, oldest submission first
-      description: |
-        EMPLOYEE principal holding organization-scoped leave.validate and leave.hc.approve
-        (403 HC_APPROVAL_FORBIDDEN otherwise). ENG-LIST-001 paged.
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PageSize'
-      responses:
-        '200':
-          description: One page of pending reviews
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items, pagination]
-                properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/CriticalReviewQueueItem' } }
-                  pagination: { $ref: '#/components/schemas/Pagination' }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '403': { $ref: '#/components/responses/Problem' }
-  /leave/hc/critical-reviews/{reviewId}/decision:
-    post:
-      tags: [Leave]
-      operationId: decideLeaveCriticalReview
-      summary: Approve or reject a pending critical-period review
-      description: |
-        Same permission as the queue. Approve activates the request's waiting HC administrative
-        task when there is one; otherwise the request becomes approved. Reject rejects the request.
-        Nobody decides their own leave (403 SELF_REVIEW_FORBIDDEN); the queue hides it too.
-      parameters:
-        - name: reviewId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [decision]
-              properties:
-                decision: { type: string, enum: [approve, reject] }
-                note: { type: [string, 'null'], maxLength: 1000 }
-      responses:
-        '200':
-          description: Decision stored
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  reviewId: { type: string, format: uuid }
-                  requestId: { type: string, format: uuid }
-                  reviewStatus: { type: string, enum: [approved, rejected] }
-                  requestStatus: { type: string, enum: [in_review, approved, rejected] }
-                  hcTaskStatus: { type: [string, 'null'], enum: [pending, null] }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '403': { $ref: '#/components/responses/Problem' }
-        '404':
-          description: CRITICAL_REVIEW_NOT_FOUND
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Problem' }
-        '409':
-          description: CRITICAL_REVIEW_NOT_PENDING or HC_TASK_NOT_READY
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Problem' }
 components:
   parameters:
     Page:
@@ -257,21 +182,3 @@ components:
         scope: { type: string, enum: [organization, unit] }
         unitId: { type: [string, 'null'], format: uuid }
         unitName: { type: [string, 'null'] }
-    CriticalReviewQueueItem:
-      type: object
-      properties:
-        reviewId: { type: string, format: uuid }
-        requestId: { type: string, format: uuid }
-        requesterEmployeeId: { type: string, format: uuid }
-        requesterName: { type: string }
-        employeeNumber: { type: string }
-        unitName: { type: [string, 'null'] }
-        positionName: { type: [string, 'null'] }
-        policyKey: { type: string }
-        policyName: { type: string }
-        startOn: { type: string, format: date }
-        endOn: { type: string, format: date }
-        workingDays: { type: integer }
-        reason: { type: [string, 'null'] }
-        submittedAt: { type: string, format: date-time }
-        periods: { type: array, items: { $ref: '#/components/schemas/CriticalPeriodSnapshot' } }

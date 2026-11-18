@@ -418,9 +418,6 @@ export function EmployeeLeavePage() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.workingDays} hari kerja
                     {item.currentApproverName ? ` · menunggu ${item.currentApproverName}` : ""}
-                    {item.status === "in_review" && item.criticalReviewStatus === "pending"
-                      ? " · menunggu tinjauan Human Capital (masa kritis)"
-                      : ""}
                   </p>
                   {postponementStatusNote(item) ? (
                     <p className="mt-1 text-xs font-semibold text-brand-primary-deep">{postponementStatusNote(item)}</p>

@@ -201,19 +201,19 @@ describe.skipIf(!allowed)("NOTIF-003 reminder engine", () => {
     expect(await deliveries(people.approver.accountId)).toHaveLength(1);
   });
 
-  it("NOTIF-003-B: nothing is made or handed over outside 06:00–21:00 WIB, and late messages expire", async () => {
+  it("NOTIF-003-B: nothing is made or handed over outside 04:00–23:00 WIB, and late messages expire", async () => {
     await pendingTripStep("approver", "requester");
-    const early = new Date(`${jakartaClock(morning()).date}T05:30:00+07:00`);
+    const early = new Date(`${jakartaClock(morning()).date}T03:30:00+07:00`);
     expect(await engine(early).tick()).toEqual({ runs: [], delivered: 0 });
     expect(await occurrences("approval.pending_digest", people.approver.accountId)).toEqual([]);
 
     const sender = new FakeSender("log");
     const now = morning();
     await engine(now, { sender: new FakeSender("log") }).runRule(findReminderRule("approval.pending_digest")!, now);
-    const late = new Date(`${jakartaClock(now).date}T21:30:00+07:00`);
+    const late = new Date(`${jakartaClock(now).date}T23:30:00+07:00`);
     expect(await engine(late, { sender }).handOverDeliveries()).toBe(0);
     expect(sender.sent).toHaveLength(0);
-    // Once 21:00 WIB of its day has passed, a queued message is dropped, not sent the next morning.
+    // Once 23:00 WIB of its day has passed, a queued message is dropped, not sent the next morning.
     await client.query("UPDATE reminder_deliveries SET expires_at = now() - interval '1 minute'");
     expect(await engine(now, { sender }).handOverDeliveries()).toBe(0);
     expect((await deliveries(people.approver.accountId))[0]).toMatchObject({ status: "SKIPPED", errorCode: "expired" });

@@ -5,7 +5,11 @@
 export type CycleKind = "MONTHLY" | "SEMESTER" | "ANNUAL";
 export type CycleStatus = "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
 export type ReviewStatus = "SELF_ASSESSMENT" | "MANAGER_REVIEW" | "HC_VALIDATION" | "FINALIZED" | "UNRATED" | "REMOVED";
-export type ReviewAction = "self-assessment" | "acknowledge" | "rate" | "finalize" | "return" | "assign-rater" | "remove";
+export type ReviewAction =
+  | "self-assessment" | "acknowledge" | "object" | "waive-objection"
+  | "rate" | "finalize" | "return" | "uphold-objection" | "reject-objection" | "assign-rater" | "remove";
+/** D-17: the employee's single objection to the rater's score, before HC validates it. */
+export type ObjectionStatus = "OPEN" | "UPHELD" | "REJECTED" | "WAIVED";
 
 export interface Pagination {
   page: number;
@@ -54,6 +58,8 @@ export interface CycleDetail extends CycleSummary {
     participants: number;
     byStatus: Record<ReviewStatus, number>;
     byPredicate: Array<Predicate & { count: number }>;
+    /** D-17: objections on this cycle waiting for HC. */
+    objectionsOpen: number;
     /** D-20: how many reviews each job-group rubric scores in this cycle. */
     byRubricVersion: Array<{ version: number | null; name: string | null; count: number }>;
     raterMissing: number;
@@ -91,6 +97,9 @@ export interface ReviewSummary {
   predicateLabel: string | null;
   /** D-20: the rubric version this review is scored against; null means the cycle's own rubric. */
   rubricVersion: number | null;
+  /** D-17: the last day the employee may object; null until the rater has scored. */
+  objectionDueOn: string | null;
+  objectionStatus: ObjectionStatus | null;
 }
 
 export interface PerformanceEvent {
@@ -108,6 +117,13 @@ export interface ReviewDetail extends ReviewSummary {
   rating: { scores: Scores; strengths: string | null; improvements: string | null; note: string | null } | null;
   acknowledgementComment: string | null;
   removedReason: string | null;
+  objection: {
+    status: ObjectionStatus;
+    reason: string | null;
+    raisedAt: string | null;
+    decidedAt: string | null;
+    decisionReason: string | null;
+  } | null;
   allowedActions: ReviewAction[];
   events: PerformanceEvent[];
 }
@@ -166,6 +182,10 @@ export const submitSelfAssessment = (id: string, scores: Scores, note: string | 
   send<{ status: ReviewStatus }>("POST", `/performance/me/${id}/self-assessment`, { scores, note });
 export const acknowledgeReview = (id: string, comment: string | null) =>
   send<{ status: ReviewStatus }>("POST", `/performance/me/${id}/acknowledge`, { comment });
+export const raiseObjection = (id: string, reason: string) =>
+  send<{ objectionStatus: ObjectionStatus }>("POST", `/performance/me/${id}/objection`, { reason });
+export const waiveObjection = (id: string) =>
+  send<{ objectionStatus: ObjectionStatus }>("POST", `/performance/me/${id}/objection/waive`);
 
 export const getTeamReviews = (page = 1, status?: ReviewStatus | "") =>
   get<Page<ReviewSummary>>(`/performance/team${query({ page, status })}`);
@@ -191,6 +211,8 @@ export const getCycleReviews = (id: string, filter: { page?: number; status?: Re
 export const getAdminReview = (id: string) => get<ReviewDetail>(`/admin/performance/reviews/${id}`);
 export const finalizeReview = (id: string) => send<{ status: ReviewStatus }>("POST", `/admin/performance/reviews/${id}/finalize`);
 export const returnReview = (id: string, reason: string) => send<{ status: ReviewStatus }>("POST", `/admin/performance/reviews/${id}/return`, { reason });
+export const decideObjection = (id: string, decision: "uphold" | "reject", reason: string) =>
+  send<{ objectionStatus: ObjectionStatus; status: ReviewStatus }>("POST", `/admin/performance/reviews/${id}/objection/${decision}`, { reason });
 export const assignRater = (id: string, raterEmployeeId: string, reason: string) =>
   send<{ raterEmployeeId: string }>("POST", `/admin/performance/reviews/${id}/rater`, { raterEmployeeId, reason });
 export const removeReview = (id: string, reason: string) => send<{ status: ReviewStatus }>("POST", `/admin/performance/reviews/${id}/remove`, { reason });
@@ -252,6 +274,10 @@ const EVENT_LABELS: Record<string, string> = {
   "performance.review.returned": "Dikembalikan HC",
   "performance.review.finalized": "Disahkan HC",
   "performance.review.acknowledged": "Ditandai dibaca",
+  "performance.review.objected": "Pegawai mengajukan keberatan",
+  "performance.review.objection_waived": "Pegawai menerima nilai tanpa keberatan",
+  "performance.review.objection_upheld": "Keberatan diterima HC",
+  "performance.review.objection_rejected": "Keberatan ditolak HC",
   "performance.review.removed": "Dikeluarkan dari siklus",
   "performance.review.unrated": "Tidak dinilai sampai siklus ditutup",
 };
@@ -262,6 +288,17 @@ const TREND_LABELS: Record<string, string> = {
   STABLE: "Stabil dari periode sebelumnya",
   DECLINING: "Turun dari periode sebelumnya",
 };
+
+const OBJECTION_STATUS_LABELS: Record<ObjectionStatus, string> = {
+  OPEN: "Menunggu keputusan Human Capital",
+  UPHELD: "Diterima; penilaian dikembalikan ke penilai",
+  REJECTED: "Ditolak Human Capital",
+  WAIVED: "Nilai diterima tanpa keberatan",
+};
+
+export function objectionStatusLabel(status: ObjectionStatus) {
+  return OBJECTION_STATUS_LABELS[status] ?? status;
+}
 
 export function trendLabel(trend: string | null) {
   return trend ? TREND_LABELS[trend] ?? trend : null;

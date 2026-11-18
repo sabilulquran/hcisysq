@@ -5,9 +5,11 @@ import { useState, type ReactNode } from "react";
 
 import {
   eventLabel,
+  formatDate,
   formatPeriod,
   formatScore,
   formatTimestamp,
+  objectionStatusLabel,
   raterSourceLabel,
   reviewStatusLabel,
   SCALE_OPTIONS,
@@ -42,7 +44,14 @@ export function ReviewDetailPanel({ review, actions, form }: { review: ReviewDet
           <p className="mt-1 text-2xl font-bold text-brand-heading">
             {formatScore(review.finalScore)} <span className="text-base">· {review.predicateCode} {review.predicateLabel}</span>
           </p>
-          {review.status === "HC_VALIDATION" ? <p className="mt-1 text-xs text-muted-foreground">Belum disahkan Human Capital.</p> : null}
+          {review.status === "HC_VALIDATION" ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Belum disahkan Human Capital.
+              {review.objectionDueOn && !review.objectionStatus
+                ? ` Keberatan dapat diajukan sampai ${formatDate(review.objectionDueOn)}.`
+                : ""}
+            </p>
+          ) : null}
           {review.trend ? <p className="mt-1 text-xs text-muted-foreground">{trendLabel(review.trend)}</p> : null}
         </div>
       ) : null}
@@ -72,6 +81,19 @@ export function ReviewDetailPanel({ review, actions, form }: { review: ReviewDet
       {review.rating?.strengths ? <Note title="Kekuatan" text={review.rating.strengths} /> : null}
       {review.rating?.improvements ? <Note title="Area perbaikan" text={review.rating.improvements} /> : null}
       {review.rating?.note ? <Note title="Catatan penilai" text={review.rating.note} /> : null}
+      {review.objection ? (
+        <div className="rounded-2xl border border-border/70 bg-surface p-4">
+          <p className="text-xs font-semibold text-muted-foreground">Keberatan pegawai</p>
+          <p className="mt-1 text-sm font-semibold text-brand-heading">{objectionStatusLabel(review.objection.status)}</p>
+          {review.objection.reason ? <p className="mt-1 whitespace-pre-line text-sm text-brand-heading">{review.objection.reason}</p> : null}
+          {review.objection.decisionReason ? (
+            <p className="mt-2 text-sm text-brand-heading">
+              <span className="text-xs font-semibold text-muted-foreground">Alasan keputusan Human Capital: </span>
+              {review.objection.decisionReason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {review.acknowledgementComment ? <Note title="Tanggapan pegawai" text={review.acknowledgementComment} /> : null}
       {review.removedReason && review.status === "REMOVED" ? <Note title="Alasan dikeluarkan" text={review.removedReason} /> : null}
 

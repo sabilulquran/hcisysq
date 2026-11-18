@@ -191,12 +191,12 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
     // 475 on main + 4 PAY-003 §7.4 routes (annual recap, 1721-A1, tax identity GET/PUT).
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(522); // + 13 TRAIN-001 R4 HC routes, + 14 TRIP-002 admin routes, + 13 REWARD-001 admin routes, + 1 LOAN-002 approval-seat readiness, + 2 PERF-001 D-19 rubric version routes
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(524); // + 13 TRAIN-001 R4 HC routes, + 14 TRIP-002 admin routes, + 13 REWARD-001 admin routes, + 1 LOAN-002 approval-seat readiness, + 2 PERF-001 D-19 rubric version routes, + 2 PERF-001 D-17 objection decision routes
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     // LEAVE-009 D-12 (2026-11-18): the two /leave/hc/critical-reviews routes were removed with the stage.
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     // 155 on main + the two own-1721-A1 routes.
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(176); // + 7 TRAIN-001 R4 employee routes, + 9 TRIP-002 employee routes, + 3 REWARD-001 self-service routes
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(178); // + 7 TRAIN-001 R4 employee routes, + 9 TRIP-002 employee routes, + 3 REWARD-001 self-service routes, + 2 PERF-001 D-17 objection routes
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     // ORG-010 summary, ORG-014 employee list, and the two ORG-015 decision routes.
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(4);

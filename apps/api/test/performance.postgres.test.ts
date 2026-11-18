@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import type { ApiConfig } from "../src/config/env.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
-import { DEFAULT_RUBRIC } from "../src/modules/performance/domain.js";
+import { DEFAULT_RUBRIC, objectionDueOn } from "../src/modules/performance/domain.js";
 import { registerPerformanceRoutes } from "../src/modules/performance/routes.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -146,6 +146,15 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     );
   }
 
+  /**
+   * D-17: HC may not finalize while the employee could still object. The employee accepting the
+   * score closes that window, which is what most of these scenarios want before validating.
+   */
+  async function waiveObjection(reviewId: string, who: keyof typeof people = "employee") {
+    actAs(who);
+    return app.inject({ method: "POST", url: `/performance/me/${reviewId}/objection/waive` });
+  }
+
   async function reviewRow(id: string) {
     return (await client.query<{ status: string; predicateCode: string | null; finalScore: string | null; raterEmployeeId: string | null }>(
       `SELECT status, predicate_code AS "predicateCode", final_score AS "finalScore", rater_employee_id AS "raterEmployeeId"
@@ -269,10 +278,19 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     const rated = await rate(reviewId, { TASK_RESULT: 4, DISCIPLINE: 3, AKHLAK: 4, TEAMWORK: 3, INITIATIVE: 3 });
     expect(rated.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: 3.5, predicateCode: "A" });
 
-    // PERF-001-A: the employee does not see the result before it is validated.
+    // PERF-001-A, as D-17 amends it: the employee reads the score once it reaches HC, because
+    // that is what they may object to, and not one step earlier.
     actAs("employee");
     const pending = await app.inject({ method: "GET", url: `/performance/me/${reviewId}` });
-    expect(pending.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: null, predicateCode: null, rating: null });
+    expect(pending.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: 3.5, predicateCode: "A" });
+    expect(pending.json().allowedActions).toEqual(["object", "waive-objection"]);
+
+    // D-17: validation waits while the employee may still object.
+    actAs("hc", HC);
+    const tooSoon = await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/finalize` });
+    expect(tooSoon.statusCode).toBe(409);
+    expect(tooSoon.json().code).toBe("PERFORMANCE_OBJECTION_WINDOW_OPEN");
+    expect((await waiveObjection(reviewId)).statusCode).toBe(200);
 
     actAs("hc", HC);
     const finalized = await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/finalize` });
@@ -295,7 +313,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     const detail = await app.inject({ method: "GET", url: `/admin/performance/reviews/${reviewId}` });
     expect(detail.json().events.map((event: { eventType: string }) => event.eventType)).toEqual([
       "performance.review.added", "performance.review.self_submitted", "performance.review.rated",
-      "performance.review.finalized", "performance.review.acknowledged",
+      "performance.review.objection_waived", "performance.review.finalized", "performance.review.acknowledged",
     ]);
     const events = await client.query<{ actor: string | null; metadata: Record<string, unknown> }>(
       `SELECT actor_account_id AS actor, metadata FROM performance_events WHERE cycle_id = $1`,
@@ -396,6 +414,8 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     actAs("hc", HC);
     const blocked = await app.inject({ method: "POST", url: `/admin/performance/cycles/${cycleId}/close` });
     expect(blocked.json().code).toBe("PERFORMANCE_CYCLE_HAS_PENDING_VALIDATION");
+    expect((await waiveObjection(reviewOf("employee"))).statusCode).toBe(200);
+    actAs("hc", HC);
     expect((await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewOf("employee")}/finalize` })).statusCode).toBe(200);
     const closed = await app.inject({ method: "POST", url: `/admin/performance/cycles/${cycleId}/close` });
     expect(closed.json()).toMatchObject({ status: "CLOSED", finalized: 1, unrated: 1 });
@@ -445,10 +465,13 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     expect((await rate(own, all(2))).statusCode).toBe(200);
 
     actAs("hc", HC);
+    // D-17: they read their own review exactly as its employee does — score included, now that
+    // it is with HC — but every HC action on it stays closed to them.
     const detail = await app.inject({ method: "GET", url: `/admin/performance/reviews/${own}` });
-    expect(detail.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: null, predicateCode: null, rating: null, allowedActions: [] });
+    expect(detail.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: 2, predicateCode: "C" });
+    expect(detail.json().allowedActions).toEqual(["object", "waive-objection"]);
     const table = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?employeeId=${people.hc.employeeId}` });
-    expect(table.json().items[0]).toMatchObject({ predicateCode: null, finalScore: null });
+    expect(table.json().items[0]).toMatchObject({ predicateCode: "C" });
     for (const [url, payload] of [
       [`/admin/performance/reviews/${own}/finalize`, {}],
       [`/admin/performance/reviews/${own}/remove`, { reason: "Keluar sendiri" }],
@@ -674,6 +697,178 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     // 50x4 + 50x2 = 300 -> 3.00, which only the corrected rubric can produce.
     expect((await selfAssess(reviewId, { TASK_RESULT: 3, AKHLAK: 3 })).statusCode).toBe(200);
     expect((await rate(reviewId, { TASK_RESULT: 4, AKHLAK: 2 })).json()).toMatchObject({ finalScore: 3, predicateCode: "B" });
+  });
+
+  it("PERF-001-O/D-17: the employee objects once, HC decides, and nothing is finalized meanwhile", async () => {
+    const { cycleId, reviewOf } = await openCycleWith(0, ["employee"]);
+    const reviewId = reviewOf("employee");
+    expect((await selfAssess(reviewId)).statusCode).toBe(200);
+
+    // Too early: there is no score to object to yet.
+    actAs("employee");
+    const early = await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "Nilai belum ada sama sekali" },
+    });
+    expect(early.json().code).toBe("PERFORMANCE_OBJECTION_NOT_ALLOWED");
+
+    const rated = await rate(reviewId, all(2));
+    expect(rated.json()).toMatchObject({ predicateCode: "C" });
+    expect(rated.json().objectionDueOn).toBe(objectionDueOn(jakartaToday()));
+
+    actAs("employee");
+    expect((await app.inject({ method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "pendek" } })).statusCode).toBe(400);
+    const objected = await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`,
+      payload: { reason: "Dua kelas tambahan yang saya ampu belum dihitung pada hasil kerja." },
+    });
+    expect(objected.statusCode, objected.body).toBe(200);
+    // One objection per cycle, whichever way the employee tries to use it again.
+    expect((await app.inject({ method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "Alasan kedua yang panjang" } })).json().code)
+      .toBe("PERFORMANCE_OBJECTION_ALREADY_RAISED");
+    expect((await waiveObjection(reviewId)).json().code).toBe("PERFORMANCE_OBJECTION_ALREADY_RAISED");
+
+    actAs("hc", HC);
+    // Neither validating nor returning may step over an open objection.
+    for (const [url, payload] of [
+      [`/admin/performance/reviews/${reviewId}/finalize`, {}],
+      [`/admin/performance/reviews/${reviewId}/return`, { reason: "Mohon tinjau ulang nilai disiplin" }],
+    ] as const) {
+      const blocked = await app.inject({ method: "POST", url, payload });
+      expect(blocked.statusCode, url).toBe(409);
+      expect(blocked.json().code).toBe("PERFORMANCE_OBJECTION_OPEN");
+    }
+    const recap = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}` });
+    expect(recap.json().recap.objectionsOpen).toBe(1);
+    const filtered = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?objection=OPEN` });
+    expect(filtered.json().pagination.total).toBe(1);
+
+    // D-07: the rater does not decide an objection against their own score.
+    actAs("manager", HC);
+    const byRater = await app.inject({
+      method: "POST", url: `/admin/performance/reviews/${reviewId}/objection/reject`, payload: { reason: "Nilai saya sudah benar" },
+    });
+    expect(byRater.statusCode).toBe(403);
+    expect(byRater.json().code).toBe("PERFORMANCE_SELF_VALIDATION");
+
+    // Upheld: back to the rater, with the result cleared, exactly as a return does.
+    actAs("hc", HC);
+    expect((await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/objection/uphold`, payload: { reason: "ya" } })).statusCode).toBe(400);
+    const upheld = await app.inject({
+      method: "POST", url: `/admin/performance/reviews/${reviewId}/objection/uphold`,
+      payload: { reason: "Kelas tambahan memang belum masuk; penilai menilai ulang." },
+    });
+    expect(upheld.statusCode, upheld.body).toBe(200);
+    expect(await reviewRow(reviewId)).toMatchObject({ status: "MANAGER_REVIEW", predicateCode: null, finalScore: null });
+    expect((await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/objection/reject`, payload: { reason: "Sudah diputuskan sebelumnya" } })).json().code)
+      .toBe("PERFORMANCE_NOT_IN_VALIDATION");
+
+    // PERF-001-P: the rater learns the score comes back, never what was written about them.
+    actAs("manager");
+    const raterView = await app.inject({ method: "GET", url: `/performance/team/${reviewId}` });
+    expect(raterView.json().objection).toMatchObject({ status: "UPHELD", reason: null, decisionReason: null });
+    expect(JSON.stringify(raterView.json())).not.toContain("Kelas tambahan");
+    expect(JSON.stringify(raterView.json())).not.toContain("menilai ulang");
+
+    // The objection is spent, so re-rating opens no new window and writes no due date at all.
+    const rerated = await rate(reviewId, all(3));
+    expect(rerated.json()).toMatchObject({ predicateCode: "B", objectionDueOn: null });
+    expect((await client.query<{ dueOn: string | null }>(
+      `SELECT to_char(objection_due_on, 'YYYY-MM-DD') AS "dueOn" FROM performance_reviews WHERE id = $1`, [reviewId],
+    )).rows[0]!.dueOn).toBeNull();
+    actAs("employee");
+    const again = await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "Masih belum sesuai menurut saya" },
+    });
+    expect(again.json().code).toBe("PERFORMANCE_OBJECTION_ALREADY_RAISED");
+    const mine = await app.inject({ method: "GET", url: `/performance/me/${reviewId}` });
+    expect(mine.json().objection).toMatchObject({ status: "UPHELD" });
+    expect(mine.json().objection.decisionReason).toContain("menilai ulang");
+    expect(mine.json().allowedActions).toEqual([]);
+
+    // A decided objection no longer holds the result, so HC validates without waiting the window out.
+    actAs("hc", HC);
+    const finalized = await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/finalize` });
+    expect(finalized.statusCode, finalized.body).toBe(200);
+    const history = await app.inject({ method: "GET", url: `/admin/performance/reviews/${reviewId}` });
+    expect(history.json().events.map((event: { eventType: string }) => event.eventType)).toContain("performance.review.objected");
+    expect(history.json().events.find((event: { eventType: string }) => event.eventType === "performance.review.objection_upheld").note)
+      .toContain("menilai ulang");
+  });
+
+  it("D-17: an objection is refused once the window has closed", async () => {
+    const { reviewOf } = await openCycleWith(0, ["employee"]);
+    const reviewId = reviewOf("employee");
+    expect((await selfAssess(reviewId)).statusCode).toBe(200);
+    expect((await rate(reviewId)).statusCode).toBe(200);
+    // Move the window into the past, as the clock would.
+    await client.query("UPDATE performance_reviews SET objection_due_on = current_date - 1 WHERE id = $1", [reviewId]);
+
+    actAs("employee");
+    const late = await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "Terlambat mengajukan keberatan" },
+    });
+    expect(late.statusCode).toBe(409);
+    expect(late.json().code).toBe("PERFORMANCE_OBJECTION_WINDOW_CLOSED");
+    expect((await app.inject({ method: "GET", url: `/performance/me/${reviewId}` })).json().allowedActions).toEqual([]);
+
+    // With the window closed and no objection raised, HC validates as before.
+    actAs("hc", HC);
+    expect((await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/finalize` })).statusCode).toBe(200);
+  });
+
+  it("D-17: removing a participant clears an objection nobody could decide, and re-adding starts clean", async () => {
+    const { cycleId, reviewOf } = await openCycleWith(0, ["employee"]);
+    const reviewId = reviewOf("employee");
+    expect((await selfAssess(reviewId)).statusCode).toBe(200);
+    expect((await rate(reviewId, all(2))).statusCode).toBe(200);
+    actAs("employee");
+    expect((await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`,
+      payload: { reason: "Nilai disiplin tidak sesuai catatan kehadiran saya." },
+    })).statusCode).toBe(200);
+
+    actAs("hc", HC);
+    expect((await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}` })).json().recap.objectionsOpen).toBe(1);
+    const removed = await app.inject({
+      method: "POST", url: `/admin/performance/reviews/${reviewId}/remove`, payload: { reason: "Mutasi ke yayasan lain" },
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    // Neither decision is possible on a removed review, so it must not keep being counted.
+    expect((await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}` })).json().recap.objectionsOpen).toBe(0);
+    expect((await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?objection=OPEN` })).json().pagination.total).toBe(0);
+
+    const readded = await app.inject({
+      method: "POST", url: `/admin/performance/cycles/${cycleId}/participants`, payload: { employeeIds: [people.employee.employeeId] },
+    });
+    expect(readded.json()).toMatchObject({ readded: 1 });
+    // The previous round's objection must leave nothing behind: no status, no window, no reasons.
+    const row = (await client.query<{
+      status: string | null; dueOn: string | null; reason: string | null; decisionReason: string | null;
+      raisedAt: string | null; decidedAt: string | null; decidedBy: string | null;
+    }>(
+      `SELECT objection_status AS status, to_char(objection_due_on, 'YYYY-MM-DD') AS "dueOn",
+              objection_reason AS reason, objection_decision_reason AS "decisionReason",
+              objection_raised_at AS "raisedAt", objection_decided_at AS "decidedAt",
+              objection_decided_by_account_id AS "decidedBy"
+         FROM performance_reviews WHERE id = $1`,
+      [reviewId],
+    )).rows[0]!;
+    expect(row).toEqual({
+      status: null, dueOn: null, reason: null, decisionReason: null, raisedAt: null, decidedAt: null, decidedBy: null,
+    });
+    expect((await app.inject({ method: "GET", url: `/admin/performance/reviews/${reviewId}` })).json().objection).toBeNull();
+
+    // And the revived review behaves like a fresh one: a window opens, and HC must wait for it.
+    expect((await selfAssess(reviewId)).statusCode).toBe(200);
+    const rated = await rate(reviewId, all(3));
+    expect(rated.json().objectionDueOn).toBe(objectionDueOn(jakartaToday()));
+    actAs("hc", HC);
+    expect((await app.inject({ method: "POST", url: `/admin/performance/reviews/${reviewId}/finalize` })).json().code)
+      .toBe("PERFORMANCE_OBJECTION_WINDOW_OPEN");
+    actAs("employee");
+    expect((await app.inject({
+      method: "POST", url: `/performance/me/${reviewId}/objection`, payload: { reason: "Keberatan baru pada putaran ini." },
+    })).statusCode).toBe(200);
   });
 
   it("adds every active employee at once and skips those already in", async () => {

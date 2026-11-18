@@ -4,7 +4,7 @@
 **Spesifikasi:** PERF-001
 **Tanggal:** 2026-11-02
 **Rilis:** `hcis-3b1c85f4-20261103`, 3 Nov 2026 01:43 UTC (migrasi 0120 + 0121); bukti `docs/development/production-release-verification-2026-11-03-3b1c85f4.md`
-**Amandemen:** 18 Nov 2026 (keputusan owner) — D-18 siklus semesteran, D-19 rubrik berversi, D-20 rubrik per kelompok jabatan; migrasi 0175. Keputusan yang digantikan tetap tertulis di bawah dengan catatan penggantinya.
+**Amandemen:** 18 Nov 2026 (keputusan owner) — D-17 jalur keberatan pegawai, D-18 siklus semesteran, D-19 rubrik berversi, D-20 rubrik per kelompok jabatan; migrasi 0175 dan 0176. Keputusan yang digantikan tetap tertulis di bawah dengan catatan penggantinya.
 **Terkait:** APR-001, ORG-002, ORG-004, ORG-011, PAY-003, NOTIF-004, AUTH-011, ENG-LIST-001
 **Roadmap:** `docs/product/roadmap.md` (PERF-001), `docs/product/hcis-capability-map.md` §4
 
@@ -54,7 +54,7 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | Persentase kinerja dan tunjangan kinerja | Menyentuh payroll PAY-003 yang belum lulus parallel run. Kontrak di §11. Paket 1 **tidak** menyimpan persentase atau nominal. |
 | Penilaian 360, rekan sejawat, atau bawahan | Tidak ada di legacy; belum ada kebutuhan tertulis. |
 | KPI kuantitatif dengan target angka per pegawai | Indikator Paket 1 bersifat kualitatif berskala; target angka butuh keputusan owner. |
-| Banding atas hasil, koreksi setelah final | D-09, D-11. |
+| ~~Banding atas hasil~~, koreksi setelah final | D-11. **Diubah D-17 (18 Nov 2026):** keberatan pegawai kini termasuk lingkup, tetapi hanya **sebelum** pengesahan. Koreksi setelah final tetap di luar lingkup. |
 | Penilai akun yayasan (`FOUNDATION_BOARD`) | Penilai Paket 1 hanya pegawai. Direktur yang atasannya Ketua Yayasan ditunjuk penilainya oleh HC atau dikeluarkan dari siklus (D-01). |
 | Cetak LPK dan ekspor CSV | Rekap dibaca di layar; cetak dan ekspor menyusul. |
 | Kaitan ke kompetensi jabatan dan pelatihan | TRAIN-001. |
@@ -69,9 +69,9 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | D-04 | Skala 1–4 legacy: 4 Sangat baik, 3 Baik, 2 Cukup, 1 Kurang. | DRAFT (mengikuti legacy) |
 | D-05 | Nilai akhir = Σ(nilai × bobot) / 100, antara 1,00 dan 4,00, tepat dua desimal. Bobot bilangan bulat dengan jumlah tepat 100. Rubrik default lima indikator: Hasil kerja 30, Disiplin dan kehadiran 20, Akhlak dan adab 20, Kerja sama dan komunikasi 15, Inisiatif dan pengembangan diri 15. HC mengubahnya selama siklus `DRAFT`. **Diperbarui D-19/D-20 (18 Nov 2026):** angka itu bukan lagi tetapan kode melainkan versi rubrik 1, dan bobot boleh berbeda menurut kelompok jabatan. Rumus nilai akhir dan aturan jumlah bobot 100 tidak berubah. | DRAFT |
 | D-06 | Predikat: **A Sangat baik** ≥ 3,50; **B Baik** ≥ 2,50; **C Cukup** ≥ 1,50; **D Kurang** di bawahnya — batas legacy. Batas dapat diubah per siklus selama `DRAFT`; harus mencakup 1,00. **Diperbarui D-19 (18 Nov 2026):** batas predikat ikut berada di dalam versi rubrik. | DRAFT |
-| D-07 | Hasil penilai disahkan HC (`performance.manage`). HC dapat **mengembalikan** ke penilai dengan alasan; itulah kalibrasi Paket 1 — HC tidak pernah mengetik nilai pengganti. Pengesah tidak boleh pegawai yang dinilai maupun penilainya. Admin HC yang juga peserta tidak dapat mengganti penilai, mengeluarkan, atau memasukkan kembali penilaiannya sendiri, dan di layar HC melihat penilaiannya sendiri seperti pegawai lain (hasil baru tampak setelah final). | DRAFT |
+| D-07 | Hasil penilai disahkan HC (`performance.manage`). HC dapat **mengembalikan** ke penilai dengan alasan; itulah kalibrasi Paket 1 — HC tidak pernah mengetik nilai pengganti. Pengesah tidak boleh pegawai yang dinilai maupun penilainya. Admin HC yang juga peserta tidak dapat mengganti penilai, mengeluarkan, atau memasukkan kembali penilaiannya sendiri, dan di layar HC melihat penilaiannya sendiri seperti pegawai lain (sejak D-17, hasil tampak begitu nilai masuk ke HC, dan tidak sedetik lebih awal). | DRAFT |
 | D-08 | Penilai dapat menilai setelah pegawai mengirim penilaian diri, atau setelah batas penilaian diri lewat tanpa kiriman, supaya pegawai yang diam tidak menahan siklus. Pegawai masih boleh mengirim penilaian diri terlambat selama penilai belum menilai. | DRAFT |
-| D-09 | Pegawai melihat nilai penilai dan predikat **setelah disahkan**, lalu dapat menandai sudah dibaca dengan tanggapan opsional (≤ 1000 karakter). Tanggapan tidak mengubah nilai. Tidak ada banding di Paket 1. | DRAFT |
+| D-09 | Pegawai melihat nilai penilai dan predikat **setelah disahkan**, lalu dapat menandai sudah dibaca dengan tanggapan opsional (≤ 1000 karakter). Tanggapan tidak mengubah nilai. ~~Tidak ada banding di Paket 1.~~ **Diubah D-17 (18 Nov 2026):** pegawai melihat nilai penilai begitu nilai itu masuk ke HC (`HC_VALIDATION`), karena itulah yang dapat ia keberatani; tanda dibaca beserta tanggapannya setelah final tetap persis seperti semula. | DRAFT |
 | D-10 | Siklus ditutup HC pada atau sesudah akhir periode. Penutupan ditolak selama masih ada penilaian menunggu pengesahan. Penilaian yang belum dinilai menjadi `UNRATED` (tanpa predikat). Siklus tertutup tidak dapat dibuka kembali. | DRAFT |
 | D-11 | Penilaian `FINALIZED` tidak dapat diubah atau dihapus. Kesalahan setelah final dicatat lewat siklus berikutnya; koreksi resmi menunggu keputusan owner. | DRAFT |
 | D-12 | PERF-001 tidak menyimpan persentase atau nominal. Payroll membaca predikat penilaian `FINALIZED` hanya bila sakelar §11 menyala; pemetaan ke persen milik kebijakan payroll. | ACCEPTED (diperbarui 2026-11-17) |
@@ -79,6 +79,7 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | D-14 | Peserta dapat ditambahkan selama `DRAFT` dan `OPEN` (satu per satu atau semua pegawai aktif sekaligus). Pegawai yang berhenti atau dipindahkan dari siklus dikeluarkan HC dengan alasan (`REMOVED`); menambahkannya kembali menghidupkan penilaian yang sama. | DRAFT |
 | D-16 | Saat disahkan, sistem menyimpan **trend** dibanding penilaian final sebelumnya dengan jenis siklus yang sama: `FIRST` (belum ada pembanding), `IMPROVING`, `STABLE`, `DECLINING`. Dibandingkan pada nilai akhir, bukan kode predikat, karena rubrik dua siklus bisa berbeda. Legacy menyimpan trend atas keputusan PO 2026-05-31. | DRAFT |
 | D-15 | Penilai yang akunnya belum aktif tetap dapat ditunjuk; rekap HC menandainya. Penilaian menunggu sampai akun itu aktif. Ini sengaja: HCIS belum live ke staf dan approval berbasis struktur menunggu akun pemimpin. | DRAFT |
+| D-17 | **Jalur keberatan pegawai sebelum pengesahan** (18 Nov 2026). Setelah penilai mengirim nilai dan sebelum HC mengesahkan, pegawai melihat nilainya dan boleh **mengajukan keberatan satu kali**, dengan alasan 10–1000 karakter, dalam masa keberatan **7 hari** sejak nilai dikirim (`DRAFT`, usulan owner). HC memutuskan: **diterima** → penilaian kembali ke penilai untuk dinilai ulang, dan nilai akhir serta predikatnya dikosongkan — persis jalur "kembalikan" yang sudah ada, karena model kewenangan modul ini (D-07) adalah HC tidak pernah mengetik nilai pengganti; atau **ditolak** dengan alasan, dan nilai penilai tetap. Pengesahan **ditahan** selama keberatan terbuka, dan juga selama masa keberatan masih berjalan; pegawai dapat menutup masa itu lebih awal dengan menerima nilainya (`WAIVED`), sehingga HC tidak perlu menunggu tujuh hari untuk pegawai yang sudah bersikap. Satu siklus satu keberatan, dan masa keberatannya ikut habis bersamanya: penilaian yang dinilai ulang setelah keberatan diputuskan **tidak** mendapat masa keberatan baru, dan tanggal jatuh temponya dikosongkan, bukan diisi tanggal yang tidak berarti apa-apa. Setiap langkah tercatat sebagai event dengan aktornya dan pegawai diberi tahu. Pemutus keberatan tidak boleh pegawai yang dinilai maupun penilainya (D-07). | DRAFT |
 | D-18 | **Siklus semesteran** (18 Nov 2026). Jenis ketiga `SEMESTER` mengikuti kalender pendidikan: ganjil 1 Juli–31 Desember, genap 1 Januari–30 Juni, sehingga dua semester menutup tepat satu tahun ajaran `ANNUAL`. Ia hanya satu bentuk periode baru: aturan nilai, predikat, trend, dan penutupan siklus tidak dikhususkan untuk jenis ini. Aturan "satu siklus tidak-batal per jenis per periode" (D-02) berlaku apa adanya. | DRAFT |
 | D-19 | **Rubrik berversi milik HC** (18 Nov 2026). Indikator, bobot, dan batas predikat tidak lagi tertanam di kode: HC menambah **versi rubrik bertanggal** (`performance_rubric_versions`). Tabelnya append-only dengan pembuat dan waktunya, jadi baris itu sekaligus audit; versi tidak pernah diubah atau dihapus, hanya ditambah, dan versi baru berlaku paling awal pada tanggal berlaku versi terakhir supaya hari yang sudah dinilai tidak berpindah rubrik. Jumlah bobot tepat 100 dijaga database (`CHECK`), bukan hanya kode. Migrasi 0175 memuat angka yang sedang berjalan sebagai versi 1 berjenis `DEFAULT`, sehingga tidak ada yang berubah saat dipasang. | DRAFT |
 | D-20 | **Rubrik per kelompok jabatan** (18 Nov 2026, atas contoh owner: akhlak berbobot lain bagi guru tahfizh dan bagi office boy). Satu versi rubrik bercakupan `DEFAULT` (semua jabatan) atau `JOB_GROUP` (sekumpulan kode **klasifikasi jabatan** ORG-011/ADR-0004, tidak pernah teks nama jabatan). Rubrik satu peserta dipilih saat ia masuk siklus, pada tanggal efektif yang sama dengan penentuan penilai, berlapis dari yang paling khusus: (1) versi `JOB_GROUP` yang menyebut salah satu kode klasifikasi pegawai itu; (2) rubrik yang HC ketik sendiri pada siklus itu, yang menggantikan `DEFAULT` untuk siklus tersebut; (3) versi `DEFAULT` yang berlaku. Di antara versi yang setingkat, `(tanggal berlaku, nomor versi)` terbesar menang. Pegawai yang jabatannya tidak terpetakan ke klasifikasi mana pun tetap dinilai lewat `DEFAULT`. Karena satu siklus kini memuat beberapa rubrik sekaligus, **rubrik dibekukan pada penilaian** (`performance_reviews.rubric`) beserta nomor versinya; rubrik siklus tetap ada sebagai cadangan dan tetap dibekukan saat siklus dibuka. Pembekuan itu **diulang saat siklus dibuka** untuk setiap peserta yang belum dinilai: peserta boleh ditambahkan selagi siklus `DRAFT`, dan selama itu HC masih boleh memperbaiki bobot rubrik siklus dan versi rubrik baru masih mungkin mulai berlaku, sehingga rubrik yang dibekukan saat penambahan dapat sudah basi. Membuka siklus adalah saat terakhir apa pun masih dapat berubah, jadi di situlah pembekuan dikunci. Mengubah rubrik tidak pernah mengubah penilaian yang sudah ada, termasuk yang sudah final. | DRAFT |
@@ -110,15 +111,23 @@ CLOSED / CANCELLED -> terminal
 SELF_ASSESSMENT -> MANAGER_REVIEW   (pegawai mengirim penilaian diri)
 SELF_ASSESSMENT -> HC_VALIDATION    (penilai menilai setelah batas penilaian diri lewat, D-08)
 MANAGER_REVIEW  -> HC_VALIDATION    (penilai mengirim nilai; nilai akhir dan predikat dihitung)
-HC_VALIDATION   -> FINALIZED        (HC mengesahkan)
-HC_VALIDATION   -> MANAGER_REVIEW   (HC mengembalikan, alasan wajib)
+HC_VALIDATION   -> FINALIZED        (HC mengesahkan; D-17: tidak selama keberatan terbuka
+                                     atau masa keberatan masih berjalan)
+HC_VALIDATION   -> MANAGER_REVIEW    (HC mengembalikan, alasan wajib, atau menerima keberatan)
 SELF_ASSESSMENT / MANAGER_REVIEW -> UNRATED   (siklus ditutup)
 SELF_ASSESSMENT / MANAGER_REVIEW / HC_VALIDATION -> REMOVED  (HC, alasan)
 REMOVED -> SELF_ASSESSMENT          (HC menambahkan kembali, siklus DRAFT/OPEN)
 FINALIZED / UNRATED -> terminal
 ```
 
-Tanda sudah dibaca (`acknowledged_at`) adalah atribut `FINALIZED`, bukan state.
+Tanda sudah dibaca (`acknowledged_at`) adalah atribut `FINALIZED`, bukan state. Begitu pula keberatan (D-17): ia atribut penilaian yang sedang `HC_VALIDATION`, dengan statusnya sendiri.
+
+```text
+keberatan:  (belum ada) -> OPEN      (pegawai mengajukan, dalam masa keberatan)
+            (belum ada) -> WAIVED    (pegawai menerima nilai, menutup masa keberatan)
+            OPEN        -> UPHELD    (HC menerima; penilaian -> MANAGER_REVIEW)
+            OPEN        -> REJECTED  (HC menolak, alasan wajib; nilai tetap)
+```
 
 Selama siklus `DRAFT`, penilaian peserta berstatus `SELF_ASSESSMENT` tetapi tidak terlihat oleh pegawai maupun penilai, dan semua tindakan pegawai/penilai ditolak `PERFORMANCE_CYCLE_NOT_OPEN`.
 
@@ -148,14 +157,14 @@ Pegawai pemilik, siklus `OPEN`, status `SELF_ASSESSMENT`. Input `scores` (setiap
 
 ### 7.5 Penilaian atasan
 
-Hanya penilai tersimpan; lainnya 404 (penilaian orang lain tidak dapat dibedakan dari yang tidak ada). Siklus `OPEN` dan D-08 terpenuhi; lainnya 409 `PERFORMANCE_RATING_NOT_ALLOWED`. Input `scores`, `strengths` (≤ 2000), `improvements` (≤ 2000), `note` (≤ 2000). Server menghitung nilai akhir (D-05) dan predikat (D-06) dari **rubrik penilaian itu** (D-20), bukan dari rubrik siklus. Status → `HC_VALIDATION`; audit `performance.review.rated`.
+Hanya penilai tersimpan; lainnya 404 (penilaian orang lain tidak dapat dibedakan dari yang tidak ada). Siklus `OPEN` dan D-08 terpenuhi; lainnya 409 `PERFORMANCE_RATING_NOT_ALLOWED`. Input `scores`, `strengths` (≤ 2000), `improvements` (≤ 2000), `note` (≤ 2000). Server menghitung nilai akhir (D-05) dan predikat (D-06) dari **rubrik penilaian itu** (D-20), bukan dari rubrik siklus. Status → `HC_VALIDATION`; audit `performance.review.rated`. D-17: bila pegawai masih punya hak keberatan, saat itu juga masa keberatannya dibuka (`objection_due_on` = tanggal pengiriman + 7 hari) dan ia diberi tahu bahwa nilainya dapat dilihat serta sampai kapan ia dapat mengajukan keberatan. Bila keberatannya sudah terpakai pada siklus ini, `objection_due_on` dikosongkan: haknya habis, jadi tidak ada tanggal yang perlu dibaca siapa pun. Isi notifikasi tetap tanpa nilai dan tanpa predikat.
 
 ### 7.6 Pengesahan dan pengembalian
 
 `performance.manage`; status `HC_VALIDATION`; lainnya 409 `PERFORMANCE_NOT_IN_VALIDATION`. Pengesah adalah pegawai yang dinilai atau penilainya: 403 `PERFORMANCE_SELF_VALIDATION`.
 
-- Sahkan → `FINALIZED` dengan trend (D-16), audit `performance.review.finalized`, notifikasi pegawai.
-- Kembalikan (alasan 10–1000) → `MANAGER_REVIEW`, nilai akhir dan predikat dikosongkan, nilai indikator penilai disimpan sebagai isian awal, audit `performance.review.returned` dengan alasan, notifikasi penilai.
+- Sahkan → `FINALIZED` dengan trend (D-16), audit `performance.review.finalized`, notifikasi pegawai. D-17 menahannya selama keberatan terbuka (409 `PERFORMANCE_OBJECTION_OPEN`) dan selama masa keberatan masih berjalan (409 `PERFORMANCE_OBJECTION_WINDOW_OPEN`).
+- Kembalikan (alasan 10–1000) → `MANAGER_REVIEW`, nilai akhir dan predikat dikosongkan, nilai indikator penilai disimpan sebagai isian awal, audit `performance.review.returned` dengan alasan, notifikasi penilai. Ditolak selama ada keberatan terbuka (409 `PERFORMANCE_OBJECTION_OPEN`): keberatan diputuskan, tidak dilangkahi, dan keberatan yang diterima sendiri yang mengembalikan penilaian.
 
 ### 7.7 Menunjuk penilai
 
@@ -163,7 +172,7 @@ Hanya penilai tersimpan; lainnya 404 (penilaian orang lain tidak dapat dibedakan
 
 ### 7.8 Mengeluarkan peserta
 
-`performance.manage`; siklus `DRAFT`/`OPEN`; status aktif; alasan 5–500 → `REMOVED`, audit `performance.review.removed`. Lainnya 409 `PERFORMANCE_NOT_REMOVABLE`.
+`performance.manage`; siklus `DRAFT`/`OPEN`; status aktif; alasan 5–500 → `REMOVED`, audit `performance.review.removed`. Lainnya 409 `PERFORMANCE_NOT_REMOVABLE`. D-17: keberatan yang masih terbuka ikut dibersihkan, karena kedua keputusan HC mensyaratkan status `HC_VALIDATION` sehingga keberatan pada penilaian yang sudah dikeluarkan tidak akan pernah dapat diputuskan. Keberatan yang sudah diputuskan tidak disentuh: itu riwayat, dan riwayat tetap terbaca pada barisnya. Menambahkan peserta kembali (7.2) juga mengosongkan seluruh kolom keberatan: keberatan itu milik putaran yang dikeluarkan, bukan milik penilaian yang dihidupkan kembali.
 
 ### 7.9 Tanda sudah dibaca
 
@@ -185,6 +194,19 @@ Pemilihan rubrik satu peserta (D-20) berjalan saat pegawai masuk siklus, bukan s
 
 Rekap siklus menampilkan `byRubricVersion`: rubrik apa saja yang dipakai siklus itu dan berapa penilaian masing-masing.
 
+### 7.12 Keberatan pegawai (D-17)
+
+**Mengajukan.** Pegawai pemilik penilaian, siklus `OPEN`, status `HC_VALIDATION`, belum pernah mengajukan, dan hari ini ≤ `objection_due_on`. Input `reason` 10–1000 karakter. Keberatan menjadi `OPEN`; status penilaian tidak berubah; audit `performance.review.objected` **tanpa** alasan. Alasannya disimpan di baris penilaian dan **tidak pernah diberikan kepada penilai**: baik alasan pegawai maupun alasan keputusan HC hanya terbaca oleh pegawai itu sendiri dan oleh HC. Penilai cukup tahu bahwa penilaiannya dikembalikan untuk dinilai ulang. Memberi tahu penilai siapa yang keberatan dan apa isinya adalah undangan untuk pembalasan, dan itulah yang membuat jalur keberatan tidak dipakai orang. Kegagalan: 409 `PERFORMANCE_OBJECTION_ALREADY_RAISED` (sudah pernah), 409 `PERFORMANCE_OBJECTION_NOT_ALLOWED` (belum dinilai atau sudah final), 409 `PERFORMANCE_OBJECTION_WINDOW_CLOSED` (lewat masa).
+
+**Menerima nilai tanpa keberatan.** Precondition sama, tanpa input. Keberatan menjadi `WAIVED`; audit `performance.review.objection_waived`. Ini yang membuat HC tidak perlu menunggu tujuh hari untuk pegawai yang sudah bersikap.
+
+**Memutuskan.** `performance.manage`, siklus `OPEN`, status `HC_VALIDATION`, keberatan `OPEN`; lainnya 409 `PERFORMANCE_OBJECTION_NOT_OPEN`. Pemutus bukan pegawai yang dinilai maupun penilainya: 403 `PERFORMANCE_SELF_VALIDATION` (D-07). Alasan 10–1000 karakter wajib pada kedua keputusan.
+
+- Terima → keberatan `UPHELD`, penilaian kembali ke `MANAGER_REVIEW`, nilai akhir dan predikat dikosongkan, nilai indikator penilai tetap sebagai isian awal; audit `performance.review.objection_upheld` dengan alasan (terbaca HC, tidak terbaca penilai); notifikasi ke pegawai dan ke penilai. Penilai menilai ulang; **tidak ada masa keberatan baru** dan `objection_due_on` tetap kosong, karena hak keberatan pegawai untuk siklus ini sudah terpakai dan sudah didengar. Nilai hasil penilaian ulang itu dapat langsung disahkan HC.
+- Tolak → keberatan `REJECTED`, nilai tetap, penilaian tetap menunggu pengesahan; audit `performance.review.objection_rejected` dengan alasan; notifikasi ke pegawai. Pegawai membaca alasan HC di detail penilaiannya.
+
+Rekap siklus menampilkan `objectionsOpen`, dan tabel penilaian HC dapat disaring `objection=OPEN`. Keduanya hanya menghitung keberatan pada penilaian yang masih `HC_VALIDATION`, yaitu yang benar-benar dapat diputuskan HC.
+
 Kegagalan umum: input tidak valid 400 (`INVALID_PERFORMANCE_REQUEST`), siklus/penilaian tidak ditemukan 404, rubrik tidak valid 400 `PERFORMANCE_RUBRIC_INVALID`, periode tidak valid 400 `PERFORMANCE_PERIOD_INVALID`, akun bukan pegawai aktif 403 `EMPLOYEE_NOT_ACTIVE`, tanpa permission 403 `PERFORMANCE_FORBIDDEN`.
 
 ## 8. Permission
@@ -202,13 +224,13 @@ Migrasi `0121` menambah izin ke role yang sudah ada, jadi rilisnya berdiri sendi
 
 `performance_events` adalah riwayat sekaligus audit event, per siklus dan per penilaian:
 
-`performance.cycle.created`, `performance.cycle.updated`, `performance.cycle.opened`, `performance.cycle.closed`, `performance.cycle.cancelled`, `performance.review.added`, `performance.review.readded`, `performance.review.rater_assigned`, `performance.review.self_submitted`, `performance.review.rated`, `performance.review.rubric_refrozen`, `performance.review.returned`, `performance.review.finalized`, `performance.review.acknowledged`, `performance.review.removed`, `performance.review.unrated`.
+`performance.cycle.created`, `performance.cycle.updated`, `performance.cycle.opened`, `performance.cycle.closed`, `performance.cycle.cancelled`, `performance.review.added`, `performance.review.readded`, `performance.review.rater_assigned`, `performance.review.self_submitted`, `performance.review.rated`, `performance.review.rubric_refrozen`, `performance.review.returned`, `performance.review.objected`, `performance.review.objection_waived`, `performance.review.objection_upheld`, `performance.review.objection_rejected`, `performance.review.finalized`, `performance.review.acknowledged`, `performance.review.removed`, `performance.review.unrated`.
 
 Versi rubrik (D-19) tidak menulis event: tabelnya append-only dan setiap baris memuat pembuat serta waktunya, jadi baris itu sendiri adalah catatan auditnya.
 
 Setiap event memuat aktor, waktu (`clock_timestamp()`), alasan sebagai `note`, dan metadata aman (penilai lama/baru, sumber penilai, predikat, nomor versi rubrik dan kode klasifikasi jabatan yang memilihnya). Nilai per indikator **tidak** disalin ke event; nilai hanya ada di baris penilaian.
 
-Pegawai melihat riwayat penilaiannya sendiri tanpa catatan apa pun dan tanpa event kalibrasi. Penilai melihat event penilaian yang ditugaskan kepadanya, tetapi catatannya hanya alasan pengembalian HC; alasan penunjukan ulang atau pengeluaran tetap hanya untuk HC. Mengeluarkan peserta menghapus nilai akhir dan predikatnya.
+Pegawai melihat riwayat penilaiannya sendiri tanpa catatan apa pun dan tanpa event kalibrasi, ditambah keempat event keberatannya sendiri (D-17). Alasan keberatan dan alasan keputusan HC dibacanya dari detail penilaian, bukan dari catatan event. Penilai melihat bahwa keberatan terjadi dan apa hasilnya, tetapi **tidak pernah** isi alasan pegawai maupun alasan keputusan HC — baik lewat riwayat maupun lewat detail penilaian. Penilai melihat event penilaian yang ditugaskan kepadanya, tetapi catatannya hanya alasan pengembalian HC; alasan penunjukan ulang atau pengeluaran tetap hanya untuk HC. Mengeluarkan peserta menghapus nilai akhir dan predikatnya.
 
 ## 10. Notifikasi (NOTIF-004, kategori `system`)
 
@@ -216,6 +238,8 @@ Pegawai melihat riwayat penilaiannya sendiri tanpa catatan apa pun dan tanpa eve
 - penilaian diri dikirim → penilai;
 - penilai ditunjuk ulang → penilai baru;
 - dikembalikan HC → penilai;
+- nilai penilai dikirim → pegawai, dengan batas masa keberatan (D-17);
+- keberatan diterima → pegawai dan penilai; keberatan ditolak → pegawai (D-17);
 - disahkan → pegawai.
 
 Ditulis dalam transaksi yang sama dengan transisinya. Setiap kejadian memakai `eventKey` sendiri, sehingga pemberitahuan ulang (peserta dimasukkan kembali, penilai ditunjuk ulang, dikembalikan lagi) tidak tertelan oleh kejadian sebelumnya. Isi notifikasi tidak memuat nilai atau predikat.
@@ -243,7 +267,8 @@ performance_cycles                siklus, periode, batas waktu, rubrik cadangan 
                                   saat OPEN) dan nomor versi rubrik yang disalinnya
 performance_reviews               satu baris per pegawai per siklus: penilai + snapshot, rubrik
                                   yang dipakai + nomor versinya, penilaian diri, nilai penilai,
-                                  nilai akhir, predikat, pengesahan, tanda dibaca
+                                  nilai akhir, predikat, keberatan + keputusannya, pengesahan,
+                                  tanda dibaca
 performance_events                riwayat dan audit
 ```
 
@@ -254,6 +279,7 @@ Aturan:
 - `performance_rubric_versions`: `version` unik; `scope IN ('DEFAULT','JOB_GROUP')`; trigger menolak UPDATE dan DELETE (append-only); `CHECK` jumlah bobot payload tepat 100 lewat fungsi `performance_rubric_weight_total(jsonb)`;
 - `performance_rubric_version_jobs`: kunci utama `(rubric_version_id, job_classification_code)`, kode disimpan verbatim tanpa foreign key ke katalog yang bertanggal (ORG-011 §2.6: kode permanen), trigger menolak UPDATE dan DELETE;
 - `performance_cycles.rubric` dan `performance_reviews.rubric` tunduk pada `CHECK` jumlah bobot 100 yang sama;
+- `performance_reviews` keberatan (D-17): `objection_status IN ('OPEN','UPHELD','REJECTED','WAIVED')`; `CHECK` keberatan ada seluruhnya atau tidak ada sama sekali, dan `WAIVED` tanpa alasan; `CHECK` keputusan HC ada tepat ketika statusnya `UPHELD`/`REJECTED`, selalu dengan pemutus dan alasannya. Satu pegawai satu penilaian per siklus, jadi satu keberatan per penilaian sudah berarti satu keberatan per siklus tanpa indeks tambahan;
 - tidak ada kolom persentase atau nominal;
 - tidak ada endpoint hapus, termasuk untuk versi rubrik.
 
@@ -261,26 +287,26 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` di berkas migrasi.
 
 ## 13. API
 
-Pegawai: `GET /performance/me` (halaman), `GET /performance/me/:id`, `POST /performance/me/:id/self-assessment`, `POST /performance/me/:id/acknowledge`.
+Pegawai: `GET /performance/me` (halaman), `GET /performance/me/:id`, `POST /performance/me/:id/self-assessment`, `POST /performance/me/:id/objection`, `POST /performance/me/:id/objection/waive`, `POST /performance/me/:id/acknowledge`.
 
 Penilai: `GET /performance/team` (halaman, filter status), `GET /performance/team/:id`, `POST /performance/team/:id/rating`.
 
 HC rubrik: `GET /admin/performance/rubric-versions` (halaman), `POST /admin/performance/rubric-versions`.
 
-HC: `GET /admin/performance/cycles` (halaman), `POST /admin/performance/cycles`, `GET /admin/performance/cycles/:id` (dengan rekap per status dan predikat), `PATCH /admin/performance/cycles/:id`, `POST /admin/performance/cycles/:id/open`, `POST /admin/performance/cycles/:id/close`, `POST /admin/performance/cycles/:id/cancel`, `POST /admin/performance/cycles/:id/participants`, `GET /admin/performance/cycles/:id/reviews` (halaman; filter status, predikat, tanpa penilai, pegawai, pencarian nama/NIP), `GET /admin/performance/reviews/:id`, `POST /admin/performance/reviews/:id/rater`, `POST /admin/performance/reviews/:id/finalize`, `POST /admin/performance/reviews/:id/return`, `POST /admin/performance/reviews/:id/remove`, `GET /admin/performance/employees/:employeeId/reviews` (halaman).
+HC: `GET /admin/performance/cycles` (halaman), `POST /admin/performance/cycles`, `GET /admin/performance/cycles/:id` (dengan rekap per status dan predikat), `PATCH /admin/performance/cycles/:id`, `POST /admin/performance/cycles/:id/open`, `POST /admin/performance/cycles/:id/close`, `POST /admin/performance/cycles/:id/cancel`, `POST /admin/performance/cycles/:id/participants`, `GET /admin/performance/cycles/:id/reviews` (halaman; filter status, predikat, tanpa penilai, pegawai, pencarian nama/NIP), `GET /admin/performance/reviews/:id`, `POST /admin/performance/reviews/:id/rater`, `POST /admin/performance/reviews/:id/finalize`, `POST /admin/performance/reviews/:id/return`, `POST /admin/performance/reviews/:id/objection/uphold`, `POST /admin/performance/reviews/:id/objection/reject`, `POST /admin/performance/reviews/:id/remove`, `GET /admin/performance/employees/:employeeId/reviews` (halaman).
 
 Kontrak lengkap: `docs/api/performance.openapi.yaml`, tag `Performance`. Semua daftar mengikuti ENG-LIST-001: `page`/`pageSize` default 25 maks 100 dengan `total`; filter dan scope berjalan sebelum `LIMIT`; pemilih pegawai (filter rekap, tambah peserta, tunjuk penilai) memakai pencarian typeahead server.
 
 ## 14. Layar
 
-- Pegawai: `/app/performance` — tab **Penilaian saya** (daftar berhalaman, formulir penilaian diri, hasil setelah disahkan, tanda dibaca) dan tab **Tim saya** (antrean penilaian yang ditugaskan, formulir nilai dengan penilaian diri di sampingnya).
+- Pegawai: `/app/performance` — D-17 menambah tombol **Ajukan keberatan** dan **Terima nilai ini** pada penilaian yang sedang menunggu pengesahan, beserta tanggal akhir masa keberatan; HC mendapat **Terima keberatan** dan **Tolak keberatan** di pop-up detail serta angka keberatan terbuka di rekap siklus. Tab **Penilaian saya** (daftar berhalaman, formulir penilaian diri, hasil setelah disahkan, tanda dibaca) dan tab **Tim saya** (antrean penilaian yang ditugaskan, formulir nilai dengan penilaian diri di sampingnya).
 - HC: `/admin/performance` di Layanan Pegawai admin — daftar siklus (siklus yang dipilih menjadi ruang kerja halaman), buat siklus lewat pop-up (`?siklus=baru`), ubah siklus dan rubrik, tambah peserta (semua pegawai aktif atau typeahead), buka/tutup/batal, rekap per status dan predikat, tabel penilaian berhalaman dengan filter, detail penilaian sebagai pop-up lebar (`?penilaian=<id>`; tautan langsung membuka siklusnya lebih dulu) dengan Sahkan/Kembalikan/Tunjuk penilai/Keluarkan dan riwayat per pegawai (aturan app-shell "Detail views open as a pop-up", 2026-11-13).
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 
 ## 15. Acceptance criteria
 
-- PERF-001-A: pegawai hanya melihat penilaiannya sendiri, hanya dari siklus `OPEN`/`CLOSED`; nilai penilai dan predikat baru terlihat setelah `FINALIZED`.
+- PERF-001-A: pegawai hanya melihat penilaiannya sendiri, hanya dari siklus `OPEN`/`CLOSED`; nilai penilai dan predikat baru terlihat ~~setelah `FINALIZED`~~ **sejak `HC_VALIDATION`** (diubah D-17, 18 Nov 2026), tidak pernah lebih awal.
 - PERF-001-B: penilai disnapshot dari struktur saat pegawai ditambahkan; perubahan atasan sesudahnya tidak memindahkannya; tanpa atasan, penilaian tersimpan tanpa penilai.
 - PERF-001-C: hanya penilai tersimpan yang dapat menilai; penilaian orang lain 404; penilaian sebelum penilaian diri dan sebelum batasnya lewat ditolak.
 - PERF-001-D: nilai akhir dan predikat dihitung server dari rubrik siklus; nilai indikator yang hilang, berlebih, atau di luar 1–4 ditolak.
@@ -293,6 +319,8 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 - PERF-001-K: dua siklus tidak-batal dengan jenis dan periode sama ditolak.
 - PERF-001-L (D-18): siklus `SEMESTER` hanya menerima periode kalender pendidikan (ganjil 1 Juli–31 Desember, genap 1 Januari–30 Juni); periode lain ditolak `PERFORMANCE_PERIOD_INVALID`.
 - PERF-001-M (D-19): versi rubrik dengan jumlah bobot bukan 100 ditolak aturan domain **dan** database; versi tidak dapat diubah atau dihapus; versi bertanggal lebih awal daripada versi terakhir ditolak.
+- PERF-001-P (D-17): penilai tidak pernah membaca alasan keberatan pegawai maupun alasan keputusan HC atas keberatan itu; keberatan pada penilaian yang dikeluarkan tidak lagi terhitung terbuka; peserta yang dimasukkan kembali memulai tanpa jejak keberatan putaran sebelumnya.
+- PERF-001-O (D-17): keberatan hanya dapat diajukan sekali per siklus, hanya saat `HC_VALIDATION`, dan hanya dalam masa keberatan; pengesahan ditolak selama keberatan terbuka maupun selama masa keberatan berjalan; keberatan yang diterima mengembalikan penilaian ke penilai dan mengosongkan predikatnya; pemutus bukan pegawai yang dinilai maupun penilainya; setiap langkah menulis event dengan aktornya.
 - PERF-001-N (D-20): dua peserta dengan klasifikasi jabatan berbeda pada satu siklus dinilai dengan rubrik berbeda; pegawai tanpa klasifikasi memakai rubrik `DEFAULT`; menambah versi rubrik sesudahnya tidak mengubah nilai akhir penilaian yang sudah ada.
 
 ## 15.1 Tindak lanjut yang sudah diketahui (ditunda dari review 18 Nov 2026)
@@ -319,5 +347,6 @@ Empat hal ini sengaja **tidak** dikerjakan bersama D-18/D-19/D-20, dan dicatat d
 | D-19 | Siapa boleh mengubah bobot, dan sejak kapan berlakunya? | HC dengan `performance.manage`, lewat versi baru yang berlaku paling awal pada tanggal berlaku versi terakhir; versi lama tidak pernah diubah |
 | D-20 | Kelompok jabatan apa yang punya rubrik sendiri? | Belum ada selain `DEFAULT`; HC membuatnya sendiri dengan kode klasifikasi jabatan ORG-011. Resolusinya memakai semua klasifikasi yang terikat pada pegawai, termasuk keluarga `SUPPORT` |
 | D-07 | Siapa mengesahkan, dan bagaimana kalibrasi? | HC; kalibrasi = mengembalikan ke penilai |
-| D-09 | Ada banding? | Tidak; pegawai memberi tanggapan |
+| D-09 | Ada banding? | ~~Tidak; pegawai memberi tanggapan~~ → sejak 18 Nov 2026 ada keberatan **sebelum** pengesahan (D-17); tanggapan setelah final tetap ada |
+| D-17 | Berapa lama masa keberatan, dan siapa yang boleh mengubah nilai? | **7 hari** sejak nilai penilai dikirim (usulan owner, dipakai sebagai default). Nilai tetap hanya diubah **penilai**: keberatan yang diterima mengembalikan penilaian kepadanya, HC tidak pernah mengetik nilai pengganti (mengikuti D-07) |
 | §11 | Predikat → persentase tunjangan kinerja? | Diusulkan A 100%, B 90%, C 75%, D 50%; sambungan dibangun, kebijakan `PERFORMANCE_PERCENT` belum dimuat (sakelar mati) |

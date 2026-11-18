@@ -78,6 +78,41 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /performance/me/{id}/objection:
+    post:
+      tags: [Performance]
+      operationId: raisePerformanceObjection
+      summary: D-17 object to the rater's score once, before HC validates it (the review's employee)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Transition' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/me/{id}/objection/waive:
+    post:
+      tags: [Performance]
+      operationId: waivePerformanceObjection
+      summary: D-17 accept the score and close the objection window early (the review's employee)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Transition' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /performance/team:
     get:
       tags: [Performance]
@@ -268,6 +303,7 @@ paths:
                                 version: { type: [integer, 'null'] }
                                 name: { type: [string, 'null'] }
                                 count: { type: integer }
+                          objectionsOpen: { type: integer, description: D-17 objections on this cycle waiting for HC }
                           raterMissing: { type: integer }
                           raterAccountNotReady: { type: integer }
                       events: { type: array, items: { $ref: '#/components/schemas/Event' } }
@@ -461,6 +497,50 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/performance/reviews/{id}/objection/uphold:
+    post:
+      tags: [Performance]
+      operationId: upholdPerformanceObjection
+      summary: D-17 accept the objection; the review goes back to the rater (performance.manage)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Transition' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/performance/reviews/{id}/objection/reject:
+    post:
+      tags: [Performance]
+      operationId: rejectPerformanceObjection
+      summary: D-17 reject the objection with a reason; the score stands (performance.manage)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '200': { $ref: '#/components/responses/Transition' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/performance/reviews/{id}/rater:
     post:
       tags: [Performance]
@@ -571,6 +651,12 @@ components:
         MONTHLY = one calendar month; SEMESTER = one half of the school year (D-18, ganjil
         1 July-31 December, genap 1 January-30 June); ANNUAL = one school year.
       enum: [MONTHLY, SEMESTER, ANNUAL]
+    ObjectionStatus:
+      type: string
+      description: >-
+        D-17 OPEN waits for HC, UPHELD sent the review back to the rater, REJECTED kept the score,
+        WAIVED is the employee accepting it without objecting.
+      enum: [OPEN, UPHELD, REJECTED, WAIVED]
     RubricScope:
       type: string
       description: DEFAULT covers every job; JOB_GROUP covers the ORG-011 classification codes it names (D-20).
@@ -685,6 +771,8 @@ components:
         finalizedAt: { type: [string, 'null'], format: date-time }
         acknowledgedAt: { type: [string, 'null'], format: date-time }
         rubricVersion: { type: [integer, 'null'], description: D-20 rubric version this review is scored against; null means the cycle's own rubric }
+        objectionDueOn: { type: [string, 'null'], format: date, description: D-17 last day the employee may object; null before the rater scored and once the one objection of this cycle has been used }
+        objectionStatus: { anyOf: [{ $ref: '#/components/schemas/ObjectionStatus' }, { type: 'null' }] }
         trend:
           type: [string, 'null']
           enum: [FIRST, IMPROVING, STABLE, DECLINING, null]
@@ -714,7 +802,7 @@ components:
                 note: { type: [string, 'null'] }
             rating:
               type: [object, 'null']
-              description: Null for the employee until FINALIZED
+              description: D-17 null for the employee until HC_VALIDATION, which is what they may object to
               properties:
                 scores: { $ref: '#/components/schemas/Scores' }
                 strengths: { type: [string, 'null'] }
@@ -722,12 +810,24 @@ components:
                 note: { type: [string, 'null'] }
             acknowledgementComment: { type: [string, 'null'] }
             removedReason: { type: [string, 'null'] }
+            objection:
+              type: [object, 'null']
+              description: >-
+                D-17 the employee's objection and what HC decided, null when none was raised. The
+                rater reads status and timestamps only: reason and decisionReason are always null
+                for them, so the person complained about never learns what was written.
+              properties:
+                status: { $ref: '#/components/schemas/ObjectionStatus' }
+                reason: { type: [string, 'null'] }
+                raisedAt: { type: [string, 'null'], format: date-time }
+                decidedAt: { type: [string, 'null'], format: date-time }
+                decisionReason: { type: [string, 'null'] }
             allowedActions:
               type: array
               description: What the caller may do now, decided by the server
               items:
                 type: string
-                enum: [self-assessment, acknowledge, rate, finalize, return, assign-rater, remove]
+                enum: [self-assessment, acknowledge, object, waive-objection, rate, finalize, return, uphold-objection, reject-objection, assign-rater, remove]
             events: { type: array, items: { $ref: '#/components/schemas/Event' } }
   responses:
     ReviewPage:

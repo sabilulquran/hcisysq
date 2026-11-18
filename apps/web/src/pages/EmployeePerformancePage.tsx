@@ -20,10 +20,12 @@ import {
   getMyReviews,
   getTeamReview,
   getTeamReviews,
+  raiseObjection,
   REVIEW_STATUS_LABELS,
   reviewStatusLabel,
   submitRating,
   submitSelfAssessment,
+  waiveObjection,
   type Pagination,
   type ReviewDetail,
   type ReviewStatus,
@@ -123,6 +125,28 @@ export function EmployeePerformancePage() {
     }, review);
   };
 
+  // D-17: one objection per cycle, with a reason, while the score waits for Human Capital.
+  const object = (review: ReviewDetail) => {
+    const reason = window.prompt("Alasan keberatan atas nilai ini (10 sampai 1000 karakter)");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      setError("Alasan keberatan minimal 10 karakter.");
+      return;
+    }
+    void run(async () => {
+      await raiseObjection(review.id, reason.trim());
+      return "Keberatan terkirim. Human Capital memutuskannya sebelum hasil disahkan.";
+    }, review);
+  };
+
+  const waive = (review: ReviewDetail) => {
+    if (!window.confirm("Terima nilai ini tanpa keberatan? Masa keberatan Anda ditutup dan hasilnya dapat disahkan Human Capital.")) return;
+    void run(async () => {
+      await waiveObjection(review.id);
+      return "Nilai diterima tanpa keberatan.";
+    }, review);
+  };
+
   const tabClass = (active: boolean) =>
     `min-h-11 rounded-xl px-4 text-sm font-bold ${active ? "bg-brand-primary text-brand-foreground" : "border border-border text-brand-heading"}`;
 
@@ -210,12 +234,28 @@ export function EmployeePerformancePage() {
                           return `Nilai terkirim: ${formatScore(result.finalScore)} · ${result.predicateLabel}. Menunggu pengesahan Human Capital.`;
                         }, selected)} />
                     ) : null}
-                    actions={selected.allowedActions.includes("acknowledge") ? (
-                      <button type="button" disabled={busy} onClick={() => acknowledge(selected)}
-                        className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                        Tandai sudah dibaca
-                      </button>
-                    ) : null}
+                    actions={
+                      <>
+                        {selected.allowedActions.includes("acknowledge") ? (
+                          <button type="button" disabled={busy} onClick={() => acknowledge(selected)}
+                            className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                            Tandai sudah dibaca
+                          </button>
+                        ) : null}
+                        {selected.allowedActions.includes("object") ? (
+                          <button type="button" disabled={busy} onClick={() => object(selected)}
+                            className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
+                            Ajukan keberatan
+                          </button>
+                        ) : null}
+                        {selected.allowedActions.includes("waive-objection") ? (
+                          <button type="button" disabled={busy} onClick={() => waive(selected)}
+                            className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                            Terima nilai ini
+                          </button>
+                        ) : null}
+                      </>
+                    }
                   />
                   {tab === "team" && selected.status === "SELF_ASSESSMENT" && !selected.allowedActions.includes("rate") ? (
                     <p className="mt-4 text-xs text-muted-foreground">

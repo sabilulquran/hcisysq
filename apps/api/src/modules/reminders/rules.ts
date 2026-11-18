@@ -122,7 +122,8 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
           FROM business_trip_approval_steps step JOIN business_trip_requests request ON request.id = step.request_id
          WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
         UNION ALL
-        SELECT step.approver_employee_id, NULL::uuid
+        -- ORG-013-5: a kasbon step may belong to an Organ Yayasan account, like a leave step.
+        SELECT step.approver_employee_id, step.approver_account_id
           FROM employee_loan_approval_steps step JOIN employee_loans request ON request.id = step.loan_id
          WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
         UNION ALL

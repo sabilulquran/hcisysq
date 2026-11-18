@@ -67,7 +67,7 @@ export interface GovernancePayrollPeriod {
  */
 export async function listGovernancePayrollPeriods(pool: Pool): Promise<GovernancePayrollPeriod[]> {
   const { rows } = await pool.query<GovernancePayrollPeriod>(
-    `SELECT p.id, p.kind, to_char(p.period_month, 'YYYY-MM-DD') AS "periodMonth", p.state,
+    `SELECT p.id, p.period_kind AS kind, to_char(p.period_month, 'YYYY-MM-DD') AS "periodMonth", p.state,
             to_char(p.pay_date, 'YYYY-MM-DD') AS "payDate"
      FROM payroll_periods p
      WHERE p.state = ANY($1::text[])

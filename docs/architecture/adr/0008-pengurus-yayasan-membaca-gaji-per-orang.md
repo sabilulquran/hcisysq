@@ -76,6 +76,14 @@ Baris audit payroll ditulis **sebelum** angkanya dikirim dan tidak ditelan: owne
 
 Migrasi 0180 hanya membuat permission dan role. **Tidak ada akun yang menerimanya**, dan sakelar route-nya mati. Pengurus Yayasan baru benar-benar dapat membaca gaji setelah owner memberikan role itu lewat kanal pemberian role dan sakelarnya dinyalakan.
 
+## Tindak lanjut yang sengaja ditunda
+
+Tiga temuan review independen 2026-11-18 yang **tidak** dikerjakan di PR pembuka ini. Ketiganya dinilai rendah dan tidak terlihat selama hasil payroll di production masih nol, tetapi dicatat di sini supaya tidak hilang bersama PR-nya:
+
+1. **TOCTOU antara state periode dan angkanya.** Daftar periode dibaca lebih dulu, lalu hasilnya dibaca dalam query terpisah. Periode yang pindah state di antara keduanya (misalnya reopen yang disetujui) membuat pembaca organ menerima angka periode yang sedetik lalu masih `APPROVED`. Perbaikannya: baca keduanya dalam satu transaksi, atau periksa ulang state setelah hasil diambil.
+2. **Pembacaan daftar periode dapat lolos tanpa catatan audit.** `audit()` sengaja menelan kegagalan insert agar baris audit tidak pernah mengubah jawaban — benar untuk penolakan, tetapi berarti `GET /governance/payroll/periods` dapat terlayani tanpa jejak. Pembacaan angka per orang tidak punya masalah ini: baris audit payroll-nya tidak ditelan. Perbaikannya: perlakukan audit daftar periode sama tegasnya, atau catat kegagalannya sebagai sinyal operasional.
+3. **Pengelompokan baris O(orang × baris) tanpa paginasi.** `loadGovernancePayrollResults` memfilter seluruh baris slip untuk setiap orang. Pada ratusan pegawai masih murah; pada skala lebih besar ini perlu `Map` per `employmentId` dan paginasi, sejalan dengan utang ENG-LIST-001 yang sudah tercatat untuk route sejenis.
+
 ## Alternatif yang dipertimbangkan
 
 - **Memberi Pengurus `payroll.results.read.organization` yang sudah ada.** Satu kunci lebih sedikit, tetapi kunci itu dibaca guard `/payroll/*` di `/admin` — yang berarti harus membuka `/admin` untuk `FOUNDATION_BOARD`, atau memberi peran itu ke akun pegawai. Keduanya memindahkan batas yang jauh lebih besar daripada keputusan owner. Ditolak.

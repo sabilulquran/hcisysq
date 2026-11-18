@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 
+import Fastify from "fastify";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { ApiConfig } from "../src/config/env.js";
+import { registerGovernancePayrollRoutes } from "../src/modules/governance/payroll-routes.js";
 import {
   GOVERNANCE_PAYROLL_READ_PERMISSION,
   GOVERNANCE_PAYROLL_READER_ROLE_KEY,
@@ -142,6 +145,141 @@ describe.skipIf(!databaseUrl)("ADR-0008 payroll read for Pengurus Yayasan (Postg
     await expect(createRoleAssignment(pool, superAdmin, staff, {
       roleId: readerRoleId, scopeType: "organization", reason: "SK 003/2026", endsOn: "2030-12-31",
     })).rejects.toMatchObject({ code: "ROLE_TARGET_INVALID" });
+  });
+
+  /**
+   * ADR-0008 D-1 and D-2 against real rows: which periods exist is decided by SQL, not by the
+   * handler, so the state filter is tested where it lives. The routes run for real here — only the
+   * token verifier and SQ Hub Application Access are stubbed, because neither is reachable in a test.
+   */
+  describe("periode yang belum disahkan tidak terlihat", () => {
+    const states = ["DRAFT", "COLLECTING", "CALCULATED", "SUBMITTED", "APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+    const periods = new Map<string, string>();
+    let app: Awaited<ReturnType<typeof buildApp>>;
+
+    async function insertPeriod(periodMonth: string, state: string) {
+      const id = randomUUID();
+      await pool.query(
+        // A reopen request only exists while it waits on an answer, so the table demands the state
+        // it would return to (payroll_periods_reopen_state_pairs_with_request).
+        `INSERT INTO payroll_periods(id, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end,
+            state, state_before_reopen_request)
+         VALUES ($1, $2::date, ($2::date + 24), $2::date, (($2::date + interval '1 month')::date - 1),
+                 ($2::date - 9), ($2::date + 21), $3,
+                 CASE WHEN $3 = 'REOPEN_REQUESTED' THEN 'APPROVED' END)`,
+        [id, periodMonth, state],
+      );
+      return id;
+    }
+
+    async function buildApp(accountId: string) {
+      const instance = Fastify();
+      const subject = (await pool.query<{ subject: string }>(
+        "SELECT identity_subject AS subject FROM accounts WHERE id = $1", [accountId],
+      )).rows[0]!.subject;
+      registerGovernancePayrollRoutes(
+        instance,
+        pool,
+        {
+          NODE_ENV: "test", HOST: "127.0.0.1", PORT: 3001, DATABASE_URL: "postgres://adr0008",
+          AUTH_MODE: "local", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8,
+          GOVERNANCE_SUMMARY_ENABLED: "true", GOVERNANCE_PAYROLL_READ_ENABLED: "true",
+        } as ApiConfig,
+        {
+          verifyToken: (async () => ({
+            issuer: "https://login.example.invalid/realms/staff", subject, client: "sq-organ",
+          })) as never,
+          applicationAccess: { isAllowed: async () => true },
+          allowedClients: new Set(["sq-organ"]),
+        },
+      );
+      await instance.ready();
+      return instance;
+    }
+
+    beforeAll(async () => {
+      for (const [index, state] of states.entries()) {
+        periods.set(state, await insertPeriod(`2025-0${index + 1}-01`, state));
+      }
+      const reader = await account({ principalType: "FOUNDATION_BOARD", email: "pembaca-gaji@example.invalid" });
+      await createRoleAssignment(pool, superAdmin, reader, {
+        roleId: readerRoleId, scopeType: "organization",
+        reason: "SK Kepengurusan 005/2026", endsOn: "2030-12-31",
+      });
+      app = await buildApp(reader);
+    }, 60000);
+
+    afterAll(async () => {
+      await app?.close();
+    });
+
+    it("lists the approved periods and no other, newest first", async () => {
+      const response = await app.inject({
+        method: "GET", url: "/governance/payroll/periods", headers: { authorization: "Bearer synthetic" },
+      });
+      expect(response.statusCode).toBe(200);
+      const listed = (response.json().periods as Array<{ id: string; state: string }>);
+      expect(listed.map((period) => period.state))
+        .toEqual(["REOPEN_REQUESTED", "PUBLISHED", "PAYMENT_CONFIRMED", "APPROVED"]);
+      for (const state of ["DRAFT", "COLLECTING", "CALCULATED", "SUBMITTED"]) {
+        expect(listed.some((period) => period.id === periods.get(state)), state).toBe(false);
+      }
+    });
+
+    it("answers 404 for a period that is not approved yet, and 200 for one that is", async () => {
+      for (const state of ["DRAFT", "COLLECTING", "CALCULATED", "SUBMITTED"]) {
+        const response = await app.inject({
+          method: "GET", url: `/governance/payroll/periods/${periods.get(state)}/results`,
+          headers: { authorization: "Bearer synthetic" },
+        });
+        expect(response.statusCode, state).toBe(404);
+        expect(response.json().code, state).toBe("PAYROLL_PERIOD_NOT_FOUND");
+      }
+      // The same shape of answer as an id that does not exist at all: the surface never
+      // distinguishes "not yet approved" from "no such period".
+      const unknown = await app.inject({
+        method: "GET", url: `/governance/payroll/periods/${randomUUID()}/results`,
+        headers: { authorization: "Bearer synthetic" },
+      });
+      expect(unknown.statusCode).toBe(404);
+      expect(unknown.json().code).toBe("PAYROLL_PERIOD_NOT_FOUND");
+
+      for (const state of ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"]) {
+        const response = await app.inject({
+          method: "GET", url: `/governance/payroll/periods/${periods.get(state)}/results`,
+          headers: { authorization: "Bearer synthetic" },
+        });
+        expect(response.statusCode, state).toBe(200);
+        // No result rows were inserted, so the body is empty — the point here is the gate, and
+        // that an approved period is readable at all.
+        expect(response.json().people).toEqual([]);
+      }
+    });
+
+    it("writes one payroll audit row per approved read, and none for a refused one", async () => {
+      const before = (await pool.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM payroll_audit_events WHERE action = 'payroll.report.read'",
+      )).rows[0]!.count;
+
+      await app.inject({
+        method: "GET", url: `/governance/payroll/periods/${periods.get("APPROVED")}/results`,
+        headers: { authorization: "Bearer synthetic" },
+      });
+      await app.inject({
+        method: "GET", url: `/governance/payroll/periods/${periods.get("DRAFT")}/results`,
+        headers: { authorization: "Bearer synthetic" },
+      });
+
+      const rows = await pool.query<{ payload: { scope: string; actor: string } }>(
+        `SELECT payload FROM payroll_audit_events
+         WHERE action = 'payroll.report.read' ORDER BY occurred_at DESC LIMIT 1`,
+      );
+      const after = (await pool.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM payroll_audit_events WHERE action = 'payroll.report.read'",
+      )).rows[0]!.count;
+      expect(after).toBe(before + 1);
+      expect(rows.rows[0]!.payload).toMatchObject({ scope: "governance_period_results", actor: "organ" });
+    });
   });
 
   it("leaves a plain foundation_board_viewer with board.read and nothing else", async () => {

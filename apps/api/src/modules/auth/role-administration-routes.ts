@@ -22,6 +22,7 @@ import {
   type ActorAssertionClaims,
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
+import { GOVERNANCE_PAYROLL_READER_ROLE_KEY } from "./permissions.js";
 import {
   allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, isGovernanceOrganRole,
   removeRoleAssignment,
@@ -498,8 +499,17 @@ export function registerRoleAdministrationRoutes(
   });
 }
 
-/** Roles whose grant needs organization scope and a stated mandate (§2.4 step 7). */
-const MANDATE_REQUIRED = new Set([
+/**
+ * Roles whose grant needs organization scope and a stated mandate (§2.4 step 7). Exported so a
+ * test can pin it against the roles `createRoleAssignment` actually refuses without a reason: the
+ * screen's "reason required" flag and the server's rule drifting apart is how a grant ends in an
+ * error the grantor was never warned about.
+ */
+export const MANDATE_REQUIRED = new Set([
   "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin",
   "governance_leave_approver", "governance_loan_approver",
+  // ADR-0008 D-3: the payroll reader needs the SK number as its reason, exactly as the two organ
+  // approver roles do. Without it here the grant screen would not mark the reason as required and
+  // createRoleAssignment would refuse the grant with ROLE_REASON_REQUIRED.
+  GOVERNANCE_PAYROLL_READER_ROLE_KEY,
 ]);

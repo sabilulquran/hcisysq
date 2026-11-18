@@ -9,7 +9,13 @@ import {
   GOVERNANCE_PAYROLL_READER_ROLE_KEY,
   PAYROLL_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
-import { canDelegateRole, isGovernanceAccountRole, isSeatLinkableRole } from "../src/modules/auth/role-assignment.js";
+import { MANDATE_REQUIRED } from "../src/modules/auth/role-administration-routes.js";
+import {
+  canDelegateRole,
+  GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
+  isGovernanceAccountRole,
+  isSeatLinkableRole,
+} from "../src/modules/auth/role-assignment.js";
 import { registerGovernancePayrollRoutes } from "../src/modules/governance/payroll-routes.js";
 import { PER_PERSON_READER_PERMISSIONS } from "../src/modules/payroll/routes.js";
 
@@ -64,7 +70,7 @@ function buildPool(options: {
     }
     if (sql.includes("FROM payroll_periods p")) {
       return {
-        rows: [{ id: PERIOD, kind: "MONTHLY", periodMonth: "2026-10-01", state: "APPROVED", payDate: "2026-10-25" }],
+        rows: [{ id: PERIOD, kind: "REGULAR", periodMonth: "2026-10-01", state: "APPROVED", payDate: "2026-10-25" }],
       };
     }
     if (sql.includes("payroll_result_lines")) {
@@ -156,7 +162,7 @@ describe("ADR-0008 GET /governance/payroll/*", () => {
 
     expect(periods.statusCode).toBe(200);
     expect(periods.json().periods).toEqual([
-      { id: PERIOD, kind: "MONTHLY", periodMonth: "2026-10-01", state: "APPROVED", payDate: "2026-10-25" },
+      { id: PERIOD, kind: "REGULAR", periodMonth: "2026-10-01", state: "APPROVED", payDate: "2026-10-25" },
     ]);
 
     expect(results.statusCode).toBe(200);
@@ -331,6 +337,13 @@ describe("ADR-0008 D-3 granting the role", () => {
 
   it("never follows a seat: holding Ketua, Sekretaris or Bendahara confers nothing (ORG-013-1 point 3)", () => {
     expect(isSeatLinkableRole(role)).toBe(false);
+  });
+
+  it("is marked as needing a mandate on the grant screen, as the server already demands", () => {
+    // createRoleAssignment refuses this role without a reason (ADR-0008 D-3). If the catalog did
+    // not say so, the SQ Hub screen would leave the reason optional and the grant would fail.
+    expect(MANDATE_REQUIRED.has(GOVERNANCE_PAYROLL_READER_ROLE_KEY)).toBe(true);
+    expect(MANDATE_REQUIRED.has(GOVERNANCE_LEAVE_APPROVER_ROLE_KEY)).toBe(true);
   });
 });
 

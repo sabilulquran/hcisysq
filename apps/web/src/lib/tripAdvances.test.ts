@@ -58,11 +58,11 @@ describe("TRIP-002 client", () => {
     await recordRefund("a1", { paidOn: "2026-11-17", method: "CASH", reference: null, note: null, idempotencyKey: "k3", amount: 500_000 });
     expect(JSON.parse(String(call(fetchMock)[1].body))).toMatchObject({ amount: 500_000, method: "CASH" });
     stubFetch(403, null);
-    await expect(estimateAdvance("t1", "NATIONAL")).rejects.toBeInstanceOf(TripAdvanceApiError);
+    await expect(estimateAdvance("t1", "LUAR_DAERAH")).rejects.toBeInstanceOf(TripAdvanceApiError);
   });
 
   it("builds register filters and the export link", async () => {
-    const fetchMock = stubFetch(200, { items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 1 }, zones: [] });
+    const fetchMock = stubFetch(200, { items: [], pagination: { page: 1, pageSize: 25, total: 0, pageCount: 1 }, wilayahs: [] });
     await getAdminAdvances({ page: 2, status: "DISBURSED", overdue: true });
     expect(call(fetchMock)[0]).toBe("/api/admin/trip-advances?page=2&status=DISBURSED&overdue=true");
     expect(advanceExportHref("2026-11-01", "2026-11-17", "")).toBe("/api/admin/trip-advances/export.csv?from=2026-11-01&to=2026-11-17");

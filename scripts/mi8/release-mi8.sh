@@ -4,6 +4,7 @@
 #
 #   scripts/mi8/release-mi8.sh <phase> --bundle <hcis-SHA8-DATE.tar.gz> --sha <40-hex>
 #                              [--apply --confirm RELEASE_<sha8>]
+#                              [--allow-unmapped-golongan]
 #
 # Phases: preflight upload backup migrate candidate cutover verify rollback all unlock
 #
@@ -27,12 +28,16 @@ BUNDLE=
 SHA=
 APPLY=0
 CONFIRM=
+# TRIP-002 D-20: typed by the operator to cut over with the uang-saku golongan map incomplete.
+# It is recorded in this run's output, which is the release evidence (runbook §8).
+ALLOW_UNMAPPED_GOLONGAN=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bundle) BUNDLE=${2:-}; shift 2 ;;
     --sha) SHA=${2:-}; shift 2 ;;
     --apply) APPLY=1; shift ;;
     --confirm) CONFIRM=${2:-}; shift 2 ;;
+    --allow-unmapped-golongan) ALLOW_UNMAPPED_GOLONGAN=1; shift ;;
     *) usage ;;
   esac
 done
@@ -228,6 +233,93 @@ pending_migrations() {
   PENDING=$(comm -23 <(printf '%s\n' "$BUNDLE_MIGRATIONS") <(printf '%s\n' "$applied") | grep -v '^$' || true)
 }
 
+# ------------------------------------------------- TRIP-002 uang saku gate (D-20)
+
+# Migration 0172 seeds the six decree rates but, deliberately, no golongan mapping: deciding who
+# counts as Pimpinan/Yayasan is the foundation's call, not a migration's guess. Until
+# trip_per_diem_golongan_map covers the classifications in play, EVERY per diem estimate, every new
+# advance and every settlement answers 409 TRIP_PER_DIEM_GOLONGAN_UNMAPPED for EVERY employee. That
+# is a module-wide outage from the minute of cutover, so it is a release-stopping check here rather
+# than a paragraph someone is supposed to remember.
+TRIP_002_MIGRATION=0172_trip_per_diem_decree.sql
+
+trip_002_in_bundle() {
+  grep -qx "$TRIP_002_MIGRATION" <<<"$BUNDLE_MIGRATIONS"
+}
+
+# Before migrate: 0172 refuses to run while DRAFT-zone rates exist (they have no golongan and no
+# one may guess one). Stop here instead of failing halfway through the release.
+trip_002_gate_pre_migrate() {
+  trip_002_in_bundle || return 0
+  grep -qx "$TRIP_002_MIGRATION" <<<"$PENDING" || return 0
+  local rates
+  rates=$(remote_ro <<'EOF' | tr -d '\r'
+as_termux "psql -U postgres -d $DB -Atc \"SELECT count(*) FROM trip_per_diem_rates\""
+EOF
+)
+  [[ "$rates" =~ ^[0-9]+$ ]] || die "could not count trip_per_diem_rates (got: $rates)"
+  [[ "$rates" == 0 ]] || die "trip_per_diem_rates holds $rates DRAFT-zone rate rows; migration $TRIP_002_MIGRATION will abort. Export them and empty the table first (TRIP-002 D-02)."
+  say "trip-002 gate: trip_per_diem_rates is empty, $TRIP_002_MIGRATION may run"
+}
+
+# After migrate, before cutover: the golongan map must cover both the classifications in force
+# today (new advances) and the classifications each LIVE advance resolves on ITS OWN departure
+# date, which may be in the past and may name a classification that has since been closed.
+trip_002_gate_mapped() {
+  trip_002_in_bundle || return 0
+  local report
+  report=$(remote_ro <<'EOF' | tr -d '\r'
+as_termux "psql -U postgres -d $DB -Atc \"
+SELECT 'TODAY ' || classification.code
+  FROM job_classifications classification
+ WHERE classification.active AND classification.effective_from <= current_date
+   AND (classification.effective_to IS NULL OR classification.effective_to >= current_date)
+   AND NOT EXISTS (SELECT 1 FROM trip_per_diem_golongan_map map
+                    WHERE map.job_classification_code = classification.code)
+UNION ALL
+SELECT 'ADVANCE ' || live.id || ' berangkat ' || live.start_on
+  FROM (SELECT advance.id, advance.employee_id, trip.start_on
+          FROM trip_advances advance
+          JOIN business_trip_requests trip ON trip.id = advance.business_trip_id
+         WHERE advance.status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')) live
+ WHERE NOT EXISTS (
+   SELECT 1
+     FROM employments employment
+     JOIN employment_placements placement
+       ON placement.employment_id = employment.id AND placement.voided_by_action_id IS NULL
+      AND placement.effective_from <= live.start_on
+      AND (placement.effective_to IS NULL OR placement.effective_to >= live.start_on)
+     LEFT JOIN LATERAL (
+       SELECT id FROM organization_change_sets
+        WHERE status = 'PUBLISHED' AND effective_on <= live.start_on
+        ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC LIMIT 1
+     ) change_set ON true
+     LEFT JOIN organization_positions position_row
+       ON position_row.change_set_id = change_set.id
+      AND position_row.stable_key = placement.org_position_key AND position_row.active
+      AND position_row.effective_from <= live.start_on
+      AND (position_row.effective_to IS NULL OR position_row.effective_to >= live.start_on)
+     JOIN trip_per_diem_golongan_map map
+       ON map.job_classification_code
+          = COALESCE(placement.job_classification_code, position_row.job_classification_code)
+    WHERE employment.employee_id = live.employee_id AND employment.voided_by_action_id IS NULL
+      AND (employment.started_on IS NULL OR employment.started_on <= live.start_on)
+      AND (employment.ended_on IS NULL OR employment.ended_on >= live.start_on))
+ORDER BY 1\""
+EOF
+)
+  if [[ -z "${report//[[:space:]]/}" ]]; then
+    say "trip-002 gate: golongan map covers every classification in force and every live advance"
+    return 0
+  fi
+  say "TRIP-002 GOLONGAN MAP INCOMPLETE — uang muka dinas will answer 409 for these:"
+  printf '    %s\n' $report
+  say "Fix: HC fills Admin -> Uang Muka Dinas -> \"Golongan uang saku per klasifikasi jabatan\" (TRIP-002 D-20)."
+  [[ "$ALLOW_UNMAPPED_GOLONGAN" == 1 ]] \
+    || die "golongan map incomplete; cutover would break uang muka dinas for everyone. Fill it, or re-run with --allow-unmapped-golongan to accept the outage knowingly."
+  say "OPERATOR OVERRIDE: --allow-unmapped-golongan given; cutting over with uang muka dinas unusable. Record this in the release report and tell Keuangan and HC."
+}
+
 # ---------------------------------------------------------------- release lock
 
 lock_acquire() {
@@ -301,6 +393,7 @@ EOF
   else
     say "pending migrations: none"
   fi
+  trip_002_gate_pre_migrate
   say "preflight OK"
 }
 
@@ -373,6 +466,9 @@ EOF
 }
 
 phase_candidate() {
+  bundle_checks
+  # Runs before cutover and stops the release, exactly like the HTTP checks below.
+  trip_002_gate_mapped
   remote_rw "candidate gate: $NAME API on :$CAND_API_PORT and web on :$CAND_WEB_PORT, then stop both" <<'EOF'
 [ -d "$R$REL/$NAME" ] || fail "$NAME is not uploaded"
 [ "$(running_release node apps/api || true)" != "$NAME" ] || fail "$NAME already serves production"

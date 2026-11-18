@@ -26,6 +26,8 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-010), lalu Package 1 di `domain/employment-administration-package1.md` dan rencana implementasinya.
    - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
    - untuk payroll v1, baca `domain/payroll-legacy-flow-audit.md` (audit alur spreadsheet + keputusan owner), `domain/payroll-calculation-v1.md` (ACCEPTED; parameter bertanda `DRAFT` menunggu konfirmasi), dan `architecture/adr/0003-payroll-calculation-in-hcis.md` (ACCEPTED 2026-10-27).
+   - untuk penjagaan atas honorarium yang dibayar dari kehadiran (honorer/lepas), baca `domain/honorarium-attendance-guard.md` (PAY-004, `DRAFT`, belum boleh diimplementasikan) setelah `domain/payroll-calculation-v1.md` §5.2.
+   - untuk reimbursement pengadaan atas nama yayasan, baca `domain/procurement-reimbursement.md` (REIMB-002, `DRAFT`, belum boleh diimplementasikan) setelah `domain/reimbursement.md` dan `domain/employee-assets.md`.
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
    - untuk akses Panel Organ Yayasan bagi Employee dan governance summary HCIS (wajah Laporan) yang dibaca Portal Organ (SQ-Hub ADR-0012; sebelumnya "Ringkasan Yayasan" di SQ-Hub ADR-0009), baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
    - untuk daftar pegawai yang dilihat Organ Yayasan di portal, baca `domain/organ-employee-list.md` (ORG-014, ACCEPTED).

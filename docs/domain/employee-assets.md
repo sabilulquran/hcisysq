@@ -16,6 +16,8 @@
 
 Semua data diambil saat itu juga dari satu API baca baru di Aset SQ (ASQ-004) lewat adapter di infrastructure layer HCIS. HCIS tidak menyimpan, menyalin, atau mengubah data aset.
 
+Barang yang dibeli pegawai atas nama yayasan lewat reimbursement pengadaan (**REIMB-002**, `docs/domain/procurement-reimbursement.md`, masih `DRAFT`) mengikuti batas yang sama: HCIS hanya menandai barang yang menunggu dicatat dan menautkan ke Aset SQ, tidak pernah menulis data aset.
+
 Tidak perlu ADR baru: batas domainnya sudah diputuskan di Aset SQ ADR-0001 ("HCIS boleh menyediakan entry point Aset Saya dan workflow HR seperti offboarding clearance, tetapi asset facts tetap berasal dari Aset SQ melalui deep-link atau narrow integration contract"), dan polanya (client-credentials Keycloak dengan audience khusus, token diverifikasi dengan JWKS) sudah dipakai di AUTH-013, ORG-010, dan ASQ-003.
 
 ## 2. Bukti kajian (2026-11-02)

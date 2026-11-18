@@ -277,6 +277,7 @@ Catatan v1 (`DRAFT`):
 - Faktor masa kerja awal **tidak berlaku** untuk PKWT: pembayaran sudah mengikuti kehadiran dan jam nyata, sehingga memotong 20% lagi berarti memotong dua kali. Faktor prorata juga tidak berlaku.
 - Komponen gaji pokok, tunjangan, lembur, dan BPJS Kesehatan tidak berlaku untuk PKWT.
 - Seluruh blocker §5.4 yang relevan tetap berlaku: netto/dibayar negatif, kasbon melebihi sisa, rekening kosong, dan input berubah setelah perhitungan terakhir.
+- **Penjagaan atas kehadiran yang bukan pekerjaan** — kehadiran mana yang menjadi uang tanpa keputusan manusia, cara kehadiran dapat ada tanpa pekerjaan di baliknya, dan usulan penjagaannya — dikaji di **PAY-004** (`docs/domain/honorarium-attendance-guard.md`, masih `DRAFT`). Tidak ada perilaku §5.2 yang berubah sampai owner memutuskan.
 
 ### 5.3 PPh21
 

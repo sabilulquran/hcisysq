@@ -78,9 +78,14 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
 
   async function addAccount(employeeId: string | null, email: string, type = "EMPLOYEE") {
     const id = randomUUID();
+    // ORG-013-1: an organ account without an Akun SQ identity is a CONFLICT for the resolver —
+    // it cannot be told apart from an employee — so a seat it holds would never resolve.
     await client.query(
-      "INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1,$2,$3,$4,'active')",
-      [id, employeeId, email, type],
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status, identity_issuer, identity_subject)
+       VALUES ($1,$2,$3,$4,'active',$5,$6)`,
+      [id, employeeId, email, type,
+        type === "FOUNDATION_BOARD" ? "https://akun.example.invalid" : null,
+        type === "FOUNDATION_BOARD" ? `subject-${id}` : null],
     );
     return id;
   }
@@ -284,9 +289,16 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
     expect(response.json().message).not.toContain("belum dikonfigurasi");
   });
 
-  it("M4 (D-19): a requester whose own organ account holds a seat is refused at submission", async () => {
-    // The organ account is the same person: ORG-013-1 butir 5 matches them by e-mail. Without this
-    // the submission passes and then jams — at decision time neither approve nor reject is allowed.
+  it("M4 (D-19): a requester whose own organ account holds a seat cannot submit at all", async () => {
+    // The organ account is the same person, matched by the e-mail rule of ORG-013-1 butir 5 — the
+    // same rule `governanceActorIsRequester` applies at decision time. Submission must not pass:
+    // if it did, the loan would jam, because that decision gate then refuses approve AND reject
+    // and the request would sit in IN_REVIEW with nobody able to act.
+    //
+    // Two gates refuse it, deliberately. ORG-013-1 gets there first: an organ account whose
+    // e-mail matches an active employee is a CONFLICT and the seat does not resolve at all. The
+    // route repeats the check with the decision gate's own predicate, so the two cannot drift
+    // apart. Either refusal is correct; what matters is that nothing is stored.
     const requesterEmail = (await client.query<{ email: string }>(
       "SELECT email FROM employees WHERE id = $1", [employees.requester],
     )).rows[0]!.email;
@@ -294,14 +306,21 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
 
     const response = await submit(1_000_000);
     expect(response.statusCode, response.body).toBe(409);
-    expect(response.json().code).toBe("LOAN_APPROVAL_SEAT_SELF");
+    expect(["LOAN_APPROVAL_SEAT_SELF", "LOAN_APPROVAL_SEAT_UNAVAILABLE"]).toContain(response.json().code);
+    expect(response.json().message).toContain("Ketua Yayasan");
     // APR-001 all-or-nothing: nothing is stored.
     expect((await client.query("SELECT count(*)::int AS n FROM employee_loans WHERE employee_id = $1", [employees.requester]))
       .rows[0].n).toBe(0);
   });
 
   it("D-18: an unmapped seat refuses, names the seat, and stores nothing", async () => {
-    await client.query("DELETE FROM organization_approval_seats WHERE seat_key = 'DIREKTUR'");
+    // The registry is append-and-end only (migration 0168), so the mapping is ended rather than
+    // deleted; ending it before it started means it never applied.
+    await client.query(
+      `UPDATE organization_approval_seats
+          SET effective_to = DATE '2019-12-31', ended_at = now(), end_reason = 'Uji'
+        WHERE seat_key = 'DIREKTUR'`,
+    );
     const response = await submit(1_000_000);
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json().code).toBe("LOAN_APPROVAL_SEAT_UNMAPPED");

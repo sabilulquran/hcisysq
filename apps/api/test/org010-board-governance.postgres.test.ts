@@ -557,8 +557,13 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
         expect((await summary()).decisions).toEqual([expect.objectContaining({ count: 1, oldestAgeDays: 1 })]);
       } finally {
         await pool.query("DELETE FROM leave_requests WHERE id = $1", [leaveRequestId]);
+        // A loan row is never deleted (migration 0122's employee_loans_no_delete). Its steps are
+        // removed so nothing stays pending, and the loan itself is already CANCELLED above.
         await pool.query("DELETE FROM employee_loan_approval_steps WHERE loan_id = $1", [loanId]);
-        await pool.query("DELETE FROM employee_loans WHERE id = $1", [loanId]);
+        await pool.query(
+          "UPDATE employee_loans SET status = 'CANCELLED', cancel_reason = COALESCE(cancel_reason, 'Uji') WHERE id = $1",
+          [loanId],
+        );
         await pool.query("DELETE FROM account_role_assignments WHERE id = ANY($1::uuid[])",
           [[leaveAssignment, loanAssignment]]);
       }

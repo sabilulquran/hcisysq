@@ -58,7 +58,7 @@ describe("TRIP-002 client", () => {
     await recordRefund("a1", { paidOn: "2026-11-17", method: "CASH", reference: null, note: null, idempotencyKey: "k3", amount: 500_000 });
     expect(JSON.parse(String(call(fetchMock)[1].body))).toMatchObject({ amount: 500_000, method: "CASH" });
     stubFetch(403, null);
-    await expect(estimateAdvance("t1", "NATIONAL")).rejects.toBeInstanceOf(TripAdvanceApiError);
+    await expect(estimateAdvance("t1", "LUAR_DAERAH")).rejects.toBeInstanceOf(TripAdvanceApiError);
   });
 
   it("builds register filters and the export link", async () => {

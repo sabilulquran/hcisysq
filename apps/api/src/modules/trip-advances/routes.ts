@@ -1566,7 +1566,7 @@ export async function registerTripAdvanceRoutes(
     return transact(reply, async (client) => {
       // D-02: a version may start in the past only as the first rate of its (golongan, wilayah)
       // pair (the initial fill); afterwards a back-dated row could change the per diem of advances
-      // already submitted. The decree's own six rates were seeded by migration 0168.
+      // already submitted. The decree's own six rates were seeded by migration 0172.
       if (body.data.effectiveFrom < today()) {
         const existing = await client.query(
           `SELECT 1 FROM trip_per_diem_rates WHERE golongan = $1 AND wilayah = $2 LIMIT 1`,

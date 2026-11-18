@@ -2,7 +2,7 @@
 // (SK 01.111/YSQ/VII/2026), settlement against REIMB-001 claims, and the no-double-payment rule.
 // Synthetic employees only; every test runs inside one rolled-back transaction.
 //
-// Migration 0168 seeds the decree's six rates, so the rate table is NOT empty here: Staf earns
+// Migration 0172 seeds the decree's six rates, so the rate table is NOT empty here: Staf earns
 // Rp140.000 Luar Daerah and Rp60.000 Dalam Daerah. LUAR_NEGERI has no rate by design, which is
 // what the "no rate" cases use.
 
@@ -71,7 +71,7 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
   const today = jakartaToday();
   const FINANCE = ["trip_advances.read", "trip_advances.manage", "trip_per_diem.manage", "reimbursements.read", "reimbursements.manage"];
   const HC = ["trip_advances.read", "trip_per_diem.manage"];
-  /** Lampiran 1 SK 01.111/YSQ/VII/2026, the rows migration 0168 seeds. */
+  /** Lampiran 1 SK 01.111/YSQ/VII/2026, the rows migration 0172 seeds. */
   const STAF_LUAR_DAERAH = 140_000;
   let classification: string;
 
@@ -287,7 +287,7 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     const tripId = await insertTrip();
     const estimate = await app.inject({ method: "GET", url: `/trip-advances/me/estimate?tripId=${tripId}&wilayah=LUAR_DAERAH` });
     expect(estimate.statusCode, estimate.body).toBe(200);
-    // D-02/D-20: Staf, Luar Daerah, from the decree seeded by migration 0168.
+    // D-02/D-20: Staf, Luar Daerah, from the decree seeded by migration 0172.
     expect(estimate.json()).toMatchObject({
       days: 3, golongan: "STAF", dailyRate: STAF_LUAR_DAERAH, perDiemEstimate: 3 * STAF_LUAR_DAERAH,
       maxAmount: 10_000_000 + 3 * STAF_LUAR_DAERAH, rateEffectiveFrom: "2026-07-10",

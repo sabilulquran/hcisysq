@@ -40,7 +40,7 @@
 --     DROP COLUMN IF EXISTS organizer_per_diem_declared, DROP COLUMN IF EXISTS per_diem_waive_reason;
 --   ALTER TABLE trip_advances RENAME COLUMN wilayah TO zone;
 --   -- lalu kembalikan CHECK zona lama pada kedua tabel.
---   DELETE FROM schema_migrations WHERE name = '0168_trip_per_diem_decree.sql';
+--   DELETE FROM schema_migrations WHERE name = '0172_trip_per_diem_decree.sql';
 
 -- Tarif lama tidak dapat dipetakan ke golongan: berhenti, jangan menebak.
 DO $$

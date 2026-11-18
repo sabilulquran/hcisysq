@@ -163,6 +163,9 @@ export function EmployeeTripAdvancesPage() {
    * di dalam formulir, bukan dialog konfirmasi yang satu klik salah sudah menutupnya.
    */
   const settle = (advance: AdvanceDetail, organizerPerDiemReceived: boolean) => {
+    // Pertanggungjawaban tidak dapat ditarik kembali: dari SETTLEMENT_SUBMITTED tidak ada jalan
+    // pulang, jadi satu klik tidak boleh memindahkannya ke sana.
+    if (!window.confirm("Ajukan pertanggungjawaban sekarang? Pastikan semua biaya perjalanan sudah diklaim lewat Reimbursement.")) return;
     void run(async () => {
       await submitSettlement(advance.id, null, organizerPerDiemReceived);
       setNotice(organizerPerDiemReceived

@@ -195,6 +195,10 @@ ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_per_diem_golon
 ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_per_diem_golongan_check
   CHECK (per_diem_golongan IS NULL OR (
     per_diem_golongan IN ('PIMPINAN', 'KEPALA_UNIT', 'STAF') AND per_diem_rate_id IS NOT NULL));
+-- BERGANTUNG pada gerbang di awal berkas ini: CHECK berikut hanya lolos untuk baris lama karena
+-- gerbang itu sudah memastikan tabel tarif kosong, sehingga tidak ada uang muka lama yang
+-- per_diem_rate_id-nya terisi tanpa golongan. Melonggarkan gerbang itu kelak akan menjebol CHECK
+-- ini tanpa peringatan; keduanya harus diubah bersama.
 ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_per_diem_golongan_present_check;
 ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_per_diem_golongan_present_check
   CHECK (per_diem_rate_id IS NULL OR per_diem_golongan IS NOT NULL);

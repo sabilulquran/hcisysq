@@ -114,44 +114,42 @@ free space, candidate ports free, biometric gate, the database name in `DATABASE
 configured one, and the list of **pending migrations** (bundle files not in `schema_migrations`).
 It stops first if another operator holds the release lock (§4.10).
 
-#### 4.2.1 Release gate: migration `0172` (TRIP-002 uang saku, SK 01.111/YSQ/VII/2026)
+#### 4.2.1 Release gate: TRIP-002 uang saku (migration `0172`, SK 01.111/YSQ/VII/2026)
 
-Two blocking checks when the bundle contains `0172_trip_per_diem_decree.sql`. Both are read-only
-and both are the operator's, not the migration's.
+Two **release-stopping** checks in the script, not steps anyone has to remember. They run only
+when the bundle carries `0172_trip_per_diem_decree.sql`.
 
-1. **The rate table must be empty.** The migration refuses to run otherwise, because a DRAFT-zone
-   rate row has no golongan and no one may guess one.
+1. **`trip_per_diem_rates` must be empty** — in `preflight`, while `0172` is still pending. A
+   DRAFT-zone rate row has no golongan and no one may guess one, so the migration itself aborts;
+   the gate stops the release before it gets that far. The check is `trip_002_gate_pre_migrate`.
 
-   ```sql
-   SELECT count(*) AS tarif_lama FROM trip_per_diem_rates;  -- must be 0
-   SELECT id, status, zone FROM trip_advances WHERE status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED');
-   ```
+2. **`trip_per_diem_golongan_map` must cover everything in play** — in `candidate`, after
+   `migrate` and before `cutover`, beside the HTTP checks. The check is `trip_002_gate_mapped`,
+   and it covers two populations, because `resolveGolongan` resolves on the **departure date**,
+   not today:
+   - every job classification **in force today** (what new advances will resolve against), and
+   - every **live advance** (`status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')`) resolved on
+     **its own `start_on`** — a classification that was in force when an old trip departed but has
+     since been closed never shows up in the first list, yet its settlement still answers 409.
 
-   The second query is informational: those advances keep running, their zone is mapped to a
-   wilayah deterministically. Record the row counts in the release evidence either way.
+   The screen shows the first list too ("Belum dipetakan: …"), so HC does not need the queries.
 
-2. **`trip_per_diem_golongan_map` must be filled before cutover.** The migration seeds the six
-   decree rates but deliberately seeds **no** mapping: deciding who counts as Pimpinan/Yayasan is
-   the foundation's call, not a migration's guess. Until HC fills it, every per diem estimate and
-   every new advance answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee. So, between
-   `migrate` and `cutover`, HC maps each job classification in force at
-   Admin → Uang Muka Dinas → "Golongan uang saku per klasifikasi jabatan", and the operator
-   confirms nothing is left over:
+Until the map covers them, every per diem estimate, every new advance and every settlement
+answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee: a module-wide outage from the
+minute of cutover. There is therefore no "carry on and tell people afterwards" path in prose. The
+only way past the gate is `--allow-unmapped-golongan`, typed by the operator on the command line,
+which prints the offending list and an `OPERATOR OVERRIDE` line into this run's output — the
+release evidence of §8. Use it only when Keuangan and HC have agreed to the outage beforehand.
 
-   ```sql
-   SELECT classification.code
-     FROM job_classifications classification
-    WHERE classification.active AND classification.effective_from <= current_date
-      AND (classification.effective_to IS NULL OR classification.effective_to >= current_date)
-      AND NOT EXISTS (SELECT 1 FROM trip_per_diem_golongan_map map
-                       WHERE map.job_classification_code = classification.code);
-   -- must return no rows before cutover
-   ```
+Informational, and **pre-migrate only** (after `0172` the column is `wilayah`, not `zone`):
 
-   The same list is shown on the screen itself ("Belum dipetakan: …"), so HC does not need the
-   query. If it cannot be emptied in the release window, cut over anyway only after telling
-   Keuangan and HC that uang muka requests will be refused until it is: nothing else in HCIS is
-   affected, and no money can be computed wrongly in the meantime.
+```sql
+-- How many advances are mid-flight; their zone is mapped to a wilayah deterministically.
+SELECT status, zone, count(*) FROM trip_advances
+ WHERE status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED') GROUP BY 1, 2;
+```
+
+Record its result in the release evidence either way.
 
 ### 4.3 upload
 

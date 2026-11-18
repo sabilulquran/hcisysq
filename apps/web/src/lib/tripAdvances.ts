@@ -275,7 +275,11 @@ export const requestAdvance = (input: { businessTripId: string; wilayah: Wilayah
   post<{ id: string; status: AdvanceStatus }>("/trip-advances/me", input);
 export const cancelMyAdvance = (id: string, reason: string) =>
   post<{ status: AdvanceStatus }>(`/trip-advances/me/${id}/cancel`, { reason });
-export const submitSettlement = (id: string, note: string | null, organizerPerDiemReceived = false) =>
+/**
+ * D-21: `organizerPerDiemReceived` has no default on purpose. It closes the employee's uang saku,
+ * so every caller states it, and no new one can send "sudah menerima" by forgetting an argument.
+ */
+export const submitSettlement = (id: string, note: string | null, organizerPerDiemReceived: boolean) =>
   post<{ status: AdvanceStatus }>(`/trip-advances/me/${id}/settlement`, { note, organizerPerDiemReceived });
 
 // ---------------------------------------------------------------- approver

@@ -240,7 +240,7 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
       ["SEAT_KETUA_YAYASAN"], ["SEAT_BENDAHARA_YAYASAN"], ["SEAT_PEMBINA"],
     ]);
     expect(chain[0]!.employeeId).toBe(employees.unitHead);
-    // The three organ seats are account principals, with no employee id at all (migration 0169).
+    // The three organ seats are account principals, with no employee id at all (migration 0176).
     expect(chain.slice(3).map((step) => [step.employeeId, step.accountId])).toEqual([
       [null, organ.KETUA_YAYASAN], [null, organ.BENDAHARA_YAYASAN], [null, organ.PEMBINA],
     ]);
@@ -314,7 +314,7 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
   });
 
   it("D-18: an unmapped seat refuses, names the seat, and stores nothing", async () => {
-    // The registry is append-and-end only (migration 0168), so the mapping is ended rather than
+    // The registry is append-and-end only (migration 0175), so the mapping is ended rather than
     // deleted; ending it before it started means it never applied.
     await client.query(
       `UPDATE organization_approval_seats

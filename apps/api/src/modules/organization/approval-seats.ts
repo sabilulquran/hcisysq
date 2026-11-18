@@ -1,5 +1,5 @@
 /**
- * LOAN-002 / APR-002: the approval seat registry (migration 0168).
+ * LOAN-002 / APR-002: the approval seat registry (migration 0175).
  *
  * Owner decision 2026-11-18 names a fixed kasbon chain by seat — Kepala Keuangan, Direktur, Ketua
  * Yayasan, Bendahara Yayasan, Pembina. A seat is not a job title: the approval resolver must never
@@ -15,7 +15,7 @@ import type { OrganizationSnapshot } from "./domain.js";
 import { isEffective } from "./jakarta-date.js";
 import type { OrganizationQueryable } from "./repository.js";
 
-/** The closed set. Adding a seat is a migration (0168's CHECK) and a change here, never data. */
+/** The closed set. Adding a seat is a migration (0175's CHECK) and a change here, never data. */
 export const APPROVAL_SEAT_KEYS = [
   "KEPALA_KEUANGAN",
   "DIREKTUR",
@@ -45,7 +45,7 @@ export interface ApprovalSeatMapping {
 }
 
 /**
- * The mappings in force on `date`. One open row per seat is held by the unique index in 0168, so a
+ * The mappings in force on `date`. One open row per seat is held by the unique index in 0175, so a
  * seat appears at most once; a seat with no row in force is simply absent.
  */
 export async function loadApprovalSeatMappings(

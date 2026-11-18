@@ -137,7 +137,7 @@ interface EmployeeContext {
 }
 
 interface ChainStep {
-  /** Exactly one of the two is set (migration 0169's XOR check). */
+  /** Exactly one of the two is set (migration 0176's XOR check). */
   employeeId: string | null;
   accountId: string | null;
   /** The approver's name, or — for an organ account, which has none in HCIS — its seat. */
@@ -235,7 +235,7 @@ interface SeatPlan {
 }
 
 /**
- * LOAN-002: the seats this request's chain needs, looked up in the registry (migration 0168).
+ * LOAN-002: the seats this request's chain needs, looked up in the registry (migration 0175).
  *
  * Only `STRUCTURE` builds them. `LEGACY` is what production runs, and `SHADOW` keeps LEGACY as its
  * authoritative source, so neither may start failing because HC has not mapped a seat yet — under
@@ -307,7 +307,7 @@ function seatFailure(error: unknown, plan: SeatPlan): LoanError | null {
  *
  * Under `LEGACY` that chain is still the direct manager then the unit approver, from the two legacy
  * columns. Under `STRUCTURE` it is the unit approver followed by the fixed seats, and a seat held
- * by an organ account produces an account step (ORG-013-5, migration 0169).
+ * by an organ account produces an account step (ORG-013-5, migration 0176).
  *
  * Every employee approver must be an active employee with an active account; every account
  * approver must be an active Foundation Board account holding `loans.governance.approve`. Holding
@@ -400,11 +400,23 @@ async function resolveApprovalChain(
         throw new LoanError(409, "APPROVER_ACCOUNT_NOT_READY",
           `Akun Organ Yayasan untuk kursi ${seatLabelForSource(step.sources) ?? "persetujuan"} belum siap menyetujui.`);
       }
-      // M4 / D-19: the resolver's self-check only covers employee principals, so a requester who
-      // also holds a separate FOUNDATION_BOARD account in one of the seats used to pass submission
-      // and then jam: at decision time `governanceActorIsRequester` refuses BOTH approve and
-      // reject, leaving the loan stuck in IN_REVIEW with nobody able to act. The same identity
-      // check runs here, where the capability re-check already does, and refuses at submission.
+      // M4 / D-19: the resolver's self-check covers employee principals only. A requester who also
+      // holds a separate FOUNDATION_BOARD account in one of the seats would otherwise pass
+      // submission and then jam: at decision time `governanceActorIsRequester` refuses BOTH
+      // approve and reject, so the loan sits in IN_REVIEW with nobody able to act. This runs the
+      // decision gate's own predicate at submission instead.
+      //
+      // KEEP THIS even though it is unreachable today, and do not remove it as dead code.
+      //
+      // What makes it unreachable is ORG-013-1's CONFLICT rule: an organ account whose e-mail
+      // matches an active employee — exactly the "requester holds the seat" case — never resolves
+      // to an approver at all, so the chain fails earlier. But that is a rule about who may be
+      // *granted* a seat and a role, not an invariant of the resolver. Someone may loosen it later
+      // without knowing anything depends on it, and what it is holding shut here is a loan that
+      // locks permanently with no way out. Two fences for that is proportionate.
+      //
+      // The second reason is drift: this predicate and the decision gate's are the same by
+      // construction, so submission can never start admitting a principal the decision will refuse.
       if (account.isRequester) {
         throw new LoanError(409, "LOAN_APPROVAL_SEAT_SELF",
           `Pemohon menduduki kursi persetujuan ${seatLabelForSource(step.sources) ?? "persetujuan"}, `

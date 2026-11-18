@@ -69,7 +69,7 @@ export interface ResolveLeaveAuthoritiesInput {
   policyChain: AuthorityRequirement;
   /**
    * LOAN-002: required by `UNIT_AND_APPROVAL_SEATS`. The caller looks the seats up in the registry
-   * (migration 0168) and passes them in the owner's order, because the caller is where the amount
+   * (migration 0175) and passes them in the owner's order, because the caller is where the amount
    * is known and the amount decides whether the Pembina seat is on the list.
    */
   approvalSeats?: readonly ApprovalSeatTarget[] | undefined;

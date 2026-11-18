@@ -8,7 +8,7 @@
  * step, so LOAN-001 D-14's separation of duties is untouched.
  *
  * Nothing here reads a job title. Each seat is a key HC mapped to an ORG-004 position stable key
- * in the registry (migration 0168), and the threshold is a dated configuration row (also 0168),
+ * in the registry (migration 0175), and the threshold is a dated configuration row (also 0175),
  * not a constant here — changing it is a row, not a release.
  */
 
@@ -75,7 +75,7 @@ export class LoanApprovalPolicyError extends Error {
 }
 
 /**
- * The Pembina threshold in force on `date` (migration 0168 seeds the DRAFT Rp5.000.000 row).
+ * The Pembina threshold in force on `date` (migration 0175 seeds the DRAFT Rp5.000.000 row).
  * No row at all is a configuration error, not a silent "no threshold": guessing here would either
  * add an approval nobody asked for or drop one the owner required.
  */

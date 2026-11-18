@@ -1,6 +1,6 @@
 /**
  * The semantic rungs an APR-001 chain can carry. The `SEAT_*` ones are LOAN-002's fixed approval
- * seats (migration 0168): Leave never produces them, but the snapshot helpers here are shared with
+ * seats (migration 0175): Leave never produces them, but the snapshot helpers here are shared with
  * the loan routes, so the type has to admit them.
  */
 export type LeaveApprovalSource =

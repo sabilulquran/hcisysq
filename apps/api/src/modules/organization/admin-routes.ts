@@ -739,7 +739,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   /**
-   * LOAN-002 / APR-002: the approval seat registry's readiness (migration 0168). With a fixed
+   * LOAN-002 / APR-002: the approval seat registry's readiness (migration 0175). With a fixed
    * chain one unmapped or vacant seat blocks every kasbon in the institution, so HC needs to see
    * the state of all five seats before anyone is blocked. Read-only: it warns, it never blocks and
    * it never edits a mapping, like the ATT-011 seat warnings it is modelled on.

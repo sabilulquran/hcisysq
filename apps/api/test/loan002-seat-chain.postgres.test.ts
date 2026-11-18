@@ -325,7 +325,9 @@ describe.skipIf(!allowed)("LOAN-002 seat chain under STRUCTURE (PostgreSQL)", ()
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json().code).toBe("LOAN_APPROVAL_SEAT_UNMAPPED");
     expect(response.json().message).toContain("Direktur");
-    expect((await client.query("SELECT count(*)::int AS n FROM employee_loans")).rows[0].n).toBe(0);
+    // Scoped to this requester: other suites share the database and a loan row is never deleted.
+    expect((await client.query("SELECT count(*)::int AS n FROM employee_loans WHERE employee_id = $1", [employees.requester]))
+      .rows[0].n).toBe(0);
   });
 
   it("D-18: a vacant seat refuses, names the seat, and never climbs", async () => {

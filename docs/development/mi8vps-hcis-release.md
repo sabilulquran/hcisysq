@@ -114,6 +114,45 @@ free space, candidate ports free, biometric gate, the database name in `DATABASE
 configured one, and the list of **pending migrations** (bundle files not in `schema_migrations`).
 It stops first if another operator holds the release lock (§4.10).
 
+#### 4.2.1 Release gate: migration `0172` (TRIP-002 uang saku, SK 01.111/YSQ/VII/2026)
+
+Two blocking checks when the bundle contains `0172_trip_per_diem_decree.sql`. Both are read-only
+and both are the operator's, not the migration's.
+
+1. **The rate table must be empty.** The migration refuses to run otherwise, because a DRAFT-zone
+   rate row has no golongan and no one may guess one.
+
+   ```sql
+   SELECT count(*) AS tarif_lama FROM trip_per_diem_rates;  -- must be 0
+   SELECT id, status, zone FROM trip_advances WHERE status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED');
+   ```
+
+   The second query is informational: those advances keep running, their zone is mapped to a
+   wilayah deterministically. Record the row counts in the release evidence either way.
+
+2. **`trip_per_diem_golongan_map` must be filled before cutover.** The migration seeds the six
+   decree rates but deliberately seeds **no** mapping: deciding who counts as Pimpinan/Yayasan is
+   the foundation's call, not a migration's guess. Until HC fills it, every per diem estimate and
+   every new advance answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee. So, between
+   `migrate` and `cutover`, HC maps each job classification in force at
+   Admin → Uang Muka Dinas → "Golongan uang saku per klasifikasi jabatan", and the operator
+   confirms nothing is left over:
+
+   ```sql
+   SELECT classification.code
+     FROM job_classifications classification
+    WHERE classification.active AND classification.effective_from <= current_date
+      AND (classification.effective_to IS NULL OR classification.effective_to >= current_date)
+      AND NOT EXISTS (SELECT 1 FROM trip_per_diem_golongan_map map
+                       WHERE map.job_classification_code = classification.code);
+   -- must return no rows before cutover
+   ```
+
+   The same list is shown on the screen itself ("Belum dipetakan: …"), so HC does not need the
+   query. If it cannot be emptied in the release window, cut over anyway only after telling
+   Keuangan and HC that uang muka requests will be refused until it is: nothing else in HCIS is
+   affected, and no money can be computed wrongly in the meantime.
+
 ### 4.3 upload
 
 `scp` the bundle to `mi8vps:/tmp/`, then as root: verify sha256, extract into

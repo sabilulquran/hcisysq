@@ -51,6 +51,8 @@ export function EmployeeTripAdvancesPage() {
   const [form, setForm] = useState({ tripId: "", wilayah: "LUAR_DAERAH" as WilayahKey, amount: "", perDiemOnly: false, purpose: "" });
   const [estimate, setEstimate] = useState<AdvanceEstimate | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  // D-21: reset setiap kali pop-up uang muka lain dibuka, supaya pernyataan tidak terbawa.
+  const [organizerReceived, setOrganizerReceived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,8 @@ export function EmployeeTripAdvancesPage() {
 
   useEffect(() => {
     setSelected(null);
+    // D-21: the declaration belongs to one advance; it never carries to the next one opened.
+    setOrganizerReceived(false);
     if (param === NEW_ADVANCE) {
       setForm({ tripId: "", wilayah: "LUAR_DAERAH", amount: "", perDiemOnly: false, purpose: "" });
       setEstimate(null);
@@ -153,17 +157,18 @@ export function EmployeeTripAdvancesPage() {
     }, "Pengajuan tidak dapat dibatalkan.");
   };
 
-  const settle = (advance: AdvanceDetail) => {
-    if (!window.confirm("Ajukan pertanggungjawaban sekarang? Pastikan semua biaya perjalanan sudah diklaim lewat Reimbursement.")) return;
-    // D-21 (Diktum Keempat SK 01.111/YSQ/VII/2026): uang saku tidak dibayar dua kali.
-    const organizerPerDiemReceived = window.confirm(
-      "Apakah Anda sudah menerima uang saku dari penyelenggara atau pihak lain untuk penugasan ini?\n\nOK = sudah menerima (uang harian tidak dibayar lagi). Batal = belum menerima.",
-    );
+  /**
+   * D-21 (Diktum Keempat SK 01.111/YSQ/VII/2026): uang saku tidak dibayar dua kali. Pernyataan ini
+   * menghapus uang harian pegawai, jadi dikumpulkan sebagai centang yang harus sengaja dicentang
+   * di dalam formulir, bukan dialog konfirmasi yang satu klik salah sudah menutupnya.
+   */
+  const settle = (advance: AdvanceDetail, organizerPerDiemReceived: boolean) => {
     void run(async () => {
       await submitSettlement(advance.id, null, organizerPerDiemReceived);
       setNotice(organizerPerDiemReceived
-        ? "Pertanggungjawaban diajukan dengan pernyataan uang saku sudah diterima dari penyelenggara."
+        ? "Pertanggungjawaban diajukan dengan pernyataan uang saku sudah diterima dari penyelenggara. Hubungi Keuangan bila itu keliru, sebelum pertanggungjawaban diselesaikan."
         : "Pertanggungjawaban diajukan. Keuangan akan menghitung uang harian dan klaim Anda.");
+      setOrganizerReceived(false);
       await Promise.all([loadList(), getMyAdvance(advance.id).then(setSelected)]);
     }, "Pertanggungjawaban tidak dapat diajukan.");
   };
@@ -303,7 +308,20 @@ export function EmployeeTripAdvancesPage() {
                           className="inline-flex min-h-11 items-center rounded-xl border border-border px-3 text-sm font-bold text-brand-heading">
                           Klaim biaya di Reimbursement
                         </a>
-                        <button type="button" disabled={busy} onClick={() => settle(selected)}
+                        <label className="flex w-full items-start gap-2 rounded-2xl border border-border/70 bg-surface p-3 text-sm text-foreground">
+                          <input type="checkbox" className="mt-0.5" checked={organizerReceived}
+                            onChange={(event) => setOrganizerReceived(event.target.checked)} />
+                          <span>
+                            Saya sudah menerima uang saku dari penyelenggara atau pihak lain untuk penugasan ini.
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              Centang hanya bila benar. Menurut Diktum Keempat SK 01.111/YSQ/VII/2026 uang saku tidak
+                              dibayar dua kali, jadi uang harian Anda tidak akan dibayarkan. Biaya yang Anda keluarkan
+                              tetap diklaim lewat Reimbursement. Bila tercentang keliru, hubungi Keuangan sebelum
+                              pertanggungjawaban diselesaikan.
+                            </span>
+                          </span>
+                        </label>
+                        <button type="button" disabled={busy} onClick={() => settle(selected, organizerReceived)}
                           className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
                           Ajukan pertanggungjawaban
                         </button>

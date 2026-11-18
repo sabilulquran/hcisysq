@@ -14,8 +14,11 @@ info:
 
     Per diem (uang saku, SK 01.111/YSQ/VII/2026): days x the versioned rate of the employee's
     golongan and the advance's wilayah, effective on the departure date.
-    The rate table starts empty; a settlement that counts per diem days without a rate is refused
-    with 409 TRIP_PER_DIEM_RATE_MISSING.
+    Migration 0172 seeds the decree's six rates (golongan x wilayah, effective 2026-07-10);
+    LUAR_NEGERI has none, so a settlement that counts per diem days without a rate is refused with
+    409 TRIP_PER_DIEM_RATE_MISSING. The golongan comes from the ORG-011 job classification map,
+    never from a job title; an unmapped classification is refused with 409
+    TRIP_PER_DIEM_GOLONGAN_UNMAPPED, and the map must be filled before release.
 
     Settlement: Finance counts the employee's VERIFIED REIMB-001 claims linked to the trip (each
     becomes PAID with method ADVANCE) plus the per diem, minus the advance. A positive balance is
@@ -111,6 +114,8 @@ paths:
                 type: object
                 properties:
                   days: { type: integer }
+                  golongan: { $ref: '#/components/schemas/GolonganKey' }
+                  golonganLabel: { type: string }
                   dailyRate: { type: [integer, 'null'] }
                   rateEffectiveFrom: { type: [string, 'null'], format: date }
                   perDiemEstimate: { type: integer }
@@ -156,7 +161,17 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { type: object, properties: { note: { type: [string, 'null'], maxLength: 1000 } } }
+            schema:
+              type: object
+              properties:
+                note: { type: [string, 'null'], maxLength: 1000 }
+                organizerPerDiemReceived:
+                  type: boolean
+                  default: false
+                  description: >-
+                    D-21 (Diktum Keempat): the employee declares that uang saku for this assignment
+                    was already paid by the organiser or another party. True closes the per diem
+                    entirely; Finance may still correct it at settlement with a written reason.
       responses:
         '200': { $ref: '#/components/responses/StatusChanged' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -291,6 +306,21 @@ paths:
               properties:
                 perDiemDays: { type: integer, minimum: 0, maximum: 30 }
                 note: { type: [string, 'null'], maxLength: 500, description: Required (10+) when days are below the trip's days }
+                organizerPerDiemPaid:
+                  type: boolean
+                  description: >-
+                    D-21. Omitted keeps the employee's own declaration. Setting it to a different
+                    value than the employee declared is a correction and requires
+                    organizerOverrideReason. True forbids per diem days above 0
+                    (409 TRIP_PER_DIEM_NOT_PAYABLE_TWICE).
+                waiveReason:
+                  type: [string, 'null']
+                  maxLength: 500
+                  description: Why the per diem is withheld; required (10+) when it is withheld.
+                organizerOverrideReason:
+                  type: [string, 'null']
+                  maxLength: 500
+                  description: Required (10+) when organizerPerDiemPaid differs from the employee's declaration.
                 idempotencyKey: { type: string, format: uuid }
       responses:
         '200':
@@ -478,6 +508,15 @@ components:
         - type: object
           properties:
             perDiemDays: { type: [integer, 'null'] }
+            perDiemGolonganLabel: { type: [string, 'null'] }
+            organizerPerDiemDeclared: { type: boolean, description: The employee's own D-21 declaration }
+            organizerPerDiemApplied: { type: boolean, description: What the settlement acted on }
+            organizerPerDiemSource:
+              type: [string, 'null']
+              enum: [EMPLOYEE, FINANCE, null]
+              description: Whose statement the settlement acted on; null before settlement
+            organizerPerDiemOverrideReason: { type: [string, 'null'], description: Finance's reason when it corrected the declaration }
+            perDiemWaiveReason: { type: [string, 'null'] }
             perDiemRate: { type: [integer, 'null'] }
             perDiemAmount: { type: [integer, 'null'] }
             claimsTotal: { type: [integer, 'null'] }
@@ -492,6 +531,9 @@ components:
               properties:
                 maxPerDiemDays: { type: integer }
                 tripDays: { type: integer }
+                golongan: { type: [string, 'null'], enum: [PIMPINAN, KEPALA_UNIT, STAF, null] }
+                golonganLabel: { type: [string, 'null'] }
+                classificationCodes: { type: array, items: { type: string } }
                 dailyRate: { type: [integer, 'null'] }
                 rateEffectiveFrom: { type: [string, 'null'], format: date }
                 verifiedClaims: { type: integer }

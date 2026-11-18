@@ -104,7 +104,12 @@ export interface AdvanceDetail extends AdvanceSummary {
   settlementNote: string | null;
   perDiemDays: number | null;
   perDiemGolonganLabel: string | null;
+  /** D-21: the employee's own declaration, never written by Finance. */
   organizerPerDiemDeclared: boolean;
+  /** What the settlement acted on, and whose statement that was. */
+  organizerPerDiemApplied: boolean;
+  organizerPerDiemSource: "EMPLOYEE" | "FINANCE" | null;
+  organizerPerDiemOverrideReason: string | null;
   perDiemWaiveReason: string | null;
   perDiemRate: number | null;
   perDiemAmount: number | null;
@@ -297,7 +302,8 @@ export const rejectAdvance = (id: string, reason: string) =>
 export const disburseAdvance = (id: string, input: TransactionInput) =>
   post<{ status: AdvanceStatus; amount: number }>(`/admin/trip-advances/${id}/disburse`, input);
 export const settleAdvance = (id: string, input: {
-  perDiemDays: number; note: string | null; organizerPerDiemPaid?: boolean; waiveReason?: string | null; idempotencyKey: string;
+  perDiemDays: number; note: string | null; organizerPerDiemPaid?: boolean; waiveReason?: string | null;
+  organizerOverrideReason?: string | null; idempotencyKey: string;
 }) =>
   post<{ status: AdvanceStatus; perDiemAmount: number; claimsTotal: number; settlementBalance: number }>(`/admin/trip-advances/${id}/settle`, input);
 /** Never carries an amount: the API pays the settlement balance. */

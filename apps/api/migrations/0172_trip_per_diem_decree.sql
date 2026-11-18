@@ -37,7 +37,9 @@
 --   ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_organizer_per_diem_check;
 --   ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_waive_reason_check;
 --   ALTER TABLE trip_advances DROP COLUMN IF EXISTS per_diem_golongan,
---     DROP COLUMN IF EXISTS organizer_per_diem_declared, DROP COLUMN IF EXISTS per_diem_waive_reason;
+--     DROP COLUMN IF EXISTS organizer_per_diem_declared, DROP COLUMN IF EXISTS organizer_per_diem_applied,
+--     DROP COLUMN IF EXISTS organizer_per_diem_source, DROP COLUMN IF EXISTS organizer_per_diem_override_reason,
+--     DROP COLUMN IF EXISTS per_diem_waive_reason;
 --   ALTER TABLE trip_advances RENAME COLUMN wilayah TO zone;
 --   -- lalu kembalikan CHECK zona lama pada kedua tabel.
 --   DELETE FROM schema_migrations WHERE name = '0172_trip_per_diem_decree.sql';
@@ -197,14 +199,42 @@ ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_per_diem_golon
 ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_per_diem_golongan_present_check
   CHECK (per_diem_rate_id IS NULL OR per_diem_golongan IS NOT NULL);
 
--- D-21 (Diktum Keempat): uang saku tidak dibayar dua kali. Pegawai menyatakannya saat mengajukan
--- pertanggungjawaban, Keuangan dapat menandainya saat menyelesaikan; keduanya menutup uang harian.
+-- D-21 (Diktum Keempat): uang saku tidak dibayar dua kali.
+--
+-- Tiga fakta yang berbeda, tiga kolom yang berbeda. Siapa yang menyatakan adalah fakta audit,
+-- bukan detail tampilan: pernyataan pegawai tidak boleh ditulisi Keuangan.
+--
+--   organizer_per_diem_declared       pernyataan PEGAWAI saat mengajukan pertanggungjawaban
+--   organizer_per_diem_applied        yang akhirnya dipakai penyelesaian (menutup uang harian)
+--   organizer_per_diem_source         siapa yang menyatakan nilai yang dipakai itu
+--   organizer_per_diem_override_reason  alasan Keuangan bila menimpa pernyataan pegawai
 ALTER TABLE trip_advances ADD COLUMN IF NOT EXISTS organizer_per_diem_declared boolean NOT NULL DEFAULT false;
+ALTER TABLE trip_advances ADD COLUMN IF NOT EXISTS organizer_per_diem_applied boolean NOT NULL DEFAULT false;
+ALTER TABLE trip_advances ADD COLUMN IF NOT EXISTS organizer_per_diem_source text;
+ALTER TABLE trip_advances ADD COLUMN IF NOT EXISTS organizer_per_diem_override_reason text;
 ALTER TABLE trip_advances ADD COLUMN IF NOT EXISTS per_diem_waive_reason text;
 ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_waive_reason_check;
 ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_waive_reason_check
   CHECK (per_diem_waive_reason IS NULL OR (
     settled_at IS NOT NULL AND char_length(per_diem_waive_reason) BETWEEN 10 AND 500));
+-- Uang harian yang ditutup berarti nol hari, apa pun sumber pernyataannya.
 ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_organizer_per_diem_check;
 ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_organizer_per_diem_check
-  CHECK (NOT organizer_per_diem_declared OR per_diem_days IS NULL OR per_diem_days = 0);
+  CHECK (NOT organizer_per_diem_applied OR per_diem_days IS NULL OR per_diem_days = 0);
+-- Sumber hanya ada setelah penyelesaian. Tidak dipaksa ada: uang muka yang diselesaikan sebelum
+-- D-21 ada tidak punya pernyataan siapa pun, dan mengarang atribusinya justru yang dihindari.
+ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_organizer_source_check;
+ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_organizer_source_check
+  CHECK (organizer_per_diem_source IS NULL
+         OR (settled_at IS NOT NULL AND organizer_per_diem_source IN ('EMPLOYEE', 'FINANCE')));
+-- Koreksi Keuangan atas pernyataan pegawai selalu beralasan tertulis, dan hanya ada bila memang
+-- berbeda dari pernyataan pegawai.
+ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_organizer_override_check;
+ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_organizer_override_check
+  CHECK (organizer_per_diem_override_reason IS NULL OR (
+    settled_at IS NOT NULL AND organizer_per_diem_applied <> organizer_per_diem_declared
+    AND char_length(organizer_per_diem_override_reason) BETWEEN 10 AND 500));
+ALTER TABLE trip_advances DROP CONSTRAINT IF EXISTS trip_advances_organizer_override_required_check;
+ALTER TABLE trip_advances ADD CONSTRAINT trip_advances_organizer_override_required_check
+  CHECK (settled_at IS NULL OR organizer_per_diem_applied = organizer_per_diem_declared
+         OR organizer_per_diem_override_reason IS NOT NULL);

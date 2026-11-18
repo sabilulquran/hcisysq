@@ -583,11 +583,15 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     expect(submitted.json().organizerPerDiemReceived).toBe(true);
 
     const detail = await finance("GET", `/admin/trip-advances/${id}`);
-    expect(detail.json().organizerPerDiemDeclared).toBe(true);
+    expect(detail.json()).toMatchObject({ organizerPerDiemDeclared: true, organizerPerDiemApplied: false, organizerPerDiemSource: null });
 
     // Diktum Keempat: no per diem days may be counted at all.
     expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 3, idempotencyKey: randomUUID() })).json().code)
       .toBe("TRIP_PER_DIEM_NOT_PAYABLE_TWICE");
+    // Correcting the employee's declaration is allowed, but never silently.
+    expect((await finance("POST", `/admin/trip-advances/${id}/settle`, {
+      perDiemDays: 3, organizerPerDiemPaid: false, idempotencyKey: randomUUID(),
+    })).statusCode).toBe(400);
     // Withholding it is recorded in words.
     expect((await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 0, idempotencyKey: randomUUID() })).statusCode).toBe(400);
     const settled = await finance("POST", `/admin/trip-advances/${id}/settle`, {
@@ -599,9 +603,62 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
     const after = await finance("GET", `/admin/trip-advances/${id}`);
     expect(after.json()).toMatchObject({
       perDiemAmount: 0, perDiemGolonganLabel: null,
+      organizerPerDiemDeclared: true, organizerPerDiemApplied: true, organizerPerDiemSource: "EMPLOYEE",
+      organizerPerDiemOverrideReason: null,
       perDiemWaiveReason: "Uang saku sudah diterima dari penyelenggara kegiatan.",
     });
     await checkMoneyInvariants();
+  });
+
+  it("TRIP-002-M: Finance may correct a mistaken declaration, with the reason and the source recorded", async () => {
+    const tripId = await insertTrip("APPROVED", daysBefore(today, 3), daysBefore(today, 1));
+    const id = await approvedAdvance(tripId, 0);
+    actAs("requester");
+    // The employee ticked the box by mistake; without a way back the uang saku would be gone.
+    expect((await app.inject({
+      method: "POST", url: `/trip-advances/me/${id}/settlement`, payload: { organizerPerDiemReceived: true },
+    })).statusCode).toBe(200);
+
+    const corrected = await finance("POST", `/admin/trip-advances/${id}/settle`, {
+      perDiemDays: 3, organizerPerDiemPaid: false,
+      organizerOverrideReason: "Pegawai keliru mencentang; panitia tidak memberi uang saku.",
+      idempotencyKey: randomUUID(),
+    });
+    expect(corrected.statusCode, corrected.body).toBe(200);
+    expect(corrected.json()).toMatchObject({ status: "AWAITING_TOP_UP", perDiemAmount: 3 * STAF_LUAR_DAERAH });
+
+    const after = await finance("GET", `/admin/trip-advances/${id}`);
+    expect(after.json()).toMatchObject({
+      // The employee's own statement is kept as it was: it is an audit fact, not a display detail.
+      organizerPerDiemDeclared: true,
+      organizerPerDiemApplied: false,
+      organizerPerDiemSource: "FINANCE",
+      organizerPerDiemOverrideReason: "Pegawai keliru mencentang; panitia tidak memberi uang saku.",
+    });
+    await checkMoneyInvariants();
+  });
+
+  it("TRIP-002-M: remapping a golongan after settlement does not move the recorded numbers", async () => {
+    const tripId = await insertTrip("APPROVED", daysBefore(today, 3), daysBefore(today, 1));
+    const id = await approvedAdvance(tripId, 0);
+    actAs("requester");
+    expect((await app.inject({ method: "POST", url: `/trip-advances/me/${id}/settlement`, payload: {} })).statusCode).toBe(200);
+    const settled = await finance("POST", `/admin/trip-advances/${id}/settle`, { perDiemDays: 3, idempotencyKey: randomUUID() });
+    expect(settled.json()).toMatchObject({ perDiemAmount: 3 * STAF_LUAR_DAERAH, status: "AWAITING_TOP_UP" });
+
+    // HC remaps the classification to a dearer golongan afterwards.
+    expect((await mapGolongan(classification, "PIMPINAN")).statusCode).toBe(200);
+    const reread = await finance("GET", `/admin/trip-advances/${id}`);
+    expect(reread.json()).toMatchObject({
+      perDiemRate: STAF_LUAR_DAERAH,
+      perDiemAmount: 3 * STAF_LUAR_DAERAH,
+      perDiemGolonganLabel: "Staf",
+      settlementBalance: 3 * STAF_LUAR_DAERAH,
+    });
+    const stored = await client.query<{ perDiemGolongan: string }>(
+      `SELECT per_diem_golongan AS "perDiemGolongan" FROM trip_advances WHERE id = $1`, [id],
+    );
+    expect(stored.rows[0]!.perDiemGolongan).toBe("STAF");
   });
 
   it("TRIP-002-J: the database refuses money that does not add up and history that changes", async () => {

@@ -113,6 +113,8 @@ const settleBody = z.object({
   // with a written reason (10-500) of its own.
   organizerPerDiemPaid: z.boolean().optional(),
   waiveReason: z.string().trim().max(500).nullable().optional(),
+  // D-21: correcting the employee's own declaration is allowed, never silently.
+  organizerOverrideReason: z.string().trim().max(500).nullable().optional(),
   idempotencyKey: z.string().uuid(),
 });
 const rateBody = z.object({
@@ -293,8 +295,8 @@ function golonganMissing(codes: string[]): TripAdvanceError {
     409,
     "TRIP_PER_DIEM_GOLONGAN_UNMAPPED",
     codes.length === 0
-      ? "Pegawai ini belum punya klasifikasi jabatan yang berlaku pada tanggal berangkat, sehingga golongan uang saku tidak dapat ditentukan. Minta HC melengkapi penempatan pegawai."
-      : `Klasifikasi jabatan ${codes.join(", ")} belum dipetakan ke golongan uang saku. Minta HC memetakannya di halaman Uang Muka Dinas.`,
+      ? "Pegawai ini belum punya klasifikasi jabatan yang berlaku pada tanggal berangkat, sehingga golongan uang saku tidak dapat ditentukan. Minta HC melengkapi penempatan pegawai (klasifikasi jabatan ORG-011) di Data Pegawai."
+      : `Klasifikasi jabatan ${codes.join(", ")} belum dipetakan ke golongan uang saku SK 01.111/YSQ/VII/2026. Minta HC mengisinya di Admin \u2192 Uang Muka Dinas \u2192 "Golongan uang saku per klasifikasi jabatan".`,
   );
 }
 
@@ -398,6 +400,9 @@ async function loadAdvanceDetail(db: Queryable, id: string, ownerEmployeeId: str
             advance.per_diem_amount::text AS "perDiemAmount", advance.claims_total::text AS "claimsTotal",
             advance.settlement_finance_note AS "settlementFinanceNote", advance.settled_at AS "settledAt",
             advance.per_diem_golongan AS "perDiemGolongan", advance.organizer_per_diem_declared AS "organizerPerDiemDeclared",
+            advance.organizer_per_diem_applied AS "organizerPerDiemApplied",
+            advance.organizer_per_diem_source AS "organizerPerDiemSource",
+            advance.organizer_per_diem_override_reason AS "organizerPerDiemOverrideReason",
             advance.per_diem_waive_reason AS "perDiemWaiveReason",
             advance.closed_at AS "closedAt", advance.rejected_by AS "rejectedBy", advance.reject_reason AS "rejectReason",
             advance.cancel_reason AS "cancelReason"
@@ -1342,7 +1347,20 @@ export async function registerTripAdvanceRoutes(
       const verified = claims.rows.map((claim) => ({ id: claim.id, total: toRupiah(claim.verifiedTotal!) }));
       const maxDays = maxPerDiemDays(trip);
       // D-21: the employee's declaration or Finance's own flag closes the per diem entirely.
-      const organizerPaid = advance.organizerPerDiemDeclared || body.data.organizerPerDiemPaid === true;
+      // D-21: the employee's declaration stands unless Finance states otherwise. Finance may
+      // correct it in either direction, and a correction always carries a written reason, because
+      // a declaration made by mistake would otherwise cost the employee their uang saku for good.
+      const declared = advance.organizerPerDiemDeclared;
+      const organizerPaid = body.data.organizerPerDiemPaid === undefined ? declared : body.data.organizerPerDiemPaid;
+      const overrideReason = body.data.organizerOverrideReason?.trim() || null;
+      if (organizerPaid !== declared && (!overrideReason || [...overrideReason].length < 10)) {
+        throw new TripAdvanceError(
+          400, "INVALID_TRIP_ADVANCE_SETTLEMENT",
+          declared
+            ? "Tulis alasan (minimal 10 karakter) saat mengoreksi pernyataan pegawai bahwa uang saku sudah diterima dari penyelenggara."
+            : "Tulis alasan (minimal 10 karakter) saat menetapkan bahwa uang saku sudah diterima dari penyelenggara.",
+        );
+      }
       // D-20: the golongan of the departure date decides the rate; an unmapped classification
       // refuses the settlement rather than paying the cheapest tier.
       const resolved = body.data.perDiemDays > 0 ? await resolveGolongan(client, advance.employeeId, trip.startOn) : null;
@@ -1394,7 +1412,8 @@ export async function registerTripAdvanceRoutes(
             SET status = $2, settlement_key = $3, per_diem_days = $4, per_diem_rate_id = $5, per_diem_rate = $6::bigint,
                 per_diem_amount = $7::bigint, claims_total = $8::bigint, settlement_balance = $9::bigint,
                 settlement_finance_note = $10, settled_at = now(), settled_by_account_id = $11,
-                per_diem_golongan = $12, organizer_per_diem_declared = $13, per_diem_waive_reason = $14,
+                per_diem_golongan = $12, organizer_per_diem_applied = $13, per_diem_waive_reason = $14,
+                organizer_per_diem_source = $15, organizer_per_diem_override_reason = $16,
                 closed_at = CASE WHEN $2 = 'SETTLED' THEN now() END, updated_at = now()
           WHERE id = $1`,
         [
@@ -1402,11 +1421,15 @@ export async function registerTripAdvanceRoutes(
           rate ? rate.dailyAmount.toString() : null, result.perDiemAmount.toString(), result.claimsTotal.toString(),
           result.balance.toString(), note, principal.id,
           rate ? resolved!.golongan : null, organizerPaid, waiveReason,
+          // Whose statement the settlement acted on: the employee's, or Finance's correction.
+          organizerPaid === declared ? "EMPLOYEE" : "FINANCE",
+          organizerPaid === declared ? null : overrideReason,
         ],
       );
       await addEvent(client, params.data.id, principal.id, "trip_advance.settled", note, {
         claims: verified.length, perDiemDays: body.data.perDiemDays, maxPerDiemDays: maxDays, outcome: result.status,
         golongan: rate ? resolved!.golongan : null, organizerPerDiemPaid: organizerPaid,
+        organizerPerDiemDeclaredByEmployee: declared, organizerPerDiemCorrected: organizerPaid !== declared,
       });
       if (result.status === "SETTLED") await addEvent(client, params.data.id, principal.id, "trip_advance.closed");
       await notifyEmployee(client, advance.employeeId, {

@@ -99,6 +99,7 @@ export function AdminTripAdvancesPage() {
   const [mapForm, setMapForm] = useState({ jobClassificationCode: "", golongan: "STAF" as GolonganKey, note: "" });
   const [organizerPaid, setOrganizerPaid] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const canManage = hasPermission(session, "trip_advances.manage");
   const canRead = hasPermission(session, "trip_advances.read");
   const canManageRates = hasPermission(session, "trip_per_diem.manage");
@@ -193,6 +194,11 @@ export function AdminTripAdvancesPage() {
       setTransactionKey(crypto.randomUUID());
       setPerDiemDays(String(advance.settlementPreview.maxPerDiemDays));
       setSettleNote("");
+      // D-21: the declaration, the waiver reason and the correction reason belong to THIS advance.
+      // Carrying them to the next one would withhold someone else's uang saku on A's grounds.
+      setOrganizerPaid(advance.organizerPerDiemDeclared);
+      setWaiveReason("");
+      setOverrideReason("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Uang muka tidak dapat dibuka.");
     }
@@ -245,6 +251,7 @@ export function AdminTripAdvancesPage() {
         note: settleNote.trim() || null,
         organizerPerDiemPaid: organizerPaid,
         waiveReason: waiveReason.trim() || null,
+        organizerOverrideReason: overrideReason.trim() || null,
         idempotencyKey: transactionKey,
       });
       return `Diselesaikan. Uang harian ${formatRupiah(result.perDiemAmount)}, klaim ${formatRupiah(result.claimsTotal)}, selisih ${formatRupiah(result.settlementBalance)}.`;
@@ -559,7 +566,8 @@ export function AdminTripAdvancesPage() {
                       {selected.organizerPerDiemDeclared ? (
                         <p role="status" className="mt-1 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-brand-heading">
                           Pegawai menyatakan sudah menerima uang saku dari penyelenggara untuk penugasan ini. Diktum Keempat SK
-                          01.111/YSQ/VII/2026: uang harian tidak dibayar lagi. Isi 0 hari dan tulis alasannya.
+                          01.111/YSQ/VII/2026: uang harian tidak dibayar lagi. Isi 0 hari dan tulis alasannya. Bila pernyataan itu
+                          keliru, hapus centang di bawah dan tulis alasan koreksinya.
                         </p>
                       ) : null}
                       {selected.settlementNote ? <p className="mt-1 text-xs text-foreground">Catatan pegawai: {selected.settlementNote}</p> : null}
@@ -572,11 +580,19 @@ export function AdminTripAdvancesPage() {
                           <input maxLength={500} value={settleNote} className={field} onChange={(event) => { setSettleNote(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
                         </label>
                         <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground sm:col-span-2">
-                          <input type="checkbox" checked={organizerPaid || selected.organizerPerDiemDeclared}
-                            disabled={selected.organizerPerDiemDeclared}
+                          <input type="checkbox" checked={organizerPaid}
                             onChange={(event) => { setOrganizerPaid(event.target.checked); setTransactionKey(crypto.randomUUID()); }} />
                           Uang saku sudah diterima dari penyelenggara atau pihak lain (tidak dibayar dua kali)
                         </label>
+                        {organizerPaid !== selected.organizerPerDiemDeclared ? (
+                          <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
+                            {selected.organizerPerDiemDeclared
+                              ? "Alasan mengoreksi pernyataan pegawai (10\u2013500 karakter, wajib)"
+                              : "Alasan menetapkan uang saku sudah diterima dari penyelenggara (10\u2013500 karakter, wajib)"}
+                            <input maxLength={500} value={overrideReason} className={field}
+                              onChange={(event) => { setOverrideReason(event.target.value); setTransactionKey(crypto.randomUUID()); }} />
+                          </label>
+                        ) : null}
                         <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
                           Alasan uang harian ditahan atau dikurangi (10–500 karakter, wajib bila ditahan)
                           <input maxLength={500} value={waiveReason} className={field}

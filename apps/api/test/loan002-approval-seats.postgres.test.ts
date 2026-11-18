@@ -1,5 +1,5 @@
 // LOAN-002: the approval seat registry, the Pembina threshold configuration and the loan
-// account-principal columns, against the real schema (migrations 0175 and 0176).
+// account-principal columns, against the real schema (migrations 0177 and 0178).
 // Synthetic rows only; every test runs inside one rolled-back transaction.
 
 import { randomUUID } from "node:crypto";

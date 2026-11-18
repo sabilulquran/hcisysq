@@ -650,7 +650,7 @@
     {
       "url": "/admin/organization/approval-seats",
       "list": "bounded",
-      "reason": "LOAN-002: tepat lima kursi persetujuan, himpunan tertutup di migrasi 0175. Tidak dapat bertambah tanpa migrasi."
+      "reason": "LOAN-002: tepat lima kursi persetujuan, himpunan tertutup di migrasi 0177. Tidak dapat bertambah tanpa migrasi."
     },
     {
       "url": "/admin/organization/rollout",

@@ -10,7 +10,7 @@ export type AuthorityBindingType =
   | "OVERSIGHT_PARENT";
 export type OrganizationRolloutMode = "LEGACY" | "SHADOW" | "STRUCTURE";
 /**
- * LOAN-002: one source per approval seat (migration 0175). A seat is a position stable key HC
+ * LOAN-002: one source per approval seat (migration 0177). A seat is a position stable key HC
  * mapped, never a job title, so the source names the seat and the step keeps saying which rung of
  * the owner's chain it is.
  */
@@ -181,7 +181,7 @@ export const LEAVE_GOVERNANCE_CAPABILITY = "leave.governance.approve";
 
 /**
  * ORG-013-5 / LOAN-002: the capability an account principal needs for an employee-loan step
- * (migration 0176). Holding the seat never confers it: the account must also hold
+ * (migration 0178). Holding the seat never confers it: the account must also hold
  * `governance_loan_approver`.
  */
 export const LOAN_GOVERNANCE_CAPABILITY = "loans.governance.approve";

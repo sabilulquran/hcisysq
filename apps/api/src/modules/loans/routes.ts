@@ -137,7 +137,7 @@ interface EmployeeContext {
 }
 
 interface ChainStep {
-  /** Exactly one of the two is set (migration 0176's XOR check). */
+  /** Exactly one of the two is set (migration 0178's XOR check). */
   employeeId: string | null;
   accountId: string | null;
   /** The approver's name, or — for an organ account, which has none in HCIS — its seat. */
@@ -235,7 +235,7 @@ interface SeatPlan {
 }
 
 /**
- * LOAN-002: the seats this request's chain needs, looked up in the registry (migration 0175).
+ * LOAN-002: the seats this request's chain needs, looked up in the registry (migration 0177).
  *
  * Only `STRUCTURE` builds them. `LEGACY` is what production runs, and `SHADOW` keeps LEGACY as its
  * authoritative source, so neither may start failing because HC has not mapped a seat yet — under
@@ -307,7 +307,7 @@ function seatFailure(error: unknown, plan: SeatPlan): LoanError | null {
  *
  * Under `LEGACY` that chain is still the direct manager then the unit approver, from the two legacy
  * columns. Under `STRUCTURE` it is the unit approver followed by the fixed seats, and a seat held
- * by an organ account produces an account step (ORG-013-5, migration 0176).
+ * by an organ account produces an account step (ORG-013-5, migration 0178).
  *
  * Every employee approver must be an active employee with an active account; every account
  * approver must be an active Foundation Board account holding `loans.governance.approve`. Holding

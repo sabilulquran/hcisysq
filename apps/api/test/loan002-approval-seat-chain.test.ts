@@ -398,6 +398,68 @@ describe("LOAN-002 chain under STRUCTURE", () => {
     // Asked about nobody, nothing changes.
     expect(approvalSeatReadiness(full, snapshot, on).every((item) => item.state === "READY")).toBe(true);
   });
+
+  it("N1: the state follows the incumbent the resolver would pick, PRIMARY before ACTING", () => {
+    const full: ApprovalSeatMapping[] = APPROVAL_SEAT_KEYS.map((seatKey) => ({
+      seatKey,
+      positionKey: {
+        KEPALA_KEUANGAN: "position-kakeu", DIREKTUR: "position-direktur",
+        KETUA_YAYASAN: "position-ketua", BENDAHARA_YAYASAN: "position-bendahara",
+        PEMBINA: "position-pembina",
+      }[seatKey],
+      seatLabel: seatKey,
+    }));
+    // The requester holds Direktur as PRIMARY; somebody else is ACTING on the same seat.
+    // `resolvePosition` never reaches the ACTING row — it throws on the PRIMARY one — so the
+    // request is refused, and the readiness has to say so rather than reporting READY.
+    const withActing = structure({
+      incumbencies: [
+        ...structure().incumbencies,
+        {
+          id: "incumbency-direktur-acting", positionKey: "position-direktur",
+          employeeId: unitHead, accountId: null, kind: "ACTING" as const,
+          effectiveFrom, effectiveTo: null, reason: null,
+        },
+      ],
+    });
+    expect(approvalSeatReadiness(full, withActing, on, { employeeId: direktur })
+      .find((item) => item.seatKey === "DIREKTUR"))
+      .toMatchObject({ state: "SEAT_HELD_BY_REQUESTER" });
+    // And the resolver agrees: it refuses rather than falling through to the acting incumbent.
+    expect(withActing.incumbencies.filter((item) => item.positionKey === "position-direktur")).toHaveLength(2);
+  });
+
+  it("N1: an ACTING incumbent decides the state when the seat has no PRIMARY", async () => {
+    const actingOnly = structure({
+      incumbencies: [
+        ...structure().incumbencies.filter((item) => item.positionKey !== "position-direktur"),
+        {
+          id: "incumbency-direktur-acting", positionKey: "position-direktur",
+          employeeId: direktur, accountId: null, kind: "ACTING" as const,
+          effectiveFrom, effectiveTo: null, reason: null,
+        },
+      ],
+    });
+    const full: ApprovalSeatMapping[] = [
+      { seatKey: "DIREKTUR", positionKey: "position-direktur", seatLabel: "DIREKTUR" },
+    ];
+    expect(approvalSeatReadiness(full, actingOnly, on, { employeeId: direktur })
+      .find((item) => item.seatKey === "DIREKTUR"))
+      .toMatchObject({ state: "SEAT_HELD_BY_REQUESTER" });
+    expect(approvalSeatReadiness(full, actingOnly, on, { employeeId: requester })
+      .find((item) => item.seatKey === "DIREKTUR"))
+      .toMatchObject({ state: "READY" });
+    // The resolver resolves that seat to the acting incumbent, so READY is the truth there.
+    const { subject } = resolver(actingOnly);
+    const line = await subject.resolveLineAuthorities(
+      chainInput(), "UNIT_AND_APPROVAL_SEATS",
+      [{ source: "SEAT_DIREKTUR", positionKey: "position-direktur" }],
+    );
+    expect(line.authorities.map((item) => [item.source, item.employeeId])).toEqual([
+      ["UNIT_APPROVER", unitHead],
+      ["SEAT_DIREKTUR", direktur],
+    ]);
+  });
 });
 
 describe("LOAN-002 rollout", () => {

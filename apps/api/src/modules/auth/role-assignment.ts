@@ -20,7 +20,7 @@ import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-a
  */
 export const GOVERNANCE_LEAVE_APPROVER_ROLE_KEY = "governance_leave_approver";
 /**
- * ORG-013-5 / LOAN-002 (owner decision 2026-11-18): the employee-loan twin (migration 0176). The
+ * ORG-013-5 / LOAN-002 (owner decision 2026-11-18): the employee-loan twin (migration 0178). The
  * kasbon chain now ends in organ seats, so an organ account needs its own capability for it. It is
  * a separate role on purpose: approving leave and approving a loan are different mandates.
  */

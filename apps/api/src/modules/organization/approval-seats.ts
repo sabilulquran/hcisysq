@@ -1,5 +1,5 @@
 /**
- * LOAN-002 / APR-002: the approval seat registry (migration 0175).
+ * LOAN-002 / APR-002: the approval seat registry (migration 0177).
  *
  * Owner decision 2026-11-18 names a fixed kasbon chain by seat — Kepala Keuangan, Direktur, Ketua
  * Yayasan, Bendahara Yayasan, Pembina. A seat is not a job title: the approval resolver must never
@@ -15,7 +15,7 @@ import type { OrganizationSnapshot } from "./domain.js";
 import { isEffective } from "./jakarta-date.js";
 import type { OrganizationQueryable } from "./repository.js";
 
-/** The closed set. Adding a seat is a migration (0175's CHECK) and a change here, never data. */
+/** The closed set. Adding a seat is a migration (0177's CHECK) and a change here, never data. */
 export const APPROVAL_SEAT_KEYS = [
   "KEPALA_KEUANGAN",
   "DIREKTUR",
@@ -45,7 +45,7 @@ export interface ApprovalSeatMapping {
 }
 
 /**
- * The mappings in force on `date`. One open row per seat is held by the unique index in 0175, so a
+ * The mappings in force on `date`. One open row per seat is held by the unique index in 0177, so a
  * seat appears at most once; a seat with no row in force is simply absent.
  */
 export async function loadApprovalSeatMappings(
@@ -169,10 +169,18 @@ export function approvalSeatReadiness(
       && (item.kind === "PRIMARY" || item.kind === "ACTING")
       && isEffective(item.effectiveFrom, item.effectiveTo, date)
       && (holderSource === "ACCOUNT" ? Boolean(item.accountId) : Boolean(item.employeeId)));
+    // N1: the state must follow the incumbent the resolver would actually pick, not "every
+    // incumbent". `resolvePosition` tries PRIMARY first and only falls through to ACTING when the
+    // PRIMARY one is absent or ineligible — and hitting the requester is not ineligibility, it
+    // throws. So a seat held by the requester as PRIMARY with someone else ACTING is refused at
+    // submission; reporting READY there would tell HC all is well on exactly the configuration
+    // this state exists to point at.
     const requesterAccounts = new Set(requester?.accountIds ?? []);
-    const heldByRequester = requester !== undefined && incumbents.length > 0
-      && incumbents.every((item) => (item.employeeId !== null && item.employeeId === requester.employeeId)
-        || (item.accountId !== null && item.accountId !== undefined && requesterAccounts.has(item.accountId)));
+    const isRequester = (item: { employeeId: string | null; accountId?: string | null }) =>
+      (item.employeeId !== null && item.employeeId === requester?.employeeId)
+      || (item.accountId !== null && item.accountId !== undefined && requesterAccounts.has(item.accountId));
+    const resolved = incumbents.find((item) => item.kind === "PRIMARY") ?? incumbents[0];
+    const heldByRequester = requester !== undefined && resolved !== undefined && isRequester(resolved);
     return {
       ...base,
       state: heldByRequester ? "SEAT_HELD_BY_REQUESTER" : incumbents.length > 0 ? "READY" : "VACANT",

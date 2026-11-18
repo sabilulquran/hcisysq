@@ -326,7 +326,7 @@ Resolver APR-001 **tidak boleh membaca teks jabatan** (AUTH-010-K; `access-model
 `dynamic-organization-structure.md` §786). Ketua Yayasan, Bendahara Yayasan, dan Pembina juga tidak
 dimodelkan di mana pun sebagai principal yang dapat menyetujui. Jadi lima kursi di atas adalah
 **kunci kursi** dalam himpunan tertutup, dan Human Capital memetakan tiap kunci ke **stable key
-jabatan ORG-004** di tabel `organization_approval_seats` (migrasi 0175), bertanggal, tambah-dan-akhiri
+jabatan ORG-004** di tabel `organization_approval_seats` (migrasi 0177), bertanggal, tambah-dan-akhiri
 saja, dengan audit — persis pola `attendance_overtime_eligibility_rules` (ATT-011 D-10, migrasi 0146).
 Sistem tidak pernah menebak pemetaannya, dan tidak ada seed: repo tidak memegang stable key produksi
 mana pun.
@@ -341,18 +341,18 @@ Ini permukaan baca, dibuka lewat `GET /admin/organization/approval-seats` (permi
 
 Pemilik menyebut "plafon tertentu" tanpa angka. Default `DRAFT` **Rp5.000.000** dipakai, dan pokok
 harus **melebihi** ambang (Rp5.000.000 tepat tidak memanggil Pembina). Angkanya disimpan sebagai baris
-konfigurasi bertanggal di `employee_loan_approval_policy_versions` (migrasi 0175), **bukan konstanta
+konfigurasi bertanggal di `employee_loan_approval_policy_versions` (migrasi 0177), **bukan konstanta
 TypeScript**, sehingga mengubahnya adalah satu baris baru, bukan rilis. Tidak ada baris sama sekali
 adalah galat konfigurasi (`LOAN_APPROVAL_POLICY_NOT_CONFIGURED`), bukan "tidak ada ambang".
 
 ### 16.4 Principal akun Organ Yayasan (ORG-013-5)
 
 Kursi Ketua Yayasan, Bendahara Yayasan, dan Pembina biasanya dipegang akun (`holderSource = ACCOUNT`),
-bukan pegawai. Migrasi 0176 mencerminkan 0023: `employee_loan_approval_steps.approver_employee_id`
+bukan pegawai. Migrasi 0178 mencerminkan 0023: `employee_loan_approval_steps.approver_employee_id`
 menjadi NULL-able, mendapat `approver_account_id`, dengan CHECK XOR. Aturan ORG-013-1 berlaku utuh:
 
 - memegang kursi **tidak pernah** memberi capability; akun harus aktif **dan** memegang role
-  `governance_loan_approver` (permission `loans.governance.approve`, migrasi 0176);
+  `governance_loan_approver` (permission `loans.governance.approve`, migrasi 0178);
 - akun organ yang emailnya cocok dengan pegawai aktif ditolak (`CONFLICT`), dan self-approval
   diperiksa ulang saat keputusan lewat pencocokan email yang sama dengan cuti;
 - principal akun memutuskan lewat `/loans/approvals` yang sudah ada dengan sesi cookie Organ
@@ -438,3 +438,4 @@ ini tidak pernah dijalankan dan perilaku kasbon tidak berubah:
 | --- | --- | --- |
 | F-1 | Pemetaan kursi yang sudah berakhir dapat **tumpang tindih** dengan pemetaan lain pada tanggal yang sama. Indeks unik hanya menjaga satu baris *terbuka* per kursi, sehingga dua baris tertutup yang periodenya beririsan membuat `loadApprovalSeatMappings` memilih salah satunya secara non-deterministik. | Ditutup **sebelum PR jalur tulis masuk**, idealnya dengan exclusion constraint `daterange` per `seat_key`. |
 | F-2 | Kasbon **tidak mencatat versi ambang** yang membentuk rantainya. Tidak ada risiko retroaktif — rantainya sudah disnapshot — tetapi kalau kelak ada baris ambang yang bertanggal mundur, merekonstruksi mengapa sebuah kasbon mendapat (atau tidak mendapat) langkah Pembina menjadi menebak. | Simpan id baris ambang di `approval_snapshot` saat pengajuan. |
+| F-3 | Aturan identitas e-mail ORG-013-1 butir 5 kini ditulis tangan di **lima tempat**: `assertOrganAccountIsNotEmployee`, `governanceActorIsRequester`, pemeriksaan submit kasbon, penjaga pencairan D-14, dan lookup kesiapan kursi. Lima salinan satu aturan identitas pasti menyimpang, dan menyimpangnya tidak akan terlihat sampai ada yang lolos atau tertolak keliru. | Satukan menjadi satu fragmen SQL bersama (atau satu helper yang mengembalikannya), dipakai kelima tempat itu. |

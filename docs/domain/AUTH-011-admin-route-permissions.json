@@ -2714,9 +2714,33 @@
     ]
   },
   {
-    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "file": "apps/api/src/modules/organization/approval-seat-routes.ts",
     "method": "GET",
     "url": "/admin/organization/approval-seats",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/approval-seat-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/approval-seats/targets",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/approval-seat-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/approval-seats",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/approval-seat-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/approval-seats/:id/end",
     "permissions": [
       "organization.manage"
     ]

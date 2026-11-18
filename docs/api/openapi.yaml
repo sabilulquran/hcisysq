@@ -2063,9 +2063,153 @@ paths:
                         positionTitle: { type: [string, 'null'] }
                         unitName: { type: [string, 'null'] }
                         holderSource: { type: [string, 'null'], enum: [EMPLOYEE, ACCOUNT, null] }
+                  neverMapped:
+                    description: Seats that have never been mapped at all - production's opening state.
+                    type: array
+                    items: { type: string }
+                  history:
+                    description: Every mapping each seat has ever had, newest first. Bounded by the closed seat set.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        seatKey: { type: string }
+                        positionKey: { type: string, format: uuid }
+                        seatLabel: { type: string }
+                        effectiveFrom: { type: string, format: date }
+                        effectiveTo: { type: [string, 'null'], format: date }
+                        createdAt: { type: string, format: date-time }
+                        endedAt: { type: [string, 'null'], format: date-time }
+                        endReason: { type: [string, 'null'] }
+                        createdByName: { type: [string, 'null'] }
+                        endedByName: { type: [string, 'null'] }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Organization]
+      operationId: mapApprovalSeat
+      summary: Map one approval seat to a position of the structure in force
+      description: >-
+        LOAN-002 §16.2. The stored label is derived from the published structure, never taken from
+        the request: a body carrying `seatLabel` is refused. A mapping may not start in the past
+        (DRAFT), because approval steps are snapshotted at submission and a backdated mapping would
+        only re-explain a chain that already ran. One open mapping per seat; end the current one first.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [seatKey, positionKey, effectiveFrom]
+              properties:
+                seatKey:
+                  type: string
+                  enum: [KEPALA_KEUANGAN, DIREKTUR, KETUA_YAYASAN, BENDAHARA_YAYASAN, PEMBINA]
+                positionKey: { type: string, format: uuid }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '201':
+          description: Mapped, with the readiness of all five seats after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  seatKey: { type: string }
+                  positionKey: { type: string, format: uuid }
+                  seatLabel: { type: string }
+                  effectiveFrom: { type: string, format: date }
+                  effectiveTo: { type: [string, 'null'], format: date }
+                  readiness: { type: object }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: A mapping for this seat is already open, or its period overlaps one the seat already had (F-1) }
+        '422': { description: The date is in the past, or the position is not in the structure in force }
+
+  /admin/organization/approval-seats/targets:
+    get:
+      tags: [Organization]
+      operationId: searchApprovalSeatTargets
+      summary: Positions of the structure in force, for the seat picker
+      description: >-
+        LOAN-002 §16.2. Human Capital picks a seat from the chart; no route accepts a job title as
+        text. `holderSource` says whether the position is held by an account, which also needs the
+        loan governance role (ORG-013-5).
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Up to 50 matching positions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { type: string, format: date }
+                  structurePublished: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string, format: uuid }
+                        label: { type: string }
+                        detail: { type: string }
+                        holderSource: { type: string, enum: [EMPLOYEE, ACCOUNT] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/approval-seats/{id}/end:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Organization]
+      operationId: endApprovalSeatMapping
+      summary: End one approval seat mapping, with a reason
+      description: >-
+        LOAN-002 §16.5. A mapping is ended, never edited or deleted. Ending the last open mapping
+        of a seat stops every employee loan until that seat is mapped again, so the answer carries
+        the readiness from the day after `lastDay` and `stopsEmployeeLoans`. It warns; it never blocks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                lastDay:
+                  description: Last day the mapping still applies. Defaults to yesterday, or the day before it starts.
+                  type: string
+                  format: date
+                reason: { type: string, minLength: 3, maxLength: 1000 }
+      responses:
+        '200':
+          description: Ended, with the readiness that follows and whether loans now stop
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  seatKey: { type: [string, 'null'] }
+                  effectiveTo: { type: string, format: date }
+                  readiness: { type: object }
+                  stopsEmployeeLoans: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Mapping not found }
+        '409': { description: Already ended }
+        '422': { description: The last day would rewrite the past }
 
   /admin/organization/readiness:
     get:

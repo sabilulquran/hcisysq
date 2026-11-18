@@ -115,22 +115,41 @@ export function registerGovernanceSummaryRoutes(
   async function loadPendingDecisions(account: ResolvedAccount): Promise<PendingDecisions | null> {
     const organ = account.principalType === "FOUNDATION_BOARD";
     if (!organ && !account.employeeId) return null;
+    // LOAN-002 M3: employee loans join leave here. Under ORG-004 `STRUCTURE` a kasbon reaches the
+    // Ketua Yayasan, Bendahara Yayasan and Pembina seats, which organ accounts hold, and counting
+    // only leave would leave those steps invisible — the request would simply stop.
+    //
+    // Each workflow carries its own capability, so the predicate is per branch, not shared: an
+    // account that may approve leave but not loans must not see loan steps, and the reverse.
     const result = await pool.query<{ count: number; oldest: Date | null }>(
-      `SELECT count(*)::int AS count, min(r.submitted_at) AS oldest
-       FROM leave_request_approval_steps s
-       JOIN leave_requests r ON r.id = s.leave_request_id
-       WHERE s.status = 'pending' AND r.status = 'in_review'
-         AND ${organ ? "s.approver_account_id = $1" : "s.approver_employee_id = $1"}
-         -- An organ account decides only while it holds the governance capability, as the
-         -- /leave/approvals inbox requires; otherwise the link would end in 403.
-         AND (NOT $2::boolean OR EXISTS (
-           SELECT 1 FROM account_role_assignments ara
+      `WITH holds AS (
+         SELECT rp.permission_key AS capability
+           FROM account_role_assignments ara
            JOIN role_permissions rp ON rp.role_id = ara.role_id
-           WHERE ara.account_id = $3 AND rp.permission_key = 'leave.governance.approve'
-             AND ara.scope_type = 'organization'
-             AND (ara.starts_on IS NULL OR ara.starts_on <= (now() AT TIME ZONE 'Asia/Jakarta')::date)
-             AND (ara.ends_on IS NULL OR ara.ends_on >= (now() AT TIME ZONE 'Asia/Jakarta')::date)
-         ))`,
+          WHERE ara.account_id = $3 AND ara.scope_type = 'organization'
+            AND rp.permission_key IN ('leave.governance.approve', 'loans.governance.approve')
+            AND (ara.starts_on IS NULL OR ara.starts_on <= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+            AND (ara.ends_on IS NULL OR ara.ends_on >= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+       ), pending AS (
+         SELECT r.submitted_at
+           FROM leave_request_approval_steps s
+           JOIN leave_requests r ON r.id = s.leave_request_id
+          WHERE s.status = 'pending' AND r.status = 'in_review'
+            AND ${organ ? "s.approver_account_id = $1" : "s.approver_employee_id = $1"}
+            -- An organ account decides only while it holds the governance capability, as the
+            -- /leave/approvals inbox requires; otherwise the link would end in 403.
+            AND (NOT $2::boolean
+                 OR EXISTS (SELECT 1 FROM holds WHERE capability = 'leave.governance.approve'))
+         UNION ALL
+         SELECT loan.submitted_at
+           FROM employee_loan_approval_steps step
+           JOIN employee_loans loan ON loan.id = step.loan_id
+          WHERE step.status = 'pending' AND loan.status = 'IN_REVIEW'
+            AND ${organ ? "step.approver_account_id = $1" : "step.approver_employee_id = $1"}
+            AND (NOT $2::boolean
+                 OR EXISTS (SELECT 1 FROM holds WHERE capability = 'loans.governance.approve'))
+       )
+       SELECT count(*)::int AS count, min(submitted_at) AS oldest FROM pending`,
       [organ ? account.id : account.employeeId, organ, account.id],
     );
     const row = result.rows[0];

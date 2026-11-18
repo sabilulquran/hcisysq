@@ -2025,6 +2025,13 @@ paths:
         are vacant. Read-only: it warns, it never blocks and it never edits a mapping.
       parameters:
         - { name: asOf, in: query, schema: { type: string, format: date } }
+        - name: employeeId
+          in: query
+          description: >-
+            LOAN-002 D-19. Judge the seats for one employee: a seat they hold reads
+            SEAT_HELD_BY_REQUESTER, so HC can say what has to be arranged rather than leaving the
+            person with a bare refusal.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: One row per seat key, in the registry's closed order
@@ -2050,7 +2057,7 @@ paths:
                           enum: [KEPALA_KEUANGAN, DIREKTUR, KETUA_YAYASAN, BENDAHARA_YAYASAN, PEMBINA]
                         state:
                           type: string
-                          enum: [READY, UNMAPPED, POSITION_NOT_IN_FORCE, VACANT]
+                          enum: [READY, UNMAPPED, POSITION_NOT_IN_FORCE, VACANT, SEAT_HELD_BY_REQUESTER]
                         positionKey: { type: [string, 'null'], format: uuid }
                         seatLabel: { type: [string, 'null'] }
                         positionTitle: { type: [string, 'null'] }

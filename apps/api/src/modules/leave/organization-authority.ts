@@ -185,6 +185,9 @@ export function snapshotLeaveRolloutAuthorities(
   }
   const approvalChain = snapshotResolvedLeaveAuthorities({
     requesterEmployeeId: input.requesterEmployeeId,
+    // LOAN-002 M2 (D-20 DRAFT): the seat chain keeps one step per rung. The resolver already
+    // stopped merging them; this stops the snapshot merging them back.
+    mergeDuplicates: input.policyChain !== "UNIT_AND_APPROVAL_SEATS",
     authorities: policyAuthorities.flatMap((authority) =>
       sourcesOf(authority).map((source) => authority.employeeId
         ? { employeeId: authority.employeeId, source }

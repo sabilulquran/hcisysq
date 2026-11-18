@@ -209,7 +209,7 @@ describe("ORG-010-F governance summary contract v1", () => {
       pendingDecisions: { count: 2, oldestSubmittedAt: new Date(NOW.getTime() - 3.5 * 86_400_000), path: "/board" },
     });
     expect(organ.decisions).toEqual([{
-      label: "Cuti menunggu keputusan Anda", count: 2, oldestAgeDays: 3, href: "https://hcis.example.invalid/board",
+      label: "Persetujuan menunggu keputusan Anda", count: 2, oldestAgeDays: 3, href: "https://hcis.example.invalid/board",
     }]);
     // attention keeps its own three slots.
     expect(organ.attention).toHaveLength(2);

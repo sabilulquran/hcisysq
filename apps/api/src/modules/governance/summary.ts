@@ -213,7 +213,10 @@ export function buildGovernanceSummary(input: {
   const pending = input.pendingDecisions;
   const decisions = pending && pending.count > 0
     ? [{
-        label: "Cuti menunggu keputusan Anda",
+        // LOAN-002 M3: the count covers leave and employee loans, so the label no longer names
+        // one of them. It is a count, not a breakdown: the two workflows are deliberately not
+        // split here, because the portal shows no amounts and no leave details either.
+        label: "Persetujuan menunggu keputusan Anda",
         count: pending.count,
         oldestAgeDays: pending.oldestSubmittedAt
           ? Math.max(0, Math.floor((now.getTime() - pending.oldestSubmittedAt.getTime()) / DAY_MS))

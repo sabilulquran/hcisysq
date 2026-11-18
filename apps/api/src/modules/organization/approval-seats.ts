@@ -98,7 +98,24 @@ export function resolveApprovalSeatPositions(
   });
 }
 
-export type ApprovalSeatState = "READY" | "UNMAPPED" | "POSITION_NOT_IN_FORCE" | "VACANT";
+export type ApprovalSeatState =
+  | "READY"
+  | "UNMAPPED"
+  | "POSITION_NOT_IN_FORCE"
+  | "VACANT"
+  /**
+   * LOAN-002 D-19: the seat is mapped and occupied, but by the person the readiness was asked
+   * about. Their own kasbon cannot travel this chain. Reported as its own state so the answer is
+   * "here is what has to be arranged", not a bare refusal.
+   */
+  | "SEAT_HELD_BY_REQUESTER";
+
+/** Who the readiness is being judged for, when it is judged for someone. */
+export interface ApprovalSeatRequester {
+  employeeId: string;
+  /** Organ accounts that are the same person (ORG-013-1 butir 5 matches them by e-mail). */
+  accountIds?: readonly string[];
+}
 
 export interface ApprovalSeatReadiness {
   seatKey: ApprovalSeatKey;
@@ -122,6 +139,7 @@ export function approvalSeatReadiness(
   mappings: readonly ApprovalSeatMapping[],
   snapshot: OrganizationSnapshot | null,
   date: string,
+  requester?: ApprovalSeatRequester | undefined,
 ): ApprovalSeatReadiness[] {
   const byKey = new Map(mappings.map((item) => [item.seatKey, item]));
   return APPROVAL_SEAT_KEYS.map((seatKey): ApprovalSeatReadiness => {
@@ -146,14 +164,18 @@ export function approvalSeatReadiness(
     const holderSource = position.holderSource ?? "EMPLOYEE";
     // PRIMARY or ACTING, like every other authority lookup. A seat with neither is vacant, and a
     // fixed seat never climbs to its parent, so a vacancy here stops the whole chain.
-    const occupied = (snapshot?.incumbencies ?? []).some((item) =>
+    const incumbents = (snapshot?.incumbencies ?? []).filter((item) =>
       item.positionKey === position.stableKey
       && (item.kind === "PRIMARY" || item.kind === "ACTING")
       && isEffective(item.effectiveFrom, item.effectiveTo, date)
       && (holderSource === "ACCOUNT" ? Boolean(item.accountId) : Boolean(item.employeeId)));
+    const requesterAccounts = new Set(requester?.accountIds ?? []);
+    const heldByRequester = requester !== undefined && incumbents.length > 0
+      && incumbents.every((item) => (item.employeeId !== null && item.employeeId === requester.employeeId)
+        || (item.accountId !== null && item.accountId !== undefined && requesterAccounts.has(item.accountId)));
     return {
       ...base,
-      state: occupied ? "READY" : "VACANT",
+      state: heldByRequester ? "SEAT_HELD_BY_REQUESTER" : incumbents.length > 0 ? "READY" : "VACANT",
       positionTitle: position.title,
       unitName,
       holderSource,

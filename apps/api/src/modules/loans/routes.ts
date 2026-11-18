@@ -283,6 +283,14 @@ function seatFailure(error: unknown, plan: SeatPlan): LoanError | null {
   }
   if (!(error instanceof LeaveOrganizationAuthorityError)) return null;
   const details = error.details;
+  // M1: the unit approver resolving to the requester is a true, ordinary situation for a unit
+  // head, not a missing configuration. Saying "Approver unit belum dikonfigurasi" would send HC
+  // hunting a fault that is not there, so this says what is actually the case.
+  if (error.code === "AUTHORITY_SELF_RESOLUTION" && details.source === "UNIT_APPROVER") {
+    return new LoanError(409, "LOAN_UNIT_APPROVER_SELF",
+      "Approver unit untuk pengajuan ini adalah Anda sendiri, sehingga rantai persetujuan kasbon "
+      + "tidak dapat dibentuk. Hubungi Human Capital untuk menunjuk pejabat pengganti.");
+  }
   const seat = plan.labels.get(String(details.positionKey ?? "")) ?? plan.labels.get(String(details.source ?? ""));
   if (!seat) return null;
   if (error.code === "AUTHORITY_SELF_RESOLUTION") {
@@ -350,9 +358,23 @@ async function resolveApprovalChain(
   // ORG-013-1: the account must be an active organ account that holds the capability, checked
   // again here so a capability lost between resolution and storage still stops the submission.
   const organ = accountIds.length === 0
-    ? { rows: [] as Array<{ id: string; capable: boolean }> }
-    : await db.query<{ id: string; capable: boolean }>(
+    ? { rows: [] as Array<{ id: string; capable: boolean; isRequester: boolean }> }
+    : await db.query<{ id: string; capable: boolean; isRequester: boolean }>(
+      // ORG-013-1 butir 5: the same e-mail match the decision repeats. An organ account with no
+      // e-mail counts as the requester, which fails closed rather than letting a loan jam later.
       `SELECT account.id,
+              (
+                NULLIF(lower(btrim(account.email)), '') IS NULL
+                OR NULLIF(lower(btrim(account.email)), '') IN (
+                  SELECT NULLIF(lower(btrim(value)), '')
+                    FROM (
+                      SELECT requester.email AS value FROM employees requester WHERE requester.id = $4
+                      UNION ALL
+                      SELECT linked.email FROM accounts linked
+                       WHERE linked.employee_id = $4 AND linked.principal_type = 'EMPLOYEE'
+                    ) AS requester_emails
+                )
+              ) AS "isRequester",
               EXISTS (
                 SELECT 1 FROM account_role_assignments assignment
                 JOIN role_permissions grant_row ON grant_row.role_id = assignment.role_id
@@ -367,7 +389,7 @@ async function resolveApprovalChain(
           AND account.principal_type = 'FOUNDATION_BOARD'
           AND account.employee_id IS NULL
           AND account.status = 'active'`,
-      [accountIds, LOAN_GOVERNANCE_CAPABILITY, effectiveDate],
+      [accountIds, LOAN_GOVERNANCE_CAPABILITY, effectiveDate, employee.id],
     );
   const byAccount = new Map(organ.rows.map((row) => [row.id, row]));
 
@@ -377,6 +399,16 @@ async function resolveApprovalChain(
       if (!account || !account.capable) {
         throw new LoanError(409, "APPROVER_ACCOUNT_NOT_READY",
           `Akun Organ Yayasan untuk kursi ${seatLabelForSource(step.sources) ?? "persetujuan"} belum siap menyetujui.`);
+      }
+      // M4 / D-19: the resolver's self-check only covers employee principals, so a requester who
+      // also holds a separate FOUNDATION_BOARD account in one of the seats used to pass submission
+      // and then jam: at decision time `governanceActorIsRequester` refuses BOTH approve and
+      // reject, leaving the loan stuck in IN_REVIEW with nobody able to act. The same identity
+      // check runs here, where the capability re-check already does, and refuses at submission.
+      if (account.isRequester) {
+        throw new LoanError(409, "LOAN_APPROVAL_SEAT_SELF",
+          `Pemohon menduduki kursi persetujuan ${seatLabelForSource(step.sources) ?? "persetujuan"}, `
+          + "sehingga pengajuan ini tidak dapat diproses.");
       }
       return {
         employeeId: null,
@@ -1149,12 +1181,30 @@ export async function registerLoanRoutes(
       }
       // D-14: the cash gate is independent of the approval. Whoever sits in this loan's chain
       // (decided or not) cannot also hand over the money.
+      //
+      // M4 finding (e): matching the ids alone missed the case that matters most — an organ member
+      // who also has an employee account with `loans.manage`. Their seat step carries an
+      // `approver_account_id` that is not the disbursing account, and `approver_employee_id` is
+      // NULL, so every id comparison fails and D-14 silently lets the same person approve and pay.
+      // The last clause matches the person, by the same e-mail rule ORG-013-1 butir 5 uses.
       const approver = await client.query(
         `SELECT 1 FROM employee_loan_approval_steps step
           WHERE step.loan_id = $1
             AND (step.acted_by_account_id = $2
               OR step.approver_account_id = $2
-              OR step.approver_employee_id = (SELECT employee_id FROM accounts WHERE id = $2))
+              OR step.approver_employee_id = (SELECT employee_id FROM accounts WHERE id = $2)
+              OR EXISTS (
+                SELECT 1
+                  FROM accounts seat_account
+                  JOIN accounts actor ON actor.id = $2
+                  LEFT JOIN employees actor_employee ON actor_employee.id = actor.employee_id
+                 WHERE seat_account.id = step.approver_account_id
+                   AND NULLIF(lower(btrim(seat_account.email)), '') IS NOT NULL
+                   AND NULLIF(lower(btrim(seat_account.email)), '') IN (
+                     NULLIF(lower(btrim(actor.email)), ''),
+                     NULLIF(lower(btrim(actor_employee.email)), '')
+                   )
+              ))
           LIMIT 1`,
         [params.data.id, principal.id],
       );

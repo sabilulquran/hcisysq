@@ -746,14 +746,35 @@ export async function registerOrganizationAdminRoutes(
    */
   app.get("/admin/organization/approval-seats", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
-    const query = z.object({ asOf: date.optional() }).safeParse(request.query);
+    const query = z.object({ asOf: date.optional(), employeeId: uuid.optional() }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_APPROVAL_SEAT_QUERY", "Invalid approval seat query.");
     const asOf = effectiveDateOrToday(query.data.asOf);
+    // LOAN-002 D-19: asked about one employee, the answer says which seat that person holds, so HC
+    // can tell them what has to be arranged instead of leaving them with a refusal and no reason.
+    // The organ accounts that are the same person are matched by ORG-013-1 butir 5's e-mail rule.
+    const requester = query.data.employeeId
+      ? {
+          employeeId: query.data.employeeId,
+          accountIds: (await pool.query<{ id: string }>(
+            `SELECT organ.id
+               FROM accounts organ
+               JOIN employees requester ON requester.id = $1
+               LEFT JOIN accounts linked
+                 ON linked.employee_id = requester.id AND linked.principal_type = 'EMPLOYEE'
+              WHERE organ.principal_type = 'FOUNDATION_BOARD' AND organ.employee_id IS NULL
+                AND NULLIF(lower(btrim(organ.email)), '') IS NOT NULL
+                AND NULLIF(lower(btrim(organ.email)), '') IN (
+                  NULLIF(lower(btrim(requester.email)), ''), NULLIF(lower(btrim(linked.email)), '')
+                )`,
+            [query.data.employeeId],
+          )).rows.map((row) => row.id),
+        }
+      : undefined;
     const [mappings, snapshot] = await Promise.all([
       loadApprovalSeatMappings(pool, asOf),
       repository.loadEffectiveSnapshot(asOf),
     ]);
-    const items = approvalSeatReadiness(mappings, snapshot, asOf);
+    const items = approvalSeatReadiness(mappings, snapshot, asOf, requester);
     return reply.send({
       asOf,
       structurePublished: snapshot !== null,

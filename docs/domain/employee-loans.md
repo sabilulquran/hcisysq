@@ -276,6 +276,8 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 | D-17 | Berapa ambang Pembina? | `DRAFT` Rp5.000.000 — pemilik belum menetapkan angkanya. Disimpan sebagai baris konfigurasi bertanggal, bukan konstanta kode | Tidak ada |
 | D-18 | Kursi belum dipetakan atau kosong? | `DRAFT` gagal tertutup dengan kode yang menyebut kursinya; HC melihatnya lebih dulu di layar kesiapan kursi | Tidak ada |
 | D-19 | Pemohon menduduki salah satu kursi? | `DRAFT` pengajuannya ditolak; rantai tidak dipendekkan | Tidak ada |
+| D-20 | Satu orang menduduki dua rung? | `DRAFT` kedua langkah tetap berdiri; ia menyetujui dua kali, dan itu terlihat | Tidak ada |
+| D-21 | Kepala unit mengajukan kasbon? | `DRAFT` ditolak dengan `LOAN_UNIT_APPROVER_SELF`; HC menunjuk pejabat pengganti | Tidak ada |
 | D-02 | Ada bunga? | Tidak | Tidak |
 | D-03 | Batas pokok? | Rp100.000 – Rp10.000.000 | Min Rp100.000, tanpa maksimum |
 | D-04 | Pilihan tenor? | 3, 6, 12 bulan | 3, 6, 12 bulan |
@@ -357,8 +359,18 @@ menjadi NULL-able, mendapat `approver_account_id`, dengan CHECK XOR. Aturan ORG-
   Yayasan, dengan transisi dan audit APR-001 yang sama; `/loans/me`, register, dan pencairan tetap
   tertutup untuknya.
 
-Notifikasi NOTIF-004 berkunci pegawai, jadi langkah milik akun tidak menghasilkan notifikasi in-app;
-akun melihatnya di Panel Organ Yayasan, sama seperti cuti. Tidak ada nominal di jalur mana pun.
+Notifikasi NOTIF-004 berkunci pegawai, jadi langkah milik akun tidak menghasilkan notifikasi
+in-app. Hitungan "menunggu keputusan Anda" di `GET /governance/summary` sudah menghitung langkah
+kasbon milik akun (tidak hanya cuti), sehingga Panel Organ Yayasan memperlihatkannya. Tidak ada
+nominal di jalur mana pun.
+
+**Yang belum ada, dan harus ada sebelum rantai ini dipakai di produksi.** Pintu API-nya lengkap:
+`GET /loans/approvals` dan `POST /loans/approvals/:stepId/decision` menerima sesi cookie Organ
+Yayasan, dan ringkasan portal menghitung langkahnya. **Layar keputusannya belum ada.** Portal Organ
+Yayasan hidup di repo `sq-organ`; layar kasbon di sana adalah **kode di repo lain**, bukan
+konfigurasi, dan belum dibangun. Sampai layar itu ada, kasbon yang sampai ke langkah Ketua Yayasan,
+Bendahara Yayasan, atau Pembina di `STRUCTURE` akan berhenti di situ: akunnya melihat ada yang
+menunggu, tetapi tidak punya tempat untuk memutuskannya. Lihat §16.6 butir 4.
 
 ### 16.5 Konsekuensi yang disengaja (D-18, D-19)
 
@@ -372,6 +384,29 @@ induknya**: Direktur yang kosong tidak boleh diselesaikan menjadi siapa pun di a
 
 Pemohon yang menduduki salah satu kursi membuat pengajuannya ditolak (`LOAN_APPROVAL_SEAT_SELF`),
 bukan rantainya dipendekkan: rantai yang lebih pendek dari yang diputuskan pemilik bukan rantai itu.
+Ini berlaku untuk kursi yang dipegang pegawai maupun yang dipegang akun Organ Yayasan: pemohon yang
+punya akun organ terpisah pemegang salah satu kursi ditolak **saat pengajuan**, dicocokkan dengan
+aturan email yang sama dengan ORG-013-1 butir 5. Kalau tidak, pengajuannya lolos lalu mengunci —
+pada tahap keputusan `governanceActorIsRequester` menolak approve maupun reject, dan kasbon
+menggantung di `IN_REVIEW` tanpa ada yang dapat bertindak.
+
+**D-21 (`DRAFT`) — kepala unit tidak dapat mengambil kasbon, dan sistem mengatakannya apa adanya.**
+Approver unit adalah rung pertama, dan seorang kepala unit adalah approver unit bagi dirinya
+sendiri. Rantainya karena itu tidak dapat dibentuk. Dulu hal ini tidak terlihat karena masih ada
+rung atasan langsung yang menanggung pengajuannya; setelah rung itu dibuang oleh keputusan pemilik,
+setiap kepala unit terkena. Kodenya **`LOAN_UNIT_APPROVER_SELF`**, bukan `UNIT_APPROVER_MISSING`:
+konfigurasinya benar, dan pesan "Approver unit belum dikonfigurasi" hanya akan membuat HC mengejar
+salah konfigurasi yang tidak ada. Jalan keluarnya sampai ada keputusan lain: HC menunjuk pejabat
+pengganti untuk pengajuan itu.
+
+**D-20 (`DRAFT`) — langkah tidak digabungkan.** Di setiap rantai lain, satu orang yang menduduki dua
+rung menghasilkan satu langkah. Untuk rantai kursi, **tidak**. Kasus yang paling mungkin justru yang
+paling sensitif: Staf Keuangan mengajukan kasbon, dan approver unitnya adalah Kepala Keuangan — rung
+1 dan rung 2 pemilik akan menjadi satu langkah, lima persetujuan menjadi empat, satu tanda tangan
+menanggung dua mandat, dan tidak ada apa pun di layar, audit, maupun riwayat yang mengatakannya.
+Pemilik menyebut lima kursi, bukan "lima kursi kecuali orangnya sama". Jadi kedua langkah tetap
+berdiri, orang yang sama menyetujui dua kali, dan itu terlihat. Jalur cuti tidak ikut berubah: di
+sana rung adalah garis kewenangan, sehingga satu orang di dua rung memang satu persetujuan.
 
 ### 16.6 Yang harus benar sebelum ini dapat berjalan di produksi
 
@@ -383,3 +418,14 @@ ini tidak pernah dijalankan dan perilaku kasbon tidak berubah:
    `FOUNDATION_BOARD` aktif, menduduki kursinya di struktur terbit, dan diberi
    `governance_loan_approver` lewat kanal AUTH-014 (dengan alasan dan tanggal berakhir).
 3. **Rollout `LOAN` di `STRUCTURE`.** Selama `LEGACY` atau `SHADOW`, rantai lama yang berlaku.
+4. **Layar keputusan kasbon di Portal Organ Yayasan (repo `sq-organ`).** Ini **kode di repo lain**,
+   bukan konfigurasi, dan belum dibangun. Pintu API-nya sudah ada dan ringkasan portal sudah
+   menghitung langkah kasbon milik akun, tetapi tanpa layarnya kasbon akan berhenti di langkah
+   kursi yang dipegang akun. Lihat §16.4.
+
+### 16.7 Tindak lanjut yang dicatat agar tidak hilang
+
+| # | Temuan | Rencana |
+| --- | --- | --- |
+| F-1 | Pemetaan kursi yang sudah berakhir dapat **tumpang tindih** dengan pemetaan lain pada tanggal yang sama. Indeks unik hanya menjaga satu baris *terbuka* per kursi, sehingga dua baris tertutup yang periodenya beririsan membuat `loadApprovalSeatMappings` memilih salah satunya secara non-deterministik. | Ditutup **sebelum PR jalur tulis masuk**, idealnya dengan exclusion constraint `daterange` per `seat_key`. |
+| F-2 | Kasbon **tidak mencatat versi ambang** yang membentuk rantainya. Tidak ada risiko retroaktif — rantainya sudah disnapshot — tetapi kalau kelak ada baris ambang yang bertanggal mundur, merekonstruksi mengapa sebuah kasbon mendapat (atau tidak mendapat) langkah Pembina menjadi menebak. | Simpan id baris ambang di `approval_snapshot` saat pengajuan. |

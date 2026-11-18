@@ -298,6 +298,106 @@ describe("LOAN-002 chain under STRUCTURE", () => {
       details: expect.objectContaining({ source: "SEAT_DIREKTUR" }),
     });
   });
+
+  it("M1: a unit head's own request fails as self-resolution, not as a missing configuration", async () => {
+    // The unit approver of this request IS the requester. Leave drops the rung and leans on the
+    // direct manager; this chain has no such rung, so dropping it would surface downstream as
+    // UNIT_APPROVER_MISSING and send HC hunting a configuration fault that does not exist.
+    const snapshot = structure({
+      memberships: [{
+        id: "membership-unit-head", employeeId: unitHead, nodeKey: "node-unit", jobProfileKey: null,
+        isPrimary: true, effectiveFrom, effectiveTo: null,
+      }],
+    });
+    const { subject } = resolver(snapshot);
+    await expect(subject.resolveLineAuthorities(
+      chainInput(unitHead), "UNIT_AND_APPROVAL_SEATS", seatsFor(1_000_000n),
+    )).rejects.toMatchObject({
+      code: "AUTHORITY_SELF_RESOLUTION",
+      details: expect.objectContaining({ source: "UNIT_APPROVER" }),
+    });
+
+    // Leave is untouched: there the rung is dropped and the direct manager carries the request.
+    const leave = await subject.resolveLineAuthorities({ ...chainInput(unitHead) }, "UNIT_ONLY");
+    expect(leave.authorities).toEqual([]);
+  });
+
+  it("M2 (D-20): one person on two rungs stays two steps, and both are visible", async () => {
+    // The likeliest case and the most sensitive: a Staf Keuangan whose unit approver is the
+    // Kepala Keuangan. Merging would turn the owner's five approvals into four, silently.
+    const snapshot = structure({
+      incumbencies: structure().incumbencies.map((item) =>
+        item.positionKey === "position-unit-head" ? { ...item, employeeId: kakeu } : item),
+    });
+    const { subject } = resolver(snapshot);
+    const line = await subject.resolveLineAuthorities(
+      chainInput(), "UNIT_AND_APPROVAL_SEATS", seatsFor(1_000_000n),
+    );
+    expect(line.authorities.map((item) => [item.source, item.employeeId])).toEqual([
+      ["UNIT_APPROVER", kakeu],
+      ["SEAT_KEPALA_KEUANGAN", kakeu],
+      ["SEAT_DIREKTUR", direktur],
+      ["SEAT_KETUA_YAYASAN", null],
+      ["SEAT_BENDAHARA_YAYASAN", null],
+    ]);
+    // And the snapshot keeps them apart too, so the stored chain is five steps, not four.
+    const snapshotted = snapshotLeaveRolloutAuthorities(
+      { mode: "STRUCTURE", authoritativeSource: "STRUCTURE", authorities: line.authorities, structure: line },
+      { requesterEmployeeId: requester, policyChain: "UNIT_AND_APPROVAL_SEATS" },
+    );
+    expect(snapshotted.approvalChain).toHaveLength(5);
+    expect(snapshotted.approvalChain.slice(0, 2).map((step) => [step.employeeId, step.sources])).toEqual([
+      [kakeu, ["UNIT_APPROVER"]],
+      [kakeu, ["SEAT_KEPALA_KEUANGAN"]],
+    ]);
+  });
+
+  it("M2: Leave still merges one person standing on two of its rungs", async () => {
+    // The same situation on a Leave chain is one approval, and must stay one: there the rungs are
+    // a line of authority, not a list of mandates.
+    const merged = snapshotLeaveRolloutAuthorities(
+      {
+        mode: "LEGACY",
+        authoritativeSource: "LEGACY",
+        authorities: [{
+          employeeId: unitHead, source: "DIRECT_MANAGER",
+          sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+          path: ["legacy"], incumbentKind: "OVERRIDE", positionKey: null,
+        }],
+      },
+      {
+        requesterEmployeeId: requester,
+        policyChain: "LINE_AND_UNIT",
+        legacy: { directManagerEmployeeId: unitHead, unitApproverEmployeeId: unitHead },
+      },
+    );
+    expect(merged.approvalChain).toEqual([
+      { employeeId: unitHead, sources: ["DIRECT_MANAGER", "UNIT_APPROVER"] },
+    ]);
+  });
+
+  it("M4 (D-19): the readiness surface names the seat the requester holds", () => {
+    const full: ApprovalSeatMapping[] = APPROVAL_SEAT_KEYS.map((seatKey) => ({
+      seatKey,
+      positionKey: {
+        KEPALA_KEUANGAN: "position-kakeu", DIREKTUR: "position-direktur",
+        KETUA_YAYASAN: "position-ketua", BENDAHARA_YAYASAN: "position-bendahara",
+        PEMBINA: "position-pembina",
+      }[seatKey],
+      seatLabel: seatKey,
+    }));
+    const snapshot = structure();
+    // An employee-held seat the requester sits in.
+    expect(approvalSeatReadiness(full, snapshot, on, { employeeId: direktur })
+      .find((item) => item.seatKey === "DIREKTUR"))
+      .toMatchObject({ state: "SEAT_HELD_BY_REQUESTER" });
+    // And an account-held seat whose organ account is the same person (ORG-013-1 butir 5).
+    expect(approvalSeatReadiness(full, snapshot, on, { employeeId: requester, accountIds: [ketuaAccount] })
+      .find((item) => item.seatKey === "KETUA_YAYASAN"))
+      .toMatchObject({ state: "SEAT_HELD_BY_REQUESTER" });
+    // Asked about nobody, nothing changes.
+    expect(approvalSeatReadiness(full, snapshot, on).every((item) => item.state === "READY")).toBe(true);
+  });
 });
 
 describe("LOAN-002 rollout", () => {

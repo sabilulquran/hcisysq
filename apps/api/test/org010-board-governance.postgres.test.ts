@@ -460,7 +460,7 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
         );
         const organ = (await call({ authorization: `Bearer ${await token({ sub: actors.get("board")!.subject })}` })).json();
         expect(organ.decisions).toEqual([{
-          label: "Cuti menunggu keputusan Anda", count: 1, oldestAgeDays: 2, href: "https://hcis.example.invalid/board",
+          label: "Persetujuan menunggu keputusan Anda", count: 1, oldestAgeDays: 2, href: "https://hcis.example.invalid/board",
         }]);
         expect(JSON.stringify(organ)).not.toContain("Nama Rahasia decision_requester");
         const viewer = (await call({ authorization: `Bearer ${await token({ sub: actors.get("viewer")!.subject })}` })).json();
@@ -491,6 +491,76 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       } finally {
         await pool.query("DELETE FROM leave_requests WHERE id = $1", [requestId]);
         await pool.query("DELETE FROM account_role_assignments WHERE id = $1", [assignment]);
+      }
+    });
+
+    // LOAN-002 M3: employee-loan steps count too, each workflow against its own capability. Without
+    // this the organ seats the owner put in the kasbon chain would hold steps nobody could see.
+    it("counts the caller's pending employee-loan steps, but only with the loan capability", async () => {
+      const borrower = await addActor("loan_requester", "EMPLOYEE");
+      const organ = actors.get("board")!.principal.id;
+      const loanId = randomUUID();
+      const leaveRequestId = randomUUID();
+      const leaveRole = (await pool.query("SELECT id FROM roles WHERE role_key = 'governance_leave_approver'")).rows[0].id;
+      const loanRole = (await pool.query("SELECT id FROM roles WHERE role_key = 'governance_loan_approver'")).rows[0].id;
+      const leaveAssignment = randomUUID();
+      const loanAssignment = randomUUID();
+      const summary = async () =>
+        (await call({ authorization: `Bearer ${await token({ sub: actors.get("board")!.subject })}` })).json();
+      try {
+        await pool.query(
+          `INSERT INTO employee_loans(id, employee_id, principal_amount, tenor_months, purpose, status, idempotency_key, submitted_at)
+           VALUES ($1,$2,1000000,3,'Keperluan mendesak keluarga','IN_REVIEW',$3, now() - interval '4 days')`,
+          [loanId, borrower.employeeId, randomUUID()],
+        );
+        await pool.query(
+          `INSERT INTO employee_loan_approval_steps(id, loan_id, step_order, approver_account_id, sources, status)
+           VALUES ($1,$2,1,$3,ARRAY['SEAT_KETUA_YAYASAN'],'pending')`,
+          [randomUUID(), loanId, organ],
+        );
+
+        // Holding the leave capability is not the loan capability: the step stays invisible.
+        await pool.query(
+          `INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,ends_on,reason)
+           VALUES($1,$2,$3,'organization','2099-12-31','Synthetic SK 003/2026')`,
+          [leaveAssignment, organ, leaveRole],
+        );
+        expect(await summary()).not.toHaveProperty("decisions");
+
+        await pool.query(
+          `INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,ends_on,reason)
+           VALUES($1,$2,$3,'organization','2099-12-31','Synthetic SK 004/2026')`,
+          [loanAssignment, organ, loanRole],
+        );
+        expect((await summary()).decisions).toEqual([{
+          label: "Persetujuan menunggu keputusan Anda", count: 1, oldestAgeDays: 4,
+          href: "https://hcis.example.invalid/board",
+        }]);
+
+        // Both workflows add up, and the age comes from the oldest of either.
+        await pool.query(
+          `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling,
+             idempotency_key, submitted_at)
+           VALUES ($1,$2,'annual','in_review','2026-11-20','2026-11-20',1,'none',$3, now() - interval '1 day')`,
+          [leaveRequestId, borrower.employeeId, randomUUID()],
+        );
+        await pool.query(
+          `INSERT INTO leave_request_approval_steps(id, leave_request_id, step_order, approver_account_id, sources, status)
+           VALUES ($1,$2,1,$3,ARRAY['GOVERNANCE_APPROVER'],'pending')`,
+          [randomUUID(), leaveRequestId, organ],
+        );
+        expect((await summary()).decisions)
+          .toEqual([expect.objectContaining({ count: 2, oldestAgeDays: 4 })]);
+
+        // A loan that left review no longer waits on anyone.
+        await pool.query("UPDATE employee_loans SET status = 'CANCELLED', cancel_reason = 'Uji' WHERE id = $1", [loanId]);
+        expect((await summary()).decisions).toEqual([expect.objectContaining({ count: 1, oldestAgeDays: 1 })]);
+      } finally {
+        await pool.query("DELETE FROM leave_requests WHERE id = $1", [leaveRequestId]);
+        await pool.query("DELETE FROM employee_loan_approval_steps WHERE loan_id = $1", [loanId]);
+        await pool.query("DELETE FROM employee_loans WHERE id = $1", [loanId]);
+        await pool.query("DELETE FROM account_role_assignments WHERE id = ANY($1::uuid[])",
+          [[leaveAssignment, loanAssignment]]);
       }
     });
 

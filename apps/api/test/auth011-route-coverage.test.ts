@@ -132,11 +132,17 @@ describe("AUTH-011 route manifest coverage", () => {
     expect(keys.filter((key) => PUBLIC_ROUTE(key.split(" ")[1]!))).toEqual([]);
   });
 
-  it("lists exactly the ORG-010 board-access routes and the ORG-014 employee list", async () => {
+  it("lists exactly the ORG-010 board-access routes, the ORG-014 employee list and the ORG-015 decisions", async () => {
     const board = (await manifest()).filter((entry) => entry.access === "board" || entry.access === "governance-bearer")
       .map((entry) => `${entry.access} ${entry.method} ${entry.url}`);
     expect(board).toEqual([
-      "board GET /board/dashboard", "governance-bearer GET /governance/employees", "governance-bearer GET /governance/summary",
+      "board GET /board/dashboard",
+      // ORG-015: the only bearer routes that mutate anything, and the only ones restricted to
+      // organ accounts. A fourth governance-bearer route has to be argued for here first.
+      "governance-bearer GET /governance/decisions",
+      "governance-bearer POST /governance/decisions/:stepId",
+      "governance-bearer GET /governance/employees",
+      "governance-bearer GET /governance/summary",
     ]);
   });
 
@@ -207,6 +213,16 @@ describe("AUTH-011 route manifest coverage", () => {
     ]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;
+      // ORG-015: the decision routes are narrower than every other governance route. Only an organ
+      // account reaches them, and reading the board is not enough — the account must hold the
+      // governance approval capability. Pinned so widening either one is a visible change.
+      if (entry.url.startsWith("/governance/decisions")) {
+        expect(entry.access, label).toBe("governance-bearer");
+        expect(entry.principals, label).toEqual(["FOUNDATION_BOARD"]);
+        expect(entry.permissions, label).toEqual(["leave.governance.approve"]);
+        expect(known.has("leave.governance.approve"), label).toBe(false);
+        continue;
+      }
       // ORG-010: board access is FOUNDATION_BOARD, or EMPLOYEE with board.read; never an admin permission.
       if (entry.access === "board" || entry.access === "governance-bearer") {
         expect(entry.principals, label).toEqual(["FOUNDATION_BOARD", "EMPLOYEE"]);

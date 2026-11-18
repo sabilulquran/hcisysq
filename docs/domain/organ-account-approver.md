@@ -3,7 +3,7 @@
 **Status:** ACCEPTED (keputusan owner 2026-11-03). **Diimplementasikan** di resolver, Leave (cuti tahunan dan cuti terencana), oversight, kanal pemberian role, dan kotak persetujuan `/board`. Hanya berpengaruh setelah rollout workflow cuti menjadi `STRUCTURE`, dan production masih `LEGACY`. Penyimpanan principal akun, permission, role, dan route keputusan sudah ada sejak migrasi `0023_leave_approval_principals.sql`.
 **Specification:** ORG-013
 **Menutup:** gap W-3 di `organization-designer-ux-gap-analysis.md` dan keputusan E di `organization-designer-ux-implementation-plan.md`
-**Related:** ORG-004 (`dynamic-organization-structure.md`), APR-001 (`workflows/approval-engine.md`), LEAVE-003-N, ORG-003, ORG-010, AUTH-014 (`sq-core-administrator-layers.md`), GOV-001 (`../product/organ-portal-concept.md`, DRAFT)
+**Related:** ORG-004 (`dynamic-organization-structure.md`), APR-001 (`workflows/approval-engine.md`), LEAVE-003-N, ORG-003, ORG-010, ORG-015 (`organ-decision-route.md`), AUTH-014 (`sq-core-administrator-layers.md`), GOV-001 (`../product/organ-portal-concept.md`, DRAFT)
 
 ## Mengapa
 
@@ -75,15 +75,11 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 ### ORG-013-3 Keputusan oleh principal akun
 
 - Keputusan memakai `GET /leave/approvals` dan `POST /leave/approvals/:stepId/decision` yang sudah ada, beserta transisi, audit event, concurrency, dan notifikasi APR-001. Tidak ada state baru.
-- **v1 hanya menerima sesi cookie.** Route keputusan tetap menolak bearer, sehingga ORG-010-E tidak berubah.
-- Jalur token exchange untuk Portal Organ Yayasan berstatus `TBD`. Jalur itu membutuhkan amandemen ORG-010 tersendiri dengan syarat minimum:
-  - audience terpisah dari `GOVERNANCE_SUMMARY_AUDIENCE`;
-  - allowlist `azp` hanya berisi client portal, bukan Hub;
-  - bukti `acr`/TOTP untuk mutasi;
-  - test 401 ORG-010 diperbarui dan menyebut satu-satunya pengecualian.
+- **v1 hanya menerima sesi cookie.** `GET /leave/approvals` dan `POST /leave/approvals/:stepId/decision` tetap menolak bearer, sekarang maupun nanti.
+- **`TBD` ditutup oleh ORG-015** (`organ-decision-route.md`), bukan dengan membuka route ini. Portal memakai route tersendiri, `POST /governance/decisions/:stepId`, yang memanggil fungsi keputusan yang sama. Syarat minimum yang dulu dicatat di sini semuanya dipenuhi di sana: audience terpisah dari `GOVERNANCE_SUMMARY_AUDIENCE`, allowlist `azp` hanya client portal, bukti `acr`/TOTP untuk mutasi, dan test yang menyebut pengecualian itu.
 - **Batas data (amandemen terbatas ORG-003-C).** Data pengajuan bernama hanya dikembalikan untuk langkah yang dimiliki principal itu. Isinya jenis pengajuan, nama dan jabatan pengaju, periode, dan alasan pengajuan. Riwayat langkah hanya memuat status, waktu, dan jabatan approver, tanpa `decision_note` approver lain dan tanpa lampiran. Dasbor `/board` tetap agregat.
 - Tampilan v1 (`DRAFT`): sampai Portal Organ Yayasan tersedia, kotak persetujuan tampil di `/board` memakai route di atas.
-- **Amandemen 2026-11-13 (permintaan owner, ORG-010-P).** Bila HCIS mengisi `ORGAN_PORTAL_URL`, `/board` untuk akun Organ Yayasan hanya berisi "Persetujuan Organ Yayasan" (kotak persetujuan ini, tanpa perubahan) dan tautan ke Portal Organ Yayasan; dasbor agregat menjawab `403 ORGAN_PORTAL_ONLY`. Route `/leave/approvals` dan keputusan tidak berubah, dan `decisions[].href` tetap `/board`. Di ORGAN-IMPL-001 R2 kotak persetujuan pindah ke portal.
+- **Amandemen 2026-11-13 (permintaan owner, ORG-010-P).** Bila HCIS mengisi `ORGAN_PORTAL_URL`, `/board` untuk akun Organ Yayasan hanya berisi "Persetujuan Organ Yayasan" (kotak persetujuan ini, tanpa perubahan) dan tautan ke Portal Organ Yayasan; dasbor agregat menjawab `403 ORGAN_PORTAL_ONLY`. Route `/leave/approvals` dan keputusan tidak berubah, dan `decisions[].href` tetap `/board`. Di ORGAN-IMPL-001 R2 kotak persetujuan pindah ke portal lewat ORG-015, dan `/board` tetap menjadi jalur cadangan selama `GOVERNANCE_DECISIONS_ENABLED` mati.
 
 ### ORG-013-4 Notifikasi oversight
 
@@ -114,7 +110,7 @@ Satu event riwayat baru: `leave.oversight.unresolved` di `leave_request_events`,
 - self-approval lewat akun, `employee_id`, atau email yang sama ditolak saat submit dan saat keputusan;
 - dua principal akun berbeda (Sekretaris dan Ketua) tidak digabung oleh dedupe;
 - cuti Direktur di `STRUCTURE`: Sekretaris (akun) menyetujui, Ketua (akun) mendapat notification intent, Pembina tidak;
-- token tukar, termasuk token governance summary, ditolak 401 di route keputusan;
+- token tukar, termasuk token governance summary, ditolak di route keputusan sesi (`/leave/approvals`). Satu-satunya pengecualian adalah route ORG-015, yang punya audience, syarat `acr`, umur, dan `jti` sendiri;
 - `FOUNDATION_BOARD` tetap 403 di `/app` dan `/admin`;
 - kanal AUTH-014 menolak target `FOUNDATION_BOARD` untuk role di luar allowlist, tanpa tanggal berakhir, atau tanpa alasan;
 - respons inbox tidak memuat `decision_note` approver lain atau lampiran;

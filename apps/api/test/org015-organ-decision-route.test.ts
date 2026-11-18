@@ -312,7 +312,7 @@ describe("ORG-015-3 POST /governance/decisions/:stepId", () => {
   it("forwards the decision and answers with what the leave engine returned", async () => {
     leave.apply.mockResolvedValue({
       replayed: false,
-      payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "notify", hcTaskStatus: null, criticalReviewStatus: null },
+      payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "notify", hcTaskStatus: null },
     });
     const { pool, audits } = fakePool();
     const app = await buildApp({ pool });
@@ -340,7 +340,7 @@ describe("ORG-015-3 POST /governance/decisions/:stepId", () => {
     });
     leave.apply.mockImplementation(async () => {
       order.push("decide");
-      return { replayed: false, payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "none", hcTaskStatus: null, criticalReviewStatus: null } };
+      return { replayed: false, payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "none", hcTaskStatus: null } };
     });
     const first = await buildApp({ pool: fakePool().pool });
     expect((await decide(first)).statusCode).toBe(200);
@@ -375,7 +375,7 @@ describe("ORG-015-3 POST /governance/decisions/:stepId", () => {
   it("answers a replay as the decision that was already made", async () => {
     leave.apply.mockResolvedValue({
       replayed: true,
-      payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "none", hcTaskStatus: null, criticalReviewStatus: null },
+      payload: { requestId: REQUEST_ID, requestStatus: "approved", stepStatus: "approved", nextPendingStepId: null, hcHandling: "none", hcTaskStatus: null },
     });
     const { pool, audits } = fakePool();
     const app = await buildApp({ pool });

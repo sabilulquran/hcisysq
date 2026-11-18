@@ -233,7 +233,7 @@ describe.skipIf(!allowed)("LEAVE-008 leave postponement with proposed alternativ
     // The original 2 days are left out, so 3 new days fit the 3-day period limit.
     const preview = await call("manager", "POST", `/leave/approvals/${first!.id}/postponement/preview`, LATER);
     expect(preview.statusCode, preview.body).toBe(200);
-    expect(preview.json()).toMatchObject({ workingDays: 3, criticalReviewRequired: false, currentStartOn: LEAVE.startOn });
+    expect(preview.json()).toMatchObject({ workingDays: 3, criticalPeriods: [], currentStartOn: LEAVE.startOn });
     expect(await requestRow(request.id)).toMatchObject({ status: "in_review" });
 
     const proposed = await postpone("manager", first!.id);
@@ -536,7 +536,7 @@ describe.skipIf(!allowed)("LEAVE-008 leave postponement with proposed alternativ
     expect(await availableNow()).toBe(3);
   });
 
-  it("LEAVE-008-I: planned leave carries its evidence and a fresh HC task; critical periods are matched again", async () => {
+  it("LEAVE-008-I: planned leave carries its evidence and a fresh HC task; critical periods are matched again (D-05)", async () => {
     const period = await call("hcAdmin", "POST", "/admin/leave/critical-periods", {
       label: "Ujian Sintetis", startOn: "2099-02-16", endOn: "2099-02-20", unitId: null,
     });
@@ -551,7 +551,7 @@ describe.skipIf(!allowed)("LEAVE-008 leave postponement with proposed alternativ
     const preview = await call("manager", "POST", `/leave/approvals/${request.approvalChain[0]!.id}/postponement/preview`, {
       startOn: "2099-02-16", endOn: "2099-02-17",
     });
-    expect(preview.json()).toMatchObject({ workingDays: 2, criticalReviewRequired: true });
+    expect(preview.json().criticalPeriods.map((item: { label: string }) => item.label)).toEqual(["Ujian Sintetis"]);
     const proposed = await postpone("manager", request.approvalChain[0]!.id, { startOn: "2099-02-16", endOn: "2099-02-17" });
     expect(proposed.statusCode, proposed.body).toBe(200);
     expect(await statusOf("leave_request_hc_tasks", request.id)).toEqual(["cancelled"]);
@@ -563,10 +563,11 @@ describe.skipIf(!allowed)("LEAVE-008 leave postponement with proposed alternativ
 
     const accepted = await call("requester", "POST", `/leave/me/postponements/${proposed.json().proposalId}/accept`, { idempotencyKey: randomUUID() });
     expect(accepted.statusCode, accepted.body).toBe(201);
-    expect(accepted.json().criticalReviewRequired).toBe(true);
+    // D-05 with LEAVE-009 D-12: the replacement matches masa kritis again and records it, without a review row.
+    expect(accepted.json().criticalPeriods.map((item: { label: string }) => item.label)).toEqual(["Ujian Sintetis"]);
     const replacementId = accepted.json().replacementRequestId as string;
     expect(await statusOf("leave_request_hc_tasks", replacementId)).toEqual(["waiting"]);
-    expect(await statusOf("leave_request_critical_reviews", replacementId)).toEqual(["waiting"]);
+    expect(await statusOf("leave_request_critical_reviews", replacementId)).toEqual([]);
     const evidence = await client.query<{ requestId: string; fileName: string }>(
       `SELECT leave_request_id AS "requestId", original_filename AS "fileName" FROM leave_request_evidence
         WHERE leave_request_id = ANY($1::uuid[]) ORDER BY leave_request_id = $2`,

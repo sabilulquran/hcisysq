@@ -272,8 +272,10 @@ describe.skipIf(!allowed)("TRIP-001 business travel", () => {
     expect(response.json().code).toBe("DIRECT_MANAGER_MISSING");
   });
 
-  it("TRIP-001-E: refuses past starts, trips over 30 days and overlapping trips or leave", async () => {
-    expect((await submit({ startOn: addDays(today, -1), endOn: today })).json().code).toBe("TRIP_START_IN_PAST");
+  it("TRIP-001-E: allows 7 days backdated, refuses older starts, trips over 30 days and overlapping trips or leave", async () => {
+    // D-18: a trip that already started may still be submitted, up to 7 days back (ATT-015 D-05 window).
+    expect((await submit({ startOn: addDays(today, -7), endOn: today })).statusCode).toBe(201);
+    expect((await submit({ startOn: addDays(today, -8), endOn: addDays(today, -8) })).json().code).toBe("TRIP_START_IN_PAST");
     // +1..+31 is 31 days inclusive; +1..+29 is 29 and allowed (D-03 caps at 30).
     expect((await submit({ startOn: addDays(today, 1), endOn: addDays(today, 31) })).json().code).toBe("TRIP_TOO_LONG");
     expect((await submit({ startOn: addDays(today, 1), endOn: addDays(today, 29) })).statusCode).toBe(201);

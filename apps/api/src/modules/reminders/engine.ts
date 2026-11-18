@@ -70,7 +70,7 @@ export class ReminderEngine {
     return this.options.rules ?? REMINDER_RULES;
   }
 
-  /** One pass: due rules first, then WhatsApp hand-over. Nothing at all outside 06:00–21:00 WIB (D-04). */
+  /** One pass: due rules first, then WhatsApp hand-over. Nothing at all outside the send window, 04:00–23:00 WIB (D-15). */
   async tick(): Promise<{ runs: RuleRunResult[]; delivered: number }> {
     const now = this.now();
     if (!insideSendWindow(now)) return { runs: [], delivered: 0 };
@@ -197,7 +197,7 @@ export class ReminderEngine {
   /** §5.4, the CAL-001 §9.2 pattern: claim with a lease, call Kirim SQ outside a transaction, record. */
   async handOverDeliveries(): Promise<number> {
     if (!insideSendWindow(this.now())) return 0;
-    // D-12: past 21:00 WIB of its day a reminder is no longer worth a message.
+    // D-12 (window widened by D-15): past 23:00 WIB of its day a reminder is no longer worth a message.
     await this.pool.query(
       `UPDATE reminder_deliveries SET status = 'SKIPPED', error_code = 'expired', updated_at = now()
         WHERE status = 'QUEUED' AND expires_at <= now()`,

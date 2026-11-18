@@ -1,5 +1,6 @@
 // LEAVE-009: the warning shown in a leave preview whose dates touch a critical period. It never
-// blocks the submit button (D-01); it tells the employee HC will review after line approval.
+// blocks the submit button (D-01) and, since D-12 (2026-11-18), adds no HC step: it only tells the
+// employee the dates fall in a critical period so the unit head decides it knowing that.
 
 import { AlertTriangle } from "lucide-react";
 

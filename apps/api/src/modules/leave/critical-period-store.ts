@@ -1,7 +1,6 @@
-// LEAVE-009 storage helpers shared by leave submission, line approval and the calendar.
-// Spec: docs/domain/leave-critical-periods.md §5.2–§5.4.
-
-import { randomUUID } from "node:crypto";
+// LEAVE-009 storage helper shared by leave preview, submission and the calendar. Since D-12
+// (2026-11-18) a critical period is only matched, warned about and recorded on the request, so
+// there is nothing here that writes a review row. Spec: docs/domain/leave-critical-periods.md §5.2.
 
 import type { Pool, PoolClient } from "pg";
 
@@ -49,52 +48,4 @@ export async function loadApplicableCriticalPeriods(
   );
   const records: CriticalPeriodRecord[] = result.rows;
   return matchCriticalPeriods(records, input);
-}
-
-/** D-06: copy the matched periods onto the request as a waiting review. */
-export async function attachCriticalReview(
-  db: PoolClient,
-  input: {
-    requestId: string;
-    actorAccountId: string;
-    periods: readonly CriticalPeriodSnapshotItem[];
-  },
-): Promise<string> {
-  const reviewId = randomUUID();
-  await db.query(
-    `INSERT INTO leave_request_critical_reviews (
-      id, leave_request_id, status, period_snapshot
-    ) VALUES ($1, $2, 'waiting', $3::jsonb)`,
-    [reviewId, input.requestId, JSON.stringify(input.periods)],
-  );
-  await db.query(
-    `INSERT INTO leave_request_events (
-      id, leave_request_id, actor_account_id, event_type, payload
-    ) VALUES ($1, $2, $3, 'leave.critical_review.attached', $4::jsonb)`,
-    [
-      randomUUID(),
-      input.requestId,
-      input.actorAccountId,
-      JSON.stringify({ reviewId, periodIds: input.periods.map((period) => period.id) }),
-    ],
-  );
-  return reviewId;
-}
-
-/**
- * §5.4: called when the last line step is approved. Returns the review id when the request
- * carries a waiting critical review, which then holds the request in review for HC.
- */
-export async function activateCriticalReviewAfterLineApproval(
-  db: PoolClient,
-  requestId: string,
-): Promise<string | null> {
-  const result = await db.query<{ id: string }>(
-    `UPDATE leave_request_critical_reviews
-     SET status = 'pending', updated_at = now()
-     WHERE leave_request_id = $1 AND status = 'waiting'
-     RETURNING id`,
-    [requestId],
-  );
-  return result.rows[0]?.id ?? null;
 }

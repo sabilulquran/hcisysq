@@ -22,8 +22,11 @@ describe("TRIP-001 domain rules", () => {
       .toThrow(expect.objectContaining({ code: "TRIP_TOO_LONG" }));
   });
 
-  it("refuses a start before today in Jakarta (D-04) and a reversed or impossible range", () => {
-    expect(() => validateTripDates({ startOn: "2026-11-01", endOn: "2026-11-03", today: "2026-11-02" }))
+  it("allows up to 7 days backdated and refuses older starts (D-18) and a reversed or impossible range", () => {
+    // Same window as tugas luar (ATT-015 D-05): a sudden trip is recorded in HCIS, not outside it.
+    expect(validateTripDates({ startOn: "2026-11-01", endOn: "2026-11-03", today: "2026-11-02" }).days).toBe(3);
+    expect(validateTripDates({ startOn: "2026-10-26", endOn: "2026-10-28", today: "2026-11-02" }).days).toBe(3);
+    expect(() => validateTripDates({ startOn: "2026-10-25", endOn: "2026-10-28", today: "2026-11-02" }))
       .toThrow(expect.objectContaining({ code: "TRIP_START_IN_PAST" }));
     expect(() => validateTripDates({ startOn: "2026-11-05", endOn: "2026-11-04", today: "2026-11-02" }))
       .toThrow(TripPolicyError);

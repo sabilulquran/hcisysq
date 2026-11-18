@@ -9,7 +9,7 @@
 
 Pengingat berbeda dari notifikasi transaksi: sumbernya **keadaan data** pada suatu waktu (kontrak akan berakhir, penilaian belum diisi, persetujuan menggantung), bukan peristiwa. Legacy punya `reminders:generate-*` dan `reminders:dispatch` dengan preferensi per pegawai. HCIS sudah punya satu aturan (pengingat rapat CAL-001) dengan penjalan sendiri.
 
-Paket 1 menyediakan **satu mesin pengingat** (tiga belas aturan sejak 2026-11-17, termasuk `reimbursement.finance_queue_digest` REIMB-001 serta `trip_advance.finance_queue_digest` dan `trip_advance.settlement_overdue` TRIP-002) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
+Paket 1 menyediakan **satu mesin pengingat** (tiga belas aturan sejak 2026-11-17, termasuk `reimbursement.finance_queue_digest` REIMB-001 serta `trip_advance.finance_queue_digest` dan `trip_advance.settlement_overdue` TRIP-002) dengan katalog aturan, idempoten, menghormati jam kirim 04.00–23.00 WIB (D-15), mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
 
 ## 2. Inventaris pengingat yang sudah dijanjikan
 
@@ -37,17 +37,18 @@ Paket 1 menyediakan **satu mesin pengingat** (tiga belas aturan sejak 2026-11-17
 | D-01 | **Penjalan di dalam proses API**, interval 60 detik, sama dengan CAL-001 §9.3, diaktifkan oleh saklar yang sama `MEETING_RUNNER_ENABLED` (mati di kandidat rilis dan di test). Tidak ada cron/systemd di Mi8VPS. | ACCEPTED (mengikuti CAL-001) |
 | D-02 | Pengingat rapat tetap di penjalan CAL-001, karena ia memeriksa ulang keadaan rapat saat menembak dan antrean WhatsApp-nya sudah berjalan. Mesin ini menangani aturan lain. | ACCEPTED |
 | D-03 | **Idempotensi**: satu baris `reminder_occurrences` per `(rule_key, occurrence_key, recipient_account_id)`, unik di basis data. Notifikasi in-app memakai `event_key = reminder.<rule>.<occurrence>` sehingga keunikan NOTIF-004 menjadi penjaga kedua. Dua penjalan bersamaan atau penjalan yang diulang tidak menggandakan apa pun. | ACCEPTED |
-| D-04 | **Jam kirim 06.00–21.00 WIB** untuk pembuatan pengingat dan penyerahan WhatsApp, sama dengan jam kirim `notifikasi` Kirim SQ. Di luar jam itu penjalan tidak membuat pengingat dan tidak menyerahkan pesan. | ACCEPTED (ditetapkan dalam tugas) |
-| D-05 | Setiap aturan punya **jam tembak WIB** (bawaan 07.00, payroll 08.00). Aturan dijalankan sekali per hari kalender Jakarta pada atau setelah jam tembaknya, dicatat di `reminder_rule_runs`. Bila server mati pada jam tembak, aturan berjalan begitu server hidup di hari yang sama (sebelum 21.00). | DRAFT |
+| D-04 | **Jam kirim 06.00–21.00 WIB** untuk pembuatan pengingat dan penyerahan WhatsApp, sama dengan jam kirim `notifikasi` Kirim SQ. Di luar jam itu penjalan tidak membuat pengingat dan tidak menyerahkan pesan. | ACCEPTED (ditetapkan dalam tugas) — **digantikan D-15 (2026-11-18)**: jendelanya kini 04.00–23.00 WIB. Prinsipnya tetap: di luar jendela penjalan diam. |
+| D-05 | Setiap aturan punya **jam tembak WIB** (bawaan 07.00, payroll 08.00). Aturan dijalankan sekali per hari kalender Jakarta pada atau setelah jam tembaknya, dicatat di `reminder_rule_runs`. Bila server mati pada jam tembak, aturan berjalan begitu server hidup di hari yang sama (sebelum akhir jendela kirim, 23.00 sejak D-15). | DRAFT |
 | D-06 | **Ambang sebagai jendela**: aturan berambang (mis. H-60/H-30/H-7) menembak ambang **terkecil** yang sudah tercapai dan belum pernah ditembakkan untuk objek itu. Hari yang terlewat karena server mati tidak menghilangkan pengingat, dan objek yang baru dicatat dengan sisa 20 hari langsung mendapat pengingat H-30. | DRAFT |
 | D-07 | **Kanal**: in-app selalu (kotak masuk adalah catatan kerja); WhatsApp lewat Kirim SQ sesuai bawaan aturan dan preferensi penerima. Teks WhatsApp tidak memuat nama pegawai lain, nominal, atau isi dokumen; rinciannya hanya di in-app. | DRAFT |
 | D-08 | **Preferensi**: per akun per aturan, hanya saklar WhatsApp (nyala/mati). Pengingat in-app tidak dapat dimatikan. Tanpa preferensi tersimpan, bawaan aturan berlaku. | DRAFT |
 | D-09 | Pengingat SP berakhir dan absen harian tidak dibawa (lihat §2). | DRAFT |
 | D-10 | **Email tidak dibangun.** HCIS tidak punya adapter SMTP; email akun dikirim Akun SQ (Keycloak). NOTIF-001 ditutup dengan dua adapter: in-app (NOTIF-004) dan WhatsApp (Kirim SQ, port `meetings/whatsapp.ts`). Email menunggu keputusan owner dan ADR adapter. | DRAFT |
 | D-11 | Pembatas penerima WhatsApp CAL-001 K-17 berlaku: selama `WHATSAPP_RECIPIENT_MODE=allowlist`, WhatsApp sungguhan hanya ke NIP di `WHATSAPP_ALLOWLIST`; lainnya `SKIPPED not_allowlisted`. Adapter `log` tidak mengirim apa pun. | ACCEPTED |
-| D-12 | Pesan WhatsApp pengingat kedaluwarsa pukul **21.00 WIB** hari pembuatannya; yang belum terserahkan saat itu berstatus `SKIPPED expired`. In-app tetap ada. | DRAFT |
+| D-12 | Pesan WhatsApp pengingat kedaluwarsa pada **akhir jendela kirim** hari pembuatannya — sejak D-15 pukul **23.00 WIB**, sebelumnya 21.00 WIB; yang belum terserahkan saat itu berstatus `SKIPPED expired`. In-app tetap ada. | DRAFT (diperbarui D-15, 2026-11-18) |
 | D-13 | Penerima pengingat HC adalah akun aktif yang memegang izin terkait pada scope organisasi (penugasan langsung atau peran yang mengikuti jabatan, AUTH-015), dihitung saat aturan berjalan. | ACCEPTED |
 | D-14 | Hanya akun pegawai **aktif** yang menerima pengingat; pegawai yang belum diaktifkan tidak menerima apa pun (HCIS belum dibuka untuk staf). | ACCEPTED |
+| D-15 | **Jam kirim 04.00–23.00 WIB** (keputusan owner 2026-11-18, D18 daftar sign-off HC), menggantikan jendela 06.00–21.00 D-04. Pembuatan pengingat dan penyerahan WhatsApp berjalan di jendela baru itu; di luar jendela penjalan tetap tidak membuat dan tidak menyerahkan apa pun. Akhir jendela juga menjadi waktu kedaluwarsa pesan WhatsApp (D-12), jadi pesan hari itu hidup sampai 23.00 WIB. Jam tembak tiap aturan (D-05) tidak berubah. | DRAFT (keputusan owner 2026-11-18) |
 
 ## 4. Katalog aturan (Paket 1)
 
@@ -71,7 +72,7 @@ Judul dipotong 160 karakter dan isi 500 karakter (batas NOTIF-004), sehingga nam
 
 ## 5. Alur penjalan
 
-1. Setiap 60 detik, bila jam Jakarta di dalam 06.00–21.00 (D-04): untuk setiap aturan yang jam tembaknya sudah lewat hari ini, sisipkan `reminder_rule_runs (rule_key, run_date)`; bila baris sudah ada, aturan dilewati (sudah berjalan atau sedang dijalankan penjalan lain).
+1. Setiap 60 detik, bila jam Jakarta di dalam 04.00–23.00 (D-15, menggantikan D-04): untuk setiap aturan yang jam tembaknya sudah lewat hari ini, sisipkan `reminder_rule_runs (rule_key, run_date)`; bila baris sudah ada, aturan dilewati (sudah berjalan atau sedang dijalankan penjalan lain).
 2. Aturan menghasilkan kandidat `(occurrence_key, penerima, judul, isi, tautan, teks WA)`. Untuk tiap kandidat, sisipkan `reminder_occurrences` dengan `ON CONFLICT DO NOTHING`; hanya baris yang benar-benar baru yang menulis notifikasi in-app dan, bila WhatsApp aktif bagi penerima itu (D-08) dan ia pegawai, satu `reminder_deliveries` berstatus `QUEUED`. Semuanya dalam satu transaksi per aturan.
 3. Hasil aturan (`generated`, `finished_at`, atau `error_code` tanpa isi pesan) dicatat di `reminder_rule_runs`. Aturan yang gagal tidak menghentikan aturan lain dan **tidak diulang** di hari yang sama (D-05); kegagalan tampil di log dan baris run.
 4. Penyerahan WhatsApp: saat diserahkan, akun dan pegawai diperiksa ulang masih aktif dan preferensi WhatsApp aturan itu belum dimatikan hari itu (`SKIPPED inactive` / `SKIPPED opted_out`). Baris `QUEUED` yang jatuh tempo diklaim dengan `FOR UPDATE SKIP LOCKED` dan lease 5 menit, diserahkan ke Kirim SQ di luar transaksi dengan `idempotency-key` tetap, lalu dicatat `HANDED_OVER`/`DRY_RUN`/`SKIPPED`/`FAILED`. Gagal sementara diulang dengan jeda CAL-001 (`retryDelayMs`). Nomor diambil dari `employees.phone` saat penyerahan; tanpa nomor `SKIPPED no_phone`.
@@ -114,7 +115,7 @@ Notifikasi transaksi lain (cuti diputuskan, slip terbit, dll.) tetap in-app saja
 ## 9. Acceptance criteria
 
 - NOTIF-003-A: menjalankan penjalan dua kali (berurutan maupun bersamaan) pada hari yang sama tidak menggandakan pengingat, notifikasi, maupun pesan WhatsApp.
-- NOTIF-003-B: di luar 06.00–21.00 WIB penjalan tidak membuat pengingat dan tidak menyerahkan pesan; pesan yang lewat 21.00 menjadi `SKIPPED expired`.
+- NOTIF-003-B: di luar 04.00–23.00 WIB penjalan tidak membuat pengingat dan tidak menyerahkan pesan; pesan yang lewat 23.00 menjadi `SKIPPED expired`.
 - NOTIF-003-C: ambang memakai jendela (D-06): kontrak dengan sisa 20 hari mendapat pengingat H-30 sekali; besoknya tidak ada pengingat lagi sampai H-7.
 - NOTIF-003-D: ringkasan persetujuan memuat jumlah langkah `pending` milik approver itu saja dan tidak terkirim bila nol.
 - NOTIF-003-E: penerima pengingat HC adalah pemegang izin terkait; akun tanpa izin tidak menerimanya.

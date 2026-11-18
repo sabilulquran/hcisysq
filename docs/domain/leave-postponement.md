@@ -29,7 +29,7 @@ Termasuk:
 | Di luar lingkup | Alasan |
 | --- | --- |
 | Cuti khusus LEAVE-005 (sakit, melahirkan, duka, dsb.) | Tidak melewati persetujuan lini (`line_handling` `notify`/`none`); tanggalnya fakta, bukan permintaan. |
-| Usulan dari Human Capital (tinjauan masa kritis LEAVE-009, validasi atau approval HC) | D-02 (DRAFT). HC tetap setujui/tolak; perluasan ke tinjauan masa kritis dicatat `TBD`. |
+| Usulan dari Human Capital (validasi atau approval HC) | D-02 (DRAFT). HC tetap setujui/tolak. Tinjauan masa kritis tidak ada lagi sejak LEAVE-009 D-12 (2026-11-18). |
 | Mengubah pengajuan yang sudah `approved` | Pembatalan/perubahan pasca-persetujuan tetap urusan HC (LEAVE-004 slice boundary). |
 | Penyetuju menarik kembali usulannya | `TBD`. Pegawai dapat menolak; penyetuju dapat menunggu respons. |
 | Batas waktu / kedaluwarsa otomatis usulan | APR-001 tidak punya expiry generik. Usulan yang tanggal mulainya sudah lewat hanya bisa ditolak (D-08). |
@@ -45,7 +45,7 @@ Termasuk:
 | D-04 | Usulan wajib berisi **tanggal mulai dan tanggal selesai** (legacy boleh salah satu) dan **catatan** 5–1000 karakter. Tanggal usulan harus berbeda dari tanggal pengajuan asal, dan tanggal mulai harus **setelah hari ini** (Asia/Jakarta). | DRAFT |
 | D-05 | Usulan divalidasi dengan aturan jenis cutinya **saat diusulkan** dan **diulang saat diterima**: kalender kerja, hari kerja > 0, kelayakan dan kuota periode Cuti Tahunan (tanpa menghitung pengajuan asal), aturan jenis cuti terencana, dan resolusi rantai persetujuan. Penyetuju tidak dapat mengusulkan tanggal yang tidak mungkin diajukan pegawai. | DRAFT |
 | D-06 | Batas pemberitahuan minimum (H-7 Cuti Tahunan dan batas jenis cuti terencana) dihitung dari **tanggal pengajuan asal dikirim**, bukan dari tanggal usulan atau tanggal diterima. Pegawai sudah memberi tahu tepat waktu; keterlambatan karena usulan tidak boleh membuatnya gagal. Tanggal acuan itu dicatat di `validation_summary.noticeReferenceOn` pengganti, dan tetap dipakai bila pengganti itu sendiri ditangguhkan lagi. | DRAFT |
-| D-07 | Pengajuan pengganti menjalani **seluruh rantai persetujuan dari awal**, diresolusi pada **tanggal diterima** (APR-001: penerimaan adalah pengiriman), sehingga perubahan atasan atau struktur sejak pengajuan asal ikut berlaku. Tidak ada tahap yang dianggap sudah disetujui, termasuk tahap pengusul; APR-001 tidak mengenal auto-approval. Masa kritis LEAVE-009 dicocokkan ulang untuk tanggal baru. | DRAFT |
+| D-07 | Pengajuan pengganti menjalani **seluruh rantai persetujuan dari awal**, diresolusi pada **tanggal diterima** (APR-001: penerimaan adalah pengiriman), sehingga perubahan atasan atau struktur sejak pengajuan asal ikut berlaku. Tidak ada tahap yang dianggap sudah disetujui, termasuk tahap pengusul; APR-001 tidak mengenal auto-approval. Masa kritis LEAVE-009 dicocokkan ulang untuk tanggal baru — sejak D-12 (2026-11-18) hanya sebagai peringatan dan catatan, tanpa tahap HC. | DRAFT |
 | D-08 | Selama usulan menunggu respons, pengajuan asal berstatus `postponement_proposed` dan **tidak menahan kuota** maupun penjaga tumpang tindih (keduanya hanya menghitung `in_review`/`approved`), sama seperti legacy. Bila kuota terpakai pengajuan lain sebelum pegawai menerima, penerimaan ditolak dengan alasannya dan pegawai dapat menolak usulan. | DRAFT |
 | D-09 | Menolak usulan menutup pengajuan asal sebagai `cancelled` (pegawai yang mengakhiri, seperti `cancelPendingRequest` legacy) dengan event `leave.postponement.declined`. Tidak kembali ke penyetuju. | DRAFT |
 | D-10 | Alasan cuti pengajuan asal disalin ke pengganti. Dokumen pendukung cuti terencana disalin (ciphertext yang sama, baris baru) supaya pegawai tidak mengunggah ulang. | DRAFT |
@@ -58,7 +58,7 @@ Termasuk:
 | --- | --- |
 | Penyetuju lini (pemilik tahap `pending`) | Melihat pratinjau usulan, mengirim usulan tanggal lain dengan catatan. |
 | Pegawai pemohon | Melihat usulan di riwayat cutinya, menerima (membuat pengganti) atau menolak (opsional dengan alasan). |
-| Human Capital | Tidak berubah. Pengganti yang terkena masa kritis atau tugas HC melewati antrean HC seperti pengajuan biasa. |
+| Human Capital | Tidak berubah. Pengganti yang punya tugas HC melewati antrean HC seperti pengajuan biasa; masa kritis tidak lagi menambah antrean (LEAVE-009 D-12). |
 | Sistem | Mengunci baris, memvalidasi, membuat pengganti, menulis audit, outbox, dan notifikasi in-app. |
 
 ## 5. Alur dan state
@@ -82,7 +82,6 @@ pengajuan pengganti: dibuat langsung in_review, dengan replaces_request_id → p
 | Tahap lini `pending` milik pengusul | → `postponed` (`acted_by_account_id`, `acted_at`, `decision_note` = catatan). |
 | Tahap lini `waiting` sesudahnya | → `cancelled`. |
 | Tugas HC (`waiting`) | → `cancelled`. |
-| Tinjauan masa kritis (`waiting`) | → `cancelled`. |
 | Tahap yang sudah diputus | Tetap, sebagai riwayat. |
 
 ### 5.3 State usulan (`leave_postponement_proposals`)
@@ -127,12 +126,12 @@ Langkah, dalam satu transaksi:
 
 1. Kunci baris pegawai (seperti pengajuan cuti biasa, menyerialkan kuota), lalu usulan dan pengajuan asal.
 2. Bila usulan sudah `accepted`: jawab ulang dengan pengganti yang sama (`idempotentReplay = true`), tanpa efek baru, apa pun kunci idempotensi yang dikirim (usulan itu sendiri sudah menjadi kunci).
-3. Buat pengajuan pengganti lewat jalur pengiriman jenis cutinya (validasi penuh D-05/D-06, snapshot rantai baru D-07, masa kritis, tugas HC untuk cuti terencana, salinan dokumen D-10), dengan `replaces_request_id` dan `idempotency_key` dari input.
+3. Buat pengajuan pengganti lewat jalur pengiriman jenis cutinya (validasi penuh D-05/D-06, snapshot rantai baru D-07, pencocokan masa kritis, tugas HC untuk cuti terencana, salinan dokumen D-10), dengan `replaces_request_id` dan `idempotency_key` dari input.
 4. Usulan → `accepted` (`responded_at`, `replacement_request_id`); pengajuan asal → `postponed`.
 5. Event `leave.postponement.accepted` pada pengajuan asal; event pengiriman biasa (`leave.request.submitted` / `leave.planned.submitted`, payload memuat `replacesRequestId`) pada pengganti.
 6. Notifikasi pengiriman biasa ke penyetuju tahap pertama pengganti (LEAVE-010), plus outbox `leave.postponement.accepted` dan notifikasi in-app ke pengusul ("Usulan tanggal cuti diterima").
 
-Respons 201: `proposalId`, `replacementRequestId`, `replacementStatus = in_review`, rantai persetujuan baru, `criticalReviewRequired`.
+Respons 201: `proposalId`, `replacementRequestId`, `replacementStatus = in_review`, rantai persetujuan baru, `criticalPeriods` (masa kritis yang terkena tanggal baru).
 
 ### 5.6 Menolak usulan
 
@@ -146,7 +145,7 @@ Langkah: kunci usulan dan pengajuan; usulan → `declined` (`response_note`, `re
 | --- | --- |
 | APR-001 | Snapshot pengajuan asal tidak ditulis ulang; tahapnya hanya diputus (`postponed`) atau ditutup (`cancelled`). Pengganti mendapat snapshot baru saat diterima. Tahap `postponed` tidak dapat diputus lagi (`REQUEST_NOT_REVIEWABLE`). |
 | Saldo / kuota | Asal melepas tahanan saat diusulkan (D-08). Pengganti menahan kuota sejak `in_review` dan dihitung di periode tanggal barunya. Penerimaan diserialkan dengan kunci baris pegawai, sama dengan pengajuan biasa, sehingga tidak dapat melampaui kuota. |
-| LEAVE-009 | Tinjauan masa kritis asal ditutup (`cancelled`). Pengganti dicocokkan ulang terhadap masa kritis aktif untuk tanggal baru dan unit pemohon saat diterima. Pratinjau usulan menampilkan masa kritis yang akan terkena. |
+| LEAVE-009 | Pengganti dicocokkan ulang terhadap masa kritis aktif untuk tanggal baru dan unit pemohon saat diterima, dan mencatatnya di pengajuan. Pratinjau usulan menampilkan masa kritis yang akan terkena. Sejak D-12 (2026-11-18) tidak ada tinjauan masa kritis yang perlu ditutup. |
 | LEAVE-010 | Pengajuan `postponement_proposed` tidak dapat dibatalkan lewat "Batalkan pengajuan" (`canCancel = false`); pegawai menolak usulan. Pengganti dapat dibatalkan seperti pengajuan biasa. |
 | Haji | Satu Haji aktif per pegawai tetap dijaga: asal tidak aktif selama usulan, pengganti mengambil slot. |
 | Presensi (ATT/LEAVE-006) | Hanya pengajuan `approved` yang menjelaskan hari presensi. Asal tidak pernah `approved`; pengganti berlaku setelah disetujui penuh. |
@@ -192,7 +191,7 @@ Catatan penyetuju disimpan di tahap (`decision_note`) dan usulan, tidak di paylo
 
 ## 9. Layar
 
-- **Persetujuan** (pegawai penyetuju, mobile-first): tiap kartu cuti mendapat tombol **Usulkan tanggal lain** di samping Tolak/Setujui. Formulir sebaris: tanggal mulai, tanggal selesai, catatan wajib, tombol **Periksa** (pratinjau: hari kerja, masa kritis) lalu **Kirim usulan**. Error tampil di kartu. Setelah terkirim kartu hilang dari antrean.
+- **Persetujuan** (pegawai penyetuju, mobile-first): tiap kartu cuti mendapat tombol **Usulkan tanggal lain** di samping Tolak/Setujui. Formulir sebaris: tanggal mulai, tanggal selesai, catatan wajib, tombol **Periksa** (pratinjau: hari kerja, masa kritis sebagai peringatan) lalu **Kirim usulan**. Error tampil di kartu. Setelah terkirim kartu hilang dari antrean.
 - **Pengurus yayasan** (`BoardApprovalsSection`): aksi yang sama.
 - **Riwayat Cuti Tahunan** dan **Riwayat cuti terencana**: pengajuan `postponement_proposed` berlabel "Menunggu respons Anda" dan menampilkan kotak usulan (nama pengusul, tanggal usulan, hari kerja, catatan) dengan **Terima tanggal ini** dan **Tolak usulan** (konfirmasi + alasan opsional). Status `postponed` berlabel "Ditangguhkan — diganti pengajuan baru"; pengganti berlabel "Pengganti pengajuan sebelumnya". Loading, error, dan kosong mengikuti pola halaman yang ada.
 - API mengembalikan `postponement` dan `canRespondToPostponement` per pengajuan; layar tidak memutuskan.
@@ -210,7 +209,7 @@ Tidak ada baris yang diubah oleh migration; tidak ada izin baru.
 
 ## 11. Acceptance criteria
 
-- LEAVE-008-A: pemilik tahap lini `pending` mengusulkan tanggal lain dengan catatan; pengajuan menjadi `postponement_proposed`, tahap `postponed`, tahap berikutnya/tugas HC/tinjauan masa kritis `cancelled`, event dan notifikasi pemohon tercatat tanpa alasan cuti maupun catatan.
+- LEAVE-008-A: pemilik tahap lini `pending` mengusulkan tanggal lain dengan catatan; pengajuan menjadi `postponement_proposed`, tahap `postponed`, tahap berikutnya dan tugas HC `cancelled`, event dan notifikasi pemohon tercatat tanpa alasan cuti maupun catatan.
 - LEAVE-008-B: selain pemilik tahap aktif (pegawai lain, pemohon, tahap `waiting`, pengurus tanpa kapabilitas) ditolak 403/409 tanpa perubahan.
 - LEAVE-008-C: usulan yang melanggar aturan cuti (kuota, kalender, tanggal sama, tanggal lewat) ditolak 409 dan tidak mengubah apa pun.
 - LEAVE-008-D: selama usulan menunggu, kuota periode Cuti Tahunan pengajuan asal dilepas.

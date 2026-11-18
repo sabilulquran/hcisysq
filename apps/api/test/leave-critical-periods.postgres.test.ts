@@ -1,8 +1,9 @@
-// LEAVE-009 acceptance against a real schema: HC manages critical periods, Cuti Tahunan in one
-// gets an extra HC review after line approval, and the decision finishes or rejects the request.
+// LEAVE-009 acceptance against a real schema: HC manages critical periods, Cuti Tahunan in one is
+// warned about and recorded, and since D-12 (2026-11-18) the line chain alone decides it.
 // Synthetic employees only; every test runs inside one rolled-back transaction.
 
 import Fastify from "fastify";
+import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +45,7 @@ function savepointPool(client: PoolClient): Pool {
   return { query: run, connect: async () => handle } as unknown as Pool;
 }
 
-type Person = "requester" | "manager" | "unitApprover" | "hcAdmin" | "hcValidator" | "hcReviewer";
+type Person = "requester" | "manager" | "unitApprover" | "hcAdmin" | "hcValidator";
 
 // Monday 5 January 2099, 08:00 Jakarta. The leave below is four weeks later, inside JAN_MAR.
 const NOW = new Date("2099-01-05T01:00:00Z");
@@ -101,7 +102,6 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
     expect(response.statusCode, response.body).toBe(201);
     return response.json() as {
       id: string;
-      criticalReviewRequired: boolean;
       approvalChain: Array<{ id: string; employeeId: string }>;
     };
   }
@@ -112,7 +112,7 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
       .toBe(200);
     const last = await call("unitApprover", "POST", `/leave/approvals/${second!.id}/decision`, { decision: "approve" });
     expect(last.statusCode, last.body).toBe(200);
-    return last.json() as { requestStatus: string; criticalReviewStatus: string | null };
+    return last.json() as { requestStatus: string; hcTaskStatus: string | null };
   }
 
   async function requestStatus(id: string) {
@@ -120,12 +120,21 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
     return row.rows[0]!.status;
   }
 
-  async function reviewOf(requestId: string) {
-    const row = await client.query<{ id: string; status: string; period_snapshot: Array<{ label: string }> }>(
-      "SELECT id, status, period_snapshot FROM leave_request_critical_reviews WHERE leave_request_id = $1",
+  /** D-06/D-12: the matched periods live on the request itself, as the record of what applied. */
+  async function recordedPeriods(requestId: string): Promise<Array<{ label: string }> | null> {
+    const row = await client.query<{ periods: Array<{ label: string }> | null }>(
+      `SELECT validation_summary -> 'criticalPeriods' AS periods FROM leave_requests WHERE id = $1`,
       [requestId],
     );
-    return row.rows[0] ?? null;
+    return row.rows[0]?.periods ?? null;
+  }
+
+  async function reviewRows(requestId: string) {
+    const row = await client.query(
+      "SELECT id FROM leave_request_critical_reviews WHERE leave_request_id = $1",
+      [requestId],
+    );
+    return row.rowCount ?? 0;
   }
 
   beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
@@ -159,7 +168,7 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
       AUTH_MODE: "local", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8,
     } as ApiConfig;
     const auth = new AuthService(transactionPool, config.AUTH_ENCRYPTION_KEY!, 8, false);
-    for (const who of ["manager", "unitApprover", "requester", "hcAdmin", "hcValidator", "hcReviewer"] as const) {
+    for (const who of ["manager", "unitApprover", "requester", "hcAdmin", "hcValidator"] as const) {
       const employeeId = randomUUID();
       await client.query(
         `INSERT INTO employees(id, employee_number, full_name, status, started_on, organizational_unit_id,
@@ -186,8 +195,7 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
       [people.requester.employeeId, people.manager.employeeId],
     );
     await grant("hcAdmin", ["leave.configuration.manage"]);
-    await grant("hcValidator", ["leave.validate"]);
-    await grant("hcReviewer", ["leave.validate", "leave.hc.approve"]);
+    await grant("hcValidator", ["leave.validate", "leave.hc.approve"]);
 
     app = Fastify({ logger: false });
     await registerLeaveCriticalPeriodRoutes(app, transactionPool, config);
@@ -203,7 +211,7 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
   });
 
   it("LEAVE-009-A/I: HC Admin manages periods with audit; others are refused", async () => {
-    for (const who of ["requester", "hcReviewer"] as const) {
+    for (const who of ["requester", "hcValidator"] as const) {
       expect((await call(who, "GET", "/admin/leave/critical-periods")).statusCode, who).toBe(403);
       expect((await call(who, "POST", "/admin/leave/critical-periods", {
         label: "PPDB", startOn: "2099-03-02", endOn: "2099-03-06", unitId: null,
@@ -245,7 +253,7 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
     ]);
   });
 
-  it("LEAVE-009-B/C/D/E/F: warns, never blocks, and adds an HC review after line approval", async () => {
+  it("LEAVE-009-B/C/D/E: warns, never blocks, and line approval alone finishes the request (D-12)", async () => {
     await createPeriod({ label: "Ujian Yayasan" });
     await createPeriod({ label: "PPDB unit lain", unitId: otherUnitId });
     const inactive = await createPeriod({ label: "Dibatalkan" });
@@ -253,102 +261,132 @@ describe.skipIf(!allowed)("LEAVE-009 critical periods", () => {
 
     const preview = await call("requester", "POST", "/leave/me/annual/preview", LEAVE);
     expect(preview.statusCode, preview.body).toBe(200);
-    expect(preview.json().criticalReviewRequired).toBe(true);
     expect(preview.json().criticalPeriods.map((item: { label: string }) => item.label)).toEqual(["Ujian Yayasan"]);
+    expect(preview.json().criticalReviewRequired).toBeUndefined();
 
     const request = await submitAnnual();
-    expect(request.criticalReviewRequired).toBe(true);
-    expect((await reviewOf(request.id))).toMatchObject({ status: "waiting" });
+    // The match is recorded on the request, but no review row and no extra stage is created.
+    expect((await recordedPeriods(request.id))!.map((item) => item.label)).toEqual(["Ujian Yayasan"]);
+    expect(await reviewRows(request.id)).toBe(0);
 
     const line = await approveLine(request);
-    expect(line).toMatchObject({ requestStatus: "in_review", criticalReviewStatus: "pending" });
-    expect(await requestStatus(request.id)).toBe("in_review");
+    expect(line).toMatchObject({ requestStatus: "approved", hcTaskStatus: null });
+    expect(await requestStatus(request.id)).toBe("approved");
 
     const mine = await call("requester", "GET", "/leave/me/summary");
     expect(mine.json().requests.find((item: { id: string }) => item.id === request.id))
-      .toMatchObject({ criticalReviewStatus: "pending", currentApproverName: null });
+      .toMatchObject({ status: "approved", currentApproverName: null });
 
-    // F: Human Capital without the approval mandate, and line approvers, cannot decide.
-    for (const who of ["hcValidator", "unitApprover", "requester"] as const) {
-      expect((await call(who, "GET", "/leave/hc/critical-reviews")).statusCode, who).toBe(403);
-    }
-    const queue = await call("hcReviewer", "GET", "/leave/hc/critical-reviews");
-    expect(queue.statusCode, queue.body).toBe(200);
-    const item = queue.json().items.find((entry: { requestId: string }) => entry.requestId === request.id);
-    expect(item).toMatchObject({ policyKey: "annual", policyName: expect.any(String), unitName: "Unit Kritis Sintetis" });
-    expect(item.periods.map((period: { label: string }) => period.label)).toEqual(["Ujian Yayasan"]);
-
-    const review = (await reviewOf(request.id))!;
-    expect((await call("hcValidator", "POST", `/leave/hc/critical-reviews/${review.id}/decision`, { decision: "approve" }))
-      .statusCode).toBe(403);
-    const decided = await call("hcReviewer", "POST", `/leave/hc/critical-reviews/${review.id}/decision`, {
-      decision: "approve", note: "Guru pengganti tersedia",
-    });
-    expect(decided.statusCode, decided.body).toBe(200);
-    expect(decided.json()).toMatchObject({ reviewStatus: "approved", requestStatus: "approved", hcTaskStatus: null });
-    expect(await requestStatus(request.id)).toBe("approved");
-    const again = await call("hcReviewer", "POST", `/leave/hc/critical-reviews/${review.id}/decision`, { decision: "reject" });
-    expect(again.statusCode).toBe(409);
+    // The review queue and its decision route are gone with the stage.
+    expect((await call("hcValidator", "GET", "/leave/hc/critical-reviews")).statusCode).toBe(404);
 
     const events = await client.query<{ event_type: string }>(
       "SELECT event_type FROM leave_request_events WHERE leave_request_id = $1",
       [request.id],
     );
-    expect(events.rows.map((row) => row.event_type)).toEqual(expect.arrayContaining([
-      "leave.critical_review.attached", "leave.critical_review.pending", "leave.critical_review.approved",
-    ]));
+    expect(events.rows.map((row) => row.event_type)).not.toContain("leave.critical_review.attached");
+    expect(events.rows.map((row) => row.event_type)).toContain("leave.request.approved_step");
   });
 
-  it("LEAVE-009-E/G: a later edit never changes a submitted request, and HC rejection rejects it", async () => {
+  it("LEAVE-009-G: a later edit never changes what a submitted request recorded", async () => {
     const period = await createPeriod({ label: "Pembagian Rapor" });
     const request = await submitAnnual();
     await call("hcAdmin", "PATCH", `/admin/leave/critical-periods/${period.id}`, {
       label: "Diubah setelah pengajuan", isActive: false,
     });
 
-    const review = await reviewOf(request.id);
-    expect(review!.period_snapshot.map((item) => item.label)).toEqual(["Pembagian Rapor"]);
-    expect((await approveLine(request)).criticalReviewStatus).toBe("pending");
-
-    const rejected = await call("hcReviewer", "POST", `/leave/hc/critical-reviews/${review!.id}/decision`, {
-      decision: "reject", note: "Kekurangan guru pengawas",
-    });
-    expect(rejected.statusCode, rejected.body).toBe(200);
-    expect(rejected.json()).toMatchObject({ reviewStatus: "rejected", requestStatus: "rejected" });
-    expect(await requestStatus(request.id)).toBe("rejected");
-  });
-
-  it("LEAVE-009 D-11: an HC approver never reviews their own leave", async () => {
-    await createPeriod({ label: "Ujian Yayasan" });
-    await client.query(
-      "UPDATE employees SET direct_manager_employee_id = $2 WHERE id = $1",
-      [people.hcReviewer.employeeId, people.manager.employeeId],
-    );
-    const submitted = await call("hcReviewer", "POST", "/leave/me/annual/submit", {
-      ...LEAVE, reason: "Acara keluarga", idempotencyKey: randomUUID(),
-    });
-    expect(submitted.statusCode, submitted.body).toBe(201);
-    const request = submitted.json() as { id: string; approvalChain: Array<{ id: string }> };
-    expect((await approveLine(request)).criticalReviewStatus).toBe("pending");
-
-    const queue = await call("hcReviewer", "GET", "/leave/hc/critical-reviews");
-    expect(queue.json().items.map((item: { requestId: string }) => item.requestId)).not.toContain(request.id);
-    const review = (await reviewOf(request.id))!;
-    const own = await call("hcReviewer", "POST", `/leave/hc/critical-reviews/${review.id}/decision`, { decision: "approve" });
-    expect(own.statusCode).toBe(403);
-    expect(own.json().code).toBe("SELF_REVIEW_FORBIDDEN");
-    expect(await requestStatus(request.id)).toBe("in_review");
+    expect((await recordedPeriods(request.id))!.map((item) => item.label)).toEqual(["Pembagian Rapor"]);
+    expect((await approveLine(request)).requestStatus).toBe("approved");
   });
 
   it("LEAVE-009-D: without a matching period the existing flow is unchanged", async () => {
     await createPeriod({ label: "Bulan lain", startOn: "2099-03-02", endOn: "2099-03-06" });
     const preview = await call("requester", "POST", "/leave/me/annual/preview", LEAVE);
-    expect(preview.json()).toMatchObject({ criticalPeriods: [], criticalReviewRequired: false });
+    expect(preview.json()).toMatchObject({ criticalPeriods: [] });
     const request = await submitAnnual();
-    expect(request.criticalReviewRequired).toBe(false);
-    expect(await reviewOf(request.id)).toBeNull();
+    expect(await recordedPeriods(request.id)).toBeNull();
     const line = await approveLine(request);
-    expect(line).toMatchObject({ requestStatus: "approved", criticalReviewStatus: null });
+    expect(line).toMatchObject({ requestStatus: "approved" });
+  });
+
+  // D-12 data migration. This release deletes the code that would ever decide an open review, so
+  // 0174 has to settle whatever production still holds. It already ran on this schema (empty), so
+  // the test seeds rows and runs the file again: every statement is written to be re-runnable.
+  it("LEAVE-009 D-12: migration 0174 settles reviews left open by the old stage", async () => {
+    const migration = await readFile(
+      new URL("../migrations/0174_leave_critical_review_retired.sql", import.meta.url),
+      "utf8",
+    );
+
+    async function seed(input: { requestStatus: string; reviewStatus: "waiting" | "pending"; startOn: string }) {
+      const requestId = randomUUID();
+      await client.query(
+        `INSERT INTO leave_requests (
+           id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling, idempotency_key
+         ) VALUES ($1, $2, 'annual', $3, $4::date, $4::date, 1, 'notify', $5)`,
+        [requestId, people.requester.employeeId, input.requestStatus, input.startOn, randomUUID()],
+      );
+      await client.query(
+        `INSERT INTO leave_request_critical_reviews (id, leave_request_id, status, period_snapshot)
+         VALUES ($1, $2, $3, $4::jsonb)`,
+        [
+          randomUUID(), requestId, input.reviewStatus,
+          JSON.stringify([{ id: randomUUID(), label: "Ujian Lama", startOn: input.startOn, endOn: input.startOn, scope: "organization" }]),
+        ],
+      );
+      return requestId;
+    }
+
+    // Line approval finished, HC never decided: the removed stage is the only thing it still waits for.
+    const stranded = await seed({ requestStatus: "in_review", reviewStatus: "pending", startOn: "2099-04-06" });
+    // Line approval still running: the review never became pending and never will.
+    const running = await seed({ requestStatus: "in_review", reviewStatus: "waiting", startOn: "2099-04-07" });
+    // Already decided elsewhere: nothing is owed, so the review only ends.
+    const rejected = await seed({ requestStatus: "rejected", reviewStatus: "pending", startOn: "2099-04-08" });
+
+    await client.query(migration);
+
+    const reviews = await client.query<{ requestId: string; status: string; actedAt: Date | null }>(
+      `SELECT leave_request_id AS "requestId", status, acted_at AS "actedAt"
+         FROM leave_request_critical_reviews
+        WHERE leave_request_id = ANY($1::uuid[])`,
+      [[stranded, running, rejected]],
+    );
+    const byRequest = new Map(reviews.rows.map((row) => [row.requestId, row]));
+    expect(byRequest.get(stranded)).toMatchObject({ status: "approved" });
+    expect(byRequest.get(stranded)!.actedAt).not.toBeNull();
+    expect(byRequest.get(running)).toMatchObject({ status: "cancelled" });
+    expect(byRequest.get(rejected)).toMatchObject({ status: "cancelled" });
+
+    // The stranded request is finished as the HC approval would have finished it (annual leave is
+    // hc_handling = notify, so there is no administrative HC task to activate).
+    expect(await requestStatus(stranded)).toBe("approved");
+    expect(await requestStatus(running)).toBe("in_review");
+    expect(await requestStatus(rejected)).toBe("rejected");
+
+    const outbox = await client.query<{ eventType: string; targetType: string }>(
+      `SELECT event_type AS "eventType", target_type AS "targetType"
+         FROM leave_notification_outbox WHERE leave_request_id = ANY($1::uuid[]) ORDER BY event_type`,
+      [[stranded, running, rejected]],
+    );
+    expect(outbox.rows).toEqual([
+      { eventType: "leave.request.approved", targetType: "employee" },
+      { eventType: "leave.request.approved.hc_notify", targetType: "role" },
+    ]);
+
+    const events = await client.query<{ settledAs: string }>(
+      `SELECT payload ->> 'settledAs' AS "settledAs" FROM leave_request_events
+        WHERE leave_request_id = ANY($1::uuid[]) AND event_type = 'leave.critical_review.retired'`,
+      [[stranded, running, rejected]],
+    );
+    expect(events.rows.map((row) => row.settledAs).sort()).toEqual(["approved", "cancelled", "cancelled"]);
+
+    // Re-running it changes nothing: no review is open any more.
+    await client.query(migration);
+    const open = await client.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM leave_request_critical_reviews WHERE status IN ('waiting', 'pending')`,
+    );
+    expect(open.rows[0]!.count).toBe(0);
   });
 
   it("LEAVE-009-J: the calendar shows foundation-wide and own-unit periods only", async () => {

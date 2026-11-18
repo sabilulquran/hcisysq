@@ -1,21 +1,24 @@
 // LEAVE-009 critical periods (masa kritis). Pure rules only; storage and HTTP live in
 // ../critical-period-routes.ts. Spec: docs/domain/leave-critical-periods.md §3.
+// D-12 (2026-11-18): a critical period warns and is recorded; it no longer adds an HC stage.
 
 export const CRITICAL_PERIOD_MAX_DAYS = 120;
 
-/** D-02: leave types with line approval that receive the extra HC review step. */
-export const CRITICAL_REVIEW_POLICY_KEYS = [
+/**
+ * D-02 with D-12 (2026-11-18): leave types a critical period applies to. Since D-12 removed the
+ * extra HC review step, applying means the same thing for all of them — the match warns the
+ * employee and is recorded on the request. Cuti khusus LEAVE-005 is never touched (D-02).
+ */
+export const CRITICAL_PERIOD_POLICY_KEYS = [
   "annual",
   "employee_marriage",
   "child_marriage",
   "child_circumcision",
   "hajj",
+  "unpaid",
 ] as const;
 
-/** D-02: Cuti Tanpa Gaji is already decided by HC, so its match is only recorded. */
-export const CRITICAL_PERIOD_RECORD_ONLY_POLICY_KEYS = ["unpaid"] as const;
-
-export type CriticalPeriodTreatment = "review" | "record" | "none";
+export type CriticalPeriodTreatment = "record" | "none";
 
 export interface CriticalPeriodRecord {
   id: string;
@@ -82,9 +85,7 @@ export function assertCriticalPeriodRange(startOn: string, endOn: string): void 
 }
 
 export function criticalPeriodTreatment(policyKey: string): CriticalPeriodTreatment {
-  if ((CRITICAL_REVIEW_POLICY_KEYS as readonly string[]).includes(policyKey)) return "review";
-  if ((CRITICAL_PERIOD_RECORD_ONLY_POLICY_KEYS as readonly string[]).includes(policyKey)) return "record";
-  return "none";
+  return (CRITICAL_PERIOD_POLICY_KEYS as readonly string[]).includes(policyKey) ? "record" : "none";
 }
 
 /**

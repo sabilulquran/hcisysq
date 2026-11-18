@@ -63,15 +63,11 @@ describe("LEAVE-009 critical period matching", () => {
   });
 });
 
-describe("LEAVE-009 critical period treatment per leave type (D-02)", () => {
-  it("reviews annual and planned line-approval leave", () => {
-    for (const key of ["annual", "employee_marriage", "child_marriage", "child_circumcision", "hajj"]) {
-      expect(criticalPeriodTreatment(key), key).toBe("review");
+describe("LEAVE-009 critical period treatment per leave type (D-02 with D-12)", () => {
+  it("records annual, planned line-approval leave and unpaid leave; none of them gains a stage", () => {
+    for (const key of ["annual", "employee_marriage", "child_marriage", "child_circumcision", "hajj", "unpaid"]) {
+      expect(criticalPeriodTreatment(key), key).toBe("record");
     }
-  });
-
-  it("only records unpaid leave, which HC already decides", () => {
-    expect(criticalPeriodTreatment("unpaid")).toBe("record");
   });
 
   it("never touches special leave rights", () => {

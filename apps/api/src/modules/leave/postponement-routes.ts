@@ -21,6 +21,7 @@ import { notifyAccount, notifyEmployee } from "../notifications/service.js";
 import { describeLeave } from "./approver-notifications.js";
 import { AnnualLeaveRequestPolicyError } from "./domain/annual-leave-request.js";
 import { LeaveApprovalConfigurationError } from "./domain/approval-chain.js";
+import type { CriticalPeriodSnapshotItem } from "./domain/critical-period.js";
 import { PlannedLeavePolicyError, SUPPORTED_PLANNED_LEAVE_KEYS, type SupportedPlannedLeaveKey } from "./domain/planned-leave-policy.js";
 import { getLeavePolicy, type LeavePolicyKey } from "./domain/policy-catalog.js";
 import {
@@ -245,7 +246,6 @@ async function evaluateProposal(
       workingDates: preview.calculation.workingDates,
       nonWorkingDates: preview.calculation.nonWorkingDates,
       criticalPeriods: preview.criticalPeriods,
-      criticalReviewRequired: preview.criticalPeriods.length > 0,
     };
   }
   if (!isPlannedKey(step.policyKey)) {
@@ -266,7 +266,6 @@ async function evaluateProposal(
     workingDates: preview.calculation.workingDates,
     nonWorkingDates: preview.calculation.nonWorkingDates,
     criticalPeriods: preview.criticalPeriods,
-    criticalReviewRequired: preview.criticalReviewRequired,
   };
 }
 
@@ -418,11 +417,6 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         [step.requestId],
       );
       await client.query(
-        `UPDATE leave_request_critical_reviews SET status = 'cancelled', updated_at = now()
-          WHERE leave_request_id = $1 AND status = 'waiting'`,
-        [step.requestId],
-      );
-      await client.query(
         `UPDATE leave_requests SET status = 'postponement_proposed', updated_at = now() WHERE id = $1`,
         [step.requestId],
       );
@@ -481,7 +475,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         proposedStartOn: dates.startOn,
         proposedEndOn: dates.endOn,
         proposedWorkingDays: evaluation.workingDays,
-        criticalReviewRequired: evaluation.criticalReviewRequired,
+        criticalPeriods: evaluation.criticalPeriods,
       });
     } catch (error) {
       await client.query("ROLLBACK");
@@ -601,10 +595,15 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         noticeReferenceOn: proposal.submittedOn,
         replacement,
       };
-      let created: { requestId: string; insertedSteps: Array<{ id: string; name: string }>; criticalReviewRequired: boolean };
+      // LEAVE-008 D-05: the replacement request matches masa kritis again, for the warning and the record.
+      let created: {
+        requestId: string;
+        insertedSteps: Array<{ id: string; name: string }>;
+        criticalPeriods: CriticalPeriodSnapshotItem[];
+      };
       if (proposal.policyKey === "annual") {
         const result = await insertAnnualRequest(client, common);
-        created = { ...result, criticalReviewRequired: result.preview.criticalPeriods.length > 0 };
+        created = { ...result, criticalPeriods: result.preview.criticalPeriods };
       } else if (isPlannedKey(proposal.policyKey)) {
         const result = await insertPlannedRequest(client, {
           ...common,
@@ -612,7 +611,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
           evidence: { kind: "copy", fromRequestId: proposal.requestId },
           encryptionKey,
         });
-        created = { ...result, criticalReviewRequired: result.preview.criticalReviewRequired };
+        created = { ...result, criticalPeriods: result.preview.criticalPeriods };
       } else {
         throw new LeaveWorkflowError("POSTPONEMENT_NOT_SUPPORTED", "Jenis cuti ini tidak dapat diusulkan tanggal lain.");
       }
@@ -654,7 +653,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         replacementRequestId: created.requestId,
         replacementStatus: "in_review",
         approvalChain: created.insertedSteps.map((step) => ({ id: step.id, name: step.name })),
-        criticalReviewRequired: created.criticalReviewRequired,
+        criticalPeriods: created.criticalPeriods,
         idempotentReplay: false,
       });
     } catch (error) {

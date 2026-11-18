@@ -51,7 +51,7 @@ Termasuk (Paket 1):
 | D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan. Kunci alur rollout ORG-004: `TRIP`. Tanpa baris rollout, mode `LEGACY` (atasan langsung pegawai dan approver unit pada unitnya). HC **tidak** menjadi tahap approval. | DRAFT |
 | D-02 | Satu pengajuan untuk satu pegawai, dan hanya pegawai itu sendiri yang mengajukan. Perjalanan rombongan = tiap anggota mengajukan sendiri dan masing-masing menerima surat tugas. | DRAFT |
 | D-03 | Lama perjalanan paling banyak **30 hari kalender** per pengajuan, dihitung inklusif. | DRAFT |
-| D-04 | Tanggal berangkat paling cepat **hari ini (WIB)**. Tidak ada pengajuan mundur di Paket 1; perjalanan mendadak yang sudah berjalan dicatat HC di luar sistem. | DRAFT |
+| D-04 | Tanggal berangkat paling cepat **hari ini (WIB)**. Tidak ada pengajuan mundur di Paket 1; perjalanan mendadak yang sudah berjalan dicatat HC di luar sistem. | DRAFT — **digantikan D-18 (2026-11-18)**: pengajuan mundur sampai 7 hari kini diperbolehkan, jadi perjalanan mendadak tidak lagi dicatat di luar sistem. |
 | D-05 | Perjalanan tidak boleh tumpang tindih dengan perjalanan lain milik pegawai yang belum ditolak atau dibatalkan (`IN_REVIEW`, `APPROVED`, `ISSUED`, `COMPLETED`) atau dengan cuti yang `in_review`/`approved`. | DRAFT |
 | D-06 | Nomor surat tugas memakai register DOC-001: `<urut>/ST/YSQ/<bulan romawi>/<tahun>`, urut per tahun takwim Jakarta, dialokasikan **hanya saat terbit**, tidak pernah didaur ulang. | DRAFT (mengikuti DOC-001 D-04) |
 | D-07 | Penandatangan surat tugas: **Kepala Human Capital Management**, fallback **Direktur**, tanpa self-sign — resolver yang sama dengan DOC-001 D-05/PAYSLIP-005. | DRAFT |
@@ -65,6 +65,7 @@ Termasuk (Paket 1):
 | D-15 | Paket 2: hanya perjalanan `ISSUED`/`COMPLETED` yang menjadi disposisi kehadiran; `APPROVED` tanpa surat tugas tetap hanya terlihat di Pengecualian (D-11). Urutan: jadwal bermasalah/libur → cuti atau penyelesaian final → **perjalanan dinas** → tugas luar/WFH ATT-015 → punch. Perjalanan menang atas tugas luar/WFH pada hari yang sama (biasanya tidak terjadi karena D-05/ATT-015 D-08 saling menolak). Pada hari dinas dengan punch, menit telat dan pulang awal disimpan **0** (bukan sekadar `justified`), sehingga punch yang terlambat dibaca `present`; `absent`/`incomplete` diganti `business_trip` dengan jam punch yang tercatat tetap disimpan. | DRAFT |
 | D-16 | Label status `business_trip` di layar pegawai dan HC: **"Dinas"**. Simbol rekap: **`PD`**. Kolom rekap "Tugas luar/WFH" menjadi "Tugas luar/WFH/Dinas" (`TL/WFH/PD` pada matriks) dan menjumlah ketiganya. | DRAFT |
 | D-17 | Payroll PAY-003 memperlakukan hari `business_trip` **sama dengan `field_assignment`**: hari kerja yang dihitung satu kali untuk transport PKWT (`CONTRACT_ATTENDANCE_DAYS`), selama perjalanannya masih `ISSUED`/`COMPLETED`. Tidak ada komponen biaya perjalanan (uang harian, uang saku) di payroll; biaya mengikuti REIMB-001. | DRAFT |
+| D-18 | **Pengajuan mundur sampai 7 hari kalender** (WIB), menggantikan D-04. Aturannya satu dengan tugas luar ATT-015 D-05: `startOn` paling lambat `hari ini − 7`, validasi dan gaya pesan yang sama, dan di luar itu tetap `TRIP_START_IN_PAST`. Batas depan (30 hari, D-03), larangan tumpang tindih (D-05), dan rantai approval (D-01) tidak berubah. Konsekuensi yang diterima: **surat tugas boleh terbit setelah perjalanan selesai**, karena penerbitan hanya menuntut status `APPROVED` dan pegawai masih aktif; nomor surat tetap urut saat terbit (D-06). Penyelesaian (D-10) dapat menyusul segera karena tanggal kembali sudah lewat. | DRAFT (keputusan owner 2026-11-18) |
 
 ## 4. Actor
 
@@ -88,7 +89,7 @@ Langkah, dalam satu transaksi:
 
 1. kunci baris pegawai (`FOR UPDATE`), sehingga dua pengajuan bersamaan diperiksa berurutan;
 2. bila `idempotencyKey` sudah dipakai pegawai ini, kembalikan pengajuan yang sama (replay, bukan duplikat);
-3. validasi D-03, D-04, D-05;
+3. validasi D-03, D-18 (menggantikan D-04), D-05;
 4. resolusi rantai APR-001 (D-01): atasan langsung dan approver unit menjadi pegawai konkret, self-approval dibuang, approver ganda digabung;
 5. setiap approver harus pegawai aktif dengan akun aktif; bila tidak, pengajuan **gagal** dengan pesan konfigurasi — tidak ada rantai setengah jadi;
 6. simpan pengajuan `IN_REVIEW`, tahap pertama `pending`, sisanya `waiting`, snapshot resolusi;
@@ -100,7 +101,7 @@ Pemeriksaan D-05 hanya berjalan dari sisi perjalanan pada Paket 1: modul cuti be
 
 Sejak ATT-015 (D-08), perjalanan juga ditolak bila beririsan dengan tugas luar atau WFH/WFA milik pegawai yang `IN_REVIEW`/`APPROVED` (`TRIP_ARRANGEMENT_OVERLAP`); ATT-015 menolak arah sebaliknya.
 
-Kegagalan (409 kecuali disebut lain): `TRIP_DATE_RANGE`, `TRIP_TOO_LONG`, `TRIP_START_IN_PAST`, `TRIP_OVERLAP`, `TRIP_LEAVE_OVERLAP`, `DIRECT_MANAGER_MISSING`, `UNIT_APPROVER_MISSING`, `APPROVAL_CHAIN_EMPTY`, `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`; input tidak valid 400 `INVALID_TRIP_REQUEST`; akun bukan pegawai aktif 403 `EMPLOYEE_NOT_ACTIVE`.
+Kegagalan (409 kecuali disebut lain): `TRIP_DATE_RANGE`, `TRIP_TOO_LONG`, `TRIP_START_IN_PAST` (lebih dari 7 hari mundur, D-18), `TRIP_OVERLAP`, `TRIP_LEAVE_OVERLAP`, `DIRECT_MANAGER_MISSING`, `UNIT_APPROVER_MISSING`, `APPROVAL_CHAIN_EMPTY`, `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`; input tidak valid 400 `INVALID_TRIP_REQUEST`; akun bukan pegawai aktif 403 `EMPLOYEE_NOT_ACTIVE`.
 
 > Konsekuensi yang diketahui: sebelum akun pemimpin diaktifkan, pengajuan di production berhenti di `APPROVER_ACCOUNT_NOT_READY`. Itu perilaku yang benar (APR-001-E), bukan cacat. Alurnya diuji dengan data sintetis di test integrasi.
 
@@ -261,7 +262,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 - TRIP-001-B: rantai approval disnapshot saat pengajuan; mengubah atasan sesudahnya tidak mengubah tahap yang tersimpan.
 - TRIP-001-C: approver yang tidak memegang tahap aktif menerima 403; keputusan ganda hanya menghasilkan satu transisi.
 - TRIP-001-D: resolver yang gagal atau approver dengan akun belum aktif menggagalkan pengajuan tanpa menyimpan apa pun.
-- TRIP-001-E: tanggal mundur, lebih dari 30 hari, atau tumpang tindih dengan perjalanan/cuti ditolak.
+- TRIP-001-E: tanggal mundur lebih dari 7 hari (D-18), lebih dari 30 hari, atau tumpang tindih dengan perjalanan/cuti ditolak; mundur sampai 7 hari diterima.
 - TRIP-001-F: surat tugas hanya terbit dari `APPROVED`, oleh pemegang `trips.manage`, dengan nomor `ST` unik; tanpa penandatangan, pengajuan tetap `APPROVED` dan nomor tidak terpakai.
 - TRIP-001-G: pegawai tidak dapat membatalkan setelah `ISSUED`; pembatalan HC mencabut surat tugas dan nomornya tetap terpakai.
 - TRIP-001-H: surat tugas tidak dapat dibatalkan lewat register DOC-001.
@@ -283,7 +284,8 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 | D-01 | Siapa yang menyetujui perjalanan dinas? | Atasan langsung → approver unit, HC tidak menyetujui |
 | D-02 | Rombongan satu pengajuan atau per orang? | Per orang |
 | D-03 | Batas lama perjalanan? | 30 hari kalender |
-| D-04 | Boleh diajukan setelah berangkat? | Tidak |
+| D-04 | Boleh diajukan setelah berangkat? | ~~Tidak~~ — lihat D-18 |
+| D-18 | Seberapa jauh mundur boleh diajukan? | Sampai 7 hari, sama dengan tugas luar ATT-015 D-05; surat tugas boleh terbit setelah perjalanan |
 | D-06 | Format nomor surat tugas? | `001/ST/YSQ/XI/2026` |
 | D-07 | Siapa penanda tangan surat tugas? | Kepala HCM, cadangan Direktur |
 | D-08 | Siapa boleh membatalkan setelah surat terbit? | HC saja |

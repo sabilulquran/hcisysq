@@ -22,24 +22,25 @@ describe("NOTIF-003 domain", () => {
     expect(jakartaClock(new Date("2026-11-10T23:30:00Z"))).toEqual({ date: "2026-11-11", hour: 6, minute: 30, weekday: 3 });
   });
 
-  it("D-04: makes and hands over reminders only from 06:00 to before 21:00 WIB", () => {
-    expect(insideSendWindow(wib("2026-11-11T05:59:59"))).toBe(false);
-    expect(insideSendWindow(wib("2026-11-11T06:00:00"))).toBe(true);
-    expect(insideSendWindow(wib("2026-11-11T20:59:59"))).toBe(true);
-    expect(insideSendWindow(wib("2026-11-11T21:00:00"))).toBe(false);
+  it("D-15: makes and hands over reminders only from 04:00 to before 23:00 WIB", () => {
+    expect(insideSendWindow(wib("2026-11-11T03:59:59"))).toBe(false);
+    expect(insideSendWindow(wib("2026-11-11T04:00:00"))).toBe(true);
+    expect(insideSendWindow(wib("2026-11-11T05:30:00"))).toBe(true);
+    expect(insideSendWindow(wib("2026-11-11T22:59:59"))).toBe(true);
+    expect(insideSendWindow(wib("2026-11-11T23:00:00"))).toBe(false);
     expect(insideSendWindow(wib("2026-11-11T00:00:00"))).toBe(false);
   });
 
-  it("D-12: a message made in the day expires at 21:00 WIB that day", () => {
-    expect(endOfSendWindow(wib("2026-11-11T07:05:00")).toISOString()).toBe("2026-11-11T14:00:00.000Z");
+  it("D-12 with D-15: a message made in the day expires at 23:00 WIB that day", () => {
+    expect(endOfSendWindow(wib("2026-11-11T07:05:00")).toISOString()).toBe("2026-11-11T16:00:00.000Z");
   });
 
   it("D-05: a rule is due at or after its hour, inside the window, on its weekdays", () => {
     const digest = { fireHour: 7, weekdays: [1, 2, 3, 4, 5, 6] };
     expect(ruleIsDue(digest, wib("2026-11-11T06:59:00"))).toBe(false);
     expect(ruleIsDue(digest, wib("2026-11-11T07:00:00"))).toBe(true);
-    expect(ruleIsDue(digest, wib("2026-11-11T20:30:00"))).toBe(true);
-    expect(ruleIsDue(digest, wib("2026-11-11T21:10:00"))).toBe(false);
+    expect(ruleIsDue(digest, wib("2026-11-11T22:30:00"))).toBe(true);
+    expect(ruleIsDue(digest, wib("2026-11-11T23:10:00"))).toBe(false);
     // 15 November 2026 is a Sunday.
     expect(ruleIsDue(digest, wib("2026-11-15T09:00:00"))).toBe(false);
     expect(ruleIsDue({ fireHour: 8 }, wib("2026-11-15T09:00:00"))).toBe(true);

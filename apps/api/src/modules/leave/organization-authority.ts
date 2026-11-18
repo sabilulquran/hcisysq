@@ -4,6 +4,8 @@ import type { Pool, PoolClient } from "pg";
 
 import {
   LEAVE_GOVERNANCE_CAPABILITY,
+  type ApprovalSeatTarget,
+  type AuthorityRequirement,
   OrganizationAuthorityResolver,
   OrganizationResolutionError,
   OrganizationRolloutService,
@@ -25,6 +27,11 @@ export class LeaveOrganizationAuthorityError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /**
+     * LOAN-002: the resolver's own details (`positionKey`, `source`, …), so a caller with a fixed
+     * seat chain can say which seat failed. Never employee-sensitive data, as ORG-008 has it.
+     */
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = "LeaveOrganizationAuthorityError";
@@ -59,12 +66,21 @@ export interface ResolveLeaveAuthoritiesInput {
     directManagerEmployeeId: string | null;
     unitApproverEmployeeId: string | null;
   };
-  policyChain: "LINE_AND_UNIT" | "UNIT_ONLY";
+  policyChain: AuthorityRequirement;
+  /**
+   * LOAN-002: required by `UNIT_AND_APPROVAL_SEATS`. The caller looks the seats up in the registry
+   * (migration 0168) and passes them in the owner's order, because the caller is where the amount
+   * is known and the amount decides whether the Pembina seat is on the list.
+   */
+  approvalSeats?: readonly ApprovalSeatTarget[] | undefined;
   /**
    * ORG-013: Leave routes that can store and decide account-principal steps opt in.
    * Other workflows sharing this resolver keep employee-only routing.
+   * ORG-013-5: LOAN-002 opts in too, with its own capability.
    */
   allowAccountPrincipal?: boolean | undefined;
+  /** ORG-013-5: the capability an account principal must hold; defaults to the Leave one. */
+  accountCapability?: string | undefined;
 }
 
 function organizationServices(db: Queryable) {
@@ -89,11 +105,14 @@ export async function resolveLeaveAuthorities(
       effectiveDate: input.effectiveDate,
       legacy: input.legacy,
       authorityRequirement: input.policyChain,
-      ...(input.allowAccountPrincipal ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}),
+      ...(input.approvalSeats ? { approvalSeats: input.approvalSeats } : {}),
+      ...(input.allowAccountPrincipal
+        ? { accountCapability: input.accountCapability ?? LEAVE_GOVERNANCE_CAPABILITY }
+        : {}),
     });
   } catch (error) {
     if (error instanceof OrganizationResolutionError) {
-      throw new LeaveOrganizationAuthorityError(error.code, error.message);
+      throw new LeaveOrganizationAuthorityError(error.code, error.message, error.details);
     }
     throw error;
   }
@@ -108,7 +127,9 @@ export function snapshotLeaveRolloutAuthorities(
 ): LeaveAuthorityResolution {
 
   if (result.authoritativeSource === "LEGACY" && input.legacy) {
-    if (input.policyChain === "LINE_AND_UNIT") {
+    // LOAN-002: LEGACY has only the two legacy columns, so `UNIT_AND_APPROVAL_SEATS` validates
+    // exactly as `LINE_AND_UNIT` does. Behaviour under LEGACY does not change at all.
+    if (input.policyChain !== "UNIT_ONLY") {
       resolveLeaveLineApprovalChain({
         requesterEmployeeId: input.requesterEmployeeId,
         ...input.legacy,
@@ -137,6 +158,8 @@ export function snapshotLeaveRolloutAuthorities(
     (authority): authority is ResolvedAuthority & { source: LeaveApprovalSource } =>
       authority.source !== "OVERSIGHT_PARENT" &&
       (input.policyChain === "LINE_AND_UNIT" ||
+        // LOAN-002: every rung of the fixed chain is a policy step, seats included.
+        input.policyChain === "UNIT_AND_APPROVAL_SEATS" ||
         hasGovernanceAuthority ||
         sourcesOf(authority).includes("UNIT_APPROVER")),
   );

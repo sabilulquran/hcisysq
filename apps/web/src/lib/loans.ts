@@ -37,7 +37,8 @@ export interface LoanStep {
   order: number;
   status: "waiting" | "pending" | "approved" | "rejected" | "cancelled";
   sources: string[];
-  approverName: string;
+  /** LOAN-002: null only if a seat step somehow carries no seat source; the API fills in the seat. */
+  approverName: string | null;
   actedAt: string | null;
   decisionNote: string | null;
 }
@@ -104,7 +105,8 @@ export interface LoanApprovalItem {
 
 export interface LoanPreview {
   schedule: Array<{ sequence: number; dueMonth: string; amount: number }>;
-  approvalChain: Array<{ employeeId: string; name: string; sources: string[] }>;
+  // LOAN-002: a seat held by an Organ Yayasan account has an accountId and no employeeId.
+  approvalChain: Array<{ employeeId: string | null; accountId?: string | null; name: string; sources: string[] }>;
 }
 
 export interface LoanBorrower {
@@ -234,11 +236,21 @@ export function loanEventLabel(eventType: string) {
   return EVENT_LABELS[eventType] ?? eventType;
 }
 
+/** LOAN-002 §16.1: the rungs of the kasbon chain, named by role and never by job title text. */
+const APPROVER_ROLE_LABELS: Array<[string, string]> = [
+  ["DIRECT_MANAGER", "Atasan langsung"],
+  ["UNIT_APPROVER", "Approver unit"],
+  ["SEAT_KEPALA_KEUANGAN", "Kepala Keuangan"],
+  ["SEAT_DIREKTUR", "Direktur"],
+  ["SEAT_KETUA_YAYASAN", "Ketua Yayasan"],
+  ["SEAT_BENDAHARA_YAYASAN", "Bendahara Yayasan"],
+  ["SEAT_PEMBINA", "Pembina"],
+];
+
 export function approverRoleLabel(sources: string[]) {
-  const labels = [
-    sources.includes("DIRECT_MANAGER") ? "Atasan langsung" : null,
-    sources.includes("UNIT_APPROVER") ? "Approver unit" : null,
-  ].filter(Boolean);
+  const labels = APPROVER_ROLE_LABELS
+    .filter(([source]) => sources.includes(source))
+    .map(([, label]) => label);
   return labels.join(" + ") || "Approver";
 }
 

@@ -28,8 +28,31 @@ import {
   LeaveWorkflowError,
   type LeaveApprovalStepState,
 } from "../leave/domain/request-workflow.js";
-import { LeaveOrganizationAuthorityError, resolveLeaveAuthorities } from "../leave/organization-authority.js";
+import {
+  governanceActorIsRequester,
+  LeaveOrganizationAuthorityError,
+  resolveLeaveAuthorities,
+} from "../leave/organization-authority.js";
 import { notifyEmployee } from "../notifications/service.js";
+import {
+  APPROVAL_SEAT_LABELS,
+  ApprovalSeatError,
+  loadApprovalSeatMappings,
+  resolveApprovalSeatPositions,
+} from "../organization/approval-seats.js";
+import {
+  LOAN_GOVERNANCE_CAPABILITY,
+  PostgresOrganizationRepository,
+  type ApprovalSeatTarget,
+  type OrganizationRolloutMode,
+} from "../organization/index.js";
+import {
+  loanApprovalSeatKeys,
+  LoanApprovalPolicyError,
+  loadPembinaThreshold,
+  seatLabelForSource,
+  seatSource,
+} from "./approval-seats.js";
 import {
   approvalRequestStatus,
   assertPaymentFits,
@@ -56,6 +79,12 @@ type Queryable = Pool | PoolClient;
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
 const LOAN_WORKFLOW_KEY = "LOAN";
+/**
+ * LOAN-002 (owner decision 2026-11-18): under `STRUCTURE` the chain is approver unit, then the
+ * fixed seats. Under `LEGACY` — which is what every workflow runs in production today — nothing
+ * about this module's behaviour changes: the resolver keeps using the two legacy columns.
+ */
+const SEAT_CHAIN_MODE: OrganizationRolloutMode = "STRUCTURE";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const month = z.string().regex(/^\d{4}-\d{2}$/);
@@ -108,7 +137,10 @@ interface EmployeeContext {
 }
 
 interface ChainStep {
-  employeeId: string;
+  /** Exactly one of the two is set (migration 0169's XOR check). */
+  employeeId: string | null;
+  accountId: string | null;
+  /** The approver's name, or — for an organ account, which has none in HCIS — its seat. */
   name: string;
   sources: string[];
 }
@@ -135,7 +167,11 @@ const UNIQUE_CONFLICTS: Record<string, [string, string]> = {
 
 function knownError(error: unknown): LoanError | null {
   if (error instanceof LoanError) return error;
+  if (error instanceof ApprovalSeatError) {
+    return new LoanError(409, "LOAN_APPROVAL_SEAT_UNMAPPED", error.message);
+  }
   if (error instanceof LoanPolicyError
+    || error instanceof LoanApprovalPolicyError
     || error instanceof LeaveApprovalConfigurationError
     || error instanceof LeaveOrganizationAuthorityError
     || error instanceof LeaveWorkflowError) {
@@ -192,26 +228,115 @@ async function loadEmployeeContext(db: Queryable, accountId: string, lock = fals
   return employee;
 }
 
+interface SeatPlan {
+  seats: ApprovalSeatTarget[];
+  /** Seat key by position key and by source, so a resolver failure can name the seat. */
+  labels: Map<string, string>;
+}
+
 /**
- * APR-001 at submission (D-01): the shared Leave resolver turns DIRECT_MANAGER and
- * UNIT_APPROVER into concrete employees, drops the requester and merges duplicates; every
- * approver must then be an active employee with an active account, or nothing is stored.
+ * LOAN-002: the seats this request's chain needs, looked up in the registry (migration 0168).
+ *
+ * Only `STRUCTURE` builds them. `LEGACY` is what production runs, and `SHADOW` keeps LEGACY as its
+ * authoritative source, so neither may start failing because HC has not mapped a seat yet — under
+ * SHADOW an unmapped seat simply leaves the diagnostic chain seatless.
  */
-async function resolveApprovalChain(db: Queryable, employee: EmployeeContext, effectiveDate: string) {
-  const resolution = await resolveLeaveAuthorities(db, {
-    workflowKey: LOAN_WORKFLOW_KEY,
-    requesterEmployeeId: employee.id,
-    effectiveDate,
-    legacy: {
-      directManagerEmployeeId: employee.directManagerEmployeeId,
-      unitApproverEmployeeId: employee.unitApproverEmployeeId,
-    },
-    policyChain: "LINE_AND_UNIT",
-  });
-  const ids = resolution.approvalChain.map((step) => step.employeeId);
-  if (ids.some((id) => !id)) {
-    throw new LoanError(409, "APPROVAL_CHAIN_EMPTY", "Rantai approval pinjaman hanya dapat berisi pegawai.");
+async function planApprovalSeats(
+  db: Queryable,
+  mode: OrganizationRolloutMode,
+  effectiveDate: string,
+  principalAmount: bigint,
+): Promise<SeatPlan> {
+  const empty: SeatPlan = { seats: [], labels: new Map() };
+  if (mode === "LEGACY") return empty;
+  try {
+    const threshold = await loadPembinaThreshold(db, effectiveDate);
+    const mappings = await loadApprovalSeatMappings(db, effectiveDate);
+    const resolved = resolveApprovalSeatPositions(
+      mappings, loanApprovalSeatKeys(principalAmount, threshold),
+    );
+    const labels = new Map<string, string>();
+    const seats = resolved.map(({ seatKey, positionKey }) => {
+      const source = seatSource(seatKey);
+      labels.set(positionKey, APPROVAL_SEAT_LABELS[seatKey]);
+      labels.set(source, APPROVAL_SEAT_LABELS[seatKey]);
+      return { source, positionKey };
+    });
+    return { seats, labels };
+  } catch (error) {
+    if (mode !== SEAT_CHAIN_MODE
+      && (error instanceof ApprovalSeatError || error instanceof LoanApprovalPolicyError)) {
+      return empty;
+    }
+    throw error;
   }
+}
+
+/**
+ * D-18: with a fixed chain, one unmapped or vacant seat blocks every kasbon in the institution, so
+ * the refusal has to name the seat Human Capital must attend to. APR-001's all-or-nothing rule is
+ * unchanged — nothing is stored.
+ */
+function seatFailure(error: unknown, plan: SeatPlan): LoanError | null {
+  if (error instanceof ApprovalSeatError) {
+    return new LoanError(409, "LOAN_APPROVAL_SEAT_UNMAPPED", error.message);
+  }
+  if (!(error instanceof LeaveOrganizationAuthorityError)) return null;
+  const details = error.details;
+  const seat = plan.labels.get(String(details.positionKey ?? "")) ?? plan.labels.get(String(details.source ?? ""));
+  if (!seat) return null;
+  if (error.code === "AUTHORITY_SELF_RESOLUTION") {
+    return new LoanError(409, "LOAN_APPROVAL_SEAT_SELF",
+      `Pemohon menduduki kursi persetujuan ${seat}, sehingga pengajuan ini tidak dapat diproses.`);
+  }
+  return new LoanError(409, "LOAN_APPROVAL_SEAT_UNAVAILABLE",
+    `Kursi persetujuan ${seat} belum dapat ditetapkan (${error.code}). Hubungi Human Capital.`);
+}
+
+/**
+ * APR-001 at submission (D-01, amended by the owner decision of 2026-11-18): the shared resolver
+ * turns the policy chain into concrete principals, drops the requester and merges duplicates.
+ *
+ * Under `LEGACY` that chain is still the direct manager then the unit approver, from the two legacy
+ * columns. Under `STRUCTURE` it is the unit approver followed by the fixed seats, and a seat held
+ * by an organ account produces an account step (ORG-013-5, migration 0169).
+ *
+ * Every employee approver must be an active employee with an active account; every account
+ * approver must be an active Foundation Board account holding `loans.governance.approve`. Holding
+ * the seat never confers the capability.
+ */
+async function resolveApprovalChain(
+  db: Queryable,
+  employee: EmployeeContext,
+  effectiveDate: string,
+  principalAmount: bigint,
+) {
+  const mode = await new PostgresOrganizationRepository(db)
+    .getRolloutMode(LOAN_WORKFLOW_KEY, employee.id, effectiveDate);
+  const plan = await planApprovalSeats(db, mode, effectiveDate, principalAmount);
+  let resolution;
+  try {
+    resolution = await resolveLeaveAuthorities(db, {
+      workflowKey: LOAN_WORKFLOW_KEY,
+      requesterEmployeeId: employee.id,
+      effectiveDate,
+      legacy: {
+        directManagerEmployeeId: employee.directManagerEmployeeId,
+        unitApproverEmployeeId: employee.unitApproverEmployeeId,
+      },
+      policyChain: "UNIT_AND_APPROVAL_SEATS",
+      approvalSeats: plan.seats,
+      allowAccountPrincipal: true,
+      accountCapability: LOAN_GOVERNANCE_CAPABILITY,
+    });
+  } catch (error) {
+    const named = seatFailure(error, plan);
+    if (named) throw named;
+    throw error;
+  }
+
+  const employeeIds = resolution.approvalChain.flatMap((step) => step.employeeId ? [step.employeeId] : []);
+  const accountIds = resolution.approvalChain.flatMap((step) => step.employeeId ? [] : [step.accountId!]);
   const actors = await db.query<{ id: string; fullName: string; status: string; accountStatus: string | null }>(
     `SELECT employee.id, employee.full_name AS "fullName", employee.status, account.status AS "accountStatus"
        FROM employees employee
@@ -219,20 +344,79 @@ async function resolveApprovalChain(db: Queryable, employee: EmployeeContext, ef
       WHERE employee.id = ANY($1::uuid[]) AND employee.removed_at IS NULL
         -- EMP-005 S2B §8.7: an approver outside HCIS management reads as not active.
         AND employee.management_scope = 'MANAGED'`,
-    [ids],
+    [employeeIds],
   );
   const byId = new Map(actors.rows.map((row) => [row.id, row]));
+  // ORG-013-1: the account must be an active organ account that holds the capability, checked
+  // again here so a capability lost between resolution and storage still stops the submission.
+  const organ = accountIds.length === 0
+    ? { rows: [] as Array<{ id: string; capable: boolean }> }
+    : await db.query<{ id: string; capable: boolean }>(
+      `SELECT account.id,
+              EXISTS (
+                SELECT 1 FROM account_role_assignments assignment
+                JOIN role_permissions grant_row ON grant_row.role_id = assignment.role_id
+                WHERE assignment.account_id = account.id
+                  AND assignment.scope_type = 'organization'
+                  AND grant_row.permission_key = $2
+                  AND (assignment.starts_on IS NULL OR assignment.starts_on <= $3::date)
+                  AND (assignment.ends_on IS NULL OR assignment.ends_on >= $3::date)
+              ) AS capable
+         FROM accounts account
+        WHERE account.id = ANY($1::uuid[])
+          AND account.principal_type = 'FOUNDATION_BOARD'
+          AND account.employee_id IS NULL
+          AND account.status = 'active'`,
+      [accountIds, LOAN_GOVERNANCE_CAPABILITY, effectiveDate],
+    );
+  const byAccount = new Map(organ.rows.map((row) => [row.id, row]));
+
   const chain: ChainStep[] = resolution.approvalChain.map((step) => {
-    const actor = byId.get(step.employeeId!);
+    if (!step.employeeId) {
+      const account = byAccount.get(step.accountId!);
+      if (!account || !account.capable) {
+        throw new LoanError(409, "APPROVER_ACCOUNT_NOT_READY",
+          `Akun Organ Yayasan untuk kursi ${seatLabelForSource(step.sources) ?? "persetujuan"} belum siap menyetujui.`);
+      }
+      return {
+        employeeId: null,
+        accountId: step.accountId!,
+        name: seatLabelForSource(step.sources) ?? "Organ Yayasan",
+        sources: step.sources,
+      };
+    }
+    const actor = byId.get(step.employeeId);
     if (!actor || actor.status !== "active") {
       throw new LoanError(409, "APPROVER_NOT_ACTIVE", "Rantai approval berisi approver yang tidak aktif.");
     }
     if (actor.accountStatus !== "active") {
       throw new LoanError(409, "APPROVER_ACCOUNT_NOT_READY", `Akun approver ${actor.fullName} belum aktif.`);
     }
-    return { employeeId: actor.id, name: actor.fullName, sources: step.sources };
+    return { employeeId: actor.id, accountId: null, name: actor.fullName, sources: step.sources };
   });
   return { chain, context: resolution.context };
+}
+
+/**
+ * ORG-013-5: a Foundation Board account decides a loan step only while it holds
+ * `loans.governance.approve`. Holding the seat is not the capability (ORG-013-1).
+ */
+async function assertLoanGovernanceCapability(db: Queryable, accountId: string): Promise<void> {
+  const capability = await db.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM account_role_assignments assignment
+       JOIN role_permissions grant_row ON grant_row.role_id = assignment.role_id
+       WHERE assignment.account_id = $1
+         AND assignment.scope_type = 'organization'
+         AND grant_row.permission_key = $3
+         AND (assignment.starts_on IS NULL OR assignment.starts_on <= $2::date)
+         AND (assignment.ends_on IS NULL OR assignment.ends_on >= $2::date)
+     ) AS allowed`,
+    [accountId, today(), LOAN_GOVERNANCE_CAPABILITY],
+  );
+  if (!capability.rows[0]?.allowed) {
+    throw new LoanError(403, "APPROVAL_FORBIDDEN", "Capability governance approval pinjaman tidak tersedia.");
+  }
 }
 
 /** D-06: one open loan per employee. */
@@ -275,20 +459,30 @@ const SUMMARY_COLUMNS = `
   loan.submitted_at AS "submittedAt", loan.final_decided_at AS "finalDecidedAt",
   to_char(loan.disbursed_on, 'YYYY-MM-DD') AS "disbursedOn",
   to_char(loan.first_due_month, 'YYYY-MM') AS "firstDueMonth",
-  approver.full_name AS "currentApproverName"`;
+  approver.full_name AS "currentApproverName",
+  current_step.sources AS "currentApproverSources"`;
 const SUMMARY_JOINS = `
   LEFT JOIN employee_loan_approval_steps current_step
     ON current_step.loan_id = loan.id AND current_step.status = 'pending'
   LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id`;
 
-type SummaryRow = { principal: string; paidTotal: string; total?: number } & Record<string, unknown>;
+type SummaryRow = {
+  principal: string;
+  paidTotal: string;
+  total?: number;
+  currentApproverName?: string | null;
+  currentApproverSources?: string[] | null;
+} & Record<string, unknown>;
 
-function summary({ principal, paidTotal, total, ...row }: SummaryRow) {
+function summary({ principal, paidTotal, total, currentApproverSources, ...row }: SummaryRow) {
   void total;
   const principalAmount = toRupiah(principal);
   const paid = toRupiah(paidTotal);
   return {
     ...row,
+    // ORG-013-5: an organ account has no name in HCIS, so its step is named by its seat.
+    currentApproverName: row.currentApproverName
+      ?? seatLabelForSource(currentApproverSources ?? []),
     principal: rupiahToJson(principalAmount),
     paidTotal: rupiahToJson(paid),
     outstanding: rupiahToJson(principalAmount - paid),
@@ -315,11 +509,12 @@ async function loadLoanDetail(db: Queryable, id: string, ownerEmployeeId: string
   // against one loan, which can never exceed its principal.
   const [steps, instalments, payments, events] = await Promise.all([
     db.query(
+      // LEFT JOIN: an ORG-013-5 account step has no employee row, and must still be listed.
       `SELECT step.id, step.step_order AS "order", step.status, step.sources,
               approver.full_name AS "approverName", step.acted_at AS "actedAt",
               step.decision_note AS "decisionNote"
          FROM employee_loan_approval_steps step
-         JOIN employees approver ON approver.id = step.approver_employee_id
+         LEFT JOIN employees approver ON approver.id = step.approver_employee_id
         WHERE step.loan_id = $1
         ORDER BY step.step_order ASC`,
       [id],
@@ -368,7 +563,10 @@ async function loadLoanDetail(db: Queryable, id: string, ownerEmployeeId: string
       overdue: item.overdue,
     })),
     payments: payments.rows.map((payment) => ({ ...payment, amount: amount(payment.amount) })),
-    steps: steps.rows,
+    steps: (steps.rows as Array<{ approverName: string | null; sources: string[] }>).map((step) => ({
+      ...step,
+      approverName: step.approverName ?? seatLabelForSource(step.sources),
+    })),
     events: events.rows,
   };
 }
@@ -397,6 +595,21 @@ export async function registerLoanRoutes(
     const principal = await authenticate(request, reply);
     if (!principal) return null;
     if (principal.principalType !== "EMPLOYEE") {
+      await send(reply, 403, { code: "FORBIDDEN", message: "Pinjaman hanya tersedia untuk pegawai." });
+      return null;
+    }
+    return principal;
+  }
+
+  /**
+   * ORG-013-5: the two approval routes also accept a Foundation Board session, the way Leave's
+   * `/leave/approvals` do. Every other loan route stays employee-only — an organ account never
+   * requests, cancels, disburses or reads the register.
+   */
+  async function requireApprover(request: FastifyRequest, reply: FastifyReply): Promise<AuthPrincipal | null> {
+    const principal = await authenticate(request, reply);
+    if (!principal) return null;
+    if (principal.principalType !== "EMPLOYEE" && principal.principalType !== "FOUNDATION_BOARD") {
       await send(reply, 403, { code: "FORBIDDEN", message: "Pinjaman hanya tersedia untuk pegawai." });
       return null;
     }
@@ -583,7 +796,7 @@ export async function registerLoanRoutes(
       const principalAmount = toRupiah(body.data.principal);
       validateLoanTerms({ principal: principalAmount, tenorMonths: body.data.tenorMonths });
       await assertNoOpenLoan(pool, employee.id);
-      const { chain } = await resolveApprovalChain(pool, employee, submittedOn);
+      const { chain } = await resolveApprovalChain(pool, employee, submittedOn, principalAmount);
       return send(reply, 200, {
         schedule: previewSchedule(principalAmount, body.data.tenorMonths, submittedOn),
         approvalChain: chain,
@@ -623,7 +836,7 @@ export async function registerLoanRoutes(
       const principalAmount = toRupiah(body.data.principal);
       validateLoanTerms({ principal: principalAmount, tenorMonths: body.data.tenorMonths });
       await assertNoOpenLoan(client, employee.id);
-      const { chain, context } = await resolveApprovalChain(client, employee, submittedOn);
+      const { chain, context } = await resolveApprovalChain(client, employee, submittedOn, principalAmount);
 
       const id = randomUUID();
       await client.query(
@@ -635,33 +848,41 @@ export async function registerLoanRoutes(
           body.data.idempotencyKey,
           JSON.stringify({
             workflowKey: LOAN_WORKFLOW_KEY,
-            steps: chain.map((step) => ({ employeeId: step.employeeId, sources: step.sources })),
+            steps: chain.map((step) => ({
+              employeeId: step.employeeId, accountId: step.accountId, sources: step.sources,
+            })),
             authorityResolution: context,
           }),
         ],
       );
-      const steps: Array<{ id: string; employeeId: string; name: string }> = [];
+      const steps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
       for (const [index, step] of chain.entries()) {
         const stepId = randomUUID();
         await client.query(
-          `INSERT INTO employee_loan_approval_steps (id, loan_id, step_order, approver_employee_id, sources, status)
-           VALUES ($1, $2, $3, $4, $5::text[], $6)`,
-          [stepId, id, index + 1, step.employeeId, step.sources, index === 0 ? "pending" : "waiting"],
+          `INSERT INTO employee_loan_approval_steps (
+             id, loan_id, step_order, approver_employee_id, approver_account_id, sources, status
+           ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
+          [stepId, id, index + 1, step.employeeId, step.accountId, step.sources,
+            index === 0 ? "pending" : "waiting"],
         );
-        steps.push({ id: stepId, employeeId: step.employeeId, name: step.name });
+        steps.push({ id: stepId, employeeId: step.employeeId, accountId: step.accountId, name: step.name });
       }
       await addEvent(client, id, principal.id, "loan.request.submitted", null, {
         tenorMonths: body.data.tenorMonths, approvers: steps.length, mode: context.mode,
       });
       const first = steps[0]!;
-      await notifyEmployee(client, first.employeeId, {
-        eventKey: `loan.approval.${first.id}`,
-        category: "system",
-        title: "Persetujuan pinjaman",
-        body: `${employee.fullName} mengajukan pinjaman pegawai.`,
-        href: "/app/approvals",
-        actorAccountId: principal.id,
-      });
+      // NOTIF-004 is employee-keyed. An organ account sees its step in Panel Organ Yayasan
+      // instead, exactly as it does for Leave; nothing names an amount either way.
+      if (first.employeeId) {
+        await notifyEmployee(client, first.employeeId, {
+          eventKey: `loan.approval.${first.id}`,
+          category: "system",
+          title: "Persetujuan pinjaman",
+          body: `${employee.fullName} mengajukan pinjaman pegawai.`,
+          href: "/app/approvals",
+          actorAccountId: principal.id,
+        });
+      }
       return [201, { id, status: "IN_REVIEW", approvalChain: steps, idempotentReplay: false }];
     });
   });
@@ -686,12 +907,14 @@ export async function registerLoanRoutes(
   // ---------------------------------------------------------------- approver
 
   app.get("/loans/approvals", async (request, reply) => {
-    const principal = await requireEmployee(request, reply);
+    const principal = await requireApprover(request, reply);
     if (!principal) return;
     const query = pageQuerySchema.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_LOAN_FILTER", message: "Filter tidak valid." });
+    const organ = principal.principalType !== "EMPLOYEE";
     return handle(reply, async () => {
-      const employee = await loadEmployeeContext(pool, principal.id);
+      if (organ) await assertLoanGovernanceCapability(pool, principal.id);
+      const owner = organ ? principal.id : (await loadEmployeeContext(pool, principal.id)).id;
       // The approver sees the amount and tenor they are deciding on, and nothing else of the loan.
       const result = await pool.query<{ principal: string; total: number }>(
         `SELECT step.id AS "stepId", loan.id AS "loanId", step.sources,
@@ -703,10 +926,11 @@ export async function registerLoanRoutes(
            JOIN employee_loans loan ON loan.id = step.loan_id
            JOIN employees requester ON requester.id = loan.employee_id
            LEFT JOIN organizational_units unit ON unit.id = requester.organizational_unit_id
-          WHERE step.approver_employee_id = $1 AND step.status = 'pending' AND loan.status = 'IN_REVIEW'
+          WHERE ${organ ? "step.approver_account_id" : "step.approver_employee_id"} = $1
+            AND step.status = 'pending' AND loan.status = 'IN_REVIEW'
           ORDER BY loan.submitted_at ASC, step.id ASC
           LIMIT $2 OFFSET $3`,
-        [employee.id, query.data.pageSize, pageOffset(query.data)],
+        [owner, query.data.pageSize, pageOffset(query.data)],
       );
       return send(reply, 200, {
         items: result.rows.map(({ total, principal: value, ...row }) => {
@@ -719,8 +943,9 @@ export async function registerLoanRoutes(
   });
 
   app.post("/loans/approvals/:stepId/decision", async (request, reply) => {
-    const principal = await requireEmployee(request, reply);
+    const principal = await requireApprover(request, reply);
     if (!principal) return;
+    const organ = principal.principalType !== "EMPLOYEE";
     const params = stepParams.safeParse(request.params);
     const body = decisionBody.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -730,7 +955,7 @@ export async function registerLoanRoutes(
       });
     }
     return transact(reply, async (client) => {
-      const actor = await loadEmployeeContext(client, principal.id);
+      const actorEmployeeId = organ ? null : (await loadEmployeeContext(client, principal.id)).id;
       // Lock order loan -> step, the same as cancelLoan, so a decision racing a cancellation
       // waits instead of deadlocking.
       await client.query(
@@ -740,9 +965,11 @@ export async function registerLoanRoutes(
         [params.data.stepId],
       );
       const found = await client.query<{
-        id: string; loanId: string; approverEmployeeId: string; loanStatus: LoanStatus; requesterEmployeeId: string;
+        id: string; loanId: string; approverEmployeeId: string | null; approverAccountId: string | null;
+        loanStatus: LoanStatus; requesterEmployeeId: string;
       }>(
         `SELECT step.id, step.loan_id AS "loanId", step.approver_employee_id AS "approverEmployeeId",
+                step.approver_account_id AS "approverAccountId",
                 loan.status AS "loanStatus", loan.employee_id AS "requesterEmployeeId"
            FROM employee_loan_approval_steps step
            JOIN employee_loans loan ON loan.id = step.loan_id
@@ -753,8 +980,20 @@ export async function registerLoanRoutes(
       const current = found.rows[0];
       if (!current) throw new LoanError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
       // LOAN-001-C: the snapshot owns the step; nothing else grants it.
-      if (current.approverEmployeeId !== actor.id) {
+      const ownsStep = organ
+        ? current.approverAccountId === principal.id
+        : current.approverEmployeeId === actorEmployeeId;
+      if (!ownsStep) {
         throw new LoanError(403, "APPROVAL_FORBIDDEN", "Tahap approval ini bukan milik akun Anda.");
+      }
+      if (organ) {
+        // ORG-013-1 butir 5: holding the seat is not the capability, and the e-mail match repeats
+        // the submit-time self-approval rule for a principal that has no employee id.
+        await assertLoanGovernanceCapability(client, principal.id);
+        if (await governanceActorIsRequester(client, principal.id, current.requesterEmployeeId)) {
+          throw new LoanError(403, "LOAN_SELF_ACTION_FORBIDDEN",
+            "Pengajuan ini tidak dapat diputuskan oleh pemohon sendiri.");
+        }
       }
       const all = await client.query<LeaveApprovalStepState>(
         `SELECT id, step_order AS "order", status
@@ -775,19 +1014,22 @@ export async function registerLoanRoutes(
         [current.id, decision.decidedStepStatus, principal.id, note],
       );
       if (decision.nextPendingStepId) {
-        const next = await client.query<{ approverEmployeeId: string }>(
+        const next = await client.query<{ approverEmployeeId: string | null }>(
           `UPDATE employee_loan_approval_steps SET status = 'pending' WHERE id = $1
            RETURNING approver_employee_id AS "approverEmployeeId"`,
           [decision.nextPendingStepId],
         );
-        await notifyEmployee(client, next.rows[0]!.approverEmployeeId, {
-          eventKey: `loan.approval.${decision.nextPendingStepId}`,
-          category: "system",
-          title: "Persetujuan pinjaman",
-          body: "Pengajuan pinjaman pegawai menunggu keputusan Anda.",
-          href: "/app/approvals",
-          actorAccountId: principal.id,
-        });
+        const nextEmployeeId = next.rows[0]!.approverEmployeeId;
+        if (nextEmployeeId) {
+          await notifyEmployee(client, nextEmployeeId, {
+            eventKey: `loan.approval.${decision.nextPendingStepId}`,
+            category: "system",
+            title: "Persetujuan pinjaman",
+            body: "Pengajuan pinjaman pegawai menunggu keputusan Anda.",
+            href: "/app/approvals",
+            actorAccountId: principal.id,
+          });
+        }
       }
       const loanStatus: LoanStatus = decision.requestStatus === "approved"
         ? "APPROVED"
@@ -911,6 +1153,7 @@ export async function registerLoanRoutes(
         `SELECT 1 FROM employee_loan_approval_steps step
           WHERE step.loan_id = $1
             AND (step.acted_by_account_id = $2
+              OR step.approver_account_id = $2
               OR step.approver_employee_id = (SELECT employee_id FROM accounts WHERE id = $2))
           LIMIT 1`,
         [params.data.id, principal.id],

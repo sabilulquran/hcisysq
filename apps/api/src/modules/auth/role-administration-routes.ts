@@ -23,7 +23,7 @@ import {
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
 import {
-  allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
+  allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, isGovernanceOrganRole,
   removeRoleAssignment,
 } from "./role-assignment.js";
 import { AuthError, type AuthPrincipal } from "./service.js";
@@ -488,9 +488,9 @@ export function registerRoleAdministrationRoutes(
           description: role.description,
           permissions: role.permissions,
           allowedScopes: allowedScopes(role.roleKey),
-          // ORG-013-2: the governance Leave approver goes to an organ account and nothing else does.
-          targetPrincipalTypes: role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY ? ["FOUNDATION_BOARD"] : ["EMPLOYEE"],
-          endDateRequired: role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
+          // ORG-013-2, ORG-013-5: a governance approver role goes to an organ account; nothing else does.
+          targetPrincipalTypes: isGovernanceOrganRole(role.roleKey) ? ["FOUNDATION_BOARD"] : ["EMPLOYEE"],
+          endDateRequired: isGovernanceOrganRole(role.roleKey),
           mandateRequired: MANDATE_REQUIRED.has(role.roleKey),
         })),
     });
@@ -499,5 +499,6 @@ export function registerRoleAdministrationRoutes(
 
 /** Roles whose grant needs organization scope and a stated mandate (§2.4 step 7). */
 const MANDATE_REQUIRED = new Set([
-  "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin", "governance_leave_approver",
+  "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin",
+  "governance_leave_approver", "governance_loan_approver",
 ]);

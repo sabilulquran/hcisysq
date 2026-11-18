@@ -2014,6 +2014,52 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Change set not found }
 
+  /admin/organization/approval-seats:
+    get:
+      tags: [Organization]
+      operationId: getApprovalSeatReadiness
+      summary: State of the five LOAN-002 approval seats against the structure in force
+      description: >-
+        LOAN-002 §16.2. Human Capital maps each seat key to an ORG-004 position stable key; this
+        read says which seats are still unmapped, whose position has left the structure, and which
+        are vacant. Read-only: it warns, it never blocks and it never edits a mapping.
+      parameters:
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: One row per seat key, in the registry's closed order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asOf, structurePublished, ready, items]
+                properties:
+                  asOf: { type: string, format: date }
+                  structurePublished: { type: boolean }
+                  ready:
+                    description: True only when every seat resolves today; the kasbon chain needs all of them.
+                    type: boolean
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [seatKey, state]
+                      properties:
+                        seatKey:
+                          type: string
+                          enum: [KEPALA_KEUANGAN, DIREKTUR, KETUA_YAYASAN, BENDAHARA_YAYASAN, PEMBINA]
+                        state:
+                          type: string
+                          enum: [READY, UNMAPPED, POSITION_NOT_IN_FORCE, VACANT]
+                        positionKey: { type: [string, 'null'], format: uuid }
+                        seatLabel: { type: [string, 'null'] }
+                        positionTitle: { type: [string, 'null'] }
+                        unitName: { type: [string, 'null'] }
+                        holderSource: { type: [string, 'null'], enum: [EMPLOYEE, ACCOUNT, null] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/organization/readiness:
     get:
       tags: [Organization]

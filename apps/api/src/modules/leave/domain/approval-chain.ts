@@ -1,7 +1,17 @@
+/**
+ * The semantic rungs an APR-001 chain can carry. The `SEAT_*` ones are LOAN-002's fixed approval
+ * seats (migration 0168): Leave never produces them, but the snapshot helpers here are shared with
+ * the loan routes, so the type has to admit them.
+ */
 export type LeaveApprovalSource =
   | "DIRECT_MANAGER"
   | "UNIT_APPROVER"
-  | "GOVERNANCE_APPROVER";
+  | "GOVERNANCE_APPROVER"
+  | "SEAT_KEPALA_KEUANGAN"
+  | "SEAT_DIREKTUR"
+  | "SEAT_KETUA_YAYASAN"
+  | "SEAT_BENDAHARA_YAYASAN"
+  | "SEAT_PEMBINA";
 
 export interface LeaveApprovalStep {
   principalType?: "EMPLOYEE" | "ACCOUNT";

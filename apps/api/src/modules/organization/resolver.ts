@@ -1,5 +1,7 @@
 import type {
+  ApprovalSeatTarget,
   AuthorityBindingType,
+  AuthorityRequirement,
   AuthorityEligibilityValidator,
   AuthorityResolutionInput,
   OrganizationAuthorityBinding,
@@ -54,9 +56,13 @@ export class OrganizationAuthorityResolver {
 
   async resolveLineAuthorities(
     input: AuthorityResolutionInput,
-    authorityRequirement: "LINE_AND_UNIT" | "UNIT_ONLY" = "LINE_AND_UNIT",
+    authorityRequirement: AuthorityRequirement = "LINE_AND_UNIT",
+    approvalSeats: readonly ApprovalSeatTarget[] = [],
   ): Promise<ResolvedLineAuthorities> {
     const context = await this.context(input);
+    if (authorityRequirement === "UNIT_AND_APPROVAL_SEATS") {
+      return this.resolveSeatChainInContext(context, approvalSeats);
+    }
     const governance = await this.resolveGovernanceInContext(context);
     if (governance) {
       return {
@@ -74,6 +80,38 @@ export class OrganizationAuthorityResolver {
     const authorities: ResolvedAuthority[] = [];
     if (directManager) appendAuthority(authorities, directManager);
     if (unitApprover) appendAuthority(authorities, unitApprover);
+    return {
+      effectiveDate: context.effectiveDate,
+      changeSetId: context.snapshot.changeSet.id,
+      governanceApplied: false,
+      authorities,
+    };
+  }
+
+  /**
+   * LOAN-002 (owner decision 2026-11-18): the requester's unit approver, then the fixed seats the
+   * caller names, in the caller's order.
+   *
+   * Three deliberate differences from the Leave chains:
+   * - No GOVERNANCE_APPROVER short-circuit. That binding replaces the whole chain, which would
+   *   silently drop the seats the owner put in it.
+   * - A seat never climbs to its parent. `BLOCK` is forced whatever the position's own vacancy
+   *   policy says, so a vacant Direktur never resolves to whoever sits above Direktur.
+   * - Self-approval fails closed instead of dropping the step. A seatholder's own request would
+   *   otherwise travel a chain shorter than the one the owner decided (employee-loans.md §16 D-19).
+   */
+  private async resolveSeatChainInContext(
+    context: ResolutionContext,
+    approvalSeats: readonly ApprovalSeatTarget[],
+  ): Promise<ResolvedLineAuthorities> {
+    const authorities: ResolvedAuthority[] = [];
+    const unitApprover = await this.resolveUnitApproverInContext(context);
+    if (unitApprover) appendAuthority(authorities, unitApprover);
+    for (const seat of approvalSeats) {
+      appendAuthority(authorities, await this.resolvePosition(
+        context, seat.positionKey, "BLOCK", seat.source, [`seat:${seat.source}`],
+      ));
+    }
     return {
       effectiveDate: context.effectiveDate,
       changeSetId: context.snapshot.changeSet.id,

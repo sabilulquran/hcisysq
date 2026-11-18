@@ -68,7 +68,10 @@ paths:
                       type: object
                       properties:
                         id: { type: string, format: uuid }
-                        employeeId: { type: string, format: uuid }
+                        # LOAN-002: exactly one of the two is set. A seat held by an Organ Yayasan
+                        # account carries accountId; `name` is then the seat, which is all HCIS has.
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        accountId: { type: [string, 'null'], format: uuid }
                         name: { type: string }
                   idempotentReplay: { type: boolean, const: false }
         '400': { $ref: '#/components/responses/Problem' }
@@ -108,7 +111,8 @@ paths:
                     items:
                       type: object
                       properties:
-                        employeeId: { type: string, format: uuid }
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        accountId: { type: [string, 'null'], format: uuid }
                         name: { type: string }
                         sources: { type: array, items: { type: string } }
         '400': { $ref: '#/components/responses/Problem' }
@@ -607,7 +611,8 @@ components:
                   order: { type: integer }
                   status: { type: string, enum: [waiting, pending, approved, rejected, cancelled] }
                   sources: { type: array, items: { type: string } }
-                  approverName: { type: string }
+                  # LOAN-002: the approver's name, or the seat for an Organ Yayasan account step.
+                  approverName: { type: [string, 'null'] }
                   actedAt: { type: [string, 'null'], format: date-time }
                   decisionNote: { type: [string, 'null'] }
             events:

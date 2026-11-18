@@ -45,7 +45,8 @@ import { classificationOn } from "./job-classification-service.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { linkedUnitChain, searchPositions } from "./structure-lookups.js";
 import { openPositionOvertimeRules, overtimeRuleSeatWarnings } from "./overtime-rule-seat-warnings.js";
-import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
+import { assertIsoDate, effectiveDateOrToday, jakartaBusinessDate } from "./jakarta-date.js";
+import { approvalSeatReadiness, loadApprovalSeatMappings } from "./approval-seats.js";
 
 const uuid = z.string().uuid();
 const ORGAN_ACCOUNT_LABEL = "Akun Organ Yayasan";
@@ -735,6 +736,30 @@ export async function registerOrganizationAdminRoutes(
     return reply.send(computeOrganizationReadiness({
       rows: context.rows, snapshot: context.snapshot, asOf: context.asOf,
     }));
+  });
+
+  /**
+   * LOAN-002 / APR-002: the approval seat registry's readiness (migration 0168). With a fixed
+   * chain one unmapped or vacant seat blocks every kasbon in the institution, so HC needs to see
+   * the state of all five seats before anyone is blocked. Read-only: it warns, it never blocks and
+   * it never edits a mapping, like the ATT-011 seat warnings it is modelled on.
+   */
+  app.get("/admin/organization/approval-seats", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({ asOf: date.optional() }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_APPROVAL_SEAT_QUERY", "Invalid approval seat query.");
+    const asOf = effectiveDateOrToday(query.data.asOf);
+    const [mappings, snapshot] = await Promise.all([
+      loadApprovalSeatMappings(pool, asOf),
+      repository.loadEffectiveSnapshot(asOf),
+    ]);
+    const items = approvalSeatReadiness(mappings, snapshot, asOf);
+    return reply.send({
+      asOf,
+      structurePublished: snapshot !== null,
+      ready: items.every((item) => item.state === "READY"),
+      items,
+    });
   });
 
   app.get("/admin/organization/explanation", async (request, reply) => {

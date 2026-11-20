@@ -100,7 +100,7 @@ describe.skipIf(!allowed)("LOAN-002 approval seat registry", () => {
     // The open-row index only sees the mapping that has not ended. Once HC can end and create
     // mappings from a screen, two *closed* ones with overlapping periods become a real
     // possibility, and `loadApprovalSeatMappings` would then pick one of them by row order — the
-    // same chain resolving to different positions on two reads. Migration 0179 refuses it.
+    // same chain resolving to different positions on two reads. Migration 0181 refuses it.
     await mapSeat("PEMBINA", randomUUID(), "2027-01-01");
     await client.query(
       `UPDATE organization_approval_seats

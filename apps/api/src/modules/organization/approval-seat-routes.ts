@@ -312,7 +312,7 @@ export function registerApprovalSeatRoutes(app: FastifyInstance, pool: Pool, man
           throw new ApprovalSeatWriteError(409, "APPROVAL_SEAT_ALREADY_MAPPED",
             `Kursi ${APPROVAL_SEAT_LABELS[body.data.seatKey]} sudah dipetakan. Akhiri dulu pemetaan itu.`);
         }
-        // F-1 (migration 0179): the new mapping's period overlaps one this seat already had —
+        // F-1 (migration 0181): the new mapping's period overlaps one this seat already had —
         // an ended one, which the open-row index above cannot see. Refusing is the point: two
         // mappings in force on one date make the chain resolve to one position or the other
         // depending on row order.

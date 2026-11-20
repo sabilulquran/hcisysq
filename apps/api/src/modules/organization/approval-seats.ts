@@ -108,7 +108,15 @@ export type ApprovalSeatState =
    * about. Their own kasbon cannot travel this chain. Reported as its own state so the answer is
    * "here is what has to be arranged", not a bare refusal.
    */
-  | "SEAT_HELD_BY_REQUESTER";
+  | "SEAT_HELD_BY_REQUESTER"
+  /**
+   * F2: the seat is mapped, in force and occupied — but by an organ account that is not active or
+   * does not hold `loans.governance.approve`. Every kasbon then fails with
+   * APPROVER_ACCOUNT_NOT_READY (§16.6 prasyarat 2). Without this state the screen would say the
+   * seat is ready while nothing can be submitted, and that is the likeliest rollout state of all:
+   * the role is granted through an entirely different channel, and nothing here would mention it.
+   */
+  | "ACCOUNT_CAPABILITY_MISSING";
 
 /** Who the readiness is being judged for, when it is judged for someone. */
 export interface ApprovalSeatRequester {
@@ -140,6 +148,12 @@ export function approvalSeatReadiness(
   snapshot: OrganizationSnapshot | null,
   date: string,
   requester?: ApprovalSeatRequester | undefined,
+  /**
+   * F2: organ accounts that are active AND hold the loan governance capability. `undefined` means
+   * the caller did not look, and then no seat is reported as missing it — silence here must never
+   * be read as an answer.
+   */
+  capableAccountIds?: ReadonlySet<string> | undefined,
 ): ApprovalSeatReadiness[] {
   const byKey = new Map(mappings.map((item) => [item.seatKey, item]));
   return APPROVAL_SEAT_KEYS.map((seatKey): ApprovalSeatReadiness => {
@@ -181,9 +195,20 @@ export function approvalSeatReadiness(
       || (item.accountId !== null && item.accountId !== undefined && requesterAccounts.has(item.accountId));
     const resolved = incumbents.find((item) => item.kind === "PRIMARY") ?? incumbents[0];
     const heldByRequester = requester !== undefined && resolved !== undefined && isRequester(resolved);
+    // F2: an account seat needs its account to be able to act, not merely to sit there. Checked
+    // after the requester rule, which answers a more specific question about the same seat.
+    const accountNotCapable = resolved !== undefined
+      && capableAccountIds !== undefined
+      && holderSource === "ACCOUNT"
+      && !(resolved.accountId !== null && resolved.accountId !== undefined
+        && capableAccountIds.has(resolved.accountId));
     return {
       ...base,
-      state: heldByRequester ? "SEAT_HELD_BY_REQUESTER" : incumbents.length > 0 ? "READY" : "VACANT",
+      state: heldByRequester
+        ? "SEAT_HELD_BY_REQUESTER"
+        : accountNotCapable
+          ? "ACCOUNT_CAPABILITY_MISSING"
+          : incumbents.length > 0 ? "READY" : "VACANT",
       positionTitle: position.title,
       unitName,
       holderSource,

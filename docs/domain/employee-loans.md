@@ -333,9 +333,53 @@ mana pun.
 
 `approvalSeatReadiness()` (`apps/api/src/modules/organization/approval-seats.ts`) memberi HC keadaan
 tiap kursi terhadap struktur yang berlaku: `READY`, `UNMAPPED`, `POSITION_NOT_IN_FORCE`, atau `VACANT`.
-Ini permukaan baca, dibuka lewat `GET /admin/organization/approval-seats` (permission `organization.manage`); ia memperingatkan, tidak pernah memblokir atau menyunting apa pun.
+Ini permukaan baca, dibuka lewat `GET /admin/organization/approval-seats` (permission
+`organization.manage`); ia memperingatkan, tidak pernah memblokir atau menyunting apa pun.
 
-**Belum dibangun di PR ini:** jalur tulis pemetaan kursi (layar HC dan route-nya). Sampai itu ada, pemetaan hanya dapat ditulis lewat SQL — lihat §16.6 butir 1.
+**Jalur tulisnya** ada di Pengaturan > Kursi persetujuan, dengan permission yang sama:
+
+| Route | Untuk apa |
+| --- | --- |
+| `GET /admin/organization/approval-seats` | Kesiapan kelima kursi, kursi yang **belum pernah** dipetakan, dan riwayat pemetaannya |
+| `GET /admin/organization/approval-seats/targets` | Pemilih jabatan dari struktur yang berlaku; HC memilih dari bagan, tidak pernah mengetik nama jabatan |
+| `POST /admin/organization/approval-seats` | Memetakan satu kursi |
+| `POST /admin/organization/approval-seats/:id/end` | Mengakhiri satu pemetaan, dengan alasan |
+
+Tiga aturan yang dijaga jalur tulis ini:
+
+1. **`seat_label` diturunkan dari struktur terbit, tidak pernah diambil dari pemanggil.** Body yang
+   membawa `seatLabel` ditolak mentah-mentah (`.strict()`), bukan diam-diam dibuang. Seluruh
+   larangan membaca teks jabatan runtuh kalau label bisa dikirim dari luar: kursi akan dinamai oleh
+   apa pun yang diketik orang, bukan oleh jabatan yang ditunjuknya.
+2. **Pemetaan tidak pernah berlaku mundur** (`DRAFT`, disetujui 2026-11-18). Langkah persetujuan
+   sudah disnapshot saat pengajuan, jadi pemetaan mundur tidak dapat mengubah rantai yang sudah
+   berjalan — ia hanya menjelaskannya ulang, yang lebih buruk daripada menolak.
+3. **Mengakhiri pemetaan tetap diizinkan**, meskipun akibatnya seluruh kasbon berhenti (D-18).
+   Layar memperlihatkan akibatnya **sebelum** tombolnya ditekan — kursi mana yang akan kosong,
+   sejak tanggal berapa, dan bahwa yang terhenti adalah kasbon siapa pun, bukan satu pengajuan —
+   dan HC memilih sendiri tanggal berakhirnya. "HC yang memutuskan" berarti memutuskan **kapan**,
+   bukan hanya apakah.
+4. **Tanggal berakhir paling awal adalah hari ini, bukan kemarin.** Pemetaan yang berlaku hari ini
+   sudah menjelaskan setiap rantai yang teresolusi hari ini; mengakhirinya kemarin akan membuat
+   registri menyatakan kursi itu tidak berlaku pada hari yang jelas-jelas ia berlaku — persis
+   kemunduran yang dilarang aturan 2, lewat pintu yang lain. Pemetaan berhenti berlaku pada hari
+   **setelah** `lastDay`. Pemetaan yang belum pernah mulai berlaku tetap dapat diakhiri sebelum
+   tanggal mulainya, dan periodenya menjadi kosong.
+
+### 16.2.1 Keadaan kursi yang diperlihatkan
+
+| Keadaan | Artinya |
+| --- | --- |
+| `READY` | Terpetakan, jabatannya berlaku, ada yang menduduki, dan — untuk kursi yang dipegang akun — akunnya aktif serta memegang `loans.governance.approve`. |
+| `UNMAPPED` | Belum pernah dipetakan. Keadaan awal produksi untuk kelima kursi. |
+| `POSITION_NOT_IN_FORCE` | Jabatan yang dipetakan sudah tidak ada di struktur yang berlaku. |
+| `VACANT` | Jabatannya ada, tetapi belum ada yang menduduki. |
+| `SEAT_HELD_BY_REQUESTER` | Hanya saat ditanyakan untuk satu pegawai (D-19): ia menduduki kursi ini. |
+| `ACCOUNT_CAPABILITY_MISSING` | Kursinya dipegang akun Organ Yayasan yang belum aktif atau belum memegang `governance_loan_approver`. Setiap kasbon yang sampai ke kursi ini ditolak `APPROVER_ACCOUNT_NOT_READY`. Perannya diberikan lewat kanal SQ Hub (AUTH-014), bukan dari layar ini. |
+
+Layar ini menilai **kursi saja**. Rung pertama rantai adalah approver unit si pemohon, yang bukan
+kursi dan tidak pernah diperiksa di sini — jadi kelima kursi yang siap berarti rantai tidak
+terhalang di sisi kursi, bukan bahwa setiap kasbon pasti dapat berjalan.
 
 ### 16.3 Ambang Pembina (D-17, `DRAFT`)
 
@@ -422,7 +466,8 @@ sana rung adalah garis kewenangan, sehingga satu orang di dua rung memang satu p
 Produksi menjalankan rollout ORG-004 `LEGACY` untuk setiap workflow. Sampai ketiganya benar, rantai
 ini tidak pernah dijalankan dan perilaku kasbon tidak berubah:
 
-1. **Kursi dipetakan.** HC memetakan kelima kunci kursi ke stable key jabatan ORG-004 yang benar.
+1. **Kursi dipetakan.** HC memetakan kelima kunci kursi ke stable key jabatan ORG-004 yang benar,
+   di Pengaturan > Kursi persetujuan (§16.2).
 2. **Akun organ ada dan memegang role.** Ketua Yayasan, Bendahara Yayasan, dan Pembina punya akun
    `FOUNDATION_BOARD` aktif, menduduki kursinya di struktur terbit, dan diberi
    `governance_loan_approver` lewat kanal AUTH-014 (dengan alasan dan tanggal berakhir).
@@ -436,6 +481,7 @@ ini tidak pernah dijalankan dan perilaku kasbon tidak berubah:
 
 | # | Temuan | Rencana |
 | --- | --- | --- |
-| F-1 | Pemetaan kursi yang sudah berakhir dapat **tumpang tindih** dengan pemetaan lain pada tanggal yang sama. Indeks unik hanya menjaga satu baris *terbuka* per kursi, sehingga dua baris tertutup yang periodenya beririsan membuat `loadApprovalSeatMappings` memilih salah satunya secara non-deterministik. | Ditutup **sebelum PR jalur tulis masuk**, idealnya dengan exclusion constraint `daterange` per `seat_key`. |
+| F-1 | ~~Pemetaan kursi yang sudah berakhir dapat **tumpang tindih** dengan pemetaan lain pada tanggal yang sama.~~ | **Ditutup** oleh migrasi 0181 (nomornya diambil di ujung urutan, bukan mengisi celah 0179, karena nomor di tengah akan berjalan dengan urutan relatif berbeda pada database baru dibanding yang dialami production): exclusion constraint `daterange` per `seat_key`, memakai `btree_gist` seperti ORG-004 (0021) dan EMP-010 (0056). Database yang menolaknya, bukan route; route menerjemahkan `23P01` menjadi `APPROVAL_SEAT_PERIOD_OVERLAP`. |
 | F-2 | Kasbon **tidak mencatat versi ambang** yang membentuk rantainya. Tidak ada risiko retroaktif — rantainya sudah disnapshot — tetapi kalau kelak ada baris ambang yang bertanggal mundur, merekonstruksi mengapa sebuah kasbon mendapat (atau tidak mendapat) langkah Pembina menjadi menebak. | Simpan id baris ambang di `approval_snapshot` saat pengajuan. |
-| F-3 | Aturan identitas e-mail ORG-013-1 butir 5 kini ditulis tangan di **lima tempat**: `assertOrganAccountIsNotEmployee`, `governanceActorIsRequester`, pemeriksaan submit kasbon, penjaga pencairan D-14, dan lookup kesiapan kursi. Lima salinan satu aturan identitas pasti menyimpang, dan menyimpangnya tidak akan terlihat sampai ada yang lolos atau tertolak keliru. | Satukan menjadi satu fragmen SQL bersama (atau satu helper yang mengembalikannya), dipakai kelima tempat itu. |
+| F-3 | Aturan identitas e-mail ORG-013-1 butir 5 kini ditulis tangan di **enam tempat**: `assertOrganAccountIsNotEmployee`, `governanceActorIsRequester`, pemeriksaan submit kasbon, penjaga pencairan D-14, lookup kesiapan kursi, dan `requesterFor` di route kursi. Enam salinan satu aturan identitas pasti menyimpang, dan menyimpangnya tidak akan terlihat sampai ada yang lolos atau tertolak keliru. | Satukan menjadi satu fragmen SQL bersama (atau satu helper yang mengembalikannya), dipakai keenam tempat itu. |
+| F-4 | `HISTORY_QUERY` di route kursi membaca seluruh riwayat pemetaan **tanpa `LIMIT`**. Hari ini terbatas dengan sendirinya — lima kursi, masing-masing beberapa baris — tetapi batas itu datang dari kebiasaan, bukan dari kode. | Beri batas eksplisit, atau halaman menurut ENG-LIST-001 kalau riwayatnya kelak panjang. |

@@ -648,6 +648,11 @@
       "list": "aggregate"
     },
     {
+      "url": "/admin/organization/approval-seats/targets",
+      "list": "typeahead",
+      "reason": "LOAN-002: pemilih jabatan untuk pemetaan kursi; dibatasi 50 teratas dari struktur yang berlaku, seperti pemilih target aturan lembur."
+    },
+    {
       "url": "/admin/organization/approval-seats",
       "list": "bounded",
       "reason": "LOAN-002: tepat lima kursi persetujuan, himpunan tertutup di migrasi 0177. Tidak dapat bertambah tanpa migrasi."

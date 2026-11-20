@@ -96,6 +96,34 @@ describe.skipIf(!allowed)("LOAN-002 approval seat registry", () => {
     ))).message).toMatch(/only be ended once/);
   });
 
+  it("F-1: two mappings of one seat may never be in force on the same date", async () => {
+    // The open-row index only sees the mapping that has not ended. Once HC can end and create
+    // mappings from a screen, two *closed* ones with overlapping periods become a real
+    // possibility, and `loadApprovalSeatMappings` would then pick one of them by row order — the
+    // same chain resolving to different positions on two reads. Migration 0181 refuses it.
+    await mapSeat("PEMBINA", randomUUID(), "2027-01-01");
+    await client.query(
+      `UPDATE organization_approval_seats
+          SET effective_to = DATE '2027-06-30', ended_at = now(), end_reason = 'Pergantian'
+        WHERE seat_key = 'PEMBINA' AND effective_to IS NULL`,
+    );
+    expect((await refused(() => mapSeat("PEMBINA", randomUUID(), "2027-03-01"))).code).toBe("23P01");
+    // The day after it ends is fine.
+    expect(await mapSeat("PEMBINA", randomUUID(), "2027-07-01")).toBeTruthy();
+  });
+
+  it("F-1: a mapping ended before it started never applied, and blocks nothing", async () => {
+    // effective_to = effective_from - 1 is the registry's way of saying "never applied"; its
+    // period is empty, so it cannot overlap anything.
+    await mapSeat("BENDAHARA_YAYASAN", randomUUID(), "2027-01-01");
+    await client.query(
+      `UPDATE organization_approval_seats
+          SET effective_to = DATE '2026-12-31', ended_at = now(), end_reason = 'Salah pilih'
+        WHERE seat_key = 'BENDAHARA_YAYASAN' AND effective_to IS NULL`,
+    );
+    expect(await mapSeat("BENDAHARA_YAYASAN", randomUUID(), "2027-01-01")).toBeTruthy();
+  });
+
   it("D-17: the Pembina threshold is seeded configuration, not a constant in code", async () => {
     const seeded = await client.query<{ threshold: string; from: string }>(
       `SELECT pembina_threshold_amount::text AS threshold, to_char(effective_from, 'YYYY-MM-DD') AS from

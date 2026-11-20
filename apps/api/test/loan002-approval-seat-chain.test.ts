@@ -429,6 +429,33 @@ describe("LOAN-002 chain under STRUCTURE", () => {
     expect(withActing.incumbencies.filter((item) => item.positionKey === "position-direktur")).toHaveLength(2);
   });
 
+  it("F2: an account seat whose organ account cannot act is not READY", () => {
+    const full: ApprovalSeatMapping[] = APPROVAL_SEAT_KEYS.map((seatKey) => ({
+      seatKey,
+      positionKey: {
+        KEPALA_KEUANGAN: "position-kakeu", DIREKTUR: "position-direktur",
+        KETUA_YAYASAN: "position-ketua", BENDAHARA_YAYASAN: "position-bendahara",
+        PEMBINA: "position-pembina",
+      }[seatKey],
+      seatLabel: seatKey,
+    }));
+    const snapshot = structure();
+    const stateOf = (items: ReturnType<typeof approvalSeatReadiness>, seatKey: string) =>
+      items.find((item) => item.seatKey === seatKey)!.state;
+
+    // Only the Bendahara account holds the capability; the other two sit in their seats unable to act.
+    const capable = new Set([bendaharaAccount]);
+    const judged = approvalSeatReadiness(full, snapshot, on, undefined, capable);
+    expect(stateOf(judged, "KETUA_YAYASAN")).toBe("ACCOUNT_CAPABILITY_MISSING");
+    expect(stateOf(judged, "PEMBINA")).toBe("ACCOUNT_CAPABILITY_MISSING");
+    expect(stateOf(judged, "BENDAHARA_YAYASAN")).toBe("READY");
+    // An employee-held seat is never judged against the account capability.
+    expect(stateOf(judged, "DIREKTUR")).toBe("READY");
+
+    // Not asking is not an answer: without the set, nothing is reported as missing it.
+    expect(approvalSeatReadiness(full, snapshot, on).every((item) => item.state === "READY")).toBe(true);
+  });
+
   it("N1: an ACTING incumbent decides the state when the seat has no PRIMARY", async () => {
     const actingOnly = structure({
       incumbencies: [

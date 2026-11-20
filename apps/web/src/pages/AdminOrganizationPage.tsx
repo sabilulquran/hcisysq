@@ -33,6 +33,7 @@ import {
 } from "@/components/organization/OrganizationChart";
 import { useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
+import { ApprovalSeatsTab } from "@/components/organization/ApprovalSeatsTab";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import { getCurrentSession } from "@/lib/auth";
@@ -185,6 +186,8 @@ const ORGANIZATION_TABS = [
   { key: "pegawai", label: "Pegawai" },
   { key: "plt", label: "Plt & jabatan kosong" },
   { key: "persetujuan", label: "Cek persetujuan" },
+  // LOAN-002: the approval seat registry lives here — same domain, same permission.
+  { key: "kursi", label: "Kursi persetujuan" },
   { key: "perubahan", label: "Perubahan" },
 ] as const;
 
@@ -2053,6 +2056,8 @@ export function AdminOrganizationPage() {
           showOpenChanges={tab === "perubahan"}
         />
       ) : null}
+
+      {tab === "kursi" ? <ApprovalSeatsTab /> : null}
 
       {tab === "kesiapan" ? (
         <OrganizationReadinessTab

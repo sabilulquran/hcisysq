@@ -5,7 +5,7 @@
 **Gate induk:** `docs/product/scope.md` ("Pilot ready", "Production ready") lewat `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Keputusan pembukaan dicatat di `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001).
 **Rilis production saat dokumen ini ditulis:** `hcis-127b6068-20261118` (symlink `/srv/hcis/current` dipasang 18 Nov 16:05 WIB), bukti `docs/development/production-release-verification-2026-11-18-127b6068.md`.
 **Sumber angka production:** pengukuran owner sendiri pada 2026-11-20 (§3). Penulis dokumen ini tidak punya akses production dan tidak menurunkan ulang angka tersebut.
-**Sumber angka repository:** `origin/main` pada `c84dd4dd` (merge #383, 2026-11-20 02:03 UTC).
+**Sumber angka repository:** `origin/main` pada `838d1e24` (merge #391, 2026-11-20 02:13 UTC).
 
 ## 1. Kesimpulan yang harus dibaca lebih dulu
 
@@ -73,6 +73,7 @@ Production berhenti di `127b6068`. Semua yang di-merge sesudahnya **belum ada di
 
 | PR | Commit merge | Isi | Status |
 |---|---|---|---|
+| #391 | `838d1e24` | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC (migrasi 0181) | Selesai belum dirilis |
 | #383 | `c84dd4dd` | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang, di balik `GOVERNANCE_PAYROLL_READ_ENABLED` yang mati (migrasi 0180) | Selesai belum dirilis |
 | #390 | `2560b04f` | PERF-001 jalur keberatan kinerja (migrasi 0176) | Selesai belum dirilis |
 | #387 | `7df37cf3` | PERF-001 rubrik berversi per kelompok jabatan + siklus semesteran (migrasi 0175) | Selesai belum dirilis |
@@ -81,21 +82,22 @@ Production berhenti di `127b6068`. Semua yang di-merge sesudahnya **belum ada di
 | #386 | `61d05a9b` | LEAVE-009 C1 masa kritis tanpa tinjauan HC, TRIP-001 C4 dinas mundur 7 hari, NOTIF-003 D18 jendela pengingat 04.00–23.00 (migrasi 0174) | Selesai belum dirilis |
 | #385 | `127b6068` | Spesifikasi PAY-004 dan REIMB-002 (dokumen saja) | **Ini batas production** |
 
-Masih terbuka:
+**Tidak ada PR yang masih terbuka per 2026-11-20 02:15 UTC.** Dua PR yang sebelumnya `CONFLICTING` diselesaikan dan di-merge pada pagi yang sama, keduanya dengan migrasi yang dinomori ulang:
 
-| PR | Isi | Status |
-|---|---|---|
-| #391 | LOAN-002 jalur tulis pemetaan kursi persetujuan | **Belum selesai**: `CONFLICTING`, sedang diperbaiki |
+| PR | Commit merge | Waktu merge (UTC) | Isi | Status |
+|---|---|---|---|---|
+| #391 | `838d1e24` | 2026-11-20 02:13 | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC (migrasi `0181_approval_seat_no_overlap`) | Selesai belum dirilis |
+| #383 | `c84dd4dd` | 2026-11-20 02:03 | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang (migrasi `0180_governance_payroll_reader`) | Selesai belum dirilis |
 
-**#383 (ADR-0008, Pengurus Yayasan membaca gaji per orang) di-merge pada 2026-11-20 02:03 UTC** sebagai `c84dd4dd`, setelah konfliknya diselesaikan dan migrasinya dinomori ulang menjadi `0180_governance_payroll_reader.sql`. Statusnya sekarang **Selesai belum dirilis**, dan saklarnya `GOVERNANCE_PAYROLL_READ_ENABLED` tetap mati (§6).
+Saklar `GOVERNANCE_PAYROLL_READ_ENABLED` milik #383 tetap mati (§6). Artinya **seluruh pekerjaan HCIS yang pernah dibuka kini ada di `main`, dan tidak satu pun dari tujuh PR sesudah `127b6068` ada di production.** Tidak ada lagi pekerjaan yang tertahan di luar `main`; yang tertahan adalah rilisnya (W15).
 
 ### Migrasi
 
 | | |
 |---|---|
 | Di bundel rilis production `127b6068` | 145 berkas `.sql`, tertinggi **`0167_payroll_thr_non_permanent.sql`**; yang baru diterapkan pada rilis itu hanya `0166_leave_decision_request_id` |
-| Di `origin/main` sekarang | 152 berkas `.sql` |
-| **Belum ada di production** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals`, `0180_governance_payroll_reader` — tujuh migrasi |
+| Di `origin/main` sekarang | 153 berkas `.sql` |
+| **Belum ada di production** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals`, `0180_governance_payroll_reader`, `0181_approval_seat_no_overlap` — delapan migrasi |
 
 Nomor 0168–0171, 0173, dan 0179 tidak ada di `main`: nomor-nomor itu terpakai lalu dinomori ulang saat rebase (riwayatnya masih terbaca di `eb7cb663`, `b5b38cc1`, `8cc03998`, `ee70b7e2`). Identitas migrasi adalah nama berkas penuh, bukan awalannya (`apps/api/migrations/production-history-manifest.json`), jadi lompatan nomor bukan masalah selama tidak ada nama berkas yang dipakai ulang.
 
@@ -265,11 +267,11 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 
 | | |
 |---|---|
-| **Status** | **Selesai belum dirilis.** Tujuh PR dan tujuh migrasi menunggu. |
+| **Status** | **Selesai belum dirilis.** Tujuh PR dan delapan migrasi menunggu. |
 | **Bukti bertanggal** | §4. Production berhenti di `127b6068` sejak 2026-11-18 16:05 WIB. |
 | **Penghambat** | Dua di antaranya menyentuh perilaku yang relevan untuk pembukaan: #386 (jendela pengingat 04.00–23.00, masa kritis cuti tanpa tinjauan HC) dan #389 (tarif uang saku). Empat migrasi dari rantai LOAN-002/PERF-001 membawa tabel baru yang belum pernah ada di production. #383 menambah jalur baca data gaji per orang — rilisnya aman karena `GOVERNANCE_PAYROLL_READ_ENABLED` mati, tetapi **penyalaannya** adalah keputusan owner tersendiri dan bukan bagian dari rilis ini. |
 | **Langkah berikutnya** | Rilis `main` lewat OPS-MI8-REL-001 dengan pengaman teknis yang biasa: dry-run bersih, backup sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC, laporan sesudahnya. Keenam migrasi diterapkan dalam satu rilis. |
-| **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0180`. |
+| **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0181`. |
 
 ## 6. Saklar fitur: apa yang mati dan apa yang menunggu di baliknya
 
@@ -318,7 +320,7 @@ Butir di bawah ini **tidak** perlu ditutup sebelum pintu dibuka, selama W11 dipu
 | L3 | ORG-004 `STRUCTURE` dan ORG-013 kursi organ | Dirilis belum aktif | 2026-11-20: `organization_rollout_settings` 0 baris → semua `LEGACY`. OPS-READY-001 2026-10-16: 15 change set PUBLISHED, 3 VALIDATED, 7 DRAFT | Gate P1–P3 dan P10 OPS-READY-001 masih MISSING: unit pilot belum dipilih, SHADOW belum dijalankan, go/no-go belum ditandatangani | Pilih unit pilot, jalankan `SHADOW`, bandingkan dengan `LEGACY`, lalu aktifkan `STRUCTURE` per workflow | Nol ketidakcocokan tak terjelaskan di `SHADOW` dan catatan go/no-go ditandatangani |
 | L4 | Portal Organ R1 (ORG-010/ORG-014) | Sudah diuji, sekali | `production-release-verification-2026-11-13-e54353aa.md`: Portal Organ dinyalakan di SQ Hub 2026-11-13 01:33 UTC; pertukaran `azp = sq-organ` terbukti pada sign-in pertama owner sebagai anggota organ (satu baris audit `governance.summary.served`). 2 akun `FOUNDATION_BOARD` aktif per 2026-11-20 | Baru satu sesi nyata; ringkasan yang dibaca organ akan menampilkan "95 pegawai tanpa atasan langsung" sampai W1 ditutup | Minta anggota organ membuka ringkasan setelah W1 selesai | Kedua akun organ pernah membuka ringkasan dan daftar pegawai setelah data atasan terisi |
 | L5 | Portal Organ R2 / keputusan organ (ORG-015) | Dirilis belum aktif | `production-release-verification-2026-11-18-127b6068.md`: rute `GET`/`POST /governance/decisions` menjawab `404` selama `GOVERNANCE_DECISIONS_ENABLED` mati; migrasi 0166 hanya menambah satu kolom kosong | Urutan ORGAN-IMPL-001-r2-keycloak §5 baru sampai langkah 4. Langkah 6 (probe `acr` harus bernilai `"2"` setelah pertukaran token) **butuh sesi nyata, jadi langkah owner** dan merupakan gerbang ADR-0012 D4 | Daftarkan `decision_path`/`decision_audience` di Admin Center (langkah 5), jalankan probe (langkah 6), lalu nyalakan kedua flag mulai dari HCIS | `acr` selamat melewati pertukaran token dan satu keputusan organ nyata tercatat |
-| L6 | LOAN-001 kasbon dan LOAN-002 rantai kursi | Dirilis belum aktif + Selesai belum dirilis | 2026-11-20: 0 `employee_loans`. LOAN-002 ada di PR #384 (migrasi 0177/0178), belum dirilis; PR #391 jalur tulis pemetaan kursi masih `CONFLICTING` | Rantai `LEGACY` kasbon berdiri di atas W1; kursi persetujuan LOAN-002 belum punya jalur tulis yang di-merge | Selesaikan #391, rilis bersama #384, lalu HC memetakan kursi | Satu pengajuan kasbon nyata melewati rantai kursi sampai pencairan |
+| L6 | LOAN-001 kasbon dan LOAN-002 rantai kursi | Dirilis belum aktif + Selesai belum dirilis | 2026-11-20: 0 `employee_loans`. LOAN-002 lengkap di `main` — rantai kursi #384 (migrasi 0177/0178) dan jalur tulis pemetaan kursi #391 (migrasi 0181, di-merge 2026-11-20 02:13 UTC) — tetapi tidak satu pun sudah dirilis | Rantai `LEGACY` kasbon berdiri di atas W1. Registri kursi di production masih kosong karena tabelnya sendiri belum ada di sana | Rilis #384 dan #391 bersama (W15), lalu HC memetakan kursi persetujuan | Satu pengajuan kasbon nyata melewati rantai kursi sampai pencairan |
 | L7 | REIMB-001 reimbursement | Dirilis belum aktif | 2026-11-20: 0 `reimbursement_claims` | W1; penyerahan ke payroll mati di balik `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0` | Setelah W1: satu klaim nyata sampai verifikasi Keuangan dan pembayaran di luar payroll | Satu klaim selesai dibayar dengan bukti bertanggal |
 | L8 | REIMB-002 reimbursement pengadaan | **Belum selesai** | `docs/domain/procurement-reimbursement.md` berstatus `DRAFT`; AGENTS.md §5 melarang implementasinya sampai owner menjawab §13. Spesifikasinya masuk production lewat #385 sebagai dokumen saja | Menunggu jawaban owner atas §13 | Owner menjawab §13 | Spesifikasi naik ke ACCEPTED, implementasi dimulai |
 | L9 | PAY-004 penjagaan honorarium dari kehadiran | **Belum selesai** | `docs/domain/honorarium-attendance-guard.md` berstatus `DRAFT`; AGENTS.md §5 melarang implementasinya sampai owner menjawab §15 | Menunggu jawaban owner atas §15 | Owner menjawab §15 | Spesifikasi naik ke ACCEPTED |

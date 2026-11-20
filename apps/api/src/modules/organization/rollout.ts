@@ -1,5 +1,5 @@
 import type {
-  OrganizationRolloutMode,
+  OrganizationRolloutDecision,
   ResolvedAuthority,
   ResolvedLineAuthorities,
   RolloutAuthorityInput,
@@ -8,13 +8,18 @@ import type {
 import { OrganizationResolutionError } from "./domain.js";
 import { effectiveDateOrToday } from "./jakarta-date.js";
 import type { OrganizationAuthorityResolver } from "./resolver.js";
+import type { OrganizationWorkflowKey } from "./workflow-keys.js";
 
 export interface OrganizationRolloutReader {
-  getRolloutMode(
-    workflowKey: string,
+  /**
+   * ORG-004 (DRAFT D-R2): mengembalikan baris yang dipakai, bukan hanya modenya, supaya
+   * diagnostik dapat menyebut baris mana yang berlaku untuk pemohon ini.
+   */
+  resolveRolloutSetting(
+    workflowKey: OrganizationWorkflowKey,
     employeeId: string,
     effectiveDate: string,
-  ): Promise<OrganizationRolloutMode>;
+  ): Promise<OrganizationRolloutDecision>;
 }
 
 export class OrganizationRolloutService {
@@ -25,7 +30,7 @@ export class OrganizationRolloutService {
 
   async resolveAuthorities(input: RolloutAuthorityInput): Promise<RolloutAuthorityResult> {
     const effectiveDate = effectiveDateOrToday(input.effectiveDate);
-    const mode = await this.repository.getRolloutMode(
+    const { mode, ...rolloutScope } = await this.repository.resolveRolloutSetting(
       input.workflowKey,
       input.requesterEmployeeId,
       effectiveDate,
@@ -36,6 +41,7 @@ export class OrganizationRolloutService {
         mode,
         authoritativeSource: "LEGACY",
         authorities: legacy,
+        rolloutScope,
       };
     }
 
@@ -46,6 +52,7 @@ export class OrganizationRolloutService {
         authoritativeSource: "STRUCTURE",
         authorities: structure.authorities,
         structure,
+        rolloutScope,
       };
     }
 
@@ -62,6 +69,7 @@ export class OrganizationRolloutService {
           mismatchReasons,
           structural: structure,
         },
+        rolloutScope,
       };
     } catch (error) {
       const diagnostic = error instanceof OrganizationResolutionError
@@ -76,6 +84,7 @@ export class OrganizationRolloutService {
           mismatchReasons: [diagnostic.code],
           error: diagnostic,
         },
+        rolloutScope,
       };
     }
   }

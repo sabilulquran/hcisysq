@@ -13,7 +13,12 @@ import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import {
   LEAVE_GOVERNANCE_CAPABILITY,
   type AuthorityBindingType,
+  type AuthorityRequirement,
 } from "./domain.js";
+import {
+  ORGANIZATION_WORKFLOW_KEYS,
+  type OrganizationWorkflowKey,
+} from "./workflow-keys.js";
 import {
   applyOrganizationCommand,
   OrganizationCommandError,
@@ -123,12 +128,16 @@ const overrideInput = z.object({
 });
 const resolutionInput = z.object({
   employeeId: uuid,
-  workflowKey: z.string().trim().min(1).max(100),
+  // ORG-004: hanya kunci yang benar-benar dicari runtime; lihat `workflow-keys.ts`.
+  workflowKey: z.enum(ORGANIZATION_WORKFLOW_KEYS),
   effectiveDate: date,
 });
 const rolloutInput = z.object({
   mode: z.enum(["LEGACY", "SHADOW", "STRUCTURE"]),
-  workflowKey: z.string().trim().min(1).max(100).default("LEAVE"),
+  // ORG-004: himpunan tertutup, tanpa default. Default `"LEAVE"` yang lama tidak pernah cocok
+  // dengan kunci mana pun yang dicari runtime, sehingga baris tersimpan tetapi mode jatuh diam-diam
+  // ke LEGACY. Default yang tidak bisa bekerja lebih buruk daripada tidak ada default.
+  workflowKey: z.enum(ORGANIZATION_WORKFLOW_KEYS),
   organizationalNodeKey: uuid.nullable().optional(),
   effectiveFrom: date.optional(),
   effectiveTo: date.nullable().optional(),
@@ -449,16 +458,33 @@ export async function registerOrganizationAdminRoutes(
   /**
    * ORG-008-2 approval check. Workflows the operator can pick, mapped to what the resolver needs.
    *
-   * Annual and unpaid leave use the capability Leave already requires. The overtime approver
-   * capability is set by ATT-011-6b and is not decided yet, so overtime resolves on the structural
-   * line without demanding a capability and is returned marked as a preview (spec 4.6, gap X-5).
-   * There is no second resolver here: this is the one approvals use.
+   * ORG-004 (DRAFT D-R3, 2026-11-20): pratinjau meminta persis apa yang diminta runtime, tidak
+   * lebih. Sebelumnya pratinjau mengirim `requiredCapability: "leave.approve"` padahal runtime cuti
+   * tidak pernah mengirimkannya — tidak saat menyusun rantai (`leave/organization-authority.ts`)
+   * dan tidak saat memutuskan (`POST /leave/approvals/:stepId/decision` hanya memeriksa bahwa
+   * aktornya adalah prinsipal yang tersimpan pada langkah itu). Karena belum ada pegawai yang
+   * memegang `leave.approve`, pratinjau akan menyebut rantai yang sebenarnya jalan sebagai rusak
+   * begitu akun diaktifkan, dan Human Capital mengejar masalah yang tidak ada. Yang tersisa hanya
+   * `accountCapability`, yang memang dikirim runtime untuk prinsipal akun organ.
+   *
+   * Kuncinya juga kunci runtime yang sebenarnya (`leave.annual`, `leave.unpaid`), bukan `"LEAVE"`.
+   *
+   * Kapabilitas approver lembur ditetapkan ATT-011-6b dan belum diputuskan, jadi lembur tetap
+   * ditandai sebagai pratinjau (spec 4.6, gap X-5). Tidak ada resolver kedua di sini: ini resolver
+   * yang dipakai approval.
    */
   const PREVIEW_WORKFLOWS = {
-    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
-    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
-    OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, accountCapability: undefined, preview: true },
-  } as const;
+    LEAVE_ANNUAL: { workflowKey: "leave.annual", requirement: "LINE_AND_UNIT", requiredCapability: undefined, accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    // LEAVE-00x: Cuti Tanpa Gaji berjalan `UNIT_ONLY` di runtime (`planned-leave-routes.ts`).
+    LEAVE_UNPAID: { workflowKey: "leave.unpaid", requirement: "UNIT_ONLY", requiredCapability: undefined, accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    OVERTIME: { workflowKey: "OVERTIME", requirement: "LINE_AND_UNIT", requiredCapability: undefined, accountCapability: undefined, preview: true },
+  } as const satisfies Record<string, {
+    workflowKey: OrganizationWorkflowKey;
+    requirement: AuthorityRequirement;
+    requiredCapability: string | undefined;
+    accountCapability: string | undefined;
+    preview: boolean;
+  }>;
 
   async function resolutionPreview(input: {
     employeeId: string;
@@ -490,7 +516,7 @@ export async function registerOrganizationAdminRoutes(
 
     let line;
     try {
-      line = await resolver.resolveLineAuthorities(resolutionInputs);
+      line = await resolver.resolveLineAuthorities(resolutionInputs, plan.requirement);
     } catch (error) {
       const item = error as { code?: string; message?: string; details?: Record<string, unknown> };
       return {
@@ -1733,9 +1759,11 @@ export async function registerOrganizationAdminRoutes(
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
     const resolver = new OrganizationAuthorityResolver({ loadEffectiveSnapshot: async () => snapshot }, { eligibilityValidator: repository });
     try {
+      // ORG-004 (DRAFT D-R3): sama seperti PREVIEW_WORKFLOWS — tanpa `requiredCapability`, karena
+      // runtime tidak pernah memintanya. `accountCapability` hanya untuk workflow cuti.
       const result = await resolver.resolveLineAuthorities({ requesterEmployeeId: body.data.employeeId,
-        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey, requiredCapability: "leave.approve",
-        ...(body.data.workflowKey === "LEAVE" ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}) });
+        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey,
+        ...(body.data.workflowKey.startsWith("leave.") ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}) });
       const ids = [...new Set([body.data.employeeId, ...result.authorities.flatMap((item) => item.employeeId ? [item.employeeId] : [])])];
       const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [ids]);
@@ -1842,7 +1870,9 @@ export async function registerOrganizationAdminRoutes(
     );
     const configuredRowCount = Number(total.rows[0]?.count ?? "0");
     return reply.send({
-      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null }),
+      // ORG-004: tanpa satu pun baris, tidak ada kunci workflow yang bisa disebut. `"LEAVE"` yang
+      // dulu dikembalikan di sini bukan kunci runtime mana pun dan menyesatkan layar.
+      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: null, organizationalNodeKey: null }),
       asOf: today,
       configuredRowCount,
       settings: effective.rows,

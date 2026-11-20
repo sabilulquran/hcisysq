@@ -15,11 +15,13 @@ import type {
   OrganizationNode,
   OrganizationPosition,
   OrganizationReportingOverride,
+  OrganizationRolloutDecision,
   OrganizationRolloutMode,
   OrganizationSnapshot,
   OrganizationValidationReport,
 } from "./domain.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
+import type { OrganizationWorkflowKey } from "./workflow-keys.js";
 
 export interface OrganizationQueryable {
   query<R extends QueryResultRow = QueryResultRow>(
@@ -725,29 +727,68 @@ export class PostgresOrganizationRepository {
     if (result.rowCount !== 1) throw new Error("Organization change set is not validated.");
   }
 
-  async getRolloutMode(
-    workflowKey: string,
+  /**
+   * ORG-004 (DRAFT D-R2, 2026-11-20): lingkup rollout memanjat.
+   *
+   * Sebelumnya baris rollout dicocokkan persis dengan node keanggotaan utama pemohon. Orang
+   * jarang duduk di node unit itu sendiri — mereka duduk di anak-anaknya — jadi memindahkan satu
+   * unit menuntut satu baris per node tempat orang benar-benar berada, dikali setiap kunci
+   * workflow. Untuk unit pilot Taman Tahfizh itu 3 node x 6 kunci cuti = 18 baris, dimasukkan
+   * satu per satu lewat API tanpa layar.
+   *
+   * Sekarang pencarian memanjat dari node keanggotaan utama pemohon ke leluhur terdekat yang
+   * punya baris, sama seperti `findNodeBinding` memanjat mencari binding; baris global
+   * (`node_key IS NULL`) adalah pilihan terakhir. Yang terdekat menang, sehingga satu anak tetap
+   * bisa dipaku ke `LEGACY` sementara induknya `STRUCTURE` — dengan satu baris `LEGACY` eksplisit
+   * pada anak itu. Jadi memanjat menambah kemampuan, tidak menghapus satu pun.
+   *
+   * Pendakian berhenti pada node yang tidak efektif/aktif pada tanggal itu, bukan melempar:
+   * pencarian mode rollout tidak boleh menggagalkan pengajuan — tanpa baris yang cocok hasilnya
+   * `LEGACY`, perilaku produksi hari ini.
+   */
+  async resolveRolloutSetting(
+    workflowKey: OrganizationWorkflowKey,
     employeeId: string,
     effectiveDate: string,
-  ): Promise<OrganizationRolloutMode> {
+  ): Promise<OrganizationRolloutDecision> {
     const snapshot = await this.loadEffectiveSnapshot(effectiveDate);
-    const nodeKey = snapshot?.memberships.find(
+    const requesterNodeKey = snapshot?.memberships.find(
       (item) => item.employeeId === employeeId && item.isPrimary
         && item.effectiveFrom <= effectiveDate
         && (item.effectiveTo === null || item.effectiveTo >= effectiveDate),
     )?.nodeKey ?? null;
-    const result = await this.db.query<{ mode: OrganizationRolloutMode }>(
-      `SELECT mode
+    const ancestry = rolloutScopeAncestry(snapshot, requesterNodeKey, effectiveDate);
+    const result = await this.db.query<{
+      id: string;
+      mode: OrganizationRolloutMode;
+      nodeKey: string | null;
+    }>(
+      `SELECT id, mode, node_key AS "nodeKey"
        FROM organization_rollout_settings
        WHERE workflow_key = $1
          AND effective_from <= $2::date
          AND (effective_to IS NULL OR effective_to >= $2::date)
-         AND (node_key = $3::uuid OR node_key IS NULL)
-       ORDER BY CASE WHEN node_key = $3::uuid THEN 0 ELSE 1 END, effective_from DESC
+         AND (node_key IS NULL OR node_key = ANY($3::uuid[]))
+       ORDER BY COALESCE(array_position($3::uuid[], node_key), $4::int), effective_from DESC
        LIMIT 1`,
-      [workflowKey, effectiveDate, nodeKey],
+      [workflowKey, effectiveDate, ancestry, ancestry.length + 1],
     );
-    return result.rows[0]?.mode ?? "LEGACY";
+    const row = result.rows[0];
+    if (!row) return { mode: "LEGACY", matchedNodeKey: null, requesterNodeKey, settingId: null };
+    return {
+      mode: row.mode,
+      matchedNodeKey: row.nodeKey,
+      requesterNodeKey,
+      settingId: row.id,
+    };
+  }
+
+  async getRolloutMode(
+    workflowKey: OrganizationWorkflowKey,
+    employeeId: string,
+    effectiveDate: string,
+  ): Promise<OrganizationRolloutMode> {
+    return (await this.resolveRolloutSetting(workflowKey, employeeId, effectiveDate)).mode;
   }
 
   async validate(
@@ -973,4 +1014,36 @@ function parentFirst<T>(
     inserted.add(keyOf(item!));
   }
   return result;
+}
+
+/**
+ * ORG-004 (DRAFT D-R2): node keanggotaan utama pemohon diikuti leluhurnya, yang terdekat dahulu.
+ * Urutan inilah yang membuat baris rollout terdekat menang di `resolveRolloutSetting`.
+ *
+ * Berhenti pada node yang tidak lagi efektif/aktif, pada siklus, dan pada batas kedalaman yang
+ * sama dengan resolver (32). Tidak pernah melempar: lihat alasannya di `resolveRolloutSetting`.
+ */
+function rolloutScopeAncestry(
+  snapshot: OrganizationSnapshot | null,
+  nodeKey: string | null,
+  effectiveDate: string,
+): string[] {
+  if (!snapshot || !nodeKey) return [];
+  const ancestry: string[] = [];
+  const seen = new Set<string>();
+  let current: string | null = nodeKey;
+  for (let depth = 0; current !== null && depth < 32; depth += 1) {
+    const key: string = current;
+    if (seen.has(key)) break;
+    seen.add(key);
+    ancestry.push(key);
+    const node = snapshot.nodes.find(
+      (item) => item.stableKey === key && item.active
+        && item.effectiveFrom <= effectiveDate
+        && (item.effectiveTo === null || item.effectiveTo >= effectiveDate),
+    );
+    if (!node) break;
+    current = node.parentNodeKey;
+  }
+  return ancestry;
 }

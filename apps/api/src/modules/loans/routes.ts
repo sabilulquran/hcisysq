@@ -46,6 +46,7 @@ import {
   type ApprovalSeatTarget,
   type OrganizationRolloutMode,
 } from "../organization/index.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import {
   loanApprovalSeatKeys,
   LoanApprovalPolicyError,
@@ -78,7 +79,7 @@ import {
 type Queryable = Pool | PoolClient;
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
-const LOAN_WORKFLOW_KEY = "LOAN";
+const LOAN_WORKFLOW_KEY: OrganizationWorkflowKey = "LOAN";
 /**
  * LOAN-002 (owner decision 2026-11-18): under `STRUCTURE` the chain is approver unit, then the
  * fixed seats. Under `LEGACY` — which is what every workflow runs in production today — nothing

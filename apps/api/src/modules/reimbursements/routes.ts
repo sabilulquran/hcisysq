@@ -41,6 +41,7 @@ import {
 } from "../leave/domain/request-workflow.js";
 import { LeaveOrganizationAuthorityError, resolveLeaveAuthorities } from "../leave/organization-authority.js";
 import { notifyEmployee } from "../notifications/service.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import { tripHasUnsettledAdvance } from "../trip-advances/routes.js";
 import {
   approvalRequestStatus,
@@ -76,7 +77,7 @@ import {
 type Queryable = Pool | PoolClient;
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
-const WORKFLOW_KEY = "REIMBURSEMENT";
+const WORKFLOW_KEY: OrganizationWorkflowKey = "REIMBURSEMENT";
 const DRAFT_DISCARD_REASON = "Draf dibuang pegawai";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

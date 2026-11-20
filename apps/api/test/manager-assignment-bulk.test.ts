@@ -332,6 +332,39 @@ describe("ORG-001 dry-run penetapan atasan langsung massal", () => {
     });
   });
 
+  it("menghitung baris yang akan mengosongkan atasan tersendiri pada ringkasan", async () => {
+    // Kecelakaan find/replace: seluruh kolom NIP ATASAN berisi "-". Tanpa hitungan
+    // tersendiri, ini hanya tampak sebagai sekian baris "akan berubah".
+    const atasan = employee(1);
+    const satu = employee(2, { directManagerEmployeeId: atasan.id });
+    const dua = employee(3, { directManagerEmployeeId: atasan.id });
+    const tiga = employee(4);
+    const { pool } = createPool([atasan, satu, dua, tiga]);
+
+    const response = await withApp(pool, (app) =>
+      app.inject(previewRequest(csv([
+        [satu.employeeNumber, "-"],
+        [dua.employeeNumber, "-"],
+        [tiga.employeeNumber, atasan.employeeNumber],
+      ]))));
+
+    const preview = response.json();
+    expect(preview.changeCount).toBe(3);
+    expect(preview.clearCount).toBe(2);
+  });
+
+  it("tidak menghitung baris tanpa atasan yang memang sudah tanpa atasan sebagai pengosongan", async () => {
+    const staf = employee(2);
+    const { pool } = createPool([staf]);
+
+    const response = await withApp(pool, (app) =>
+      app.inject(previewRequest(csv([[staf.employeeNumber, "-"]]))));
+
+    const preview = response.json();
+    expect(preview.unchangedCount).toBe(1);
+    expect(preview.clearCount).toBe(0);
+  });
+
   it("menolak baris yang salah satu sisinya di luar pengelolaan HCIS", async () => {
     const atasan = employee(1);
     const pengurus = employee(2, { managementScope: "OUTSIDE_HCIS" });
@@ -437,6 +470,29 @@ describe("ORG-001 penerapan penetapan atasan langsung massal", () => {
     expect(audits).toEqual([]);
     expect(statements).toContain("ROLLBACK");
     expect(statements).not.toContain("UPDATE");
+  });
+
+  it("menyebut preview basi, bukan baris ditolak, ketika berkasnya ditukar sesudah dry-run", async () => {
+    const atasan = employee(1);
+    const staf = employee(2);
+    const { pool, master, audits } = createPool([atasan, staf]);
+    const diperiksa = csv([[staf.employeeNumber, atasan.employeeNumber]]);
+    // Berkas kedua memuat baris yang akan ditolak; yang sebenarnya salah adalah
+    // berkasnya bukan berkas yang dikonfirmasi HC.
+    const dikirim = csv([
+      [staf.employeeNumber, atasan.employeeNumber],
+      ["YSQ-404", atasan.employeeNumber],
+    ]);
+
+    const response = await withApp(pool, async (app) => {
+      const preview = (await app.inject(previewRequest(diperiksa))).json();
+      return app.inject(applyRequest(dikirim, preview.previewToken));
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("MANAGER_ASSIGNMENT_PREVIEW_STALE");
+    expect(master.get(staf.id)!.directManagerEmployeeId).toBeNull();
+    expect(audits).toEqual([]);
   });
 
   it("menolak penerapan ketika data sudah bergeser di bawah preview", async () => {

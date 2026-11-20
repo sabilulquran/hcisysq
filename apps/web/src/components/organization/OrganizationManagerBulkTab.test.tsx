@@ -7,7 +7,10 @@ import {
   ManagerAssignmentPreviewTable,
   OrganizationManagerBulkTab,
 } from "@/components/organization/OrganizationManagerBulkTab";
-import type { ManagerAssignmentPreviewRow } from "@/lib/managerAssignments";
+import {
+  managerAssignmentChartCsv,
+  type ManagerAssignmentPreviewRow,
+} from "@/lib/managerAssignments";
 import type { AuthSession } from "@/types/hcis";
 
 function session(permissions: string[]): AuthSession {
@@ -18,6 +21,9 @@ function session(permissions: string[]): AuthSession {
   };
 }
 
+const SATU = { employeeNumber: "SYN-001", fullName: "Pegawai Sintetis Satu" };
+const PEMIMPIN = { employeeNumber: "SYN-009", fullName: "Pemimpin Unit Sintetis" };
+
 const rows: ManagerAssignmentPreviewRow[] = [
   {
     rowNumber: 2,
@@ -26,9 +32,14 @@ const rows: ManagerAssignmentPreviewRow[] = [
     managerNumber: "SYN-001",
     outcome: "change",
     fromManager: null,
-    toManager: { employeeNumber: "SYN-001", fullName: "Pegawai Sintetis Satu" },
+    toManager: SATU,
     code: null,
     message: null,
+    // Berkas dan bagan berselisih di baris ini.
+    chartManager: PEMIMPIN,
+    chartSource: "MEMBERSHIP_LEADER",
+    chartIssue: null,
+    chartAgrees: false,
   },
   {
     rowNumber: 3,
@@ -36,10 +47,14 @@ const rows: ManagerAssignmentPreviewRow[] = [
     employeeName: "Pegawai Sintetis Tiga",
     managerNumber: "SYN-001",
     outcome: "unchanged",
-    fromManager: { employeeNumber: "SYN-001", fullName: "Pegawai Sintetis Satu" },
-    toManager: { employeeNumber: "SYN-001", fullName: "Pegawai Sintetis Satu" },
+    fromManager: SATU,
+    toManager: SATU,
     code: null,
     message: null,
+    chartManager: SATU,
+    chartSource: "MEMBERSHIP_LEADER",
+    chartIssue: null,
+    chartAgrees: true,
   },
   {
     rowNumber: 4,
@@ -51,6 +66,10 @@ const rows: ManagerAssignmentPreviewRow[] = [
     toManager: null,
     code: "MANAGER_NOT_FOUND",
     message: "NIP atasan tidak terdaftar pada master pegawai.",
+    chartManager: null,
+    chartSource: null,
+    chartIssue: "MEMBERSHIP_NOT_CONFIGURED",
+    chartAgrees: null,
   },
 ];
 
@@ -70,6 +89,26 @@ describe("ORG-001 tabel hasil dry-run atasan langsung", () => {
     const markup = renderToStaticMarkup(<ManagerAssignmentPreviewTable rows={rows} />);
     for (const row of rows) expect(markup).toContain(row.employeeNumber);
   });
+
+  it("menyebut atasan menurut bagan dan menandai baris yang berbeda darinya", () => {
+    const markup = renderToStaticMarkup(<ManagerAssignmentPreviewTable rows={rows} />);
+
+    expect(markup).toContain("Menurut bagan (usulan)");
+    expect(markup).toContain("Pemimpin Unit Sintetis (SYN-009)");
+    expect(markup).toContain("Berbeda dari berkas");
+    expect(markup).toContain("Sama dengan berkas");
+    // Baris yang bagannya tidak menjawab menyebut alasannya, bukan diam saja.
+    expect(markup).toContain("Bagan belum menentukan");
+    expect(markup).toContain("MEMBERSHIP_NOT_CONFIGURED");
+  });
+});
+
+describe("ORG-001 berkas usulan dari bagan", () => {
+  it("menuliskan usulan bagan sebagai CSV yang dapat diunggah ulang HC", () => {
+    expect(managerAssignmentChartCsv(rows)).toBe(
+      ["NIP,NIP ATASAN", "SYN-002,SYN-009", "SYN-003,SYN-001", "SYN-004,"].join("\r\n"),
+    );
+  });
 });
 
 describe("ORG-001 layar penetapan atasan langsung massal", () => {
@@ -83,6 +122,20 @@ describe("ORG-001 layar penetapan atasan langsung massal", () => {
     expect(markup).toContain("Periksa berkas");
     // Tanpa dry-run tidak ada tombol konfirmasi sama sekali.
     expect(markup).not.toContain("Konfirmasi penetapan");
+  });
+
+  it("UX-FLOW-001: satu langkah per layar, tanpa ringkasan atau kirim bertumpuk", () => {
+    const markup = renderToStaticMarkup(
+      <OrganizationManagerBulkTab session={session(["organization.manage", "approvals.policy.manage"])} />,
+    );
+
+    // Penanda langkah ada, dan langkah pertama yang aktif.
+    expect(markup).toContain("Unggah berkas");
+    expect(markup).toContain("aria-current=\"step\"");
+    // Tidak ada bagian langkah berikutnya yang ikut tampil di layar unggah.
+    for (const later of ["Akan dikosongkan", "Ganti berkas", "Menurut bagan (usulan)", "Periksa berkas lain"]) {
+      expect(markup, later).not.toContain(later);
+    }
   });
 
   it("memberi tahu account yang tidak memegang kewenangan persetujuan", () => {

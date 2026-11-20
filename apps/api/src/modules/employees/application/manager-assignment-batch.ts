@@ -20,6 +20,7 @@ import {
   type ManagerAssignmentEntry,
 } from "../manager-assignment.js";
 import type { ManagerAssignmentSourceRow } from "../infrastructure/parse-manager-assignment-csv.js";
+import { resolveChartManagers } from "./manager-assignment-chart.js";
 
 type Db = Pick<Pool, "query"> | PoolClient;
 
@@ -40,6 +41,22 @@ export interface ManagerAssignmentPreviewRow {
   toManager: ManagerAssignmentPersonRef | null;
   code: string | null;
   message: string | null;
+  /**
+   * ORG-004: atasan menurut bagan organisasi terbit. **Usulan, bukan keputusan** —
+   * ia tidak pernah diterapkan sendiri, tidak masuk token, dan hanya dihitung
+   * saat dry-run. HC tetap harus menuliskannya di berkas agar berlaku.
+   */
+  chartManager: ManagerAssignmentPersonRef | null;
+  /** Dari mana resolver ORG-004 mendapatkannya; null bila tidak dapat ditentukan. */
+  chartSource: string | null;
+  /** Kode alasan saat bagan tidak dapat menentukan atasan; null bila berhasil. */
+  chartIssue: string | null;
+  /**
+   * true bila atasan tujuan baris ini sama dengan kata bagan, false bila berbeda,
+   * null bila tidak dapat dibandingkan (bagan tidak menjawab, atau baris ditolak
+   * sebelum punya tujuan).
+   */
+  chartAgrees: boolean | null;
 }
 
 export interface ManagerAssignmentPreview {
@@ -47,6 +64,19 @@ export interface ManagerAssignmentPreview {
   rowCount: number;
   unchangedCount: number;
   changeCount: number;
+  /**
+   * Bagian dari `changeCount` yang akan menghapus atasan (sel `-`), dihitung
+   * tersendiri supaya kecelakaan find/replace yang mengisi seluruh kolom atasan
+   * dengan `-` terbaca dari ringkasan, bukan hanya dari tabelnya.
+   */
+  clearCount: number;
+  /**
+   * Baris yang tujuannya berbeda dari kata bagan organisasi terbit. Informasi
+   * paling berharga di layar ini: di sinilah berkas HC dan ORG-004 berselisih.
+   */
+  differsFromChartCount: number;
+  /** Baris yang bagannya punya usulan sementara berkasnya belum menyebut atasan. */
+  chartSuggestionCount: number;
   refusedCount: number;
   /** true bila tidak ada baris yang ditolak; hanya preview begini yang boleh diterapkan. */
   applicable: boolean;
@@ -82,9 +112,18 @@ function personRef(facts: EmployeeManagerFacts): ManagerAssignmentPersonRef {
  * salah satunya, token tidak lagi cocok dan penerapan ditolak.
  *
  * Reporting line pegawai lain sengaja tidak masuk token: perubahan atasan orang
- * yang tidak disebut berkas ini tidak membatalkan preview HC. Keamanannya tetap
- * utuh karena penerapan menilai ulang seluruh aturan — termasuk siklus — di
- * dalam transaksi, jadi perubahan semacam itu tetap tertangkap sebagai penolakan.
+ * yang tidak disebut berkas ini tidak membatalkan preview HC.
+ *
+ * Batasnya harus dinyatakan apa adanya. Penerapan memang menilai ulang seluruh
+ * aturan di dalam transaksi, tetapi reporting line dibaca **tanpa kunci**;
+ * `FOR UPDATE` hanya memegang baris pegawai yang disebut berkas. Penilaian ulang
+ * itu menutup jendela sampai pembacaannya sendiri, bukan sampai commit. Penulisan
+ * bersamaan atas pegawai di luar berkas — termasuk dari jalur satuan, yang tidak
+ * memegang kunci apa pun dan karenanya dapat meng-commit keputusan basi sesudah
+ * kita membaca — masih dapat membentuk siklus yang tidak terlihat oleh keduanya.
+ * Menutupnya menuntut kunci atas seluruh reporting line atau satu kunci penasihat
+ * untuk setiap penulisan atasan, dan itu keputusan tersendiri, bukan sesuatu yang
+ * boleh disiratkan sudah beres di sini.
  */
 function previewToken(
   sourceRows: readonly ManagerAssignmentSourceRow[],
@@ -111,6 +150,10 @@ function previewToken(
 export async function buildManagerAssignmentPreview(
   db: Db,
   sourceRows: readonly ManagerAssignmentSourceRow[],
+  // ORG-004: usulan dari bagan hanya dihitung untuk dry-run. Penerapan memanggil
+  // fungsi yang sama tanpa ini, supaya resolver tidak pernah dijalankan di dalam
+  // transaksi tulis dan supaya hasilnya tidak dapat memengaruhi token.
+  options: { withChartSuggestions?: boolean } = {},
 ): Promise<ManagerAssignmentPreview> {
   const numbers = sourceRows
     .flatMap((row) => [row.employeeNumber, row.managerNumber])
@@ -146,6 +189,10 @@ export async function buildManagerAssignmentPreview(
       toManager: null,
       code: null,
       message: null,
+      chartManager: null,
+      chartSource: null,
+      chartIssue: null,
+      chartAgrees: null,
     };
 
     if (source.issue) {
@@ -204,16 +251,83 @@ export async function buildManagerAssignmentPreview(
     });
   }
 
-  const ordered = sourceRows.map((source) => rows.get(source.rowNumber)!);
+  let ordered = sourceRows.map((source) => rows.get(source.rowNumber)!);
+
+  if (options.withChartSuggestions) {
+    ordered = await attachChartSuggestions(db, ordered, factsByNumber, factsById);
+  }
+
   return {
     previewToken: previewToken(sourceRows, factsByNumber),
     rowCount: ordered.length,
     unchangedCount: ordered.filter((row) => row.outcome === "unchanged").length,
     changeCount: ordered.filter((row) => row.outcome === "change").length,
+    clearCount: ordered.filter((row) => row.outcome === "change" && row.toManager === null).length,
+    differsFromChartCount: ordered.filter((row) => row.chartAgrees === false).length,
+    // Baris yang sel atasannya dibiarkan kosong — satu-satunya keadaan "berkas
+    // belum menyebut siapa pun" — dan bagannya punya jawaban untuk disalin HC.
+    // Sel `-` tidak termasuk: itu keputusan HC untuk mengosongkan, bukan
+    // kekosongan yang perlu diisi.
+    chartSuggestionCount: ordered.filter(
+      (row) => row.chartManager !== null && row.code === "MANAGER_NUMBER_REQUIRED",
+    ).length,
     refusedCount: ordered.filter((row) => row.outcome === "refused").length,
     applicable: ordered.length > 0 && ordered.every((row) => row.outcome !== "refused"),
     rows: ordered,
   };
+}
+
+/**
+ * ORG-004: menempelkan atasan menurut bagan terbit pada setiap baris, dan
+ * menandai di mana berkas HC berbeda dari bagan.
+ *
+ * Usulan ini tidak mengubah outcome satu baris pun dan tidak masuk token: baris
+ * yang berkasnya tidak menyebut atasan tetap ditolak seperti sebelumnya. Yang
+ * ditambahkan hanyalah apa yang dapat dibaca HC sebelum ia menuliskannya sendiri.
+ */
+async function attachChartSuggestions(
+  db: Db,
+  rows: readonly ManagerAssignmentPreviewRow[],
+  factsByNumber: ReadonlyMap<string, EmployeeManagerFacts>,
+  factsById: Map<string, EmployeeManagerFacts>,
+): Promise<ManagerAssignmentPreviewRow[]> {
+  const subjects = [...new Set(rows.map((row) => row.employeeNumber))]
+    .map((number) => factsByNumber.get(number))
+    .filter((person): person is EmployeeManagerFacts => Boolean(person));
+  if (subjects.length === 0) return [...rows];
+
+  const suggestions = await resolveChartManagers(db, subjects);
+
+  // Atasan usulan belum tentu disebut berkas; pratinjau berbicara dalam NIP,
+  // jadi yang belum dikenal dinamai dari master pegawai sekali untuk semua.
+  const unknown = [...suggestions.values()]
+    .map((item) => item.managerEmployeeId)
+    .filter((id): id is string => Boolean(id) && !factsById.has(id!));
+  for (const person of (await loadEmployeeManagerFactsByIds(db, unknown)).values()) {
+    factsById.set(person.id, person);
+  }
+
+  return rows.map((row) => {
+    const employee = factsByNumber.get(row.employeeNumber);
+    const suggestion = employee ? suggestions.get(employee.id) : undefined;
+    if (!suggestion) return row;
+
+    const chartPerson = suggestion.managerEmployeeId ? factsById.get(suggestion.managerEmployeeId) ?? null : null;
+    const chartManager = chartPerson ? personRef(chartPerson) : null;
+    // Dibandingkan hanya bila ada dua hal untuk dibandingkan. Baris yang ditolak
+    // sebelum punya tujuan, dan bagan yang tidak menjawab, keduanya null.
+    const comparable = suggestion.managerEmployeeId !== null
+      && (row.outcome === "change" || row.outcome === "unchanged");
+    const target = row.toManager ? factsByNumber.get(row.toManager.employeeNumber)?.id ?? null : null;
+
+    return {
+      ...row,
+      chartManager,
+      chartSource: suggestion.source,
+      chartIssue: suggestion.issue,
+      chartAgrees: comparable ? target === suggestion.managerEmployeeId : null,
+    };
+  });
 }
 
 export async function applyManagerAssignments(
@@ -246,19 +360,23 @@ export async function applyManagerAssignments(
 
     const preview = await buildManagerAssignmentPreview(client, input.sourceRows);
 
+    // Token diperiksa lebih dulu. Berkas yang ditukar antara dry-run dan
+    // konfirmasi juga membuat token tidak cocok; menilai `applicable` duluan
+    // akan menjawab "ada baris yang ditolak" padahal yang sebenarnya terjadi
+    // adalah preview-nya sudah tidak berlaku atas berkas ini.
+    if (preview.previewToken !== input.previewToken) {
+      await client.query("ROLLBACK");
+      throw new ManagerAssignmentBatchError(
+        "MANAGER_ASSIGNMENT_PREVIEW_STALE",
+        "Berkas atau data pegawai sudah berbeda dari dry-run yang dikonfirmasi. Jalankan dry-run lagi lalu periksa hasilnya.",
+        preview,
+      );
+    }
     if (!preview.applicable) {
       await client.query("ROLLBACK");
       throw new ManagerAssignmentBatchError(
         "MANAGER_ASSIGNMENT_BATCH_INVALID",
         "Berkas masih memuat baris yang ditolak, jadi tidak ada satu pun perubahan yang diterapkan.",
-        preview,
-      );
-    }
-    if (preview.previewToken !== input.previewToken) {
-      await client.query("ROLLBACK");
-      throw new ManagerAssignmentBatchError(
-        "MANAGER_ASSIGNMENT_PREVIEW_STALE",
-        "Data pegawai sudah berubah sejak dry-run dijalankan. Jalankan dry-run lagi lalu periksa hasilnya.",
         preview,
       );
     }

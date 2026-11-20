@@ -117,7 +117,10 @@ export async function registerManagerAssignmentAdminRoutes(
       const source = readSource(request, reply);
       if (!source) return;
 
-      const preview = await buildManagerAssignmentPreview(pool, source.rows);
+      // ORG-004: dry-run juga membaca bagan organisasi terbit dan menampilkan
+      // atasan menurut bagan sebagai usulan, berikut di mana berkas HC berbeda
+      // darinya. Penerapan tidak melakukannya.
+      const preview = await buildManagerAssignmentPreview(pool, source.rows, { withChartSuggestions: true });
       reply.header("Cache-Control", "no-store");
       return reply.send({
         sourceFilename: source.filename,

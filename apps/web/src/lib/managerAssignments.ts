@@ -21,6 +21,15 @@ export interface ManagerAssignmentPreviewRow {
   toManager: ManagerAssignmentPersonRef | null;
   code: string | null;
   message: string | null;
+  /**
+   * ORG-004: atasan menurut bagan organisasi terbit. Usulan untuk dibaca HC,
+   * bukan keputusan — ia tidak pernah diterapkan sendiri.
+   */
+  chartManager: ManagerAssignmentPersonRef | null;
+  chartSource: string | null;
+  chartIssue: string | null;
+  /** true sama dengan bagan, false berbeda, null tidak dapat dibandingkan. */
+  chartAgrees: boolean | null;
 }
 
 export interface ManagerAssignmentPreview {
@@ -30,6 +39,12 @@ export interface ManagerAssignmentPreview {
   rowCount: number;
   unchangedCount: number;
   changeCount: number;
+  /** Bagian dari `changeCount` yang akan menghapus atasan (sel `-`). */
+  clearCount: number;
+  /** Baris yang tujuannya berbeda dari bagan organisasi terbit. */
+  differsFromChartCount: number;
+  /** Baris yang sel atasannya kosong sementara bagan punya usulan. */
+  chartSuggestionCount: number;
   refusedCount: number;
   applicable: boolean;
   rows: ManagerAssignmentPreviewRow[];
@@ -102,4 +117,22 @@ export function managerAssignmentOutcomeLabel(outcome: ManagerAssignmentRowOutco
 
 export function managerAssignmentPersonLabel(person: ManagerAssignmentPersonRef | null): string {
   return person ? `${person.fullName} (${person.employeeNumber})` : "Tanpa atasan";
+}
+
+/**
+ * ORG-004: berkas CSV yang berisi usulan bagan, untuk diunduh HC.
+ *
+ * Sengaja berbentuk berkas, bukan isian otomatis pada tabel pratinjau: berkas
+ * yang diterapkan harus selalu berkas yang HC sendiri unggah dan konfirmasi,
+ * jadi usulan bagan melewati jalur yang persis sama — unggah, dry-run, baca,
+ * konfirmasi. Tidak ada usulan yang pernah diterapkan tanpa dibaca seseorang.
+ *
+ * Baris yang bagannya tidak menjawab tetap ditulis dengan sel atasan kosong,
+ * supaya HC melihatnya sebagai pekerjaan yang tersisa, bukan hilang diam-diam.
+ */
+export function managerAssignmentChartCsv(rows: readonly ManagerAssignmentPreviewRow[]): string {
+  return [
+    "NIP,NIP ATASAN",
+    ...rows.map((row) => `${row.employeeNumber},${row.chartManager?.employeeNumber ?? ""}`),
+  ].join("\r\n");
 }

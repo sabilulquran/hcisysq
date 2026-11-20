@@ -47,6 +47,31 @@ Reason this exists: every ORG-004 `LEGACY` approval chain starts from `direct_ma
 and nearly every active employee still has none. One-at-a-time editing of the whole workforce is
 slow and easy to abandon halfway, so HC gets a bulk path with a mandatory dry-run.
 
+**Correction, 2026-11-20.** The emptiness is in the legacy column only. The published organization
+chart already resolves a manager for nearly all of those employees. So this is **not** the only way
+to fill the reporting line, and it is not a blank sheet for HC to invent one on: it is the fallback
+path for workflows still running in `LEGACY` mode, and it must show what the chart already says
+before HC writes anything.
+
+Accordingly the dry-run also reports, per row, the manager the ORG-004 resolver derives from the
+published chart, and whether HC's file agrees with it:
+
+- resolution goes through the existing resolver via `buildOrganizationPeopleView`. There is no
+  second resolution path here and no job title text is ever read; this code only translates the
+  resolver's answer into the NIP-and-name shape the preview speaks;
+- each row carries `chartManager`, `chartSource` (which rule the resolver used), `chartIssue` (why
+  the chart could not answer) and `chartAgrees` (true, false, or null when there is nothing to
+  compare). `differsFromChartCount` counts the disagreements — on this screen that is the most
+  valuable number, because those are the people HCIS would route differently from the chart;
+- the suggestion is advice, never a decision. It is computed only during the dry-run, never during
+  apply, and it is deliberately **not** part of the preview token, so a chart published between
+  dry-run and confirm cannot invalidate HC's preview and cannot change what is written;
+- an empty `NIP ATASAN` cell is still refused. A suggestion the chart makes is applied only once HC
+  has written it into the file and confirmed that file. The screen offers the suggestions as a
+  downloadable CSV instead of filling the preview table in place: the file that gets applied is
+  then always a file HC uploaded and confirmed, and the chart's advice travels the same
+  upload-dry-run-read-confirm path as anything else rather than a shorter one.
+
 Rules, deliberately identical to the single route (shared code in
 `apps/api/src/modules/employees/manager-assignment.ts`; the single route evaluates a batch of one):
 
@@ -64,8 +89,10 @@ Input and flow:
   header found within the first ten records — the same source shape as the employee import
   (EMP-004), because HC works from the same spreadsheet;
 - an empty `NIP ATASAN` cell is an error, not an instruction to clear. Clearing is written
-  explicitly as `-`, following the import's meaning of `-`. An unfinished file must not silently
-  remove anyone's manager;
+  explicitly as `-`, borrowing the import's meaning of `-` but deliberately stricter than the
+  import about blanks. An unfinished file must not silently remove anyone's manager, and the
+  dry-run counts the clearing rows separately so a file that accidentally carries `-` everywhere
+  is visible from the summary;
 - a duplicate NIP in one file blocks the file, as it does in the employee import;
 - dry-run (`POST /admin/employees/manager-assignments/preview`) writes nothing and reports every
   row as unchanged, will change (old manager and new manager both named), or refused with a code;
@@ -74,11 +101,34 @@ Input and flow:
   One invalid row refuses the batch; there is no partial application;
 - apply carries the dry-run's `previewToken` in `X-Preview-Token`. The token is a SHA-256 over the
   file's rows plus the current state (id, status, management scope, current manager) of every
-  employee the file names. If any of that moved after the dry-run, the token no longer matches and
-  apply is refused with `MANAGER_ASSIGNMENT_PREVIEW_STALE`; HC runs the dry-run again and reads it.
-  Other people's reporting lines are deliberately outside the token — they do not invalidate HC's
-  preview — and they stay safe because apply re-evaluates the cycle rule against live data anyway;
+  employee the file names. If either the file or that state moved after the dry-run, the token no
+  longer matches and apply is refused with `MANAGER_ASSIGNMENT_PREVIEW_STALE`, which is checked
+  before the per-row outcomes so a swapped file is reported as a stale preview rather than as bad
+  rows. Other people's reporting lines are deliberately outside the token: they must not invalidate
+  HC's preview;
 - the file is bounded at 2000 rows, like the employee import, and raw upload bytes are not stored.
+
+What the token does *not* cover, stated plainly rather than reassuringly. Apply does re-evaluate
+every rule inside the transaction, but it reads the reporting line **without a lock**; `FOR UPDATE`
+holds only the employee rows the file names. That re-evaluation closes the window up to its own
+read, not up to commit. A concurrent write about an employee outside the file can still produce a
+cycle neither writer sees — and the single route holds no lock at all, so a decision it made before
+ours can commit after ours. Closing that means locking the whole reporting line, or taking one
+advisory lock for every direct-manager write; it is a separate decision and is not claimed here.
+
+For the same reason the mandatory dry-run is an interface discipline, not a security control: the
+token proves HC confirmed a preview of a particular file against a particular state, and nothing
+more. What actually protects the data is that apply re-evaluates every rule itself and writes all
+rows or none.
+
+Known follow-ups, not addressed here:
+
+- the dry-run table can mis-attribute a row when a file repeats a row number, which only a
+  hand-edited file produces today;
+- the unlocked reporting-line read described above;
+- the empty-cell rule is *stricter* than EMP-004's, not the same: the employee import treats a blank
+  optional cell as "no value", while a blank `NIP ATASAN` here is a blocking error. Only the meaning
+  of `-` is shared.
 
 ENG-LIST-001 exception, written down on purpose: the dry-run table is not paged. It is not a stored
 list but one request's answer about one file, bounded at 2000 rows, and HC confirms the whole file

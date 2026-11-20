@@ -9,8 +9,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
-import { WizardDone } from "@/components/leave/WizardDone";
-import { WizardSteps } from "@/components/leave/WizardSteps";
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,

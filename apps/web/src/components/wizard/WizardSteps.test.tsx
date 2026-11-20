@@ -3,8 +3,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { WizardDone } from "@/components/leave/WizardDone";
-import { WizardSteps } from "@/components/leave/WizardSteps";
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 
 describe("LEAVE-UX-001 leave wizard", () => {
   it("marks only the current step and checks off finished steps", () => {

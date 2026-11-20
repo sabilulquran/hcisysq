@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 
-/** LEAVE-UX-001: penanda langkah untuk alur pengajuan cuti bertahap. */
+/** UX-FLOW-001: penanda langkah untuk alur bertahap (satu langkah per layar). */
 export function WizardSteps({ steps, current }: { steps: readonly string[]; current: number }) {
   return (
     <ol

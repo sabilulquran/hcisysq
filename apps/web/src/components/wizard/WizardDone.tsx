@@ -1,7 +1,7 @@
 import { CheckCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-/** LEAVE-UX-001: layar akhir setelah pengajuan terkirim. */
+/** UX-FLOW-001: layar akhir setelah pengajuan terkirim. */
 export function WizardDone({
   title,
   message,

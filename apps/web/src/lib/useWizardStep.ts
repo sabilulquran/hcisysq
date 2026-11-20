@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 
 /**
- * LEAVE-UX-001: menyimpan langkah wizard pada query `?langkah=` sehingga
+ * UX-FLOW-001: menyimpan langkah wizard pada query `?langkah=` sehingga
  * setiap langkah tampil sebagai layar sendiri, tombol Kembali browser/Android
  * kembali ke langkah sebelumnya, dan langkah baru selalu dibuka dari atas.
  */

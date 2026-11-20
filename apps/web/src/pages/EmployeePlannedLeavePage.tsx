@@ -12,8 +12,8 @@ import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
 import { PostponementResponse } from "@/components/leave/PostponementResponse";
 import { postponementStatusNote } from "@/lib/leavePostponementView";
-import { WizardDone } from "@/components/leave/WizardDone";
-import { WizardSteps } from "@/components/leave/WizardSteps";
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
 import { useWizardStep } from "@/lib/useWizardStep";
 import {

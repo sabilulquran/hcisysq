@@ -10,6 +10,8 @@
 # Data and exports
 *.sql
 !apps/api/migrations/*.sql
+# OPS-MI8-REL-001: the release gate queries are source, not a data export.
+!scripts/mi8/sql/*.sql
 *.sqlite
 *.sqlite3
 *.dump

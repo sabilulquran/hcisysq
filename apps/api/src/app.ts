@@ -45,6 +45,7 @@ import { registerEmploymentSelfServiceRoutes } from "./modules/employment/self-s
 import { registerDecisionDocumentRoutes } from "./modules/employment/decision-document-routes.js";
 import { registerEmploymentAdminRoutes } from "./modules/employment/admin-routes.js";
 import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-access-routes.js";
+import { registerManagerAssignmentAdminRoutes } from "./modules/employees/admin-manager-assignment-routes.js";
 import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
 import { registerAttendanceResolutionRoutes } from "./modules/leave/attendance-resolution-routes.js";
 import { registerLeaveCalendarAdminRoutes } from "./modules/leave/calendar-admin-routes.js";
@@ -193,6 +194,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeRelationsRoutes(app, pool, config);
   await registerEmployeeDataChangeRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);
+  await registerManagerAssignmentAdminRoutes(app, pool, config);
   await registerOrganizationAdminRoutes(app, pool, config);
   await registerOrganizationDirectoryRoutes(app, pool, config);
   registerStaffIdentityRoutes(app, pool, config);

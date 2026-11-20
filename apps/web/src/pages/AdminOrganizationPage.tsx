@@ -76,6 +76,7 @@ import {
   OrganizationPeopleTab,
   OrganizationReadinessTab,
 } from "@/components/organization/OrganizationReadOnlyTabs";
+import { OrganizationManagerBulkTab } from "@/components/organization/OrganizationManagerBulkTab";
 import {
   getOrganizationExplanation,
   getOrganizationPeople,
@@ -184,6 +185,9 @@ const ORGANIZATION_TABS = [
   { key: "kesiapan", label: "Kesiapan" },
   { key: "bagan", label: "Bagan" },
   { key: "pegawai", label: "Pegawai" },
+  // ORG-001: penetapan atasan langsung massal. Lihat OrganizationManagerBulkTab
+  // untuk alasan layar ini tinggal di sini dan bukan di menu tersendiri.
+  { key: "atasan", label: "Atasan langsung" },
   { key: "plt", label: "Plt & jabatan kosong" },
   { key: "persetujuan", label: "Cek persetujuan" },
   // LOAN-002: the approval seat registry lives here — same domain, same permission.
@@ -2088,6 +2092,8 @@ export function AdminOrganizationPage() {
           onCloseExplanation={closeExplanation}
         />
       ) : null}
+
+      {tab === "atasan" ? <OrganizationManagerBulkTab session={session} /> : null}
 
       {tab === "plt" ? (
         <OrganizationActingTab

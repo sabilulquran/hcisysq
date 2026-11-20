@@ -11,7 +11,12 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
+import {
+  evaluateManagerAssignments,
+  loadEmployeeManagerFactsByIds,
+  loadReportingLineEdges,
+  MANAGER_ASSIGNMENT_MESSAGES,
+} from "./manager-assignment.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import { closeOpenInvitations } from "../auth/activation-invitation.js";
@@ -412,58 +417,38 @@ export async function registerOrgAccessAdminRoutes(
       throw error;
     }
 
-    const employee = await pool.query<{ id: string }>(
-      "SELECT id FROM employees WHERE id = $1",
-      [employeeId],
-    );
-    if (!employee.rows[0]) {
+    // ORG-001: aturannya ada di `manager-assignment.ts` dan jalur massal memakai
+    // evaluator yang sama, jadi keduanya tidak dapat berbeda. Satu penetapan
+    // dinilai sebagai batch berisi satu baris.
+    // EMP-005 S2B §8.7 ikut dinilai di sana: baris yang ditandai di luar
+    // pengelolaan HCIS tidak dapat ditulis dan tidak dapat ditunjuk sebagai
+    // atasan. Bawahan dari baris yang ditandai belakangan tetap menunjuk ke
+    // baris itu; routing membacanya sebagai tidak aktif dan laporan kecocokan
+    // mendaftarnya sebagai APPROVER_OUTSIDE_HCIS.
+    const [facts, currentEdges] = await Promise.all([
+      loadEmployeeManagerFactsByIds(pool, [employeeId, managerId].filter((id): id is string => Boolean(id))),
+      loadReportingLineEdges(pool),
+    ]);
+    const employee = facts.get(employeeId);
+    if (!employee) {
       return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
     }
 
-    if (managerId) {
-      const manager = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1 AND status = 'active'",
-        [managerId],
-      );
-      if (!manager.rows[0]) {
-        return reply.status(409).send({
-          code: "MANAGER_NOT_ACTIVE",
-          message: "Atasan langsung harus merupakan pegawai aktif.",
-        });
-      }
-
-      const cycle = await pool.query<{ found: number }>(
-        `
-          WITH RECURSIVE manager_chain AS (
-            SELECT id, direct_manager_employee_id
-            FROM employees
-            WHERE id = $2
-            UNION ALL
-            SELECT e.id, e.direct_manager_employee_id
-            FROM employees e
-            JOIN manager_chain chain ON e.id = chain.direct_manager_employee_id
-          )
-          SELECT 1 AS found FROM manager_chain WHERE id = $1 LIMIT 1
-        `,
-        [employeeId, managerId],
-      );
-      if (cycle.rows[0]) {
-        return reply.status(409).send({
-          code: "REPORTING_LINE_CYCLE",
-          message: "Assignment ini akan membentuk siklus pada reporting line.",
-        });
-      }
-    }
-
-    // EMP-005 S2B: a record outside HCIS management is read-only (§8.7), and
-    // one may not be named as a manager either. Subordinates of a record marked
-    // later keep pointing at it; routing treats it as inactive and the
-    // consistency report lists them as APPROVER_OUTSIDE_HCIS.
-    for (const target of [employeeId, managerId]) {
-      if (target && await isOutsideHcis(pool, target)) {
-        reply.header("Cache-Control", "no-store");
-        return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
-      }
+    const outcome = evaluateManagerAssignments(
+      [{ key: "single", employeeId, managerEmployeeId: managerId }],
+      facts,
+      currentEdges,
+    ).get("single")!;
+    if (outcome.status === "refused") {
+      reply.header("Cache-Control", "no-store");
+      // NIP atasan yang tidak ada dijawab sama dengan atasan tidak aktif, seperti
+      // sebelumnya: jalur satuan memakai id, bukan NIP, jadi pembedaannya tidak
+      // menambah apa pun bagi pemanggilnya.
+      const code = outcome.code === "MANAGER_NOT_FOUND" ? "MANAGER_NOT_ACTIVE" : outcome.code;
+      const message = code === "MANAGER_NOT_ACTIVE"
+        ? MANAGER_ASSIGNMENT_MESSAGES.MANAGER_NOT_ACTIVE
+        : outcome.message;
+      return reply.status(409).send({ code, message });
     }
 
     await pool.query(
@@ -474,6 +459,8 @@ export async function registerOrgAccessAdminRoutes(
     );
     await audit(pool, principal, "employee.manager.updated", "employee", employeeId, {
       managerEmployeeId: managerId,
+      previousManagerEmployeeId: employee.directManagerEmployeeId,
+      source: "SINGLE",
     });
 
     return reply.send({ employeeId, managerEmployeeId: managerId });

@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  ChevronRight,
   CheckCircle2,
   FileUp,
   Loader2,
@@ -11,7 +12,10 @@ import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
 import { PostponementResponse } from "@/components/leave/PostponementResponse";
 import { postponementStatusNote } from "@/lib/leavePostponementView";
+import { WizardDone } from "@/components/leave/WizardDone";
+import { WizardSteps } from "@/components/leave/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
+import { useWizardStep } from "@/lib/useWizardStep";
 import {
   getPlannedLeaveSummary,
   PlannedLeaveApiError,
@@ -23,6 +27,9 @@ import {
   type SupportedPlannedLeaveKey,
   uploadPlannedLeaveEvidence,
 } from "@/lib/plannedLeave";
+
+const STEPS = ["pilih", "isi", "periksa", "selesai"] as const;
+const STEP_LABELS = ["Pilih keperluan", "Isi data", "Periksa", "Selesai"] as const;
 
 function initials(name: string) {
   return name
@@ -79,6 +86,8 @@ async function fileToEvidence(file: File): Promise<PlannedLeaveEvidenceInput> {
 }
 
 export function EmployeePlannedLeavePage() {
+  const { step, index, goTo } = useWizardStep(STEPS);
+  const [submitted, setSubmitted] = useState<string | null>(null);
   const [summary, setSummary] = useState<PlannedLeaveSummary | null>(null);
   const [policyKey, setPolicyKey] = useState<SupportedPlannedLeaveKey | null>(null);
   const [startOn, setStartOn] = useState("");
@@ -111,6 +120,11 @@ export function EmployeePlannedLeavePage() {
     void load();
   }, []);
 
+  const showError = (message: string) => {
+    setError(message);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const user = useMemo(() => {
     const employee = summary?.employee;
     return {
@@ -134,11 +148,12 @@ export function EmployeePlannedLeavePage() {
     setPreview(null);
     setError(null);
     setSuccess(null);
+    goTo("isi");
   };
 
   const handlePreview = async () => {
     if (!policyKey || !startOn || !endOn) {
-      setError("Pilih jenis cuti dan tanggal terlebih dahulu.");
+      showError("Pilih jenis cuti dan tanggal terlebih dahulu.");
       return;
     }
     setBusy(true);
@@ -153,8 +168,9 @@ export function EmployeePlannedLeavePage() {
           hasEvidence: file !== null,
         }),
       );
+      goTo("periksa");
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof PlannedLeaveApiError
           ? cause.message
           : "Pengajuan belum dapat diperiksa.",
@@ -178,16 +194,17 @@ export function EmployeePlannedLeavePage() {
         idempotencyKey: crypto.randomUUID(),
         evidence,
       });
-      setSuccess(`${result.policyName} berhasil dikirim. ${result.nextAction}.`);
+      setSubmitted(`${result.policyName} berhasil dikirim. ${result.nextAction}.`);
       setPolicyKey(null);
       setStartOn("");
       setEndOn("");
       setReason("");
       setFile(null);
       setPreview(null);
+      goTo("selesai", { replace: true });
       await load();
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof PlannedLeaveApiError || cause instanceof Error
           ? cause.message
           : "Pengajuan tidak dapat dikirim.",
@@ -196,6 +213,13 @@ export function EmployeePlannedLeavePage() {
       setBusy(false);
     }
   };
+
+  // Langkah lanjutan tidak boleh dibuka tanpa data langkah sebelumnya (mis. setelah refresh).
+  useEffect(() => {
+    if (step === "isi" && !policyKey) goTo("pilih", { replace: true });
+    if (step === "periksa" && !preview) goTo(policyKey ? "isi" : "pilih", { replace: true });
+    if (step === "selesai" && !submitted) goTo("pilih", { replace: true });
+  }, [step, policyKey, preview, submitted, goTo]);
 
   const completeEvidence = async (requestId: string) => {
     const correctionFile = correctionFiles[requestId];
@@ -239,17 +263,20 @@ export function EmployeePlannedLeavePage() {
         </p>
       </section>
 
+      <WizardSteps steps={STEP_LABELS} current={index} />
+
       {error ? (
         <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       ) : null}
-      {success ? (
+      {success && step === "pilih" ? (
         <div className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {success}
         </div>
       ) : null}
 
+      {step === "pilih" ? (
       <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {(summary?.policies ?? []).map((policy) => (
           <button
@@ -267,10 +294,23 @@ export function EmployeePlannedLeavePage() {
           </button>
         ))}
       </section>
+      ) : null}
 
-      {selectedPolicy ? (
+      {step === "isi" && selectedPolicy ? (
         <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
-          <h2 className="text-base font-bold text-brand-heading">{selectedPolicy.name}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-base font-bold text-brand-heading">{selectedPolicy.name}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setPreview(null);
+                goTo("pilih");
+              }}
+              className="text-xs font-bold text-brand-primary-deep"
+            >
+              Ganti jenis
+            </button>
+          </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold">
               Mulai
@@ -299,13 +339,18 @@ export function EmployeePlannedLeavePage() {
             </label>
           ) : null}
 
-          <button type="button" disabled={busy} onClick={() => void handlePreview()} className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
-            Periksa pengajuan
-          </button>
+          <div className="mt-6 flex justify-end">
+            <button type="button" disabled={busy} onClick={() => void handlePreview()} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50 sm:w-auto">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Lanjutkan
+              {busy ? null : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
-          {preview ? (
-            <div className="mt-5 rounded-2xl bg-surface p-4">
+      {step === "periksa" && preview && selectedPolicy ? (
+            <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
               <p className="text-sm font-bold text-brand-heading">Ringkasan sebelum dikirim</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <div><p className="text-xs text-muted-foreground">Hari kerja terdampak</p><p className="mt-1 text-xl font-bold">{preview.workingDays}</p></div>
@@ -319,15 +364,37 @@ export function EmployeePlannedLeavePage() {
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">Cuti ini dicatat sebagai tidak bergaji untuk kebutuhan downstream. Halaman ini tidak menghitung potongan payroll.</p>
               ) : null}
               <CriticalPeriodNotice periods={preview.criticalPeriods} />
-              <button type="button" disabled={busy} onClick={() => void handleSubmit()} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
-                Kirim pengajuan
-              </button>
-            </div>
-          ) : null}
-        </section>
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                <button type="button" disabled={busy} onClick={() => goTo("isi")} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50">
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Ubah data
+                </button>
+                <button type="button" disabled={busy} onClick={() => void handleSubmit()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                  Kirim pengajuan
+                </button>
+              </div>
+            </section>
       ) : null}
 
+      {step === "selesai" && submitted ? (
+        <WizardDone title="Pengajuan terkirim" message={submitted}>
+          <button
+            type="button"
+            onClick={() => {
+              setSubmitted(null);
+              goTo("pilih", { replace: true });
+            }}
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground"
+          >
+            Lihat pengajuan saya
+          </button>
+          <a href="/app/leave" className="inline-flex h-11 items-center justify-center rounded-xl border border-border px-5 text-sm font-semibold">
+            Semua Cuti & Izin
+          </a>
+        </WizardDone>
+      ) : null}
+
+      {step === "pilih" ? (
       <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4"><h2 className="text-base font-bold text-brand-heading">Pengajuan saya</h2></div>
         <div className="divide-y divide-border/70">
@@ -412,6 +479,7 @@ export function EmployeePlannedLeavePage() {
           )}
         </div>
       </section>
+      ) : null}
     </AppShell>
   );
 }

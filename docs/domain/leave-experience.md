@@ -14,6 +14,13 @@ Leave and absence workflows can be policy-heavy, but the employee-facing GUI mus
 2. **Progressive disclosure.** Do not show dates, documents, policy notes, and workflow details before the employee has chosen the relevant leave type.
 3. **No dangerous default.** A special-leave form must not silently default to `Cuti Sakit`; the employee explicitly chooses the situation before the form can continue.
 4. **One primary action at a time.** Use a simple sequence such as `Pilih jenis -> Isi data -> Periksa -> Kirim` rather than presenting several competing actions.
+4a. **One step per screen (LEAVE-UX-001, owner feedback 2026-11-20).** Each step of a leave submission replaces the previous one as a wizard screen; `Lanjutkan` never appends the next step below the current form. Progressive disclosure means *between* screens, not as a growing page. Rules:
+   - the current step lives in the URL (`?langkah=isi|periksa|selesai`, plus `pilih` for special/planned), so the browser/Android back button returns to the previous step and keeps the entered values;
+   - a step header shows the step number and only the current step's label on mobile;
+   - every new step opens scrolled to the top; a validation/API error is shown under the step header and the page scrolls to it;
+   - the review step has `Ubah data`/`Ubah tanggal` (back) and the submit button; after submit, a `selesai` confirmation screen replaces the review (history entry replaced, so back never shows a submittable review again);
+   - opening a later step directly (refresh, shared link) without the data of earlier steps falls back to the first relevant step; no data is kept outside page memory;
+   - history lists (riwayat/pengajuan saya) and their actions (cancel, postponement response, document correction) appear on the hub or on the first step only, never under a form.
 5. **Plain language first.** Prefer labels such as `Apa yang terjadi?`, `Boleh dilengkapi nanti`, `Perlu dilengkapi`, and `Siapa yang akan menerima` over internal terms such as resolver, snapshot, discretionary approval, or evidence state.
 6. **Policy is explained at the point of need.** Notice period, document requirement, or emergency behavior is shown only for the selected leave type.
 7. **Status must answer what the user should do next.** Examples: `Menunggu validasi HC`, `Perlu dokumen tambahan`, `Selesai`, rather than exposing raw workflow states.
@@ -24,7 +31,7 @@ Leave and absence workflows can be policy-heavy, but the employee-facing GUI mus
 ```text
 Cuti & Izin
   -> Pilih kebutuhan
-     -> Cuti Tahunan
+     -> Cuti Tahunan (/app/leave/annual; the hub /app/leave keeps the balance card and history)
         -> Isi tanggal
         -> Periksa kuota dan alur
         -> Kirim
@@ -85,3 +92,6 @@ Human Capital validation remains under the additional management role area, beca
 - LEAVE-006-E: employee-facing copy avoids internal approval-engine jargon where plain language is sufficient.
 - LEAVE-006-F: HC validation can be completed from a single queue card with clear next actions.
 - LEAVE-006-G: mobile navigation keeps `Cuti` as the single leave destination.
+- LEAVE-UX-001-A: annual, special, and planned leave submissions show one step per screen; `Lanjutkan` replaces the form with the review step.
+- LEAVE-UX-001-B: browser back from the review step returns to the form with the entered values intact.
+- LEAVE-UX-001-C: after submission a confirmation screen replaces the review step; reloading a later step without its data falls back to the first step.

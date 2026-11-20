@@ -171,9 +171,23 @@ VALUES ('00000000-0000-4000-8000-0000000000c1', 'GURU', 'Guru', 'FUNCTIONAL', DA
 INSERT INTO trip_per_diem_golongan_map (job_classification_code, golongan, updated_by_account_id)
 VALUES ('GURU', 'STAF', '00000000-0000-4000-8000-00000000a001');
 SQL
+  # A fixture that quietly did nothing would turn every case into a false pass.
+  local landed
+  landed=$(psql -d "$URL" -At -c "SELECT count(*) FROM employees, trip_per_diem_golongan_map") || exit 1
+  [[ "$landed" == 1 ]] || { echo "FAIL the base fixture did not land (got $landed rows)" >&2; exit 1; }
 }
 
-sql_do() { printf '%s\n%s\n' "$FIXTURE_PRELUDE" "$1" | psql_run || exit 1; }
+# Per-case fixture edit. The command tag is checked as well as the exit status: a statement that
+# never ran would leave the case testing the base fixture and quietly passing.
+sql_do() {
+  local out
+  out=$(psql -d "$URL" -v ON_ERROR_STOP=1 -c "$FIXTURE_PRELUDE" -c "$1" 2>&1) \
+    || { echo "FAIL fixture statement: $out" >&2; exit 1; }
+  case "$out" in
+    *INSERT*|*UPDATE*|*DELETE*) ;;
+    *) echo "FAIL fixture statement reported no change: $out" >&2; exit 1 ;;
+  esac
+}
 
 # ------------------------------------------------------------------ cases
 

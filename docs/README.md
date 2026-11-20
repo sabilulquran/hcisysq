@@ -67,6 +67,7 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 
 ## Deployment dan repository operations
 
+- `development/hcis-closure-list.md` — OPS-CLOSE-001: daftar penutupan sebelum HCIS dibuka ke seluruh pegawai. Satu daftar yang menyatakan posisi tiap butir dengan bukti bertanggal, memakai lima status (Belum selesai, Selesai belum dirilis, Dirilis belum aktif, Aktif belum diuji, Sudah diuji) dan memisahkan cakupan wajib pra-pembukaan dari pengembangan lanjutan. Melengkapi gate `operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001), tidak menggantikannya.
 - `development/mi8vps-hcis-release.md` — OPS-MI8-REL-001: satu-satunya release flow production (Mi8VPS, bundle linux/arm64, `scripts/mi8/release-mi8.sh`). Sejak keputusan owner 2026-10-27 release berjalan tanpa menunggu persetujuan owner, dengan dry-run, backup sebelum migration, gate kandidat, rollback bila verifikasi gagal, tanpa jam 19 UTC, dan laporan sesudahnya.
 - `development/production-release-verification-*.md` — bukti tiap release production.
 - `operations/permanent-staging-retirement-2026-10-02.md` — staging dihentikan permanen; production-only.

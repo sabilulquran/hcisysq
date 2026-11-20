@@ -5,19 +5,47 @@
 **Gate induk:** `docs/product/scope.md` ("Pilot ready", "Production ready") lewat `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Keputusan pembukaan dicatat di `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001).
 **Rilis production saat dokumen ini ditulis:** `hcis-127b6068-20261118` (symlink `/srv/hcis/current` dipasang 18 Nov 16:05 WIB), bukti `docs/development/production-release-verification-2026-11-18-127b6068.md`.
 **Sumber angka production:** pengukuran owner sendiri pada 2026-11-20 (§3). Penulis dokumen ini tidak punya akses production dan tidak menurunkan ulang angka tersebut.
-**Sumber angka repository:** `origin/main` pada `838d1e24` (merge #391, 2026-11-20 02:13 UTC).
+**Sumber angka repository:** `origin/main` pada `b2fa31dd` (merge #396, 2026-11-20).
+**Koreksi terakhir:** 2026-11-20 — urutan penghambat disusun ulang (kesiapan akun penyetuju, W3/W2, kini yang pertama), W1 (bagan organisasi ternyata terisi), W7 dan W8 (uji Human Capital Management), W5 (keadaan jalur mesin absensi), W12 (bukti restore sebagian), dan §4 (garis rilis diukur ulang pada `b2fa31dd`).
+
+> **Empat hal yang sering dicampur, dan tidak dicampur di dokumen ini.**
+>
+> 1. **Pratinjau resolusi baca-saja bukan bukti routing.** Menelusuri bagan organisasi dan mendapatkan nama penyetuju hanya menjawab *siapa yang seharusnya menyetujui*. Ia tidak membuktikan orang itu punya akun aktif, punya izin yang diperlukan, atau bahwa pengajuan nyata benar-benar sampai kepadanya. Kesiapan akun dan izin penyetuju baru teruji ketika bagan itu **dipakai untuk routing**, bukan ketika ia dibaca.
+> 2. **PR yang di-merge bukan rilis.** Kode di `main` tidak ada di production sampai ada catatan rilis bertanggal.
+> 3. **Rilis bukan penyalaan.** Kode yang terpasang di balik saklar mati tidak melakukan apa pun.
+> 4. **Penyalaan bukan pengujian.** Saklar menyala tanpa satu pun transaksi nyata tetap berstatus *Aktif belum diuji*.
+>
+> Status di dokumen ini naik hanya bila buktinya berasal dari tingkat yang benar, dan cakupan bukti itu ditulis apa adanya — termasuk bagian yang **belum terverifikasi**.
 
 ## 1. Kesimpulan yang harus dibaca lebih dulu
 
-**HCIS belum pernah dipakai siapa pun di production.** Untuk 97 pegawai aktif hanya ada **4 akun aktif** (1 `EMPLOYEE`, 2 `FOUNDATION_BOARD`, 1 lain). Tidak ada satu pun pengajuan cuti, kasbon, atau reimbursement sepanjang umur sistem, dan tidak ada satu pun periode payroll. Yang benar-benar berjalan di production hanya dua hal: **penyerapan kehadiran dari mesin ADMS** dan **penyimpanan 5.202 slip gaji hasil impor historis**.
+**HCIS belum dipakai sebagai sistem kerja oleh siapa pun di production.** Untuk 97 pegawai aktif hanya ada **4 akun aktif** (1 `EMPLOYEE`, 2 `FOUNDATION_BOARD`, 1 lain), ditambah **74 akun yang masih `invited`** — dan `invited` bukan aktif. Tidak ada satu pun pengajuan cuti, kasbon, atau reimbursement sepanjang umur sistem, dan tidak ada satu pun periode payroll.
 
-**Penghambat nomor satu untuk pembukaan: 95 dari 97 pegawai aktif tidak punya `direct_manager_employee_id`.** Ini bukan catatan kecil. Seluruh rantai persetujuan production berjalan dalam mode `LEGACY` — `organization_rollout_settings` kosong, sehingga `OrganizationRolloutService` jatuh ke `LEGACY` (`apps/api/src/modules/organization/repository.ts:750`) — dan resolver `LEGACY` membangun rantai hanya dari dua kolom: `employees.direct_manager_employee_id` dan `organizational_units.leave_approver_employee_id`. Bila kolom atasan kosong, `resolveLeaveLineApprovalChain` melempar `DIRECT_MANAGER_MISSING` ("Atasan langsung belum dikonfigurasi") dan pengajuan **gagal tertutup**, bukan jatuh ke HC (`apps/api/src/modules/leave/domain/approval-chain.ts`).
+Dua hal yang sudah terjadi dan tidak boleh dihapus dari gambaran ini. Pertama, **Human Capital Management sudah menguji absensi HP (clock in/out) dan alur utama memakai akun aktif** (konfirmasi owner 2026-11-20); cakupan rincinya tidak tercatat, jadi pengujian itu tidak menutup alur yang belum disebut. Kedua, **penyerapan kehadiran dari mesin ADMS pernah berjalan dengan data nyata** dan **5.202 slip gaji hasil impor historis tersimpan**. Tetapi jalur mesin itu sekarang sunyi: perangkat terakhir menghubungi HCIS **17 November 14:36**, dan dalam sepekan sebelumnya hanya mengirim **4 log kehadiran** berbanding **28.087 handshake protokol** (§3).
 
-Resolver yang sama dipakai enam modul: cuti (`leave/employee-routes.ts`), cuti berencana (`leave/planned-leave-routes.ts`), pengaturan kerja ATT-015 (`attendance/work-arrangement-routes.ts`), kasbon (`loans/routes.ts`), reimbursement (`reimbursements/routes.ts`), dan perjalanan dinas (`trips/routes.ts`); lembur memakai jalur sejenis lewat `attendance/overtime-approver.ts`. Artinya, bila HCIS dibuka hari ini, **95 dari 97 pegawai akan menemui penolakan di hampir setiap layanan yang mereka coba**, dan penolakannya terbaca sebagai kesalahan sistem, bukan sebagai data yang belum diisi.
+**Penghambat nomor satu untuk pembukaan: penyetuju cutinya sendiri belum bisa bertindak.** Pengukuran owner 2026-11-20 (baca saja, production): dari sembilan unit berpegawai aktif, **delapan unit punya penyetuju cuti yang akunnya masih berstatus `invited`**, dan **satu unit penyetujunya tidak punya akun sama sekali** — Yayasan Sabilul Quran, penyetuju Lily Masngali. Hanya **satu** unit yang penyetujunya berakun aktif: Human Capital Management (M. Imadduddin Muqoyim).
 
-Pengisiannya tidak otomatis: impor pegawai EMP-004 tidak membawa kolom atasan sama sekali (tidak ada rujukan `direct_manager` di `apps/api/src/modules/employees/application/` maupun `infrastructure/`), dan satu-satunya jalur tulis adalah `PATCH /admin/employees/:employeeId/manager` — satu pegawai per panggilan, izin `approvals.policy.manage`.
+Kode menolak penyetuju yang akunnya bukan `active`: `409 APPROVER_ACCOUNT_NOT_READY`, dengan pesan `Akun approver <nama> belum aktif.` (`apps/api/src/modules/leave/employee-routes.ts:345-350`). Penjagaan yang sama ada di cuti berencana, pengaturan kerja ATT-015, kasbon, reimbursement, perjalanan dinas, dan uang muka dinas — tujuh modul memakai pemeriksaan yang sama.
 
-**Laporan mana pun yang menyatakan "semua PRD sudah selesai" tidak menjawab pertanyaan ini.** PRD yang selesai berarti kode sudah di-merge. Dokumen ini memisahkan "sudah di-merge" dari "sudah dirilis", "sudah menyala", dan "sudah pernah dipakai".
+Artinya, memakai jumlah pegawai per unit di §3: **96 dari 97 pegawai aktif berada di unit yang penyetuju cutinya belum bisa bertindak.** Hanya satu pegawai — yang unitnya Human Capital Management — berada di unit dengan penyetuju berakun aktif.
+
+**Ini mengubah urutan penghambat.** Mengisi kolom atasan langsung tidak memperbaiki keadaan ini sedikit pun: pengajuan yang lolos tahap atasan tetap gagal di tahap penyetuju unit dengan `409`. Jadi yang pertama menghalangi adalah **kesiapan akun penyetuju (W3, lalu W2)**, bukan data atasan (W1). W1 tetap wajib — tanpa atasan, pengajuan bahkan tidak sampai ke tahap penyetuju unit — tetapi ia penghambat kedua, bukan pertama. Apakah dan kapan akun-akun penyetuju itu diaktifkan adalah **keputusan HCM dan owner, dan belum diambil**; dokumen ini hanya mencatat keadaannya.
+
+Untuk rekonsiliasi, tiga angka yang harus dibaca bersama dan tidak saling menggantikan: (1) 95 dari 97 pegawai aktif punya kolom atasan lama yang kosong; (2) dua yang terisi pun **atasannya berakun `invited`** (Siti Rita Anita, Ichwanudin), jadi nol pegawai aktif hari ini punya rantai yang seluruh pesertanya siap; (3) `organization_rollout_settings` tetap **0 baris**, jadi cuti memang masih mengambil atasan dari Detail Pegawai dan penyetuju dari Konfigurasi Cuti — **bagan organisasi tidak ikut dibaca sama sekali di jalur yang sedang berjalan.**
+
+**Penghambat nomor dua: rantai persetujuan production belum tersambung ke sumber data atasan yang sudah ada.** Angka yang biasa dikutip — 95 dari 97 pegawai aktif tanpa `direct_manager_employee_id` — benar, tetapi ia mengukur **satu kolom saja**, yaitu kolom yang dibaca mode `LEGACY`. Ia bukan ukuran "data atasan tidak ada".
+
+Data atasannya sebagian besar **memang ada**, di bagan organisasi yang sudah terbit. Pengukuran owner 2026-11-20 (baca saja) mencatat bagan itu benar-benar terisi di production: 16 change set terbit (terakhir 2026-11-10), 1.111 `organization_nodes`, 474 `organization_positions`, 374 `organization_incumbencies`, 1.439 `organization_memberships`, dan 555 `organization_authority_bindings` — di antaranya 215 `SUPERVISORY_PARENT`, 104 `UNIT_APPROVER`, 3 `OVERSIGHT_PARENT`, 3 `GOVERNANCE_APPROVER` — dengan `organization_reporting_overrides` kosong. Owner menyatakan bagan ini **dapat menentukan atasan untuk hampir seluruh** pegawai tersebut dalam pemeriksaan baca-saja.
+
+Jadi yang kurang bukan datanya, melainkan **sambungannya**, dan hanya ada dua cara menutupnya: (a) kolom `LEGACY` diisi dari bagan, atau (b) rollout workflow dipindahkan dari `LEGACY` ke `STRUCTURE` supaya resolver membaca bagan secara langsung (L3). Selama tidak satu pun dari keduanya dikerjakan, mode production tetap `LEGACY` — `organization_rollout_settings` kosong, sehingga `OrganizationRolloutService` jatuh ke `LEGACY` (`apps/api/src/modules/organization/repository.ts:750`) — dan resolver `LEGACY` membangun rantai hanya dari dua kolom: `employees.direct_manager_employee_id` dan `organizational_units.leave_approver_employee_id`. Bila kolom atasan kosong, `resolveLeaveLineApprovalChain` melempar `DIRECT_MANAGER_MISSING` ("Atasan langsung belum dikonfigurasi") dan pengajuan **gagal tertutup**, bukan jatuh ke HC (`apps/api/src/modules/leave/domain/approval-chain.ts`).
+
+Resolver yang sama dipakai enam modul: cuti (`leave/employee-routes.ts`), cuti berencana (`leave/planned-leave-routes.ts`), pengaturan kerja ATT-015 (`attendance/work-arrangement-routes.ts`), kasbon (`loans/routes.ts`), reimbursement (`reimbursements/routes.ts`), dan perjalanan dinas (`trips/routes.ts`); lembur memakai jalur sejenis lewat `attendance/overtime-approver.ts`. Artinya, bila HCIS dibuka hari ini **tanpa mengerjakan (a) atau (b)**, 95 dari 97 pegawai akan menemui penolakan di hampir setiap layanan yang mereka coba, dan penolakannya terbaca sebagai kesalahan sistem, bukan sebagai data yang belum diisi.
+
+**Dua hal yang tidak boleh ikut diklaim.** Pertama, "hampir seluruh" adalah kata owner atas pemeriksaan baca-saja; **angka persisnya belum pernah diukur oleh resolver yang sebenarnya**, karena ORG-004 `SHADOW` belum dijalankan (L3, V17). Dokumen ini karena itu tidak menuliskan persentase. Kedua, dan ini yang lebih penting: **pratinjau baca-saja hanya mengatakan siapa yang *seharusnya* menyetujui, bukan bahwa orang itu *bisa* menyetujui.** Kesiapan akun dan izin penyetuju baru benar-benar teruji ketika bagan dipakai untuk routing pengajuan nyata. Pada 2026-11-20 hanya ada **4 akun aktif**, sementara **74 akun lain masih berstatus `invited`** — dan `invited` bukan aktif. Penyetuju yang ditemukan bagan bisa saja belum punya akun aktif atau belum punya izin yang diperlukan; itu tidak akan terlihat sampai routing dinyalakan.
+
+Jalur isi massal untuk kolom `LEGACY` masih dalam pengerjaan: impor pegawai EMP-004 tidak membawa kolom atasan sama sekali (tidak ada rujukan `direct_manager` di `apps/api/src/modules/employees/application/` maupun `infrastructure/`); satu-satunya jalur tulis yang sudah ada adalah `PATCH /admin/employees/:employeeId/manager` — satu pegawai per panggilan, izin `approvals.policy.manage` — dan **PR #395** (penetapan atasan langsung massal dengan dry-run wajib) masih terbuka dalam revisi per 2026-11-20.
+
+**Laporan mana pun yang menyatakan "semua PRD sudah selesai" tidak menjawab pertanyaan ini.** PRD yang selesai berarti kode sudah di-merge. Dokumen ini memisahkan "sudah di-merge" dari "sudah dirilis", "sudah menyala", "sudah pernah dipakai", dan "sudah terbukti merutekan".
 
 ## 2. Kosakata status
 
@@ -41,7 +69,9 @@ Angka di bawah ini diukur owner sendiri pada 2026-11-20 dan dipakai apa adanya.
 |---|---|
 | Pegawai `active` | 97 |
 | Akun `active` **total** | 4 (1 `EMPLOYEE`, 2 `FOUNDATION_BOARD`, 1 lain) |
-| Pegawai `active` tanpa `direct_manager_employee_id` | **95 dari 97** |
+| Akun `invited` | **74** — berstatus diundang, **bukan aktif** |
+| Akun (seluruh status) | 81 (dari pencocokan jumlah pada pemeriksaan restore, §W12) |
+| Pegawai `active` tanpa `direct_manager_employee_id` | **95 dari 97** — ini ukuran satu kolom `LEGACY`, bukan ukuran ketersediaan data atasan (§1) |
 | Pegawai `active` tanpa unit | 0 |
 | `payroll_periods` / `payroll_results` | 0 / 0 |
 | `payslips` (impor historis) | 5.202 |
@@ -59,9 +89,39 @@ Angka di bawah ini diukur owner sendiri pada 2026-11-20 dan dipakai apa adanya.
 
 Pegawai aktif per unit: SDIT Tahfizh 46, Pesantren Tahfizh 22, General Affair 12, Taman Tahfizh 9, Keuangan 2, Yayasan Sabilul Quran 2, Bidang Pendidikan 2, Divisi Media 1, Human Capital Management 1.
 
+### Bagan organisasi di production — 2026-11-20
+
+Diukur owner sendiri, baca saja. Bagan ini **terisi**, dan itu mengubah cara membaca W1.
+
+| Fakta | Angka |
+|---|---|
+| Change set terbit | 16 (terakhir 2026-11-10) |
+| `organization_nodes` | 1.111 |
+| `organization_positions` | 474 |
+| `organization_incumbencies` | 374 |
+| `organization_memberships` | 1.439 |
+| `organization_authority_bindings` | 555 — di antaranya 215 `SUPERVISORY_PARENT`, 104 `UNIT_APPROVER`, 3 `OVERSIGHT_PARENT`, 3 `GOVERNANCE_APPROVER` |
+| `organization_reporting_overrides` | 0 |
+
+Yang **tidak** dibuktikan oleh angka-angka ini: bahwa persetujuan benar-benar sampai ke orang yang ditunjuk bagan. Resolusi baca-saja menjawab *siapa yang seharusnya*, bukan *siapa yang bisa*; selama `organization_rollout_settings` kosong, bagan ini belum dipakai untuk merutekan apa pun (§1, L3).
+
+### Jalur mesin absensi — 2026-11-20
+
+Diukur owner sendiri pada 2026-11-20:
+
+| Fakta | Angka |
+|---|---|
+| Kontak terakhir perangkat ke HCIS | **17 November 14:36** |
+| Log kehadiran yang benar-benar dikirim dalam sepekan sebelumnya | **4** |
+| Handshake protokol pada periode yang sama | **28.087** |
+| Unit yang pernah menghasilkan scan | **Hanya SDIT Tahfizh** |
+| Taman Tahfizh | Punya jadwal, **nol** scan |
+| Pesantren Tahfizh | Tidak punya jadwal, tidak punya scan |
+
 Pembacaan yang harus disebut terang-terangan:
 
 - 4 akun aktif untuk 97 pegawai berarti sistem ini belum punya pengguna.
+- 4 log kehadiran berbanding 28.087 handshake, dan perangkat yang diam sejak 17 November, berarti jalur mesin **tidak sedang menghasilkan kehadiran hari ini** — perangkatnya menyapa, tetapi tidak mengirim data. Ini mengubah W5 dari "satu-satunya alur yang berjalan" menjadi "alur yang pernah berjalan, untuk satu unit, dan sekarang sunyi".
 - 0 pengajuan cuti, kasbon, dan reimbursement berarti seluruh APR-001 belum pernah menyala sekali pun, bukan sekadar jarang dipakai.
 - 0 periode payroll berarti PAY-003 belum pernah menghitung apa pun di production; 5.202 `payslips` seluruhnya berasal dari impor historis PAY-001.
 - 932.271 baris `attendance_adms_request_journal` berbanding 2.855 `attendance_events`: jurnal itu log permintaan mentah mesin, bukan ukuran pemakaian oleh manusia.
@@ -69,53 +129,67 @@ Pembacaan yang harus disebut terang-terangan:
 
 ## 4. Garis rilis: apa yang di `main` tetapi belum di production
 
-Production berhenti di `127b6068`. Semua yang di-merge sesudahnya **belum ada di production**.
+Production masih menjalankan **`hcis-127b6068-20261118`**, dan migrasi tertinggi yang sudah diterapkan di sana adalah **`0167_payroll_thr_non_permanent.sql`** (diukur 2026-11-20). Semua yang di-merge sesudah `127b6068` **belum ada di production**.
 
-| PR | Commit merge | Isi | Status |
-|---|---|---|---|
-| #396 | _(commit merge)_ | LEAVE-UX-001 / UX-FLOW-001 satu langkah per layar: 14 alur bertahap jadi wizard, route baru `/app/leave/annual` (frontend saja, tanpa migrasi) | Selesai belum dirilis |
-| #391 | `838d1e24` | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC (migrasi 0181) | Selesai belum dirilis |
-| #383 | `c84dd4dd` | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang, di balik `GOVERNANCE_PAYROLL_READ_ENABLED` yang mati (migrasi 0180) | Selesai belum dirilis |
-| #390 | `2560b04f` | PERF-001 jalur keberatan kinerja (migrasi 0176) | Selesai belum dirilis |
-| #387 | `7df37cf3` | PERF-001 rubrik berversi per kelompok jabatan + siklus semesteran (migrasi 0175) | Selesai belum dirilis |
-| #384 | `64fe64bf` | LOAN-002 rantai persetujuan kasbon berbasis kursi (migrasi 0177, 0178) | Selesai belum dirilis |
-| #389 | `89a096e2` | TRIP-002 tarif uang saku per SK 01.111/YSQ/VII/2026 (migrasi 0172) | Selesai belum dirilis |
-| #386 | `61d05a9b` | LEAVE-009 C1 masa kritis tanpa tinjauan HC, TRIP-001 C4 dinas mundur 7 hari, NOTIF-003 D18 jendela pengingat 04.00–23.00 (migrasi 0174) | Selesai belum dirilis |
-| #385 | `127b6068` | Spesifikasi PAY-004 dan REIMB-002 (dokumen saja) | **Ini batas production** |
+Diukur pada `origin/main` = `b2fa31dd` (2026-11-20): **dua belas PR belum dirilis — delapan PR fitur dan empat PR dokumen.**
 
-**Tidak ada PR yang masih terbuka per 2026-11-20 02:15 UTC.** Dua PR yang sebelumnya `CONFLICTING` diselesaikan dan di-merge pada pagi yang sama, keduanya dengan migrasi yang dinomori ulang:
-
-| PR | Commit merge | Waktu merge (UTC) | Isi | Status |
+| PR | Commit merge | Isi | Migrasi | Status |
 |---|---|---|---|---|
-| #391 | `838d1e24` | 2026-11-20 02:13 | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC (migrasi `0181_approval_seat_no_overlap`) | Selesai belum dirilis |
-| #383 | `c84dd4dd` | 2026-11-20 02:03 | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang (migrasi `0180_governance_payroll_reader`) | Selesai belum dirilis |
+| #396 | `b2fa31dd` | LEAVE-UX-001 / UX-FLOW-001 satu langkah per layar: 14 alur bertahap jadi wizard, route baru `/app/leave/annual` (frontend saja) | — | Selesai belum dirilis |
+| #394 | `e51a8fea` | Dokumen OPS-CLOSE-001 (pembaruan untuk #391) | — | Selesai belum dirilis |
+| #393 | `34fe9608` | Dokumen OPS-CLOSE-001 (pembaruan untuk #383) | — | Selesai belum dirilis |
+| #391 | `838d1e24` | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC | `0181` | Selesai belum dirilis |
+| #392 | `03d05ea3` | Dokumen OPS-CLOSE-001 (daftar penutupan, versi pertama) | — | Selesai belum dirilis |
+| #383 | `c84dd4dd` | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang, di balik `GOVERNANCE_PAYROLL_READ_ENABLED` yang mati | `0180` | Selesai belum dirilis |
+| #390 | `2560b04f` | PERF-001 jalur keberatan pegawai | `0176` | Selesai belum dirilis |
+| #387 | `7df37cf3` | PERF-001 rubrik kinerja berversi per kelompok jabatan + siklus semesteran | `0175` | Selesai belum dirilis |
+| #384 | `64fe64bf` | LOAN-002 rantai persetujuan kasbon berbasis kursi | `0177`, `0178` | Selesai belum dirilis |
+| #389 | `89a096e2` | TRIP-002 tarif uang saku per SK 01.111/YSQ/VII/2026 | `0172` | Selesai belum dirilis |
+| #386 | `61d05a9b` | LEAVE-009 C1 masa kritis tanpa tinjauan HC, TRIP-001 C4 dinas mundur 7 hari, NOTIF-003 D18 jendela pengingat 04.00–23.00 | `0174` | Selesai belum dirilis |
+| #388 | `ce516098` | Dokumen: catatan verifikasi rilis `hcis-127b6068-20261118` | — | Selesai belum dirilis |
+| #385 | `127b6068` | Spesifikasi PAY-004 dan REIMB-002 (dokumen saja) | — | **Ini batas production — sudah ada di production** |
 
-Saklar `GOVERNANCE_PAYROLL_READ_ENABLED` milik #383 tetap mati (§6). Artinya **seluruh pekerjaan HCIS yang pernah dibuka kini ada di `main`, dan tidak satu pun dari tujuh PR sesudah `127b6068` ada di production.** Tidak ada lagi pekerjaan yang tertahan di luar `main`; yang tertahan adalah rilisnya (W15).
+Dua catatan supaya angkanya tidak dibaca keliru:
+
+- **#385 bukan PR yang tertahan.** Commit merge-nya *adalah* `127b6068`, yaitu rilis yang sedang berjalan, jadi isinya sudah ada di production. PR dokumen yang tertahan adalah #388, #392, #393, dan #394.
+- Koreksi owner 2026-11-20 menyebut "sembilan PR fitur dan empat PR dokumen" dan memasukkan #385 ke dalam daftar dokumen. Terhadap `b2fa31dd` yang terbaca di repository hari ini, jumlahnya **delapan fitur dan empat dokumen**, dengan #385 sudah dirilis dan #388 sebagai PR dokumen keempat. Selisih satu PR fitur itu tidak ditemukan di `127b6068..b2fa31dd`; dicatat di sini apa adanya, bukan dibulatkan ke salah satu angka.
+
+**Masih terbuka: PR #395** — penetapan atasan langsung massal dengan dry-run wajib (ORG-001, branch `feat/org-001-bulk-direct-manager`, dibuka 2026-11-20 02:26 UTC), **dalam revisi**. Ini satu-satunya PR terbuka, dan ia justru PR yang menjawab jalur isi massal W1.
+
+Saklar `GOVERNANCE_PAYROLL_READ_ENABLED` milik #383 tetap mati (§6). Yang tertahan sekarang bukan pekerjaannya, melainkan rilisnya (W15).
 
 ### Migrasi
 
 | | |
 |---|---|
-| Di bundel rilis production `127b6068` | 145 berkas `.sql`, tertinggi **`0167_payroll_thr_non_permanent.sql`**; yang baru diterapkan pada rilis itu hanya `0166_leave_decision_request_id` |
-| Di `origin/main` sekarang | 153 berkas `.sql` |
-| **Belum ada di production** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals`, `0180_governance_payroll_reader`, `0181_approval_seat_no_overlap` — delapan migrasi |
+| Diterapkan di production | tertinggi **`0167_payroll_thr_non_permanent.sql`** (diukur 2026-11-20); yang baru diterapkan pada rilis `127b6068` hanya `0166_leave_decision_request_id` |
+| Di bundel rilis production `127b6068` | 145 berkas `.sql` |
+| Di `origin/main` (`b2fa31dd`) | 153 berkas `.sql` |
+| **Belum ada di production — delapan migrasi** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals`, `0180_governance_payroll_reader`, `0181_approval_seat_no_overlap` |
 
-Nomor 0168–0171, 0173, dan 0179 tidak ada di `main`: nomor-nomor itu terpakai lalu dinomori ulang saat rebase (riwayatnya masih terbaca di `eb7cb663`, `b5b38cc1`, `8cc03998`, `ee70b7e2`). Identitas migrasi adalah nama berkas penuh, bukan awalannya (`apps/api/migrations/production-history-manifest.json`), jadi lompatan nomor bukan masalah selama tidak ada nama berkas yang dipakai ulang.
+**Nomor `0168`–`0171` dan `0173` tidak ada sebagai berkas, dan memang tidak pernah ada.** Nomor-nomor itu sempat terpakai lalu ditinggalkan saat penomoran ulang ketika beberapa PR bertabrakan; riwayatnya masih terbaca di `eb7cb663`, `b5b38cc1`, `8cc03998`, `ee70b7e2`. Pemeriksaan `apps/api/migrations/` pada `b2fa31dd` menunjukkan **`0179` juga tidak ada**, karena alasan yang sama — koreksi owner menyebut lima nomor, berkasnya yang hilang ada enam. Ini dicatat eksplisit supaya tidak ada yang kelak menyimpulkan ada migrasi yang hilang. Identitas migrasi adalah nama berkas penuh, bukan awalannya (`apps/api/migrations/production-history-manifest.json`), jadi lompatan nomor bukan masalah selama tidak ada nama berkas yang dipakai ulang.
 
 ## 5. Cakupan wajib pra-pembukaan
 
 Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Butir di luar itu ada di §7 dan **tidak** boleh ditarik ke sini.
 
+**Urutan penghambat, menurut bukti 2026-11-20.** Nomor W tidak berubah supaya rujukan dari dokumen lain tetap berlaku; yang berubah adalah urutan mengerjakannya:
+
+1. **W3 lalu W2 — kesiapan akun penyetuju.** 96 dari 97 pegawai aktif berada di unit yang penyetuju cutinya belum berakun aktif (8 unit `invited`, 1 unit tanpa akun). Selama ini benar, setiap pengajuan berhenti di `409 APPROVER_ACCOUNT_NOT_READY`, apa pun isi kolom atasan.
+2. **W1 — sumber data atasan tersambung.** Tetap wajib: tanpa atasan, pengajuan tidak sampai ke tahap penyetuju unit. Datanya sebagian besar sudah ada di bagan organisasi, tetapi jalur yang berjalan belum membacanya.
+3. **W15 — rilis `main`**, karena beberapa perilaku yang relevan untuk pembukaan masih tertahan di `main`.
+4. Sisanya (W4–W14) menyusul, sesuai ketergantungan yang ditulis di tiap baris.
+
 | # | Butir | Status |
 |---|---|---|
-| W1 | Atasan langsung untuk 95 pegawai | Dirilis belum aktif |
-| W2 | Penyetuju cuti per unit | Belum terverifikasi |
+| W1 | Sumber data atasan tersambung ke rantai persetujuan | Dirilis belum aktif |
+| W2 | Penyetuju cuti per unit | Dirilis belum aktif |
 | W3 | Akun untuk 97 pegawai | Dirilis belum aktif |
 | W4 | Cuti dan izin (LEAVE-001/002/008/009/010, APR-001) | Dirilis belum aktif |
 | W5 | Penyerapan kehadiran dari mesin ADMS | Sudah diuji |
 | W6 | Layanan kehadiran di atas penyerapan (ATT-002/007/008/015) | Dirilis belum aktif |
-| W7 | Clock In/Out mobile (ATT-006) | Aktif belum diuji |
-| W8 | Slip gaji pegawai (PAY-001/PAY-002) | Aktif belum diuji |
+| W7 | Clock In/Out mobile (ATT-006) | Sudah diuji |
+| W8 | Slip gaji pegawai (PAY-001/PAY-002) | Sudah diuji |
 | W9 | Notifikasi in-app dan WhatsApp (NOTIF-003/004) | Aktif belum diuji |
 | W10 | Isi Pengumuman dan Pusat Bantuan (NOTIF-002, HELP-001) | Dirilis belum aktif |
 | W11 | Perilaku modul yang belum siap saat pintu dibuka | Belum selesai |
@@ -124,55 +198,57 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 | W14 | Kepemilikan operasional, insiden, stop, rollback | Belum selesai |
 | W15 | Merilis `main` ke production | Selesai belum dirilis |
 
-### W1 — Atasan langsung untuk 95 pegawai
+### W1 — Sumber data atasan tersambung ke rantai persetujuan
 
 | | |
 |---|---|
-| **Status** | **Dirilis belum aktif.** Kolom, layar, dan resolvernya ada di production; datanya tidak ada, jadi rantai persetujuan tidak melakukan apa pun. |
-| **Bukti bertanggal** | Pengukuran owner 2026-11-20: 95 dari 97 pegawai aktif tanpa `direct_manager_employee_id`. Kode: `resolveLeaveLineApprovalChain` melempar `DIRECT_MANAGER_MISSING` bila kolom kosong (`apps/api/src/modules/leave/domain/approval-chain.ts`); mode resolusi jatuh ke `LEGACY` karena `organization_rollout_settings` kosong (`apps/api/src/modules/organization/repository.ts:750`). HCIS sendiri sudah melaporkan angka ini sebagai metrik `without_direct_manager` di ringkasan Portal Organ (`apps/api/src/modules/governance/summary.ts:181`). |
-| **Penghambat** | Tidak ada jalur isi massal. EMP-004 tidak membawa kolom atasan. Satu-satunya jalur tulis adalah `PATCH /admin/employees/:employeeId/manager`, satu pegawai per panggilan, izin `approvals.policy.manage`. Siapa atasan siapa adalah keputusan organisasi, bukan keputusan teknis, dan belum ada di dokumen mana pun di repository ini. |
-| **Langkah berikutnya** | (1) HC menetapkan atasan langsung untuk 95 pegawai, per unit, memakai daftar pegawai per unit di §3 sebagai kerangka. (2) Isi lewat layar HC; bila owner memilih jalur SQL massal, itu **perubahan data production** dan wajib dry-run bersih serta jalur rollback yang jelas (AGENTS.md §2). (3) Pegawai yang memang tidak punya atasan (mis. Ketua Yayasan) ditangani eksplisit, bukan dibiarkan kosong. |
-| **Kriteria selesai** | Metrik `without_direct_manager` pada `GET /governance/summary` bernilai **0**, atau setiap sisa punya alasan tertulis yang diterima owner, dan satu pengajuan cuti nyata dari pegawai di tiap unit berhasil melewati langkah atasan. |
+| **Status** | **Dirilis belum aktif.** Kolom, layar, resolver, **dan bagan organisasinya** ada di production. Yang belum ada adalah sambungan di antara keduanya: rantai persetujuan membaca kolom `LEGACY` yang kosong, bukan bagan yang terisi, sehingga ia tidak merutekan apa pun. |
+| **Bukti bertanggal** | Pengukuran owner 2026-11-20, dua-duanya baca saja. (1) **Kolom `LEGACY`:** 95 dari 97 pegawai aktif tanpa `direct_manager_employee_id`. (2) **Bagan organisasi, terisi:** 16 change set terbit (terakhir 2026-11-10), 1.111 `organization_nodes`, 474 `organization_positions`, 374 `organization_incumbencies`, 1.439 `organization_memberships`, 555 `organization_authority_bindings` (215 `SUPERVISORY_PARENT`, 104 `UNIT_APPROVER`, 3 `OVERSIGHT_PARENT`, 3 `GOVERNANCE_APPROVER`), `organization_reporting_overrides` kosong. Owner menyatakan bagan ini dapat menentukan atasan untuk **hampir seluruh** pegawai yang kolomnya kosong. Kode: `resolveLeaveLineApprovalChain` melempar `DIRECT_MANAGER_MISSING` bila kolom kosong (`apps/api/src/modules/leave/domain/approval-chain.ts`); mode resolusi jatuh ke `LEGACY` karena `organization_rollout_settings` kosong (`apps/api/src/modules/organization/repository.ts:750`). Metrik `without_direct_manager` di ringkasan Portal Organ mengukur kolom itu, bukan bagan (`apps/api/src/modules/governance/summary.ts:181`). |
+| **Yang masih belum diketahui** | Dua hal, dan keduanya tidak boleh ditutup dengan angka bagan di atas. (1) **Cakupan persisnya belum diukur oleh resolver sebenarnya.** "Hampir seluruh" adalah kata owner atas pemeriksaan baca-saja; ORG-004 `SHADOW` belum pernah dijalankan, jadi tidak ada angka dari resolver production (V17). Dokumen ini karena itu tidak menuliskan persentase, ke arah mana pun. (2) **Kesiapan akun dan izin penyetuju hanya teruji saat bagan benar-benar dipakai untuk routing.** Resolusi baca-saja mengatakan siapa yang *seharusnya* menyetujui; ia tidak membuktikan orang itu punya akun aktif atau izin untuk menyetujui. Pada 2026-11-20 hanya 4 akun aktif, sementara **74 akun masih `invited`** — dan `invited` bukan aktif. |
+| **Penghambat** | Memilih salah satu dari dua jalur, lalu mengerjakannya. **(a) Isi kolom `LEGACY` dari bagan:** jalur isi massal belum ada di production — EMP-004 tidak membawa kolom atasan, satu-satunya jalur tulis yang hidup adalah `PATCH /admin/employees/:employeeId/manager` (satu pegawai per panggilan, izin `approvals.policy.manage`), dan **PR #395** yang menambahkan penetapan massal dengan dry-run wajib masih terbuka dalam revisi (§4). **(b) Pindah ke `STRUCTURE`:** resolver langsung membaca bagan, tetapi itu menuntut gate ORG-004 — unit pilot, `SHADOW`, perbandingan dengan `LEGACY`, go/no-go — yang seluruhnya masih MISSING (L3). |
+| **Langkah berikutnya** | (1) Owner memilih (a) atau (b); keduanya sah, tetapi menjalankan keduanya setengah-setengah tidak menutup apa pun. (2) Bila (b): jalankan `SHADOW` lebih dulu — itu sekaligus **mengukur cakupan bagan dengan resolver sebenarnya** dan menjawab V17. (3) Bila (a): selesaikan #395, lalu isi massal dengan dry-run bersih dan jalur rollback yang jelas, karena itu **perubahan data production** (AGENTS.md §2). (4) Apa pun jalurnya, pegawai yang memang tidak punya atasan (mis. Ketua Yayasan) ditangani eksplisit, bukan dibiarkan kosong. (5) Sejalan dengan W3, pastikan penyetuju yang ditunjuk bagan punya akun **aktif**, bukan `invited`. |
+| **Kriteria selesai** | Rantai persetujuan production menemukan penyetuju untuk setiap pegawai aktif yang harus memakai HCIS — lewat kolom yang terisi (`without_direct_manager` = 0 pada `GET /governance/summary`) atau lewat mode `STRUCTURE` yang menyala — setiap sisa punya alasan tertulis yang diterima owner, **dan** satu pengajuan nyata dari pegawai di tiap unit benar-benar sampai ke penyetujunya dan diputuskan. Pratinjau resolusi saja tidak menutup butir ini. |
 
 ### W2 — Penyetuju cuti per unit
 
 | | |
 |---|---|
-| **Status** | **Belum terverifikasi.** Jumlah unit tanpa `leave_approver_employee_id` tidak diukur pada 2026-11-20. |
-| **Bukti bertanggal** | Tidak ada bukti production bertanggal untuk butir ini. Yang diketahui: resolver `LEGACY` menuntut **keduanya** — atasan langsung dan penyetuju unit; tanpa penyetuju unit, pengajuan ditolak `UNIT_APPROVER_MISSING` ("Kepala Satuan Kerja / Unit Approver belum dikonfigurasi", `apps/api/src/modules/leave/organization-authority.ts`). Penyetuju dihitung ada hanya bila orangnya `active` dan masih dikelola HCIS (`apps/api/src/modules/board/aggregates.ts`). |
-| **Penghambat** | Belum diukur. Mengisi atasan langsung saja tidak cukup: bila unit tidak punya penyetuju, pengajuan tetap gagal tertutup. |
-| **Langkah berikutnya** | Baca metrik `units_without_approver` pada `GET /governance/summary` dengan akun Organ Yayasan (jalur baca yang sudah menyala, tidak perlu SQL), lalu isi penyetuju untuk setiap unit yang kosong dari 9 unit berpegawai aktif di §3. |
-| **Kriteria selesai** | `units_without_approver` bernilai 0 dan pengajuan uji di setiap unit melewati langkah penyetuju unit. |
+| **Status** | **Dirilis belum aktif.** Penyetujunya **sudah ditetapkan** untuk kesembilan unit berpegawai aktif, tetapi hampir semuanya belum bisa bertindak karena akunnya belum aktif. Jadi butir ini bukan lagi soal konfigurasi yang kosong, melainkan soal akun. |
+| **Bukti bertanggal** | Pengukuran owner 2026-11-20, baca saja terhadap production: dari 9 unit berpegawai aktif, **8 unit penyetuju cutinya berakun `invited`** dan **1 unit penyetujunya tidak punya akun sama sekali** (Yayasan Sabilul Quran, Lily Masngali). Hanya Human Capital Management yang penyetujunya berakun aktif (M. Imadduddin Muqoyim). Dengan jumlah pegawai per unit di §3, itu berarti **96 dari 97 pegawai aktif** berada di unit yang penyetujunya belum bisa bertindak. Kode: penyetuju yang akunnya bukan `active` ditolak `409 APPROVER_ACCOUNT_NOT_READY`, pesan `Akun approver <nama> belum aktif.` (`apps/api/src/modules/leave/employee-routes.ts:345-350`); penjagaan yang sama ada di `leave/planned-leave-routes.ts`, `attendance/work-arrangement-routes.ts`, `loans/routes.ts`, `reimbursements/routes.ts`, `trips/routes.ts`, dan `trip-advances/routes.ts`. Resolver `LEGACY` tetap menuntut **keduanya** — atasan langsung dan penyetuju unit; tanpa penyetuju unit, pengajuan ditolak `UNIT_APPROVER_MISSING` ("Kepala Satuan Kerja / Unit Approver belum dikonfigurasi", `apps/api/src/modules/leave/organization-authority.ts`). Penyetuju dihitung ada hanya bila orangnya `active` dan masih dikelola HCIS (`apps/api/src/modules/board/aggregates.ts`). |
+| **Penghambat** | Belum diukur. Mengisi atasan langsung saja tidak cukup: bila unit tidak punya penyetuju, pengajuan tetap gagal tertutup. Bagan organisasi production memang memuat **104 binding `UNIT_APPROVER`** (§3), tetapi binding itu hanya terbaca oleh mode `STRUCTURE`; selama production `LEGACY`, yang dibaca tetap `organizational_units.leave_approver_employee_id`. Sama seperti W1, adanya binding di bagan bukan bukti routing. |
+| **Langkah berikutnya** | (1) Ini butir pertama yang harus ditutup, bersama W3: selama akun penyetuju belum aktif, tidak ada pengajuan yang bisa lewat di 8 dari 9 unit. **Kapan dan siapa yang diaktifkan adalah keputusan HCM dan owner, dan belum diambil** — dokumen ini tidak memperlakukannya sebagai tindakan yang sudah disetujui. (2) Unit Yayasan Sabilul Quran perlu penanganan tersendiri: penyetujunya belum punya akun sama sekali, jadi ia bukan sekadar menunggu aktivasi. (3) Baca metrik `units_without_approver` pada `GET /governance/summary` dengan akun Organ Yayasan sebagai pemeriksaan silang — perlu diingat metrik itu mengukur *ada atau tidaknya* penyetuju, bukan *bisa atau tidaknya* ia bertindak. |
+| **Kriteria selesai** | Setiap unit berpegawai aktif punya penyetuju yang **berakun `active`**, dan satu pengajuan uji per unit benar-benar melewati langkah penyetuju unit tanpa `409 APPROVER_ACCOUNT_NOT_READY`. |
 
 ### W3 — Akun untuk 97 pegawai
 
 | | |
 |---|---|
-| **Status** | **Dirilis belum aktif.** Alur aktivasi ada di production; 93 pegawai belum punya akun aktif. |
-| **Bukti bertanggal** | Pengukuran owner 2026-11-20: 4 akun `active` total, 1 di antaranya `EMPLOYEE`. Pada 2026-10-16 OPS-READY-001 mencatat 4 `active`, 75 `invited`, 2 `inactive`; berapa yang `invited` hari ini tidak diukur. Jalur undangan lewat SQ Hub dipasang 2026-11-04 (`production-release-verification-2026-11-04-b28efeef.md`: `STAFF_ACTIVATION_ALLOWED_CLIENTS=hcis-api`, `HCIS_STAFF_VERIFY_BASE_URL` diperbaiki). |
+| **Status** | **Dirilis belum aktif.** Alur aktivasi ada di production; 93 pegawai belum punya akun aktif. **Ini penghambat pertama**, karena yang belum aktif bukan hanya pegawai biasa, melainkan hampir seluruh penyetuju unit (W2). |
+| **Bukti bertanggal** | Pengukuran owner 2026-11-20: 4 akun `active` total (1 di antaranya `EMPLOYEE`), **74 akun `invited`**, dan 81 akun untuk seluruh status (dari pencocokan jumlah pada pemeriksaan restore, W12). Pada 2026-10-16 OPS-READY-001 mencatat 4 `active`, 75 `invited`, 2 `inactive` — artinya dalam lima minggu angka aktif **tidak bergerak**. Pengukuran yang sama menunjukkan 8 dari 9 penyetuju unit berakun `invited`, 1 unit penyetujunya tanpa akun, dan kedua atasan langsung yang kolomnya sudah terisi (Siti Rita Anita, Ichwanudin) juga berakun `invited`. Jalur undangan lewat SQ Hub dipasang 2026-11-04 (`production-release-verification-2026-11-04-b28efeef.md`: `STAFF_ACTIVATION_ALLOWED_CLIENTS=hcis-api`, `HCIS_STAFF_VERIFY_BASE_URL` diperbaiki). |
 | **Penghambat** | Tiga hal, semuanya di jalur undangan AUTH-002-INVITE (`docs/domain/account-activation.md`). (1) **Email wajib:** pegawai tanpa email ditolak `409 EMPLOYEE_EMAIL_MISSING` sebelum SQ Hub dipanggil, karena Akun SQ wajib punya email. Kelengkapan email 97 pegawai belum diukur. (2) **Pemberitahuan WhatsApp terhalang daftar izin:** `WHATSAPP_RECIPIENT_MODE=allowlist` berlaku di production sejak 2026-11-11, jadi setiap NIP di luar `WHATSAPP_ALLOWLIST` menerima hasil `not_allowlisted` dan tidak dikirimi apa pun. Mengirim 97 undangan hari ini berarti 97 pegawai tidak tahu undangannya ada. Butir ini terikat pada W9. (3) **Jendela 14 hari:** akun `invited` yang undangannya `issued` naik otomatis menjadi `active` hanya bila pegawai masuk **dalam 14 hari** (`DRAFT`); lewat itu HC mengirim ulang. Undangan dari Oktober — 75 `invited` pada 2026-10-16 — hampir pasti sudah lewat. Selain itu, OPS-READY-001 P9 (pemulihan kata sandi / fallback manual) masih **MISSING**. |
-| **Langkah berikutnya** | (1) Hitung akun per status dan pegawai aktif tanpa email. (2) Lengkapi email yang kosong. (3) Putuskan jalur pemulihan kata sandi (P9) sebelum gelombang pertama, karena 97 orang akan lupa kata sandi. (4) Kirim undangan **bergelombang per unit**, bukan 97 sekaligus, dan tambahkan NIP gelombang itu ke `WHATSAPP_ALLOWLIST` lebih dulu — atau lepas mode daftar izin sesuai W9 — supaya undangannya benar-benar sampai dan kegagalan terbaca per gelombang. |
-| **Kriteria selesai** | Setiap pegawai aktif yang harus memakai HCIS punya akun `active`, jalur reset kata sandi tertulis, dan satu gelombang penuh (satu unit) sudah masuk tanpa tiket terbuka. |
+| **Langkah berikutnya** | (1) **Dahulukan penyetuju.** Selama 8 dari 9 penyetuju unit berakun `invited`, tidak ada pengajuan yang bisa lewat di unit mereka, berapa pun jumlah pegawai yang diundang sesudahnya. Siapa yang diaktifkan dan kapan adalah **keputusan HCM dan owner yang belum diambil**; yang bisa dipastikan dari sini hanyalah bahwa tanpa itu W2, W4, dan W6 tidak dapat ditutup. (2) Hitung akun per status dan pegawai aktif tanpa email. (3) Lengkapi email yang kosong, dan tangani penyetuju Yayasan Sabilul Quran yang belum punya akun sama sekali. (4) Putuskan jalur pemulihan kata sandi (P9) sebelum gelombang pertama, karena 97 orang akan lupa kata sandi. (5) Kirim undangan **bergelombang per unit**, bukan 97 sekaligus, dan tambahkan NIP gelombang itu ke `WHATSAPP_ALLOWLIST` lebih dulu — atau lepas mode daftar izin sesuai W9 — supaya undangannya benar-benar sampai dan kegagalan terbaca per gelombang. |
+| **Kriteria selesai** | Setiap penyetuju unit punya akun `active`, setiap pegawai aktif yang harus memakai HCIS punya akun `active`, jalur reset kata sandi tertulis, dan satu gelombang penuh (satu unit) sudah masuk tanpa tiket terbuka. |
 
 ### W4 — Cuti dan izin
 
 | | |
 |---|---|
 | **Status** | **Dirilis belum aktif.** Seluruh LEAVE-001/002, LEAVE-008 penundaan, LEAVE-009 masa kritis, LEAVE-010 pembatalan, dan APR-001 ada di production, tetapi tidak melakukan apa pun karena W1–W3. |
-| **Bukti bertanggal** | Pengukuran owner 2026-11-20: `leave_requests` = 0 sepanjang umur sistem. OPS-READY-001 sudah mencatat 0 pada 2026-10-16 dengan kalimat yang sama: "no real leave workflow use yet". Satu bagian LEAVE-009 (C1, masa kritis tanpa tinjauan HC) ada di PR #386 dan **belum dirilis**. |
-| **Penghambat** | W1, W2, W3. Tidak ada penghambat kode yang diketahui. |
-| **Langkah berikutnya** | Setelah W1–W3: satu pengajuan cuti nyata per unit, melewati seluruh rantai sampai keputusan, dengan tanggal dan nomor pengajuannya dicatat. |
+| **Bukti bertanggal** | Pengukuran owner 2026-11-20: `leave_requests` = 0 sepanjang umur sistem. OPS-READY-001 sudah mencatat 0 pada 2026-10-16 dengan kalimat yang sama: "no real leave workflow use yet". Satu bagian LEAVE-009 (C1, masa kritis tanpa tinjauan HC) ada di PR #386 dan **belum dirilis**. Konfirmasi owner 2026-11-20 menyebut Human Capital Management sudah menguji "alur utama" dengan akun aktif (W7, W8); untuk cuti, `leave_requests` tetap 0 pada tanggal yang sama, jadi pengujian itu tidak meninggalkan pengajuan cuti di production dan baris ini tidak naik status. |
+| **Penghambat** | Berurutan: **W3 dan W2 lebih dulu** (96 dari 97 pegawai aktif berada di unit yang penyetujunya berakun `invited` atau tanpa akun, sehingga pengajuan berhenti di `409 APPROVER_ACCOUNT_NOT_READY`), **baru W1**. Tidak ada penghambat kode yang diketahui. |
+| **Langkah berikutnya** | Setelah W3, W2, dan W1: satu pengajuan cuti nyata per unit, melewati seluruh rantai sampai keputusan, dengan tanggal dan nomor pengajuannya dicatat. Yang diuji adalah **routing-nya**, bukan layarnya: pengajuan harus benar-benar sampai ke penyetuju dan diputuskan olehnya. |
 | **Kriteria selesai** | Minimal satu pengajuan per unit berpegawai aktif selesai disetujui atau ditolak, saldo cuti berubah sesuai LEAVE-002, dan notifikasi penyetuju sampai (W9). Status naik ke **Sudah diuji** hanya dengan bukti bertanggal itu. |
 
 ### W5 — Penyerapan kehadiran dari mesin ADMS
 
 | | |
 |---|---|
-| **Status** | **Sudah diuji**, dengan batas yang disebutkan di bawah. Ini satu-satunya alur HCIS yang benar-benar berjalan dengan data nyata. |
+| **Status** | **Sudah diuji** sebagai mekanisme, dengan batas yang sekarang jauh lebih sempit daripada yang pernah ditulis di dokumen ini: terbukti pernah menyerap kehadiran nyata, **untuk satu unit saja, dan jalurnya sedang sunyi**. |
 | **Bukti bertanggal** | Pengukuran owner 2026-11-20: 932.271 baris `attendance_adms_request_journal`, 2.855 `attendance_events`, 2.127 `attendance_daily_records`, 93 `attendance_schedule_assignments`. OPS-READY-001 2026-10-16: 2 perangkat ADMS, 438 punch dalam 7 hari. Bukti canary fisik: `docs/development/attendance-adms-physical-canary-evidence.md`; ledger paritas ATT-005 mencatat 7 baris fisik terverifikasi (`docs/domain/attendance-wdms-full-physical-parity-ledger.md`). |
-| **Penghambat** | Paritas fisik baru 7 baris; sisanya menunggu sesi di lokasi yang disetujui owner (`docs/operations/adms-physical-verification-checklist.md`). Jumlah perangkat hari ini belum diukur ulang. 93 penugasan jadwal untuk 97 pegawai aktif menyisakan selisih yang belum dijelaskan. |
-| **Langkah berikutnya** | (1) Ukur ulang jumlah perangkat ADMS aktif dan punch 7 hari terakhir. (2) Jelaskan selisih 97 pegawai aktif vs 93 penugasan jadwal. (3) Jadwalkan sesi verifikasi fisik untuk sisa baris ledger. |
-| **Kriteria selesai** | Setiap pegawai aktif yang wajib absen punya penugasan jadwal, dan sisa baris ledger paritas berstatus `verified` atau diputuskan owner untuk dilewati. |
+| **Keadaan jalur mesin pada 2026-11-20** | Diukur owner: perangkat **terakhir menghubungi HCIS 17 November 14:36**; dalam sepekan sebelumnya perangkat mengirim **4 log kehadiran** berbanding **28.087 handshake protokol**; **hanya SDIT Tahfizh** yang pernah menghasilkan scan; **Taman Tahfizh punya jadwal tetapi nol scan**; **Pesantren Tahfizh tidak punya keduanya**. Artinya jalur mesin saat ini tidak menghasilkan kehadiran, dan dua dari tiga unit bersekolah belum pernah terbukti memakainya sama sekali. |
+| **Penghambat** | (1) Perangkat menyapa tetapi tidak mengirim data, dan sudah tiga hari diam — penyebabnya belum diketahui. (2) Cakupan unit: satu unit terbukti, dua unit tidak. (3) Paritas fisik baru 7 baris; sisanya menunggu sesi di lokasi yang disetujui owner (`docs/operations/adms-physical-verification-checklist.md`). (4) 93 penugasan jadwal untuk 97 pegawai aktif menyisakan selisih yang belum dijelaskan. |
+| **Langkah berikutnya** | (1) Cari tahu mengapa 28.087 handshake hanya menghasilkan 4 log, dan mengapa perangkat diam sejak 17 November — ini mendahului semua butir lain di baris ini. (2) Buktikan satu scan nyata di Taman Tahfizh, lalu sediakan jadwal dan satu scan di Pesantren Tahfizh. (3) Ukur ulang jumlah perangkat ADMS aktif dan punch 7 hari terakhir. (4) Jelaskan selisih 97 pegawai aktif vs 93 penugasan jadwal. (5) Jadwalkan sesi verifikasi fisik untuk sisa baris ledger. |
+| **Kriteria selesai** | Perangkat mengirim log kehadiran secara rutin kembali, **ketiga unit** berjadwal pernah menghasilkan scan nyata, setiap pegawai aktif yang wajib absen punya penugasan jadwal, dan sisa baris ledger paritas berstatus `verified` atau diputuskan owner untuk dilewati. |
 
 ### W6 — Layanan kehadiran di atas penyerapan
 
@@ -188,20 +264,20 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 
 | | |
 |---|---|
-| **Status** | **Aktif belum diuji.** Saklarnya menyala di production sejak 2026-11-04; belum ada bukti satu pun punch mobile nyata. |
-| **Bukti bertanggal** | `docs/development/production-release-verification-2026-11-04-e402c38a.md`: `MOBILE_ATTENDANCE_ENABLED=1` ditambahkan ke `/srv/hcis/shared/final.env` pada 2026-11-04 16:5x UTC, keyring media terbatas sudah ada, `BIOMETRIC_COLLECTION_ENABLED` tetap kosong. Sebelum itu Clock In/Out menjawab `runtime_disabled`. |
-| **Penghambat** | Hanya 1 akun `EMPLOYEE` aktif, jadi praktis tidak ada yang bisa mencobanya. Kebijakan retensi/purge foto **belum ditetapkan** dan implementasi sengaja tidak mengarang angka retensi serta belum menambahkan auto-purge (`docs/domain/attendance-engine-mobile.md`). Membuka ke 97 orang berarti foto kehadiran mulai menumpuk tanpa aturan hapus. |
-| **Langkah berikutnya** | (1) Owner menetapkan retensi foto kehadiran sebelum pembukaan, atau menerima secara tertulis bahwa foto disimpan tanpa batas untuk sementara. (2) Uji satu clock in dan satu clock out nyata di lokasi kerja. |
-| **Kriteria selesai** | Satu pasang punch mobile nyata tercatat dengan bukti GPS dan foto, dan aturan retensi tertulis. |
+| **Status** | **Sudah diuji.** Human Capital Management sudah menguji absensi HP (clock in/out) dengan akun aktif. |
+| **Bukti bertanggal** | Konfirmasi owner **2026-11-20**: Human Capital Management telah menguji absensi HP (clock in/out) memakai akun aktif. Cakupan rincinya — alur mana saja, peran mana, unit mana, pada tanggal berapa — tidak tercatat, jadi pengujian ini tidak menutup alur yang belum disebut. Saklarnya sendiri: `docs/development/production-release-verification-2026-11-04-e402c38a.md`, `MOBILE_ATTENDANCE_ENABLED=1` ditambahkan ke `/srv/hcis/shared/final.env` pada 2026-11-04 16:5x UTC, keyring media terbatas sudah ada, `BIOMETRIC_COLLECTION_ENABLED` tetap kosong. Sebelum itu Clock In/Out menjawab `runtime_disabled`. |
+| **Penghambat** | Kebijakan retensi/purge foto **belum ditetapkan** dan implementasi sengaja tidak mengarang angka retensi serta belum menambahkan auto-purge (`docs/domain/attendance-engine-mobile.md`). Membuka ke 97 orang berarti foto kehadiran mulai menumpuk tanpa aturan hapus. Butir ini tetap terbuka meskipun pengujiannya sudah ada. |
+| **Uji berikutnya** | Yang belum teruji bukan lagi "apakah fiturnya jalan", melainkan: (1) **perubahan yang di-merge sesudah pengujian itu** — terutama #396 yang mengubah seluruh alur bertahap menjadi wizard satu langkah per layar, dan belum dirilis (§4); (2) **perbedaan antarunit dan antarperan** — pengujian dilakukan dari satu sisi, sementara 9 unit dan beberapa peran punya jadwal, lokasi, dan izin yang berbeda; (3) **jalur mesin absensi**, yang pada 2026-11-20 justru paling sunyi: perangkat terakhir menghubungi HCIS 17 November 14:36, 4 log kehadiran berbanding 28.087 handshake dalam sepekan sebelumnya, hanya SDIT Tahfizh yang pernah menghasilkan scan, Taman Tahfizh berjadwal tanpa scan, Pesantren Tahfizh tanpa keduanya (W5). |
+| **Kriteria selesai** | Retensi foto tertulis, dan clock in/out terbukti bekerja di luar cakupan yang sudah diuji: minimal satu pasang punch nyata dari unit yang berbeda, pada rilis yang sudah memuat #396. |
 
 ### W8 — Slip gaji pegawai (PAY-001/PAY-002)
 
 | | |
 |---|---|
-| **Status** | **Aktif belum diuji.** Datanya ada dan jalurnya hidup, tetapi dengan 1 akun `EMPLOYEE` aktif praktis belum ada pegawai yang membaca slipnya sendiri. |
-| **Bukti bertanggal** | Pengukuran owner 2026-11-20: 5.202 `payslips`, seluruhnya impor historis. OPS-READY-001 2026-10-16 mencatat angka yang sama (5.202) dan menyimpulkan HCIS hidup terutama untuk "payslip reading and attendance ingest". |
-| **Penghambat** | W3. Selain itu, PAY-001/PAY-002 tetap jalur slip resmi sampai owner menutup parallel run PAY-003 (AGENTS.md §5) — jadi yang dibuka ke pegawai adalah slip impor, bukan hasil hitung. |
-| **Langkah berikutnya** | Setelah gelombang akun pertama: minta beberapa pegawai membuka slipnya dan memastikan isinya cocok dengan slip kertas bulan yang sama. |
+| **Status** | **Sudah diuji** sebatas alur utama yang dikonfirmasi owner; belum diuji lintas unit dan lintas peran. |
+| **Bukti bertanggal** | Konfirmasi owner **2026-11-20**: Human Capital Management telah menguji alur utama HCIS memakai akun aktif. Cakupan rincinya — alur mana saja, peran mana, unit mana, pada tanggal berapa — tidak tercatat, jadi pengujian ini tidak menutup alur yang belum disebut. Data: pengukuran owner 2026-11-20, 5.202 `payslips`, seluruhnya impor historis. OPS-READY-001 2026-10-16 mencatat angka yang sama (5.202) dan menyimpulkan HCIS hidup terutama untuk "payslip reading and attendance ingest". |
+| **Penghambat** | W3: dengan 4 akun aktif dan 74 akun masih `invited`, pembacaan slip belum pernah terjadi dalam skala apa pun. Selain itu, PAY-001/PAY-002 tetap jalur slip resmi sampai owner menutup parallel run PAY-003 (AGENTS.md §5) — jadi yang dibuka ke pegawai adalah slip impor, bukan hasil hitung. |
+| **Uji berikutnya** | (1) Perubahan yang di-merge sesudah pengujian HCM dan belum dirilis (§4). (2) Perbedaan antarunit dan antarperan: pegawai biasa, pegawai yang slipnya tidak lengkap, dan peran HC melihat hal yang berbeda. (3) Setelah gelombang akun pertama: minta beberapa pegawai membuka slipnya dan memastikan isinya cocok dengan slip kertas bulan yang sama. |
 | **Kriteria selesai** | Minimal satu pegawai per unit mengonfirmasi slipnya benar, dengan tanggal konfirmasinya dicatat. |
 
 ### W9 — Notifikasi in-app dan WhatsApp
@@ -238,11 +314,13 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 
 | | |
 |---|---|
-| **Status** | **Aktif belum diuji** untuk skema hari ini. Latihan restore terakhir yang terbukti berasal dari 2026-10-16. |
-| **Bukti bertanggal** | OPS-READY-001 gate P5 **DONE** dengan latihan restore terisolasi PASS 2026-10-16 (`docs/operations/hcis-restore-drill-2026-10-16.md`), 6/6 smoke check, 48 detik. Backup pra-rilis tetap diambil tiap rilis; yang terakhir `/srv/hcis/backups/pre-release/hcis-127b6068-20261118-20261118T090447Z.dump` (2026-11-18). |
-| **Penghambat** | Latihan itu berjalan pada rilis `hcis-3b670849-20261016`, yang membawa **55** migrasi (tertinggi `0055_adms_operational_management`). Production hari ini membawa **145** (tertinggi `0167`). Sembilan puluh migrasi memisahkan skema yang pernah diuji pulih dari skema yang ada sekarang, dan OPS-READY-001 sendiri menulis kriteria "Repeat after major schema changes". Gate R5 masih **PARTIAL**: pemulihan dari **kehilangan ponsel** (salinan Drive ke host lain, bundel rahasia) belum pernah diuji. |
-| **Langkah berikutnya** | (1) Ulangi latihan restore terisolasi pada skema `0167`. (2) Jalankan satu latihan pemulihan di luar host sebelum 97 orang mulai menulis data nyata. |
-| **Kriteria selesai** | Latihan restore pada skema terkini PASS dan tercatat, dan latihan di luar host PASS sekali. |
+| **Status** | **Aktif belum diuji** untuk latihan penuh. Yang sudah terbukti pada 2026-11-20 adalah **berkasnya**, bukan **sistemnya**: dump semalam utuh dan pulih dengan isi lengkap, tetapi tidak ada bukti HCIS dapat berjalan di atas database hasil pulihan itu. |
+| **Bukti bertanggal — rantai backup, 2026-11-20** | Pemeriksaan owner 2026-11-20, baca saja terhadap production ditambah satu database sekali pakai. **Salinan luar host berjalan**: set mendarat setiap hari di remote terenkripsi, terbaru `set-20261119T190001Z` pada 02:00 WIB. (Catatan koreksi: klaim lama bahwa penyalinan luar host berhenti pada 18 Oktober **salah** — itu berasal dari berkas penanda yang basi, dan tidak lagi berlaku.) SHA-256 dump cocok. Restore ke database sekali pakai selesai **36 detik tanpa error**. Seluruh hitungan cocok persis dengan production: 328 `employees`, 81 `accounts`, 5.202 `payslips`, 2.855 `attendance_events`, 2.127 `attendance_daily_records`, 326 `employments`, 145 migrasi, 231 tabel. Database sekali pakai itu sudah di-drop. **Pemeriksaan ini dijalankan tanpa persetujuan owner per-pelaksanaan yang disyaratkan OPS-MI8-DRILL-001** — dicatat di sini karena itu fakta tentang buktinya, bukan catatan kaki. |
+| **Apa yang dibuktikan dan apa yang tidak** | **Dibuktikan:** berkas cadangan terbaru utuh, dapat dipulihkan, dan isinya lengkap — tidak ada kehilangan baris diam-diam. **Tidak dibuktikan:** bahwa HCIS **berjalan** di atas database hasil pulihan. Itu justru inti OPS-MI8-DRILL-001 (`docs/operations/hcis-isolated-restore-drill.md` §1: OPS-MI8-BAK-001 membuktikan dump *restores*, bukan bahwa HCIS bisa *run*). Jadi pemeriksaan 2026-11-20 mempersempit risiko, tidak menutupnya. |
+| **Bukti latihan penuh terakhir** | OPS-READY-001 gate P5 **DONE** dengan latihan restore terisolasi PASS 2026-10-16 (`docs/operations/hcis-restore-drill-2026-10-16.md`), 6/6 smoke check, 48 detik. Latihan itu berjalan pada rilis `hcis-3b670849-20261016` dengan **55** migrasi (tertinggi `0055_adms_operational_management`). Production hari ini membawa **145** (tertinggi `0167`). Backup pra-rilis tetap diambil tiap rilis; yang terakhir `/srv/hcis/backups/pre-release/hcis-127b6068-20261118-20261118T090447Z.dump` (2026-11-18). |
+| **Penghambat** | Sembilan puluh migrasi memisahkan skema yang pernah diuji **dijalankan** dari skema yang ada sekarang, dan OPS-READY-001 sendiri menulis kriteria "Repeat after major schema changes". Latihan penuh OPS-MI8-DRILL-001 **menuntut persetujuan owner untuk setiap pelaksanaan** dan belum dijalankan lagi sejak 2026-10-16. Gate R5 masih **PARTIAL**: pemulihan dari **kehilangan ponsel** (salinan Drive ke host lain, bundel rahasia) belum pernah diuji. |
+| **Langkah berikutnya** | (1) Owner menyetujui satu pelaksanaan OPS-MI8-DRILL-001, lalu latihan penuh dijalankan pada skema `0167` — sampai HCIS benar-benar dinyalakan di atas database pulihan, bukan berhenti di `pg_restore`. (2) Jalankan satu latihan pemulihan di luar host sebelum 97 orang mulai menulis data nyata. |
+| **Kriteria selesai** | Latihan penuh pada skema terkini PASS dan tercatat sebagai `docs/operations/hcis-restore-drill-<tanggal>.md`, dan latihan di luar host PASS sekali. |
 
 ### W13 — Keamanan dan matriks izin
 
@@ -268,10 +346,10 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 
 | | |
 |---|---|
-| **Status** | **Selesai belum dirilis.** Tujuh PR dan delapan migrasi menunggu. |
-| **Bukti bertanggal** | §4. Production berhenti di `127b6068` sejak 2026-11-18 16:05 WIB. |
+| **Status** | **Selesai belum dirilis.** Dua belas PR — delapan fitur dan empat dokumen — serta delapan migrasi menunggu. |
+| **Bukti bertanggal** | §4, diukur pada `origin/main` = `b2fa31dd` (2026-11-20). Production berhenti di `127b6068` sejak 2026-11-18 16:05 WIB, dengan migrasi tertinggi `0167_payroll_thr_non_permanent.sql`. |
 | **Penghambat** | Dua di antaranya menyentuh perilaku yang relevan untuk pembukaan: #386 (jendela pengingat 04.00–23.00, masa kritis cuti tanpa tinjauan HC) dan #389 (tarif uang saku). Empat migrasi dari rantai LOAN-002/PERF-001 membawa tabel baru yang belum pernah ada di production. #383 menambah jalur baca data gaji per orang — rilisnya aman karena `GOVERNANCE_PAYROLL_READ_ENABLED` mati, tetapi **penyalaannya** adalah keputusan owner tersendiri dan bukan bagian dari rilis ini. |
-| **Langkah berikutnya** | Rilis `main` lewat OPS-MI8-REL-001 dengan pengaman teknis yang biasa: dry-run bersih, backup sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC, laporan sesudahnya. Keenam migrasi diterapkan dalam satu rilis. |
+| **Langkah berikutnya** | Rilis `main` lewat OPS-MI8-REL-001 dengan pengaman teknis yang biasa: dry-run bersih, backup sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC, laporan sesudahnya. Kedelapan migrasi diterapkan dalam satu rilis. |
 | **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0181`. |
 
 ## 6. Saklar fitur: apa yang mati dan apa yang menunggu di baliknya
@@ -318,7 +396,7 @@ Butir di bawah ini **tidak** perlu ditutup sebelum pintu dibuka, selama W11 dipu
 |---|---|---|---|---|---|---|
 | L1 | PAY-003 mesin payroll, PPh21, THR | Dirilis belum aktif | 2026-11-20: 0 `payroll_periods`, 0 `payroll_results`; empat kebijakan PPh21/layout tidak ada (§6) | PAY-001/PAY-002 tetap jalur resmi sampai owner menutup parallel run (AGENTS.md §5); `docs/development/pay003-parallel-run-2026-10.md` | Isi `PPH21_SETTINGS`, `PPH21_TER`, `PPH21_ANNUAL`, `PAYSLIP_LAYOUT`; jalankan satu periode bayangan | Satu periode payroll selesai dan cocok dengan slip jalur lama, lalu owner menutup parallel run |
 | L2 | EMP-005/006/010 riwayat kepegawaian | Dirilis belum aktif | 2026-11-20: `employment_rollout_settings` 0 baris → mode `OFF`; 326 `employments`, 96 `employment_placements`. Baseline dimuat 2026-11-03, koreksi 2026-11-04 | Runbook `employment-pilot-activation-runbook.md` langkah 1–7 belum satu pun dijalankan; 115 `BASELINE_END_UNKNOWN` dan 47 `BASELINE_CONTRACT_END_UNKNOWN` saat pemuatan | Jalankan langkah 1–7 runbook, mulai dari backup dan `SHADOW` | Mode `AUTHORITATIVE` dengan tujuh kriteria keluar runbook §7 terpenuhi |
-| L3 | ORG-004 `STRUCTURE` dan ORG-013 kursi organ | Dirilis belum aktif | 2026-11-20: `organization_rollout_settings` 0 baris → semua `LEGACY`. OPS-READY-001 2026-10-16: 15 change set PUBLISHED, 3 VALIDATED, 7 DRAFT | Gate P1–P3 dan P10 OPS-READY-001 masih MISSING: unit pilot belum dipilih, SHADOW belum dijalankan, go/no-go belum ditandatangani | Pilih unit pilot, jalankan `SHADOW`, bandingkan dengan `LEGACY`, lalu aktifkan `STRUCTURE` per workflow | Nol ketidakcocokan tak terjelaskan di `SHADOW` dan catatan go/no-go ditandatangani |
+| L3 | ORG-004 `STRUCTURE` dan ORG-013 kursi organ | Dirilis belum aktif — **tetapi lihat W1** | 2026-11-20: `organization_rollout_settings` 0 baris → semua `LEGACY`, jadi bagan **tidak dibaca sama sekali** di jalur yang berjalan. Bagan itu sendiri terisi: 16 change set terbit (terakhir 2026-11-10), 1.111 `organization_nodes`, 474 `organization_positions`, 374 `organization_incumbencies`, 1.439 `organization_memberships`, 555 `organization_authority_bindings` (215 `SUPERVISORY_PARENT`, 104 `UNIT_APPROVER`), `organization_reporting_overrides` kosong. OPS-READY-001 2026-10-16 mencatat 15 change set PUBLISHED | Gate P1–P3 dan P10 OPS-READY-001 masih MISSING: unit pilot belum dipilih, SHADOW belum dijalankan, go/no-go belum ditandatangani | Pilih unit pilot, jalankan `SHADOW`, bandingkan dengan `LEGACY`, lalu aktifkan `STRUCTURE` per workflow. `SHADOW` sekaligus **mengukur cakupan bagan dengan resolver sebenarnya** (V17) — satu-satunya cara mengubah "hampir seluruh" menjadi angka | Nol ketidakcocokan tak terjelaskan di `SHADOW` dan catatan go/no-go ditandatangani. Baris ini **naik dari lanjutan menjadi jalur pra-pembukaan** bila owner memilih `STRUCTURE` sebagai cara menutup W1 |
 | L4 | Portal Organ R1 (ORG-010/ORG-014) | Sudah diuji, sekali | `production-release-verification-2026-11-13-e54353aa.md`: Portal Organ dinyalakan di SQ Hub 2026-11-13 01:33 UTC; pertukaran `azp = sq-organ` terbukti pada sign-in pertama owner sebagai anggota organ (satu baris audit `governance.summary.served`). 2 akun `FOUNDATION_BOARD` aktif per 2026-11-20 | Baru satu sesi nyata; ringkasan yang dibaca organ akan menampilkan "95 pegawai tanpa atasan langsung" sampai W1 ditutup | Minta anggota organ membuka ringkasan setelah W1 selesai | Kedua akun organ pernah membuka ringkasan dan daftar pegawai setelah data atasan terisi |
 | L5 | Portal Organ R2 / keputusan organ (ORG-015) | Dirilis belum aktif | `production-release-verification-2026-11-18-127b6068.md`: rute `GET`/`POST /governance/decisions` menjawab `404` selama `GOVERNANCE_DECISIONS_ENABLED` mati; migrasi 0166 hanya menambah satu kolom kosong | Urutan ORGAN-IMPL-001-r2-keycloak §5 baru sampai langkah 4. Langkah 6 (probe `acr` harus bernilai `"2"` setelah pertukaran token) **butuh sesi nyata, jadi langkah owner** dan merupakan gerbang ADR-0012 D4 | Daftarkan `decision_path`/`decision_audience` di Admin Center (langkah 5), jalankan probe (langkah 6), lalu nyalakan kedua flag mulai dari HCIS | `acr` selamat melewati pertukaran token dan satu keputusan organ nyata tercatat |
 | L6 | LOAN-001 kasbon dan LOAN-002 rantai kursi | Dirilis belum aktif + Selesai belum dirilis | 2026-11-20: 0 `employee_loans`. LOAN-002 lengkap di `main` — rantai kursi #384 (migrasi 0177/0178) dan jalur tulis pemetaan kursi #391 (migrasi 0181, di-merge 2026-11-20 02:13 UTC) — tetapi tidak satu pun sudah dirilis | Rantai `LEGACY` kasbon berdiri di atas W1. Registri kursi di production masih kosong karena tabelnya sendiri belum ada di sana | Rilis #384 dan #391 bersama (W15), lalu HC memetakan kursi persetujuan | Satu pengajuan kasbon nyata melewati rantai kursi sampai pencairan |
@@ -343,8 +421,8 @@ Butir berikut tidak dapat dipastikan dari repository pada 2026-11-20. Tidak satu
 
 | # | Yang belum diketahui | Cara memverifikasi |
 |---|---|---|
-| V1 | Berapa unit tanpa penyetuju cuti aktif (W2) | Buka `GET /governance/summary` dengan akun Organ Yayasan dan baca metrik `units_without_approver`. Tidak perlu SQL — jalur ini sudah menyala sejak 2026-11-13 |
-| V2 | Berapa akun `invited` yang masih terbuka, berapa `inactive`, dan berapa undangan yang masih dalam jendela 14 hari (W3) | `SELECT status, principal_type, count(*) FROM accounts GROUP BY 1,2` dan hitung `account_activation_invitations` berstatus `issued` menurut tanggal kirim, keduanya di dalam `BEGIN READ ONLY … ROLLBACK` |
+| V1 | ~~Berapa unit tanpa penyetuju cuti aktif (W2)~~ | **Terjawab 2026-11-20.** Kesembilan unit berpegawai aktif punya penyetuju yang ditetapkan, tetapi 8 di antaranya berakun `invited` dan 1 tanpa akun sama sekali; hanya 1 unit penyetujunya berakun aktif. Lihat W2 — butir ini pindah dari "belum terverifikasi" menjadi penghambat pertama |
+| V2 | Berapa akun `inactive`, dan berapa undangan yang masih dalam jendela 14 hari (W3) | Sebagian terjawab 2026-11-20: 4 `active`, **74 `invited`**, 81 akun seluruh status. Yang tersisa: `SELECT status, principal_type, count(*) FROM accounts GROUP BY 1,2` untuk rincian per jenis principal, dan hitung `account_activation_invitations` berstatus `issued` menurut tanggal kirim — keduanya di dalam `BEGIN READ ONLY … ROLLBACK` |
 | V3 | Berapa pegawai aktif tanpa email login (W3) | `SELECT count(*) FROM employees WHERE status='active' AND (email IS NULL OR btrim(email)='')`, read-only |
 | V4 | Apakah ada punch mobile ATT-006 nyata sejak 2026-11-04 (W7) | `SELECT source, count(*) FROM attendance_events GROUP BY 1` — kolom `source` bernilai `adms`, `mobile`, atau `manual` (`apps/api/migrations/0046_attendance_workforce_engine.sql`), read-only |
 | V5 | Apakah ada pegawai yang benar-benar membuka slip gajinya (W8) | Cari audit event baca slip untuk principal `EMPLOYEE` pada rentang sejak 2026-10-01, read-only |
@@ -359,6 +437,9 @@ Butir berikut tidak dapat dipastikan dari repository pada 2026-11-20. Tidak satu
 | V14 | Mengapa 93 penugasan jadwal untuk 97 pegawai aktif (W5) | Bandingkan daftar pegawai aktif dengan `attendance_schedule_assignments`, read-only; empat selisih itu bisa jadi pegawai yang memang tidak absen |
 | V15 | Apa yang masih kurang di sisi Aset SQ untuk ASSET-001 (L13) | Periksa repository Aset SQ: klien Keycloak `hcis-aset-custody`, flag ASQ-004, dan jalur privat |
 | V16 | Apakah entri worker untuk penyegaran proyeksi kepegawaian sudah ada (L2) | Baca `sq-core-worker.sh` di Mi8VPS dan Mi8VPS Platform Runbook; runbook langkah 6 |
+| V17 | **Berapa persis cakupan bagan organisasi menurut resolver sebenarnya** — untuk berapa pegawai aktif mode `STRUCTURE` benar-benar menemukan atasan, dan apakah hasilnya sama dengan `LEGACY` (W1, L3) | Jalankan ORG-004 `SHADOW` pada unit pilot, lalu bandingkan hasil resolusi `STRUCTURE` dengan `LEGACY` per pegawai. Sampai ini dijalankan, "hampir seluruh" tetap kata kualitatif dan dokumen ini tidak menuliskan persentase |
+| V18 | Apakah penyetuju yang ditunjuk bagan punya **akun aktif dan izin** yang diperlukan (W1, W2, W3) | Tidak terjawab oleh pratinjau baca-saja. Cocokkan daftar penyetuju hasil resolusi dengan status akun di `accounts` dan dengan `account_role_assignments`, read-only; lalu buktikan dengan satu pengajuan nyata yang benar-benar dirutekan |
+| V19 | Mengapa perangkat ADMS mengirim 4 log kehadiran berbanding 28.087 handshake, dan mengapa diam sejak 17 November 14:36 (W5) | Baca `attendance_adms_request_journal` per jenis permintaan dan per perangkat untuk rentang 10–20 November, read-only, lalu bandingkan dengan log perangkat di lokasi |
 
 ## 9. Hubungan dengan dokumen lain
 

@@ -13,7 +13,8 @@ import { MANDATE_REQUIRED } from "../src/modules/auth/role-administration-routes
 import {
   canDelegateRole,
   GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
-  isGovernanceAccountRole,
+  GOVERNANCE_LOAN_APPROVER_ROLE_KEY,
+  isGovernanceOrganRole,
   isSeatLinkableRole,
 } from "../src/modules/auth/role-assignment.js";
 import { registerGovernancePayrollRoutes } from "../src/modules/governance/payroll-routes.js";
@@ -313,9 +314,9 @@ describe("ADR-0008 D-3 granting the role", () => {
     permissions: [GOVERNANCE_PAYROLL_READ_PERMISSION],
   };
 
-  it("is a governance account role, like the ORG-013 leave approver", () => {
-    expect(isGovernanceAccountRole(GOVERNANCE_PAYROLL_READER_ROLE_KEY)).toBe(true);
-    expect(isGovernanceAccountRole("foundation_board_viewer")).toBe(false);
+  it("joins the ORG-013 table of organ roles, beside the leave and loan approvers", () => {
+    expect(isGovernanceOrganRole(GOVERNANCE_PAYROLL_READER_ROLE_KEY)).toBe(true);
+    expect(isGovernanceOrganRole("foundation_board_viewer")).toBe(false);
   });
 
   it("may be granted while it carries exactly its one permission", () => {
@@ -342,8 +343,14 @@ describe("ADR-0008 D-3 granting the role", () => {
   it("is marked as needing a mandate on the grant screen, as the server already demands", () => {
     // createRoleAssignment refuses this role without a reason (ADR-0008 D-3). If the catalog did
     // not say so, the SQ Hub screen would leave the reason optional and the grant would fail.
-    expect(MANDATE_REQUIRED.has(GOVERNANCE_PAYROLL_READER_ROLE_KEY)).toBe(true);
-    expect(MANDATE_REQUIRED.has(GOVERNANCE_LEAVE_APPROVER_ROLE_KEY)).toBe(true);
+    // Every organ role, not only this one: createRoleAssignment applies the same rule to the whole
+    // GOVERNANCE_ORGAN_ROLES table, so one of them missing here is the same defect.
+    for (const roleKey of [
+      GOVERNANCE_PAYROLL_READER_ROLE_KEY, GOVERNANCE_LEAVE_APPROVER_ROLE_KEY, GOVERNANCE_LOAN_APPROVER_ROLE_KEY,
+    ]) {
+      expect(isGovernanceOrganRole(roleKey), roleKey).toBe(true);
+      expect(MANDATE_REQUIRED.has(roleKey), roleKey).toBe(true);
+    }
   });
 });
 

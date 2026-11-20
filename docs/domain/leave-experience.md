@@ -14,7 +14,7 @@ Leave and absence workflows can be policy-heavy, but the employee-facing GUI mus
 2. **Progressive disclosure.** Do not show dates, documents, policy notes, and workflow details before the employee has chosen the relevant leave type.
 3. **No dangerous default.** A special-leave form must not silently default to `Cuti Sakit`; the employee explicitly chooses the situation before the form can continue.
 4. **One primary action at a time.** Use a simple sequence such as `Pilih jenis -> Isi data -> Periksa -> Kirim` rather than presenting several competing actions.
-4a. **One step per screen (LEAVE-UX-001, owner feedback 2026-11-20).** Each step of a leave submission replaces the previous one as a wizard screen; `Lanjutkan` never appends the next step below the current form. Progressive disclosure means *between* screens, not as a growing page. Rules:
+4a. **One step per screen (LEAVE-UX-001, owner feedback 2026-11-20; the SQ Suite-wide rule is UX-FLOW-001 in `SQ-Hub` `docs/design/sq-step-flow.md`).** Each step of a leave submission replaces the previous one as a wizard screen; `Lanjutkan` never appends the next step below the current form. Progressive disclosure means *between* screens, not as a growing page. Rules:
    - the current step lives in the URL (`?langkah=isi|periksa|selesai`, plus `pilih` for special/planned), so the browser/Android back button returns to the previous step and keeps the entered values;
    - a step header shows the step number and only the current step's label on mobile;
    - every new step opens scrolled to the top; a validation/API error is shown under the step header and the page scrolls to it;

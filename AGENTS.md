@@ -87,6 +87,7 @@ Sebelum merge:
 - migration memiliki rollback/recovery plan;
 - kontrak API dan client tetap sinkron;
 - error, loading, empty, forbidden, dan mobile state diperiksa;
+- setiap alur bertahap mengikuti **satu langkah per layar** (UX-FLOW-001, [`docs/design/sq-step-flow.md`](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/design/sq-step-flow.md) di repository `SQ-Hub`, keputusan owner 2026-11-20): `Lanjutkan` menggantikan layar langkah sebelumnya dan tidak pernah menumpuk ringkasan, form lanjutan, atau tombol kirim di bawahnya; langkah disimpan di `?langkah=` (`useWizardStep`, `WizardSteps`, `WizardDone`); alur lama yang masih bertumpuk dicatat di `docs/development/step-flow-audit-2026-11-20.md` dan diperbaiki saat disentuh;
 - setiap daftar, tabel, dan dropdown record baru atau yang diubah mengikuti `docs/development/list-pagination-standard.md` (ENG-LIST-001): data yang bertumbuh memakai pagination server-side (`page`/`pageSize` default 25 maks 100 dengan `total`, atau kursor untuk log bervolume tinggi), tidak ada `LIMIT`/`slice` yang memotong diam-diam, filter dan scope otorisasi dijalankan sebelum `LIMIT`, dropdown di atas 50 opsi atau berisi pegawai memakai pencarian typeahead, dan setiap pengecualian ditulis di specification;
 - dokumentasi diperbarui;
 - tidak ada secret atau data pribadi pada diff.

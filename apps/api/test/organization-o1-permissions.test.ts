@@ -164,6 +164,12 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
       "PATCH /admin/employees/:employeeId/manager",
       "PATCH /admin/leave/units/:unitId/approver",
       "PATCH /admin/organization/rollout",
+      // ORG-001 (2026-11-20): the bulk direct-manager path writes exactly what the single route
+      // writes, under exactly the same rules, so it carries the same permission and no new one.
+      // Its dry-run is listed too: it reads nothing a holder of this permission cannot already
+      // read, and keeping both calls on one permission is what stops a half-authorized apply.
+      "POST /admin/employees/manager-assignments/apply",
+      "POST /admin/employees/manager-assignments/preview",
       "POST /admin/organization/designer/drafts/:draftId/publish",
     ]);
   });

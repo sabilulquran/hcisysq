@@ -27,7 +27,13 @@
 | --- | --- | --- |
 | Peringatan lembur ("Tetap catat/kirim") | `pages/EmployeeAttendancePage.tsx`, `pages/AdminAttendanceOvertimePage.tsx`, `pages/EmployeeTeamOvertimePage.tsx` | Ini peringatan validasi yang muncul ketika mengirim, bukan langkah periksa. UX-FLOW-001 mengecualikan pesan validasi. |
 | Kirim klaim reimbursement | `pages/EmployeeReimbursementsPage.tsx` | Form draf sudah diganti tampilan detail. Kotak penyetuju tampil di layar detail tanpa input yang menumpuk. |
-| Perbarui dari struktur terbaru, Validasi/Dampak, konflik perubahan | `components/organization/*`, `pages/AdminOrganizationPage.tsx` | Halaman kerja (workspace) struktur. Hasil validasi adalah informasi, bukan langkah kirim, dan penerbitan memakai dialog terpisah. |
+| Perbarui dari struktur terbaru, Validasi/Dampak, konflik perubahan | `components/organization/*`, `pages/AdminOrganizationPage.tsx` | Halaman kerja (workspace) struktur. Hasil validasi adalah informasi, bukan langkah kirim, dan penerbitan memakai dialog terpisah. Pengecualian ini **tidak** mencakup `components/organization/OrganizationManagerBulkTab.tsx` (ORG-001): itu alur bertahap sungguhan dan mengikuti UX-FLOW-001 — lihat baris di bawah. |
 | Perbaikan batch slip | `pages/AdminPayslipsPage.tsx` | Halaman kerja. Panel dibuka dari daftar batch, bukan langkah lanjutan form impor. |
+
+## Alur baru yang lahir sudah mengikuti aturan
+
+| Alur | Lokasi | Pengguna | Bentuk |
+| --- | --- | --- | --- |
+| Atasan langsung massal (ORG-001) | `components/organization/OrganizationManagerBulkTab.tsx` | admin (HC) | Unggah berkas → Periksa → Hasil (state panel, mengikuti Impor jabatan). Panel ini menumpang tab `?tab=` milik Struktur Organisasi, jadi langkahnya **tidak** ditulis ke `?langkah=`: `useWizardStep` akan membuang `tab` saat berpindah langkah. |
 
 Pengecualian ditinjau ulang ketika alurnya disentuh. Alur yang dinilai OK (aktivasi akun, cek chain cuti, konfirmasi ya/tidak, dialog satu langkah) tidak dicatat.

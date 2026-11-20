@@ -65,8 +65,23 @@ function createPool(options: PoolOptions = {}) {
     if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
       return { rows: [{ outside: outside.has(String(values?.[0])) }], rowCount: 1 };
     }
-    // The reporting-line checks the manager route makes before writing.
-    if (sql.includes("FROM employees") && sql.includes("direct_manager_employee_id")) {
+    // ORG-001: the manager route now reads the facts of both sides and the whole
+    // reporting line, then evaluates the rules in memory (manager-assignment.ts).
+    if (sql.includes("WHERE id = ANY($1::uuid[])")) {
+      const ids = (values?.[0] as string[]) ?? [];
+      return {
+        rows: ids.map((id) => ({
+          id,
+          employeeNumber: `NIP-${id.slice(-4)}`,
+          fullName: `Pegawai ${id.slice(-4)}`,
+          status: "active",
+          managementScope: outside.has(id) ? "OUTSIDE_HCIS" : "MANAGED",
+          directManagerEmployeeId: null,
+        })),
+        rowCount: ids.length,
+      };
+    }
+    if (sql.includes("direct_manager_employee_id IS NOT NULL")) {
       return { rows: [], rowCount: 0 };
     }
     if (sql.includes("SELECT id FROM employees")) return { rows: [{ id: String(values?.[0]) }], rowCount: 1 };

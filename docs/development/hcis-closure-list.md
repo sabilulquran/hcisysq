@@ -174,7 +174,7 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 | | |
 |---|---|
 | **Status** | **Dirilis belum aktif.** Klarifikasi ATT-002, lembur ATT-007, tukar shift ATT-008, serta tugas luar/WFH ATT-015 ada di production tetapi memakai rantai persetujuan yang sama dengan W1. |
-| **Bukti bertanggal** | Kode: `attendance/overtime-approver.ts` memakai `workflowKey: "OVERTIME"` dan membaca `direct_manager_employee_id`; `attendance/work-arrangement-routes.ts` memakai resolver bersama. Spesifikasi sudah menyebut risikonya sejak awal: `docs/domain/attendance-operational-simplification-spec.md` §890 menulis bahwa bila data atasan belum lengkap, "pengajuan lembur pegawai tanpa atasan gagal tertutup (422) dan HC harus melengkapi data struktur lebih dulu". |
+| **Bukti bertanggal** | Kode: `attendance/overtime-approver.ts` memakai `workflowKey: "OVERTIME"` dan membaca `direct_manager_employee_id`; `attendance/work-arrangement-routes.ts` memakai resolver bersama. Spesifikasi sudah menyebut risikonya sejak awal: daftar asumsi `DRAFT` di `docs/domain/attendance-operational-simplification-spec.md` menulis bahwa bila data atasan belum lengkap, "pengajuan lembur pegawai tanpa atasan gagal tertutup (422) dan HC harus melengkapi data struktur lebih dulu". |
 | **Penghambat** | W1, W2, W3. |
 | **Langkah berikutnya** | Setelah W1: satu pengajuan lembur dan satu klarifikasi nyata, lalu satu pengajuan tugas luar/WFH, masing-masing sampai keputusan. |
 | **Kriteria selesai** | Satu contoh per jenis pengajuan selesai dengan bukti bertanggal. |
@@ -235,7 +235,7 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 |---|---|
 | **Status** | **Aktif belum diuji** untuk skema hari ini. Latihan restore terakhir yang terbukti berasal dari 2026-10-16. |
 | **Bukti bertanggal** | OPS-READY-001 gate P5 **DONE** dengan latihan restore terisolasi PASS 2026-10-16 (`docs/operations/hcis-restore-drill-2026-10-16.md`), 6/6 smoke check, 48 detik. Backup pra-rilis tetap diambil tiap rilis; yang terakhir `/srv/hcis/backups/pre-release/hcis-127b6068-20261118-20261118T090447Z.dump` (2026-11-18). |
-| **Penghambat** | Latihan itu mendahului migrasi `0124`-an sampai `0167` yang kini ada di production. OPS-READY-001 sendiri menulis kriteria "Repeat after major schema changes". Gate R5 masih **PARTIAL**: pemulihan dari **kehilangan ponsel** (salinan Drive ke host lain, bundel rahasia) belum pernah diuji. |
+| **Penghambat** | Latihan itu berjalan pada rilis `hcis-3b670849-20261016`, yang membawa **55** migrasi (tertinggi `0055_adms_operational_management`). Production hari ini membawa **145** (tertinggi `0167`). Sembilan puluh migrasi memisahkan skema yang pernah diuji pulih dari skema yang ada sekarang, dan OPS-READY-001 sendiri menulis kriteria "Repeat after major schema changes". Gate R5 masih **PARTIAL**: pemulihan dari **kehilangan ponsel** (salinan Drive ke host lain, bundel rahasia) belum pernah diuji. |
 | **Langkah berikutnya** | (1) Ulangi latihan restore terisolasi pada skema `0167`. (2) Jalankan satu latihan pemulihan di luar host sebelum 97 orang mulai menulis data nyata. |
 | **Kriteria selesai** | Latihan restore pada skema terkini PASS dan tercatat, dan latihan di luar host PASS sekali. |
 

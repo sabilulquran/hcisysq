@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PostponementResponse } from "@/components/leave/PostponementResponse";
-import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
+import { ProposalReview, ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
 import {
   acceptLeavePostponement,
   declineLeavePostponement,
@@ -59,6 +59,38 @@ describe("LEAVE-008 approver proposal", () => {
     const html = renderToStaticMarkup(<ProposeAlternativeDates stepId="s1" onDone={() => undefined} />);
     expect(html).toContain("Usulkan tanggal lain");
     expect(html).not.toContain("Kirim usulan");
+  });
+
+  it("checks the dates on their own screen, read-only, with a way back (UX-FLOW-001)", () => {
+    const html = renderToStaticMarkup(
+      <ProposalReview
+        preview={{
+          stepId: "s1",
+          requestId: "r1",
+          policyKey: "annual",
+          currentStartOn: "2099-02-02",
+          currentEndOn: "2099-02-04",
+          proposedStartOn: "2099-02-09",
+          proposedEndOn: "2099-02-11",
+          workingDays: 3,
+          workingDates: ["2099-02-09", "2099-02-10", "2099-02-11"],
+          nonWorkingDates: [],
+          criticalPeriods: [],
+        }}
+        note="Pekan itu ada akreditasi."
+        error={null}
+        busy={null}
+        onBack={() => undefined}
+        onSend={() => undefined}
+      />,
+    );
+    expect(html).toContain("3 hari kerja");
+    expect(html).toContain("Pekan itu ada akreditasi.");
+    expect(html).toContain("Ubah tanggal");
+    expect(html).toContain("Kirim usulan");
+    expect(html).not.toContain('type="date"');
+    expect(html).not.toContain("<textarea");
+    expect(html).not.toContain("Periksa tanggal");
   });
 
   it("calls the documented routes", async () => {

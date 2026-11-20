@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { AttendanceCalculationScope } from "@/lib/attendanceCalculation";
 import {
@@ -173,8 +173,17 @@ function AlignToStartDate({ mappingIds, onDone, onCancel }: {
     }
   };
 
+  // UX-FLOW-001: this view replaces the PIN list while it is open; it opens at its own top.
+  const top = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    top.current?.scrollIntoView?.({ block: "start" });
+  }, []);
+
   return (
-    <div className="mt-3 grid gap-3 rounded-xl border bg-surface-raised p-3 text-sm">
+    <div ref={top} className="mt-3 grid gap-3 rounded-xl border bg-surface-raised p-3 text-sm">
+      <button type="button" onClick={onCancel} disabled={saving} className="inline-flex h-9 w-fit items-center gap-1 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">
+        <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Kembali ke daftar
+      </button>
       {error ? <p className="flex gap-2 text-xs font-semibold text-danger-ink" role="alert"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</p> : null}
       {!preview ? <p className="text-xs text-muted-foreground">{error ? "" : "Menghitung pratinjau…"}</p> : (
         <>
@@ -209,7 +218,6 @@ function AlignToStartDate({ mappingIds, onDone, onCancel }: {
         <button type="button" disabled={saving || !preview || preview.summary.change === 0 || !reason.trim()} onClick={() => void apply()} className="inline-flex h-9 items-center gap-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Terapkan
         </button>
-        <button type="button" onClick={onCancel} className="h-9 rounded-xl border px-3 text-xs font-bold">Batal</button>
       </div>
     </div>
   );
@@ -237,6 +245,17 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
   const groups = groupByPosition(data.employees.items);
   // A mapped PIN whose scans fall outside its mapping can be moved to the holder's TMT (§20.5).
   const alignable = [...new Set((data.pins?.items ?? []).filter((pin) => pin.status !== "unmapped" && pin.mappingId).map((pin) => pin.mappingId!))];
+
+  if (aligning) {
+    return (
+      <div className="grid gap-4 p-3">
+        <section>
+          <h3 className="text-sm font-bold text-brand-heading">Sesuaikan pemetaan PIN dengan TMT</h3>
+          <AlignToStartDate mappingIds={aligning} onCancel={() => setAligning(null)} onDone={(message) => { setAligning(null); setNotice(message); onChanged(); }} />
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-4 p-3">
@@ -304,7 +323,6 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
             <p className="text-xs text-muted-foreground">Scan ini tersimpan di HCIS tetapi belum menjadi milik pegawai mana pun, sehingga tidak ikut dihitung.</p>
             {canMapPins && alignable.length > 0 ? <button type="button" onClick={() => setAligning(alignable)} className="h-8 rounded-lg border px-3 text-xs font-bold">Sesuaikan semua di halaman ini dengan TMT ({alignable.length})</button> : null}
           </div>
-          {aligning ? <AlignToStartDate mappingIds={aligning} onCancel={() => setAligning(null)} onDone={(message) => { setAligning(null); setNotice(message); onChanged(); }} /> : null}
           <div className="mt-2 overflow-x-auto rounded-xl border">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="bg-surface text-xs text-muted-foreground">

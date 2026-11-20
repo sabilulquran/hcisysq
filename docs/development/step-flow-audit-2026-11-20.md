@@ -12,14 +12,14 @@
 | Cuti Tahunan | `pages/EmployeeAnnualLeavePage.tsx` (`/app/leave/annual`) | pegawai | form, ringkasan, dan kirim menumpuk di halaman Cuti & Izin | Isi tanggal → Periksa → Selesai |
 | Kondisi khusus | `pages/EmployeeSpecialLeavePage.tsx` | pegawai | pilihan, form, ringkasan menumpuk | Pilih → Isi → Periksa → Selesai |
 | Keperluan terencana | `pages/EmployeePlannedLeavePage.tsx` | pegawai | sama | Pilih → Isi → Periksa → Selesai |
-| Ajukan pinjaman | `pages/EmployeeLoansPage.tsx` | pegawai | cicilan dan penyetuju muncul di dalam form | _dikerjakan_ |
-| Ajukan perjalanan dinas | `pages/EmployeeTripsPage.tsx` | pegawai | penyetuju muncul di dalam form | _dikerjakan_ |
-| Tugas Luar/WFH/Ubah shift | `pages/EmployeeWorkArrangementsPage.tsx` | pegawai | pilihan jenis dan ringkasan menumpuk dengan form | _dikerjakan_ |
-| Tindakan kepegawaian | `components/employment/EmploymentActionDialog.tsx` | admin | ringkasan "Dari → Menjadi" dan Simpan di bawah form di dalam dialog | _dikerjakan_ |
-| Impor Pegawai | `pages/AdminEmployeeImportPage.tsx` | admin | preview dan konfirmasi di bawah form unggah | _dikerjakan_ |
-| Impor jabatan | `components/job-classifications/JobCatalogImportPanel.tsx` | admin | laporan dry-run dan Terapkan di bawah input berkas | _dikerjakan_ |
-| Sesuaikan dengan TMT | `components/attendance/reports/UnscheduledTab.tsx` | admin | panel preview dan Terapkan disisipkan di atas daftar | _dikerjakan_ |
-| Usulkan tanggal lain | `components/leave/ProposeAlternativeDates.tsx` | atasan/HC | hasil periksa di bawah tanggal yang masih bisa diubah | _dikerjakan_ |
+| Ajukan pinjaman | `pages/EmployeeLoansPage.tsx` | pegawai | cicilan dan penyetuju muncul di dalam form | Isi data → Periksa (cicilan + penyetuju) → Selesai |
+| Ajukan perjalanan dinas | `pages/EmployeeTripsPage.tsx` | pegawai | penyetuju muncul di dalam form | Isi data → Periksa (penyetuju) → Selesai |
+| Tugas Luar/WFH/Ubah shift | `pages/EmployeeWorkArrangementsPage.tsx` | pegawai | pilihan jenis dan ringkasan menumpuk dengan form | Pilih → Isi data → Periksa (penyetuju + bentrok rapat) → Selesai |
+| Tindakan kepegawaian | `components/employment/EmploymentActionDialog.tsx` | admin | ringkasan "Dari → Menjadi" dan Simpan di bawah form di dalam dialog | Isi data → Periksa (ringkasan, peringatan, Simpan) di dalam dialog |
+| Impor Pegawai | `pages/AdminEmployeeImportPage.tsx` | admin | preview dan konfirmasi di bawah form unggah | Unggah → Periksa → Selesai (`?langkah=`) |
+| Impor jabatan | `components/job-classifications/JobCatalogImportPanel.tsx` | admin | laporan dry-run dan Terapkan di bawah input berkas | Unggah berkas → Periksa → Hasil (state panel) |
+| Sesuaikan dengan TMT | `components/attendance/reports/UnscheduledTab.tsx` | admin | panel preview dan Terapkan disisipkan di atas daftar | tampilan penyesuaian menggantikan daftar, dengan "Kembali ke daftar" |
+| Usulkan tanggal lain | `components/leave/ProposeAlternativeDates.tsx` | atasan/HC | hasil periksa di bawah tanggal yang masih bisa diubah | Isi tanggal → Periksa (read-only + Kirim usulan) di dalam dialog |
 
 ## Dikecualikan, dengan alasan
 

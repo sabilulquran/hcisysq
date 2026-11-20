@@ -3,8 +3,8 @@
 // decides what is required and what is refused; this component shows the
 // answer it gives and never predicts it.
 
-import { AlertTriangle, Loader2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { AlertTriangle, ArrowLeft, Loader2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { AdminApiError } from "@/lib/adminEmployees";
 import { jobFamilyLabels, listJobClassifications, type JobClassification } from "@/lib/jobClassifications";
@@ -224,6 +224,12 @@ export function EmploymentActionDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [idempotencyKey] = useState(newIdempotencyKey);
+  // UX-FLOW-001: each step opens at the top of the dialog, and so does an error.
+  const scroller = useRef<HTMLDivElement>(null);
+  const onReview = preview !== null;
+  useEffect(() => {
+    scroller.current?.scrollTo?.({ top: 0 });
+  }, [onReview, error]);
 
   // ORG-011: read as of the day this action takes effect, because that is the date the API
   // validates the code against.
@@ -315,6 +321,12 @@ export function EmploymentActionDialog({
     }
   }
 
+  function backToForm() {
+    setPreview(null);
+    setAcknowledged(false);
+    setError(null);
+  }
+
   async function save() {
     if (!preview) return;
     setBusy(true);
@@ -335,12 +347,12 @@ export function EmploymentActionDialog({
     }
   }
 
-  const needsAcknowledgement = (preview?.warnings.length ?? 0) > 0;
   const title = actionType === "PLACEMENT_END" ? "Akhiri tugas tambahan" : ACTION_TITLE[actionType];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6">
       <div
+        ref={scroller}
         role="dialog"
         aria-modal="true"
         aria-label={`${title} — ${employeeName}`}
@@ -349,7 +361,9 @@ export function EmploymentActionDialog({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-brand-heading">{title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{employeeName}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {employeeName} · {preview ? "Langkah 2 dari 2: Periksa" : "Langkah 1 dari 2: Isi data"}
+            </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Tutup" className="rounded-xl border border-border p-2 hover:bg-surface">
             <X className="h-4 w-4" aria-hidden="true" />
@@ -362,226 +376,261 @@ export function EmploymentActionDialog({
 
         {actionType === "TERMINATION" ? <TerminationAssetWarning employeeId={employeeId} /> : null}
 
-        <form onSubmit={check} className="mt-4 grid gap-3 sm:grid-cols-2">
-          {actionType === "PLACEMENT_END" ? (
-            <Labelled label="Berlaku mulai">
-              <input type="date" value={draft.effectiveOn} onChange={(event) => set({ effectiveOn: event.target.value })} className={field} />
-            </Labelled>
-          ) : actionType === "TERMINATION" ? (
-            <>
-              <Labelled label="Tanggal terakhir bekerja">
-                <input type="date" value={draft.lastDayOn} onChange={(event) => set({ lastDayOn: event.target.value })} className={field} />
+        {/* UX-FLOW-001: one step per screen. "Periksa" replaces the form with the summary. */}
+        {preview ? (
+          <ActionReview
+            preview={preview}
+            acknowledged={acknowledged}
+            busy={busy}
+            onAcknowledge={setAcknowledged}
+            onBack={backToForm}
+            onSave={() => void save()}
+          />
+        ) : (
+          <form onSubmit={check} className="mt-4 grid gap-3 sm:grid-cols-2">
+            {actionType === "PLACEMENT_END" ? (
+              <Labelled label="Berlaku mulai">
+                <input type="date" value={draft.effectiveOn} onChange={(event) => set({ effectiveOn: event.target.value })} className={field} />
               </Labelled>
-              <Labelled label="Alasan">
+            ) : actionType === "TERMINATION" ? (
+              <>
+                <Labelled label="Tanggal terakhir bekerja">
+                  <input type="date" value={draft.lastDayOn} onChange={(event) => set({ lastDayOn: event.target.value })} className={field} />
+                </Labelled>
+                <Labelled label="Alasan">
+                  <select
+                    value={draft.reasonCode}
+                    onChange={(event) => set({ reasonCode: event.target.value as TerminationReason })}
+                    className={field}
+                  >
+                    {Object.entries(TERMINATION_REASON_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </Labelled>
+              </>
+            ) : (
+              <Labelled label="Tanggal berlaku">
+                <input type="date" value={draft.effectiveOn} onChange={(event) => set({ effectiveOn: event.target.value })} className={field} />
+              </Labelled>
+            )}
+
+            {actionType !== "PLACEMENT_END" && (actionType === "HIRE" || actionType === "CATEGORY_CHANGE") ? (
+              <Labelled label="Status kepegawaian">
+                <select value={draft.category} onChange={(event) => set({ category: event.target.value as ActionCategory })} className={field}>
+                  {CONTRACT_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{CATEGORY_LABEL[category]}</option>
+                  ))}
+                </select>
+              </Labelled>
+            ) : null}
+
+            {actionType !== "TERMINATION" && actionType !== "PLACEMENT_END" && actionType !== "PLACEMENT"
+              && actionType !== "TRANSFER" && actionType !== "PROMOTION" && actionType !== "DEMOTION"
+              && draft.category !== "TETAP" ? (
+              <Labelled label="Kontrak selesai">
+                <input type="date" value={draft.termEndOn} onChange={(event) => set({ termEndOn: event.target.value })} className={field} />
+              </Labelled>
+            ) : null}
+
+            {actionType !== "PLACEMENT_END" && PLACEMENT_ACTIONS.includes(actionType) ? (
+              <>
+                <Labelled label={actionType === "HIRE" || actionType === "PLACEMENT" ? "Unit penempatan" : "Unit tujuan"}>
+                  <select value={draft.unitId} onChange={(event) => set({ unitId: event.target.value })} className={field}>
+                    <option value="">Pilih unit</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>{unit.name}</option>
+                    ))}
+                  </select>
+                </Labelled>
+                <Labelled label="Jabatan">
+                  <select value={draft.positionId} onChange={(event) => set({ positionId: event.target.value })} className={field}>
+                    <option value="">Tanpa jabatan terdaftar</option>
+                    {positions.map((position) => (
+                      <option key={position.id} value={position.id}>{position.name}</option>
+                    ))}
+                  </select>
+                </Labelled>
+                <Labelled label="Label jabatan">
+                  <input value={draft.jobTitleLabel} onChange={(event) => set({ jobTitleLabel: event.target.value })} className={field} />
+                </Labelled>
+                {classifications.length > 0 ? (
+                  <Labelled label="Klasifikasi jabatan">
+                    <select value={draft.jobClassificationCode} onChange={(event) => set({ jobClassificationCode: event.target.value })} className={field}>
+                      <option value="">Ikut klasifikasi kursi jabatan</option>
+                      {classifications.map((item) => (
+                        <option key={item.code} value={item.code}>{item.name} ({jobFamilyLabels[item.family]})</option>
+                      ))}
+                    </select>
+                    {classificationsTruncated ? (
+                      <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p>
+                    ) : null}
+                  </Labelled>
+                ) : null}
+                {classificationsFailed ? (
+                  <p className="text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Tindakan tetap bisa direkam; penempatan akan mengikuti klasifikasi kursi jabatan.</p>
+                ) : null}
+              </>
+            ) : null}
+
+            {actionType === "PLACEMENT" ? (
+              <label className="flex items-center gap-2 self-end text-sm font-semibold text-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.additionalDuty}
+                  onChange={(event) => set({ additionalDuty: event.target.checked })}
+                />
+                Tugas tambahan (penempatan utama tetap)
+              </label>
+            ) : null}
+
+            {actionType === "TRANSFER" || actionType === "PROMOTION" || actionType === "DEMOTION" ? (
+              <Labelled label={actionType === "DEMOTION" ? "Alasan (wajib)" : "Alasan"}>
                 <select
-                  value={draft.reasonCode}
-                  onChange={(event) => set({ reasonCode: event.target.value as TerminationReason })}
+                  value={draft.careerReasonCode}
+                  onChange={(event) => set({ careerReasonCode: event.target.value as CareerReasonCode })}
                   className={field}
                 >
-                  {Object.entries(TERMINATION_REASON_LABEL).map(([value, label]) => (
+                  <option value="">Pilih alasan</option>
+                  {Object.entries(CAREER_REASON_LABEL).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
               </Labelled>
-            </>
-          ) : (
-            <Labelled label="Tanggal berlaku">
-              <input type="date" value={draft.effectiveOn} onChange={(event) => set({ effectiveOn: event.target.value })} className={field} />
-            </Labelled>
-          )}
+            ) : null}
 
-          {actionType !== "PLACEMENT_END" && (actionType === "HIRE" || actionType === "CATEGORY_CHANGE") ? (
-            <Labelled label="Status kepegawaian">
-              <select value={draft.category} onChange={(event) => set({ category: event.target.value as ActionCategory })} className={field}>
-                {CONTRACT_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>{CATEGORY_LABEL[category]}</option>
-                ))}
-              </select>
-            </Labelled>
-          ) : null}
-
-          {actionType !== "TERMINATION" && actionType !== "PLACEMENT_END" && actionType !== "PLACEMENT"
-            && actionType !== "TRANSFER" && actionType !== "PROMOTION" && actionType !== "DEMOTION"
-            && draft.category !== "TETAP" ? (
-            <Labelled label="Kontrak selesai">
-              <input type="date" value={draft.termEndOn} onChange={(event) => set({ termEndOn: event.target.value })} className={field} />
-            </Labelled>
-          ) : null}
-
-          {actionType !== "PLACEMENT_END" && PLACEMENT_ACTIONS.includes(actionType) ? (
-            <>
-              <Labelled label={actionType === "HIRE" || actionType === "PLACEMENT" ? "Unit penempatan" : "Unit tujuan"}>
-                <select value={draft.unitId} onChange={(event) => set({ unitId: event.target.value })} className={field}>
-                  <option value="">Pilih unit</option>
-                  {units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>{unit.name}</option>
-                  ))}
-                </select>
-              </Labelled>
-              <Labelled label="Jabatan">
-                <select value={draft.positionId} onChange={(event) => set({ positionId: event.target.value })} className={field}>
-                  <option value="">Tanpa jabatan terdaftar</option>
-                  {positions.map((position) => (
-                    <option key={position.id} value={position.id}>{position.name}</option>
-                  ))}
-                </select>
-              </Labelled>
-              <Labelled label="Label jabatan">
-                <input value={draft.jobTitleLabel} onChange={(event) => set({ jobTitleLabel: event.target.value })} className={field} />
-              </Labelled>
-              {classifications.length > 0 ? (
-                <Labelled label="Klasifikasi jabatan">
-                  <select value={draft.jobClassificationCode} onChange={(event) => set({ jobClassificationCode: event.target.value })} className={field}>
-                    <option value="">Ikut klasifikasi kursi jabatan</option>
-                    {classifications.map((item) => (
-                      <option key={item.code} value={item.code}>{item.name} ({jobFamilyLabels[item.family]})</option>
-                    ))}
+            {actionType === "HIRE" ? (
+              <>
+                <Labelled label="Jenis kepegawaian">
+                  <select
+                    value={draft.staffType}
+                    onChange={(event) => set({ staffType: event.target.value as DraftState["staffType"] })}
+                    className={field}
+                  >
+                    <option value="">Belum ditentukan</option>
+                    <option value="PENDIDIK">Tenaga Pendidik</option>
+                    <option value="KEPENDIDIKAN">Tenaga Kependidikan</option>
                   </select>
-                  {classificationsTruncated ? (
-                    <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p>
-                  ) : null}
                 </Labelled>
-              ) : null}
-              {classificationsFailed ? (
-                <p className="text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Tindakan tetap bisa direkam; penempatan akan mengikuti klasifikasi kursi jabatan.</p>
-              ) : null}
-            </>
-          ) : null}
+              </>
+            ) : null}
 
-          {actionType === "PLACEMENT" ? (
-            <label className="flex items-center gap-2 self-end text-sm font-semibold text-foreground">
-              <input
-                type="checkbox"
-                checked={draft.additionalDuty}
-                onChange={(event) => set({ additionalDuty: event.target.checked })}
-              />
-              Tugas tambahan (penempatan utama tetap)
-            </label>
-          ) : null}
+            {requirement ? (
+              <div className="sm:col-span-2">
+                <Labelled label={requirement.kind === "PERJANJIAN_KERJA" ? "Perjanjian Kerja" : "Surat Keputusan"}>
+                  <DecisionDocumentPicker
+                    kind={requirement.kind}
+                    skType={requirement.skType as SkType | undefined}
+                    employeeId={employeeId}
+                    value={document}
+                    label={requirement.kind === "PERJANJIAN_KERJA" ? "Cari Perjanjian Kerja" : "Cari Surat Keputusan"}
+                    onChange={(picked) => {
+                      setDocument(picked);
+                      set({ documentId: picked?.id ?? "" });
+                    }}
+                  />
+                </Labelled>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {requirement.hint} Dokumen dicatat di menu Pegawai → Perjanjian Kerja &amp; SK.
+                </p>
+              </div>
+            ) : null}
 
-          {actionType === "TRANSFER" || actionType === "PROMOTION" || actionType === "DEMOTION" ? (
-            <Labelled label={actionType === "DEMOTION" ? "Alasan (wajib)" : "Alasan"}>
-              <select
-                value={draft.careerReasonCode}
-                onChange={(event) => set({ careerReasonCode: event.target.value as CareerReasonCode })}
-                className={field}
-              >
-                <option value="">Pilih alasan</option>
-                {Object.entries(CAREER_REASON_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </Labelled>
-          ) : null}
-
-          {actionType === "HIRE" ? (
-            <>
-              <Labelled label="Jenis kepegawaian">
-                <select
-                  value={draft.staffType}
-                  onChange={(event) => set({ staffType: event.target.value as DraftState["staffType"] })}
-                  className={field}
-                >
-                  <option value="">Belum ditentukan</option>
-                  <option value="PENDIDIK">Tenaga Pendidik</option>
-                  <option value="KEPENDIDIKAN">Tenaga Kependidikan</option>
-                </select>
-              </Labelled>
-            </>
-          ) : null}
-
-          {requirement ? (
             <div className="sm:col-span-2">
-              <Labelled label={requirement.kind === "PERJANJIAN_KERJA" ? "Perjanjian Kerja" : "Surat Keputusan"}>
-                <DecisionDocumentPicker
-                  kind={requirement.kind}
-                  skType={requirement.skType as SkType | undefined}
-                  employeeId={employeeId}
-                  value={document}
-                  label={requirement.kind === "PERJANJIAN_KERJA" ? "Cari Perjanjian Kerja" : "Cari Surat Keputusan"}
-                  onChange={(picked) => {
-                    setDocument(picked);
-                    set({ documentId: picked?.id ?? "" });
-                  }}
-                />
+              <Labelled label="Catatan (opsional; wajib untuk tindakan yang berlaku mundur)">
+                <input value={draft.reasonNote} onChange={(event) => set({ reasonNote: event.target.value })} className={field} />
               </Labelled>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {requirement.hint} Dokumen dicatat di menu Pegawai → Perjanjian Kerja &amp; SK.
-              </p>
             </div>
-          ) : null}
 
-          <div className="sm:col-span-2">
-            <Labelled label="Catatan (opsional; wajib untuk tindakan yang berlaku mundur)">
-              <input value={draft.reasonNote} onChange={(event) => set({ reasonNote: event.target.value })} className={field} />
-            </Labelled>
-          </div>
-
-          <div className="sm:col-span-2 flex flex-wrap gap-2">
-            <button type="submit" className={quietButton} disabled={busy}>
-              {busy && !preview ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Periksa
-            </button>
-            <button type="button" className={quietButton} onClick={onClose}>Batal</button>
-          </div>
-        </form>
-
-        {preview ? (
-          <section className="mt-5 rounded-2xl border border-border/70 bg-surface p-4" aria-label="Ringkasan tindakan">
-            <h3 className="text-sm font-bold text-brand-heading">Dari → Menjadi</h3>
-            <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs font-semibold text-muted-foreground">Dari</dt>
-                <dd className="text-sm font-semibold text-foreground">{summaryLine(preview.previous)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold text-muted-foreground">Menjadi</dt>
-                <dd className="text-sm font-semibold text-foreground">{summaryLine(preview.next)}</dd>
-              </div>
-            </dl>
-
-            {preview.structureNote ? (
-              <p className="mt-3 rounded-xl border border-border/70 bg-surface-raised p-3 text-sm text-muted-foreground">
-                {preview.structureNote}
-              </p>
-            ) : null}
-
-            {preview.accountDeactivation.willDeactivate ? (
-              <p className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-warning-ink">
-                Akun login HCIS pegawai ini akan dinonaktifkan otomatis mulai {formatDate(preview.accountDeactivation.onDate)}.
-                Akses sementara hanya dapat diberikan oleh admin dengan batas waktu.
-              </p>
-            ) : null}
-
-            {needsAcknowledgement ? (
-              <div className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-warning-ink">
-                <ul className="list-disc space-y-1 pl-5">
-                  {preview.warnings.map((warning) => (
-                    <li key={warning}>
-                      <AlertTriangle className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
-                      {WARNING_LABEL[warning] ?? warning}
-                    </li>
-                  ))}
-                </ul>
-                <label className="mt-2 flex items-center gap-2 font-semibold">
-                  <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
-                  Saya sudah memeriksa
-                </label>
-              </div>
-            ) : null}
-
-            <button
-              type="button"
-              className={`${primaryButton} mt-4`}
-              disabled={busy || (needsAcknowledgement && !acknowledged)}
-              onClick={() => void save()}
-            >
-              {busy ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Simpan
-            </button>
-          </section>
-        ) : null}
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
+              <button type="submit" className={primaryButton} disabled={busy}>
+                {busy ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Periksa
+              </button>
+              <button type="button" className={quietButton} onClick={onClose}>Batal</button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
+  );
+}
+
+/** UX-FLOW-001 step 2: "Dari → Menjadi", warnings to acknowledge, and the save button. */
+export function ActionReview({
+  preview,
+  acknowledged,
+  busy,
+  onAcknowledge,
+  onBack,
+  onSave,
+}: {
+  preview: EmploymentActionPreview;
+  acknowledged: boolean;
+  busy: boolean;
+  onAcknowledge: (value: boolean) => void;
+  onBack: () => void;
+  onSave: () => void;
+}) {
+  const needsAcknowledgement = preview.warnings.length > 0;
+  return (
+    <section className="mt-4 rounded-2xl border border-border/70 bg-surface p-4" aria-label="Ringkasan tindakan">
+      <h3 className="text-sm font-bold text-brand-heading">Dari → Menjadi</h3>
+      <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">Dari</dt>
+          <dd className="text-sm font-semibold text-foreground">{summaryLine(preview.previous)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">Menjadi</dt>
+          <dd className="text-sm font-semibold text-foreground">{summaryLine(preview.next)}</dd>
+        </div>
+      </dl>
+
+      {preview.structureNote ? (
+        <p className="mt-3 rounded-xl border border-border/70 bg-surface-raised p-3 text-sm text-muted-foreground">
+          {preview.structureNote}
+        </p>
+      ) : null}
+
+      {preview.accountDeactivation.willDeactivate ? (
+        <p className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-warning-ink">
+          Akun login HCIS pegawai ini akan dinonaktifkan otomatis mulai {formatDate(preview.accountDeactivation.onDate)}.
+          Akses sementara hanya dapat diberikan oleh admin dengan batas waktu.
+        </p>
+      ) : null}
+
+      {needsAcknowledgement ? (
+        <div className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-warning-ink">
+          <ul className="list-disc space-y-1 pl-5">
+            {preview.warnings.map((warning) => (
+              <li key={warning}>
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
+                {WARNING_LABEL[warning] ?? warning}
+              </li>
+            ))}
+          </ul>
+          <label className="mt-2 flex items-center gap-2 font-semibold">
+            <input type="checkbox" checked={acknowledged} onChange={(event) => onAcknowledge(event.target.checked)} />
+            Saya sudah memeriksa
+          </label>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+        <button type="button" className={`${quietButton} inline-flex items-center justify-center gap-1`} disabled={busy} onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Ubah data
+        </button>
+        <button
+          type="button"
+          className={primaryButton}
+          disabled={busy || (needsAcknowledgement && !acknowledged)}
+          onClick={onSave}
+        >
+          {busy ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+          Simpan
+        </button>
+      </div>
+    </section>
   );
 }

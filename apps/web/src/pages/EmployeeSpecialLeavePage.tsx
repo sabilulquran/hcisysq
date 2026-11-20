@@ -26,7 +26,7 @@ import {
 } from "@/lib/specialLeave";
 
 const STEPS = ["pilih", "isi", "periksa", "selesai"] as const;
-const STEP_LABELS = ["Pilih kondisi", "Isi data", "Periksa", "Selesai"] as const;
+const STEP_LABELS = ["Pilih", "Isi data", "Periksa", "Selesai"] as const;
 
 function initials(name: string) {
   return name

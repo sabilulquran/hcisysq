@@ -29,7 +29,7 @@ import {
 } from "@/lib/plannedLeave";
 
 const STEPS = ["pilih", "isi", "periksa", "selesai"] as const;
-const STEP_LABELS = ["Pilih keperluan", "Isi data", "Periksa", "Selesai"] as const;
+const STEP_LABELS = ["Pilih", "Isi data", "Periksa", "Selesai"] as const;
 
 function initials(name: string) {
   return name

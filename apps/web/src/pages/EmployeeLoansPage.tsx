@@ -1,13 +1,15 @@
 // LOAN-001 employee surface: request a loan, follow its approval, watch the schedule and the
 // balance, cancel before disbursement. Spec: docs/domain/employee-loans.md.
 
-import { HandCoins, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronRight, HandCoins, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { LoanDetailPanel } from "@/components/loans/LoanDetailPanel";
 import { PaginationBar } from "@/components/PaginationBar";
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -28,10 +30,16 @@ import {
   type LoanSummary,
   type Pagination,
 } from "@/lib/loans";
+import { useWizardStep } from "@/lib/useWizardStep";
+
+// UX-FLOW-001: one step per screen. The step lives in ?langkah= so Back goes one step back.
+const STEPS = ["isi", "periksa", "selesai"] as const;
+const STEP_LABELS = ["Isi data", "Periksa", "Selesai"] as const;
 
 const emptyForm = () => ({ principal: "", tenorMonths: 6, purpose: "" });
 
 export function EmployeeLoansPage() {
+  const { step, index, goTo } = useWizardStep(STEPS);
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [items, setItems] = useState<LoanSummary[]>([]);
   const [page, setPage] = useState(1);
@@ -48,6 +56,7 @@ export function EmployeeLoansPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<{ id: string; message: string } | null>(null);
 
   const user = useMemo(() => employeeShellUser(employee), [employee]);
   const principal = parseRupiahInput(form.principal);
@@ -102,6 +111,7 @@ export function EmployeeLoansPage() {
       await action();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : fallback);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setBusy(false);
     }
@@ -110,22 +120,28 @@ export function EmployeeLoansPage() {
   const check = () => run(async () => {
     if (principal === null) throw new Error("Tulis pokok pinjaman dalam rupiah tanpa koma, misalnya 1.500.000.");
     setPreview(await previewLoan(principal, form.tenorMonths));
+    goTo("periksa");
   }, "Jadwal dan penyetuju tidak dapat diperiksa.");
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const submit = () => {
     void run(async () => {
       if (principal === null) throw new Error("Tulis pokok pinjaman dalam rupiah tanpa koma, misalnya 1.500.000.");
       const created = await submitLoan({ principal, tenorMonths: form.tenorMonths, purpose: form.purpose.trim(), idempotencyKey });
       setForm(emptyForm());
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
-      setNotice("Pinjaman diajukan dan sedang menunggu persetujuan.");
+      setSubmitted({ id: created.id, message: "Pinjaman diajukan dan sedang menunggu persetujuan." });
+      goTo("selesai", { replace: true });
       setPage(1);
       await loadList(1);
-      showLoan(created.id);
     }, "Pinjaman tidak dapat diajukan.");
   };
+
+  // A later step cannot open without the data of the step before it (refresh, direct link).
+  useEffect(() => {
+    if (step === "periksa" && (!preview || principal === null)) goTo("isi", { replace: true });
+    if (step === "selesai" && !submitted) goTo("isi", { replace: true });
+  }, [step, preview, principal, submitted, goTo]);
 
   const cancel = (loan: LoanDetail) => {
     const reason = window.prompt("Alasan pembatalan (minimal 5 karakter)");
@@ -150,34 +166,55 @@ export function EmployeeLoansPage() {
         </p>
 
         {error && !loanId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice && !loanId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {notice && !loanId && step === "isi" ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
-        <form onSubmit={submit} className="mt-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-          <h2 className="text-sm font-bold text-brand-heading">Ajukan pinjaman</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-semibold text-brand-heading">
-              Pokok pinjaman (Rp)
-              <input required inputMode="numeric" autoComplete="off" value={form.principal} placeholder="Contoh: 1.500.000"
-                onChange={(event) => update({ principal: event.target.value })} className={input} />
-              {form.principal && principal === null ? (
-                <span className="mt-1 block text-xs font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
-              ) : null}
-            </label>
-            <label className="text-sm font-semibold text-brand-heading">
-              Lama cicilan
-              <select value={form.tenorMonths} onChange={(event) => update({ tenorMonths: Number(event.target.value) })} className={input}>
-                {TENOR_OPTIONS.map((months) => <option key={months} value={months}>{months} bulan</option>)}
-              </select>
-            </label>
-            <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
-              Keperluan
-              <textarea required minLength={10} maxLength={1000} rows={3} value={form.purpose}
-                placeholder="Contoh: biaya perbaikan atap rumah"
-                onChange={(event) => update({ purpose: event.target.value })}
-                className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal text-brand-heading" />
-            </label>
-          </div>
-          {preview ? (
+        <WizardSteps steps={STEP_LABELS} current={index} />
+
+        {step === "isi" ? (
+          <form onSubmit={(event) => { event.preventDefault(); void check(); }} className="mt-5 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+            <h2 className="text-sm font-bold text-brand-heading">Ajukan pinjaman</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-brand-heading">
+                Pokok pinjaman (Rp)
+                <input required inputMode="numeric" autoComplete="off" value={form.principal} placeholder="Contoh: 1.500.000"
+                  onChange={(event) => update({ principal: event.target.value })} className={input} />
+                {form.principal && principal === null ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
+                ) : null}
+              </label>
+              <label className="text-sm font-semibold text-brand-heading">
+                Lama cicilan
+                <select value={form.tenorMonths} onChange={(event) => update({ tenorMonths: Number(event.target.value) })} className={input}>
+                  {TENOR_OPTIONS.map((months) => <option key={months} value={months}>{months} bulan</option>)}
+                </select>
+              </label>
+              <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
+                Keperluan
+                <textarea required minLength={10} maxLength={1000} rows={3} value={form.purpose}
+                  placeholder="Contoh: biaya perbaikan atap rumah"
+                  onChange={(event) => update({ purpose: event.target.value })}
+                  className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal text-brand-heading" />
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button type="submit" disabled={busy || principal === null || form.purpose.trim().length < 10}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50 sm:w-auto">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Lihat cicilan dan penyetuju
+                {busy ? null : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {step === "periksa" && preview && principal !== null ? (
+          <section className="mt-5 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+            <h2 className="text-sm font-bold text-brand-heading">Ringkasan sebelum dikirim</h2>
+            <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+              <div><dt className="text-xs text-muted-foreground">Pokok pinjaman</dt><dd className="mt-0.5 font-semibold tabular-nums text-brand-heading">{formatRupiah(principal)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Lama cicilan</dt><dd className="mt-0.5 font-semibold text-brand-heading">{form.tenorMonths} bulan</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Keperluan</dt><dd className="mt-0.5 whitespace-pre-line break-words text-brand-heading">{form.purpose.trim()}</dd></div>
+            </dl>
             <div className="mt-4 grid gap-3 rounded-2xl border border-border/70 bg-surface p-3 text-sm sm:grid-cols-2">
               <div>
                 <p className="font-semibold text-brand-heading">Perkiraan cicilan</p>
@@ -193,23 +230,38 @@ export function EmployeeLoansPage() {
               <div>
                 <p className="font-semibold text-brand-heading">Penyetuju</p>
                 <ol className="mt-1 list-decimal pl-5 text-muted-foreground">
-                  {preview.approvalChain.map((step) => <li key={step.employeeId}>{step.name} ({approverRoleLabel(step.sources)})</li>)}
+                  {preview.approvalChain.map((approver) => <li key={approver.employeeId}>{approver.name} ({approverRoleLabel(approver.sources)})</li>)}
                 </ol>
               </div>
             </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" disabled={busy || principal === null} onClick={() => void check()}
-              className="min-h-11 rounded-xl border border-border px-4 text-sm font-bold text-brand-heading disabled:opacity-50">
-              Lihat cicilan dan penyetuju
-            </button>
-            <button type="submit" disabled={busy || principal === null || form.purpose.trim().length < 10}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null} Kirim pengajuan
-            </button>
-          </div>
-        </form>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+              <button type="button" disabled={busy} onClick={() => goTo("isi")}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Ubah data
+              </button>
+              <button type="button" disabled={busy || form.purpose.trim().length < 10} onClick={submit}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                Kirim pengajuan
+              </button>
+            </div>
+          </section>
+        ) : null}
 
+        {step === "selesai" && submitted ? (
+          <WizardDone title="Pengajuan terkirim" message={submitted.message}>
+            <button type="button" onClick={() => showLoan(submitted.id)}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground">
+              Lihat detail pinjaman
+            </button>
+            <button type="button" onClick={() => { setSubmitted(null); goTo("isi", { replace: true }); }}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-5 text-sm font-semibold">
+              Kembali ke Pinjaman
+            </button>
+          </WizardDone>
+        ) : null}
+
+        {step === "isi" ? (
         <section className="mt-6 overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
           <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Pinjaman saya</h2>
           {loading ? (
@@ -241,6 +293,7 @@ export function EmployeeLoansPage() {
             <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={changePage} />
           ) : null}
         </section>
+        ) : null}
 
         {loanId ? (
           <DetailDialog title="Detail pinjaman" onClose={closeLoan}>

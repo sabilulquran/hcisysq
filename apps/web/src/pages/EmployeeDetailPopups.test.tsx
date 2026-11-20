@@ -21,6 +21,16 @@ import { EmployeeTripsPage } from "@/pages/EmployeeTripsPage";
 import { EmployeeWorkArrangementsPage } from "@/pages/EmployeeWorkArrangementsPage";
 import type { MeetingDetail } from "@/lib/meetings";
 
+// UX-FLOW-001 wizards keep their step in the router search; this static render has no router, so
+// the step hook reads ?langkah= straight from the stubbed window location.
+vi.mock("@/lib/useWizardStep", () => ({
+  useWizardStep: (steps: readonly string[]) => {
+    const raw = new URLSearchParams(window.location.search).get("langkah");
+    const step = raw && steps.includes(raw) ? raw : steps[0];
+    return { step, index: steps.indexOf(step as string), goTo: () => undefined };
+  },
+}));
+
 function renderAt(path: string, element: ReactElement) {
   const url = new URL(path, "https://hcis.example.test");
   vi.stubGlobal("window", {

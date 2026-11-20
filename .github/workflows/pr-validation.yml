@@ -113,6 +113,26 @@ jobs:
           psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_auth011_permissions_test -v ON_ERROR_STOP=1 \
             -c 'CREATE EXTENSION IF NOT EXISTS btree_gist;'
 
+      # OPS-MI8-REL-001 / TRIP-002: the release gate is a shell script over SQL, so it is tested
+      # against a real PostgreSQL in its own empty database, which it migrates into disposable
+      # schemas. Its fixture resets append-only tables, which needs a superuser session.
+      - name: Create empty Mi8 release gate database
+        env:
+          PGPASSWORD: hcis_ci_password
+        run: |
+          psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_pr -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE hcis_mi8_gate_test;'
+          psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_mi8_gate_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS btree_gist;'
+
+      - name: Test the TRIP-002 release gate against PostgreSQL
+        env:
+          HCIS_GATE_TEST_DATABASE_URL: postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_mi8_gate_test
+        run: bash scripts/mi8/test-trip-002-gate.sh
+
+      - name: Test the Mi8 release lock
+        run: sh scripts/mi8/test-release-lock.sh
+
       - name: Test
         env:
           HCIS_AUTH011_TEST_DATABASE_URL: postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_auth011_permissions_test

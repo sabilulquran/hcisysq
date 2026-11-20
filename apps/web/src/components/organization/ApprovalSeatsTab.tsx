@@ -9,6 +9,7 @@ import {
   APPROVAL_SEAT_STATE_HINTS,
   APPROVAL_SEAT_STATE_LABELS,
   approvalSeatSummary,
+  dayAfter,
   endApprovalSeatMapping,
   getApprovalSeats,
   mapApprovalSeat,
@@ -39,6 +40,7 @@ const STATE_TONES: Readonly<Record<ApprovalSeatState, string>> = {
   POSITION_NOT_IN_FORCE: "border-danger-line bg-danger-soft text-danger-ink",
   VACANT: "border-danger-line bg-danger-soft text-danger-ink",
   SEAT_HELD_BY_REQUESTER: "border-info-line bg-info-soft text-info-ink",
+  ACCOUNT_CAPABILITY_MISSING: "border-danger-line bg-danger-soft text-danger-ink",
 };
 
 function today(): string {
@@ -58,11 +60,24 @@ interface MapFormState {
   effectiveFrom: string;
 }
 
+/**
+ * F3: ending a mapping is shown before it happens, not reported after. HC chooses the last day
+ * too — "HC decides" has to mean deciding when, not only whether.
+ */
+interface EndFormState {
+  mappingId: string;
+  seatKey: ApprovalSeatKey;
+  seatLabel: string;
+  lastDay: string;
+  reason: string;
+}
+
 export function ApprovalSeatsTab() {
   const [readiness, setReadiness] = useState<ApprovalSeatReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<MapFormState | null>(null);
+  const [endForm, setEndForm] = useState<EndFormState | null>(null);
   const [targets, setTargets] = useState<ApprovalSeatTarget[]>([]);
   const [targetQuery, setTargetQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,30 +132,41 @@ export function ApprovalSeatsTab() {
     }
   }
 
-  async function endMapping(seat: ApprovalSeatRow) {
+  function openEndForm(seat: ApprovalSeatRow) {
     const mapping = readiness?.history.find(
       (item) => item.seatKey === seat.seatKey && item.effectiveTo === null,
     );
     if (!mapping) return;
-    const reason = window.prompt(
-      `Alasan mengakhiri pemetaan kursi ${APPROVAL_SEAT_LABELS[seat.seatKey]} (minimal 3 karakter).`
-      + "\n\nSetelah ini kursi tersebut kosong, dan tidak ada kasbon yang dapat diajukan siapa pun"
-      + " sampai kursi itu dipetakan lagi.",
-    );
-    if (!reason || reason.trim().length < 3) return;
-    setBusy(true);
+    setEndForm({
+      mappingId: mapping.id,
+      seatKey: seat.seatKey,
+      seatLabel: mapping.seatLabel,
+      // The earliest the server allows: ending today means the seat still explains today.
+      lastDay: today(),
+      reason: "",
+    });
+    setFormError(null);
     setNotice(null);
+  }
+
+  async function submitEnd() {
+    if (!endForm || endForm.reason.trim().length < 3) return;
+    setBusy(true);
+    setFormError(null);
     try {
-      const result = await endApprovalSeatMapping({ id: mapping.id, reason: reason.trim() });
+      const result = await endApprovalSeatMapping({
+        id: endForm.mappingId, reason: endForm.reason.trim(), lastDay: endForm.lastDay,
+      });
+      setEndForm(null);
       setNotice(
-        `Pemetaan kursi ${APPROVAL_SEAT_LABELS[seat.seatKey]} berakhir pada ${result.effectiveTo}.`
+        `Pemetaan kursi ${APPROVAL_SEAT_LABELS[endForm.seatKey]} berakhir pada ${result.effectiveTo}.`
         + (result.stopsEmployeeLoans
-          ? " Mulai hari berikutnya tidak ada kasbon yang dapat diajukan sampai kursi itu dipetakan lagi."
+          ? ` Mulai ${dayAfter(result.effectiveTo)} tidak ada kasbon yang dapat diajukan sampai kursi itu dipetakan lagi.`
           : ""),
       );
       await load();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setFormError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -241,7 +267,7 @@ export function ApprovalSeatsTab() {
                       type="button"
                       className="underline disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => void endMapping(seat)}
+                      onClick={() => openEndForm(seat)}
                     >
                       Akhiri pemetaan
                     </button>
@@ -265,6 +291,68 @@ export function ApprovalSeatsTab() {
           </tbody>
         </table>
       </div>
+
+      {endForm ? (
+        <form
+          className="space-y-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"
+          onSubmit={(event) => { event.preventDefault(); void submitEnd(); }}
+        >
+          <h3 className="font-bold">Akhiri pemetaan kursi {APPROVAL_SEAT_LABELS[endForm.seatKey]}</h3>
+          {/* D-18: the consequence is shown before the button is pressed, not reported after. */}
+          <p className="leading-5">
+            Kursi ini sekarang dipetakan ke <strong>{endForm.seatLabel}</strong>. Setelah pemetaan
+            berakhir, kursi {APPROVAL_SEAT_LABELS[endForm.seatKey]} menjadi kosong, dan mulai{" "}
+            <strong>{dayAfter(endForm.lastDay)}</strong> <strong>tidak ada kasbon yang dapat
+            diajukan siapa pun</strong> — bukan hanya pengajuan satu orang — sampai kursi itu
+            dipetakan lagi. Kasbon yang sudah berjalan tidak terpengaruh: langkahnya sudah
+            disnapshot saat pengajuan.
+          </p>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold">Berlaku terakhir pada</span>
+            <input
+              type="date"
+              className="rounded-xl border border-border px-3 py-2 text-ink"
+              value={endForm.lastDay}
+              min={today()}
+              onChange={(event) => setEndForm({ ...endForm, lastDay: event.target.value })}
+              required
+            />
+            <span className="mt-1 block text-xs">
+              Paling awal hari ini: pemetaan yang berlaku hari ini sudah menjelaskan kasbon yang
+              diajukan hari ini, jadi tidak dapat dinyatakan tidak berlaku surut.
+            </span>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold">Alasan (minimal 3 karakter)</span>
+            <input
+              type="text"
+              className="w-full rounded-xl border border-border px-3 py-2 text-ink"
+              value={endForm.reason}
+              onChange={(event) => setEndForm({ ...endForm, reason: event.target.value })}
+              minLength={3}
+              required
+              placeholder="Misalnya: pergantian jabatan"
+            />
+          </label>
+
+          {formError ? <p role="alert" className="font-bold">{formError}</p> : null}
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="rounded-xl border border-danger-line px-3 py-2 font-bold disabled:opacity-50"
+              disabled={busy || endForm.reason.trim().length < 3}
+            >
+              Akhiri pemetaan
+            </button>
+            <button type="button" className="underline" onClick={() => { setEndForm(null); setFormError(null); }}>
+              Batal
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       {form ? (
         <form

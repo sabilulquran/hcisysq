@@ -37,7 +37,8 @@ export type ApprovalSeatState =
   | "UNMAPPED"
   | "POSITION_NOT_IN_FORCE"
   | "VACANT"
-  | "SEAT_HELD_BY_REQUESTER";
+  | "SEAT_HELD_BY_REQUESTER"
+  | "ACCOUNT_CAPABILITY_MISSING";
 
 export interface ApprovalSeatRow {
   seatKey: ApprovalSeatKey;
@@ -93,6 +94,7 @@ export const APPROVAL_SEAT_STATE_LABELS: Readonly<Record<ApprovalSeatState, stri
   POSITION_NOT_IN_FORCE: "Jabatannya tidak berlaku lagi",
   VACANT: "Jabatannya kosong",
   SEAT_HELD_BY_REQUESTER: "Diduduki pemohon",
+  ACCOUNT_CAPABILITY_MISSING: "Akunnya belum berwenang",
 };
 
 export const APPROVAL_SEAT_STATE_HINTS: Readonly<Record<ApprovalSeatState, string>> = {
@@ -101,6 +103,10 @@ export const APPROVAL_SEAT_STATE_HINTS: Readonly<Record<ApprovalSeatState, strin
   POSITION_NOT_IN_FORCE: "Jabatan yang dipetakan sudah tidak ada di struktur yang berlaku. Akhiri pemetaan ini lalu petakan ke jabatan yang benar.",
   VACANT: "Jabatannya ada tetapi belum ada yang menduduki. Isi jabatannya di Struktur Organisasi, atau tunjuk pelaksana tugas.",
   SEAT_HELD_BY_REQUESTER: "Pegawai yang ditanyakan menduduki kursi ini, sehingga kasbonnya sendiri tidak dapat melewati rantai ini.",
+  ACCOUNT_CAPABILITY_MISSING:
+    "Jabatannya diduduki akun Organ Yayasan, tetapi akun itu belum aktif atau belum diberi peran"
+    + " penyetuju pinjaman (`governance_loan_approver`). Selama itu setiap kasbon yang sampai ke"
+    + " kursi ini ditolak. Perannya diberikan lewat kanal SQ Hub, bukan dari layar ini.",
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -186,6 +192,13 @@ export async function endApprovalSeatMapping(input: {
   return readJson<ApprovalSeatEnded>(response);
 }
 
+/** The day after `lastDay`: the first day a seat whose mapping ended is no longer mapped. */
+export function dayAfter(date: string): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
 /**
  * The one sentence the screen leads with. Production starts with all five seats unmapped, which is
  * the state most likely to confuse, so it is named rather than left to be counted off a table.
@@ -194,7 +207,10 @@ export function approvalSeatSummary(readiness: ApprovalSeatReadiness): string {
   if (!readiness.structurePublished) {
     return "Belum ada struktur organisasi yang berlaku, sehingga kursi persetujuan belum dapat dipetakan.";
   }
-  if (readiness.ready) return "Kelima kursi siap. Rantai persetujuan kasbon dapat berjalan.";
+  // F2: this screen judges the five seats and nothing else. The chain's first rung is the
+  // requester's own unit approver, which is not a seat and is never looked at here, so saying
+  // "the chain can run" would be claiming more than was checked.
+  if (readiness.ready) return "Kelima kursi siap. Rantai kasbon tidak terhalang di sisi kursi.";
   if (readiness.neverMapped.length === APPROVAL_SEAT_KEYS.length) {
     return "Kelima kursi belum pernah dipetakan. Selama itu, tidak ada kasbon yang dapat diajukan siapa pun.";
   }

@@ -12,13 +12,14 @@ import {
   loadApprovalSeatMappings,
   type ApprovalSeatKey,
 } from "./approval-seats.js";
+import { LOAN_GOVERNANCE_CAPABILITY } from "./domain.js";
 import { effectiveDateOrToday, jakartaBusinessDate } from "./jakarta-date.js";
 import { PostgresOrganizationRepository } from "./repository.js";
 import { searchPositions } from "./structure-lookups.js";
 
 /**
  * LOAN-002 / APR-002 — Pengaturan > Kursi persetujuan. The write path for the approval seat
- * registry (migration 0168), modelled line for line on ATT-011's Pengaturan > Aturan lembur
+ * registry (migration 0177), modelled line for line on ATT-011's Pengaturan > Aturan lembur
  * (`attendance/overtime-rule-routes.ts`): everything needs `organization.manage`, a mapping is
  * added and ended but never edited or deleted (the table's own trigger refuses it too), and both
  * are audited in `access_audit_events`.
@@ -141,13 +142,50 @@ export function registerApprovalSeatRoutes(app: FastifyInstance, pool: Pool, man
     return { employeeId, accountIds: accounts.rows.map((row) => row.id) };
   }
 
+  /**
+   * F2 (§16.6 prasyarat 2): which organ accounts could actually decide a loan step on `asOf` —
+   * active, and holding `loans.governance.approve` at organization scope. Holding the seat is
+   * never the capability (ORG-013-1), and the role is granted through the AUTH-014 channel, so a
+   * seat can be perfectly mapped and occupied while every kasbon still fails.
+   */
+  async function capableAccounts(asOf: string, accountIds: readonly string[]): Promise<Set<string>> {
+    if (accountIds.length === 0) return new Set();
+    const rows = await pool.query<{ id: string }>(
+      `SELECT account.id
+         FROM accounts account
+        WHERE account.id = ANY($1::uuid[])
+          AND account.principal_type = 'FOUNDATION_BOARD'
+          AND account.employee_id IS NULL
+          AND account.status = 'active'
+          AND EXISTS (
+            SELECT 1
+              FROM account_role_assignments assignment
+              JOIN role_permissions grant_row ON grant_row.role_id = assignment.role_id
+             WHERE assignment.account_id = account.id
+               AND assignment.scope_type = 'organization'
+               AND grant_row.permission_key = $2
+               AND (assignment.starts_on IS NULL OR assignment.starts_on <= $3::date)
+               AND (assignment.ends_on IS NULL OR assignment.ends_on >= $3::date)
+          )`,
+      [[...accountIds], LOAN_GOVERNANCE_CAPABILITY, asOf],
+    );
+    return new Set(rows.rows.map((row) => row.id));
+  }
+
   async function readiness(asOf: string, employeeId?: string | undefined) {
     const [mappings, snapshot, requester] = await Promise.all([
       loadApprovalSeatMappings(pool, asOf),
       repository.loadEffectiveSnapshot(asOf),
       requesterFor(employeeId),
     ]);
-    const items = approvalSeatReadiness(mappings, snapshot, asOf, requester);
+    // Only the accounts sitting in a mapped seat matter, so this asks about those and no others.
+    const mappedPositions = new Set(mappings.map((item) => item.positionKey));
+    const seatAccountIds = (snapshot?.incumbencies ?? [])
+      .filter((item) => mappedPositions.has(item.positionKey) && item.accountId)
+      .map((item) => item.accountId!);
+    const items = approvalSeatReadiness(
+      mappings, snapshot, asOf, requester, await capableAccounts(asOf, seatAccountIds),
+    );
     return {
       asOf,
       structurePublished: snapshot !== null,
@@ -334,8 +372,16 @@ export function registerApprovalSeatRoutes(app: FastifyInstance, pool: Pool, man
           throw new ApprovalSeatWriteError(409, "APPROVAL_SEAT_ALREADY_ENDED", "Pemetaan ini sudah diakhiri.");
         }
         seatKey = mapping.seatKey;
-        // Ending never rewrites the past: a chain that already resolved keeps the seat it used.
-        const earliest = [addDays(mapping.effectiveFrom, -1), addDays(today, -1)].sort().at(-1)!;
+        // F1: the earliest end is TODAY, not yesterday. A mapping that is in force today has
+        // already explained every chain resolved today — a kasbon submitted at nine this morning
+        // resolved against it — so ending it at `today - 1` would make the registry say the seat
+        // was not in force on a day it demonstrably was. That is the same backdating the mapping
+        // route refuses, arriving through the other door. The mapping stops applying from the day
+        // after `lastDay`, which is the soonest it can stop without rewriting anything.
+        //
+        // A mapping that has not started yet keeps its "never applied" form: `effectiveFrom - 1`
+        // is still >= today, so it wins the max below and the period stays empty.
+        const earliest = [addDays(mapping.effectiveFrom, -1), today].sort().at(-1)!;
         lastDay = body.data.lastDay ?? earliest;
         if (lastDay < earliest) {
           throw new ApprovalSeatWriteError(422, "APPROVAL_SEAT_END_TOO_EARLY",

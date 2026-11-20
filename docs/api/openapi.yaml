@@ -2057,7 +2057,7 @@ paths:
                           enum: [KEPALA_KEUANGAN, DIREKTUR, KETUA_YAYASAN, BENDAHARA_YAYASAN, PEMBINA]
                         state:
                           type: string
-                          enum: [READY, UNMAPPED, POSITION_NOT_IN_FORCE, VACANT, SEAT_HELD_BY_REQUESTER]
+                          enum: [READY, UNMAPPED, POSITION_NOT_IN_FORCE, VACANT, SEAT_HELD_BY_REQUESTER, ACCOUNT_CAPABILITY_MISSING]
                         positionKey: { type: [string, 'null'], format: uuid }
                         seatLabel: { type: [string, 'null'] }
                         positionTitle: { type: [string, 'null'] }
@@ -2187,7 +2187,11 @@ paths:
               required: [reason]
               properties:
                 lastDay:
-                  description: Last day the mapping still applies. Defaults to yesterday, or the day before it starts.
+                  description: >-
+                    Last day the mapping still applies; the mapping stops applying the day after.
+                    Defaults to today — a mapping in force today already explained today's chains,
+                    so it is never ended in the past. For a mapping that has not started, the
+                    default is the day before it starts, which leaves its period empty.
                   type: string
                   format: date
                 reason: { type: string, minLength: 3, maxLength: 1000 }

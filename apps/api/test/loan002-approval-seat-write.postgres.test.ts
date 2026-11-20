@@ -56,6 +56,7 @@ describe.skipIf(!allowed)("LOAN-002 approval seat write path (PostgreSQL)", () =
   let hcAccount = "";
   let plainAccount = "";
   /** The employee-held seat HC would map to Kepala Keuangan, and the account-held Ketua seat. */
+  let changeSetId = "";
   const financePosition = randomUUID();
   const chairPosition = randomUUID();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
@@ -105,7 +106,8 @@ describe.skipIf(!allowed)("LOAN-002 approval seat write path (PostgreSQL)", () =
     }
 
     // A published structure in force today: one unit holding an employee seat and an account seat.
-    const changeSet = randomUUID();
+    changeSetId = randomUUID();
+    const changeSet = changeSetId;
     const nodeKey = randomUUID();
     await client.query(
       `INSERT INTO organization_change_sets (id, name, effective_on, status, created_by_account_id, validated_at, published_at)
@@ -255,6 +257,90 @@ describe.skipIf(!allowed)("LOAN-002 approval seat write path (PostgreSQL)", () =
     const history = (await hc("GET", "/admin/organization/approval-seats")).json().history;
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ seatKey: "KEPALA_KEUANGAN", endReason: "Pergantian jabatan" });
+  });
+
+  it("F1: ending defaults to today, so the registry still explains what happened today", async () => {
+    // A mapping in force today has already explained every chain resolved today — a kasbon
+    // submitted this morning resolved against it. Defaulting to yesterday would make the registry
+    // say the seat was not in force on a day it demonstrably was, which is the same backdating the
+    // mapping route refuses, arriving through the other door.
+    const created = await map({});
+    const id = created.json().id as string;
+
+    const ended = await hc("POST", `/admin/organization/approval-seats/${id}/end`, { reason: "Pergantian jabatan" });
+    expect(ended.statusCode, ended.body).toBe(200);
+    expect(ended.json().effectiveTo).toBe(today);
+
+    const stored = await client.query<{ effectiveTo: string }>(
+      `SELECT effective_to::text AS "effectiveTo" FROM organization_approval_seats WHERE id = $1`,
+      [id],
+    );
+    expect(stored.rows[0]?.effectiveTo).toBe(today);
+    // Still in force today, so today's readiness is unchanged; it stops applying tomorrow.
+    const current = (await hc("GET", "/admin/organization/approval-seats")).json();
+    expect(current.items.find((item: { seatKey: string }) => item.seatKey === "KEPALA_KEUANGAN").state)
+      .not.toBe("UNMAPPED");
+    expect(ended.json().readiness.neverMapped).toContain("KEPALA_KEUANGAN");
+  });
+
+  it("F1: a mapping that never started still ends before it started", async () => {
+    // effective_from - 1 wins the max when the mapping has not begun, so "never applied" survives.
+    const future = addDays(today, 10);
+    const created = await map({ effectiveFrom: future });
+    const id = created.json().id as string;
+    const ended = await hc("POST", `/admin/organization/approval-seats/${id}/end`, { reason: "Salah pilih" });
+    expect(ended.statusCode, ended.body).toBe(200);
+    expect(ended.json().effectiveTo).toBe(addDays(future, -1));
+  });
+
+  it("F1: a last day before today is refused, whoever asks", async () => {
+    const created = await map({});
+    const id = created.json().id as string;
+    const tooEarly = await hc("POST", `/admin/organization/approval-seats/${id}/end`, {
+      lastDay: addDays(today, -1), reason: "Mundur sehari",
+    });
+    expect(tooEarly.statusCode, tooEarly.body).toBe(422);
+    expect(tooEarly.json().code).toBe("APPROVAL_SEAT_END_TOO_EARLY");
+    // HC may still choose a later day than the default; that is the decision the API is for.
+    const later = await hc("POST", `/admin/organization/approval-seats/${id}/end`, {
+      lastDay: addDays(today, 30), reason: "Berakhir akhir bulan depan",
+    });
+    expect(later.statusCode, later.body).toBe(200);
+    expect(later.json().effectiveTo).toBe(addDays(today, 30));
+  });
+
+  it("F2: a seat held by an organ account without the loan role is not READY", async () => {
+    // §16.6 prasyarat 2. Holding the seat is never the capability, and the role is granted through
+    // another channel entirely — so this is the likeliest rollout state, and the one where the
+    // screen saying "siap" would be worst.
+    const organ = randomUUID();
+    await client.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status, identity_issuer, identity_subject)
+       VALUES ($1, NULL, $2, 'FOUNDATION_BOARD', 'active', 'https://akun.example.invalid', $3)`,
+      [organ, `organ-${organ}@example.invalid`, `subject-${organ}`],
+    );
+    await client.query(
+      `INSERT INTO organization_incumbencies (id, change_set_id, position_key, employee_id, account_id, kind, effective_from)
+       VALUES ($1, $2, $3, NULL, $4, 'PRIMARY', '2026-01-01')`,
+      [randomUUID(), changeSetId, chairPosition, organ],
+    );
+    const mapped = await map({ seatKey: "KETUA_YAYASAN", positionKey: chairPosition });
+    expect(mapped.statusCode, mapped.body).toBe(201);
+
+    const seatOf = (body: { items: Array<{ seatKey: string; state: string }> }) =>
+      body.items.find((item) => item.seatKey === "KETUA_YAYASAN")!.state;
+    expect(seatOf((await hc("GET", "/admin/organization/approval-seats")).json()))
+      .toBe("ACCOUNT_CAPABILITY_MISSING");
+    expect((await hc("GET", "/admin/organization/approval-seats")).json().ready).toBe(false);
+
+    // Granting the role is what makes it ready — nothing about the seat itself changes.
+    const roleId = (await client.query("SELECT id FROM roles WHERE role_key = 'governance_loan_approver'")).rows[0].id;
+    await client.query(
+      `INSERT INTO account_role_assignments(id, account_id, role_id, scope_type, ends_on, reason)
+       VALUES ($1,$2,$3,'organization','2099-12-31','Synthetic SK LOAN-002')`,
+      [randomUUID(), organ, roleId],
+    );
+    expect(seatOf((await hc("GET", "/admin/organization/approval-seats")).json())).toBe("READY");
   });
 
   it("a seat whose position is in force but vacant reads VACANT, not UNMAPPED", async () => {

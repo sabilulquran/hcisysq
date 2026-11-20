@@ -152,6 +152,7 @@ export function EmployeeWorkArrangementsPage() {
     // Picking the same type again (after Back) keeps what was already filled in.
     if (!(typeChosen && type === form.type)) {
       setForm(emptyForm(type));
+      setAttempted(false);
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
     }
@@ -179,15 +180,33 @@ export function EmployeeWorkArrangementsPage() {
     }
   };
 
-  const check = () => run(async () => {
+  // UX-FLOW-001: tombol lanjut tetap aktif; syarat yang belum terpenuhi dijelaskan di isiannya.
+  const [attempted, setAttempted] = useState(false);
+  const focusFirstInvalid = () => {
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>("[aria-invalid='true']");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    });
+  };
+
+  const check = () => {
+    setAttempted(true);
+    if (!ready) {
+      focusFirstInvalid();
+      return Promise.resolve();
+    }
+    return run(async () => {
     setPreview(await previewArrangement(input()));
     goTo("periksa");
   }, "Pengajuan tidak dapat diperiksa.");
+  };
 
   const submit = () => {
     void run(async () => {
       const created = await submitArrangement({ ...input(), purpose: form.purpose.trim(), idempotencyKey });
       setForm(emptyForm(form.type));
+      setAttempted(false);
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
       setTypeChosen(false);
@@ -270,9 +289,13 @@ export function EmployeeWorkArrangementsPage() {
               {form.type !== "SCHEDULE_CHANGE" ? (
                 <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
                   {form.type === "FIELD_ASSIGNMENT" ? "Tempat tugas" : "Lokasi kerja"}
-                  <input required minLength={3} maxLength={200} value={form.location}
+                  <input required maxLength={200} value={form.location}
                     placeholder={form.type === "FIELD_ASSIGNMENT" ? "Contoh: SDIT Mitra Cibinong" : "Contoh: Rumah, Cibinong"}
+                    aria-invalid={attempted && form.location.trim().length < 3}
                     onChange={(event) => update({ location: event.target.value })} className={field} />
+                  {attempted && form.location.trim().length < 3 ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Tulis lokasi minimal 3 karakter.</span>
+                ) : null}
                 </label>
               ) : null}
               <label className="text-sm font-semibold text-brand-heading">
@@ -292,6 +315,7 @@ export function EmployeeWorkArrangementsPage() {
                 <div className="text-sm font-semibold text-brand-heading">
                   <label htmlFor="arrangement-shift">Shift tujuan</label>
                   <select id="arrangement-shift" required value={form.scheduleTemplateId}
+                    aria-invalid={attempted && !form.scheduleTemplateId}
                     onChange={(event) => update({ scheduleTemplateId: event.target.value })} className={field}
                     disabled={!schedule || schedule.current.state !== "scheduled"}>
                     <option value="">Pilih shift</option>
@@ -299,6 +323,9 @@ export function EmployeeWorkArrangementsPage() {
                       <option key={option.id} value={option.id}>{option.name} ({option.startTime}–{option.endTime})</option>
                     ))}
                   </select>
+                  {attempted && !form.scheduleTemplateId ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Pilih shift tujuan.</span>
+                ) : null}
                   <p className="mt-1 text-xs font-normal text-muted-foreground">
                     {!schedule ? "Memuat jadwal..."
                       : schedule.current.state !== "scheduled" ? "Tanggal ini bukan hari kerja terjadwal; ubah jadwal tidak tersedia."
@@ -309,17 +336,21 @@ export function EmployeeWorkArrangementsPage() {
               ) : null}
               <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
                 Keperluan
-                <textarea required minLength={10} maxLength={1000} rows={3} value={form.purpose}
+                <textarea required maxLength={1000} rows={3} value={form.purpose}
                   placeholder={form.type === "SCHEDULE_CHANGE" ? "Contoh: mengantar orang tua kontrol ke rumah sakit pagi hari" : "Contoh: mendampingi santri lomba tahfizh tingkat kecamatan"}
+                  aria-invalid={attempted && form.purpose.trim().length < 10}
                   onChange={(event) => update({ purpose: event.target.value })}
                   className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal text-brand-heading" />
+                {attempted && form.purpose.trim().length < 10 ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Tulis keperluan minimal 10 karakter.</span>
+                ) : null}
               </label>
             </div>
             {form.type === "FIELD_ASSIGNMENT" && form.startOn < today ? (
               <p className="mt-3 text-xs text-muted-foreground">Tanggal yang sudah lewat langsung dihitung ulang di kehadiran begitu disetujui.</p>
             ) : null}
             <div className="mt-6 flex justify-end">
-              <button type="submit" disabled={busy || !ready}
+              <button type="submit" disabled={busy}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50 sm:w-auto">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                 Periksa penyetuju

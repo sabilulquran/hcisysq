@@ -118,15 +118,33 @@ export function EmployeeTripsPage() {
     }
   };
 
-  const checkApprovers = () => run(async () => {
+  // UX-FLOW-001: tombol lanjut tetap aktif; syarat yang belum terpenuhi dijelaskan di isiannya.
+  const [attempted, setAttempted] = useState(false);
+  const focusFirstInvalid = () => {
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>("[aria-invalid='true']");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    });
+  };
+
+  const checkApprovers = () => {
+    setAttempted(true);
+    if (!ready) {
+      focusFirstInvalid();
+      return Promise.resolve();
+    }
+    return run(async () => {
     setPreview(await previewTrip(form.startOn, form.endOn));
     goTo("periksa");
   }, "Penyetuju tidak dapat diperiksa.");
+  };
 
   const submit = () => {
     void run(async () => {
       const created = await submitTrip({ ...form, destination: form.destination.trim(), purpose: form.purpose.trim(), idempotencyKey });
       setForm(emptyForm());
+      setAttempted(false);
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
       setSubmitted({ id: created.id, message: "Perjalanan dinas diajukan dan sedang menunggu persetujuan." });
@@ -187,8 +205,12 @@ export function EmployeeTripsPage() {
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
                 Tujuan
-                <input required minLength={3} maxLength={200} value={form.destination} placeholder="Contoh: Kantor Kemenag Kota Bandung"
+                <input required maxLength={200} value={form.destination} placeholder="Contoh: Kantor Kemenag Kota Bandung"
+                  aria-invalid={attempted && form.destination.trim().length < 3}
                   onChange={(event) => update({ destination: event.target.value })} className={input} />
+                {attempted && form.destination.trim().length < 3 ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Tulis tujuan minimal 3 karakter.</span>
+                ) : null}
               </label>
               <label className="text-sm font-semibold text-brand-heading">
                 Berangkat
@@ -203,14 +225,18 @@ export function EmployeeTripsPage() {
               </label>
               <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
                 Keperluan
-                <textarea required minLength={10} maxLength={1000} rows={3} value={form.purpose}
+                <textarea required maxLength={1000} rows={3} value={form.purpose}
                   placeholder="Contoh: rapat koordinasi kurikulum tahfidz dengan yayasan mitra"
+                  aria-invalid={attempted && form.purpose.trim().length < 10}
                   onChange={(event) => update({ purpose: event.target.value })}
                   className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal text-brand-heading" />
+                {attempted && form.purpose.trim().length < 10 ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Tulis keperluan minimal 10 karakter.</span>
+                ) : null}
               </label>
             </div>
             <div className="mt-6 flex justify-end">
-              <button type="submit" disabled={busy || !ready}
+              <button type="submit" disabled={busy}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50 sm:w-auto">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                 Periksa penyetuju

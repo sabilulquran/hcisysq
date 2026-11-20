@@ -117,17 +117,35 @@ export function EmployeeLoansPage() {
     }
   };
 
-  const check = () => run(async () => {
+  // UX-FLOW-001: tombol lanjut tetap aktif; syarat yang belum terpenuhi dijelaskan di isiannya.
+  const [attempted, setAttempted] = useState(false);
+  const focusFirstInvalid = () => {
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>("[aria-invalid='true']");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    });
+  };
+
+  const check = () => {
+    setAttempted(true);
+    if (principal === null || form.purpose.trim().length < 10) {
+      focusFirstInvalid();
+      return Promise.resolve();
+    }
+    return run(async () => {
     if (principal === null) throw new Error("Tulis pokok pinjaman dalam rupiah tanpa koma, misalnya 1.500.000.");
     setPreview(await previewLoan(principal, form.tenorMonths));
     goTo("periksa");
   }, "Jadwal dan penyetuju tidak dapat diperiksa.");
+  };
 
   const submit = () => {
     void run(async () => {
       if (principal === null) throw new Error("Tulis pokok pinjaman dalam rupiah tanpa koma, misalnya 1.500.000.");
       const created = await submitLoan({ principal, tenorMonths: form.tenorMonths, purpose: form.purpose.trim(), idempotencyKey });
       setForm(emptyForm());
+      setAttempted(false);
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
       setSubmitted({ id: created.id, message: "Pinjaman diajukan dan sedang menunggu persetujuan." });
@@ -177,8 +195,9 @@ export function EmployeeLoansPage() {
               <label className="text-sm font-semibold text-brand-heading">
                 Pokok pinjaman (Rp)
                 <input required inputMode="numeric" autoComplete="off" value={form.principal} placeholder="Contoh: 1.500.000"
+                  aria-invalid={attempted && principal === null}
                   onChange={(event) => update({ principal: event.target.value })} className={input} />
-                {form.principal && principal === null ? (
+                {(form.principal || attempted) && principal === null ? (
                   <span className="mt-1 block text-xs font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
                 ) : null}
               </label>
@@ -190,14 +209,18 @@ export function EmployeeLoansPage() {
               </label>
               <label className="text-sm font-semibold text-brand-heading sm:col-span-2">
                 Keperluan
-                <textarea required minLength={10} maxLength={1000} rows={3} value={form.purpose}
+                <textarea required maxLength={1000} rows={3} value={form.purpose}
                   placeholder="Contoh: biaya perbaikan atap rumah"
+                  aria-invalid={attempted && form.purpose.trim().length < 10}
                   onChange={(event) => update({ purpose: event.target.value })}
                   className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal text-brand-heading" />
+                {attempted && form.purpose.trim().length < 10 ? (
+                  <span className="mt-1 block text-xs font-normal text-danger-ink">Tulis keperluan minimal 10 karakter.</span>
+                ) : null}
               </label>
             </div>
             <div className="mt-6 flex justify-end">
-              <button type="submit" disabled={busy || principal === null || form.purpose.trim().length < 10}
+              <button type="submit" disabled={busy}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50 sm:w-auto">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                 Lihat cicilan dan penyetuju

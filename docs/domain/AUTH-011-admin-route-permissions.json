@@ -2196,6 +2196,30 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/governance/payroll-routes.ts",
+    "method": "GET",
+    "url": "/governance/payroll/periods",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": [
+      "payroll.governance.results.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/governance/payroll-routes.ts",
+    "method": "GET",
+    "url": "/governance/payroll/periods/:periodId/results",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": [
+      "payroll.governance.results.read"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/governance/routes.ts",
     "method": "GET",
     "url": "/governance/employees",

@@ -198,8 +198,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     // 155 on main + the two own-1721-A1 routes.
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(178); // + 7 TRAIN-001 R4 employee routes, + 9 TRIP-002 employee routes, + 3 REWARD-001 self-service routes, + 2 PERF-001 D-17 objection routes
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
-    // ORG-010 summary, ORG-014 employee list, and the two ORG-015 decision routes.
-    expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(4);
+    // ORG-010 summary, ORG-014 employee list, the two ORG-015 decision routes, and the two
+    // ADR-0008 payroll reads. Like the others they are bearer-only and disabled here, so the loop
+    // below proves a cookie session of any persona gets 404 on them too.
+    expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(6);
     // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still
     // gets 401, because the channel demands both credentials before anything else.
     expect(manifest.filter((route) => route.access === "machine-actor")).toHaveLength(4);

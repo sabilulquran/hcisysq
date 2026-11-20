@@ -92,6 +92,12 @@ const envSchema = z
     GOVERNANCE_DECISION_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     /** The portal client only. SQ Hub's own client is never allowed to decide (ADR-0012 D4). */
     GOVERNANCE_DECISION_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-organ")),
+    // ADR-0008: per-person payroll figures for Pengurus Yayasan on the Portal Organ Yayasan. Off by
+    // default; while it is off the routes answer 404, and even with it on nothing is readable until
+    // an account holds governance_payroll_reader.
+    GOVERNANCE_PAYROLL_READ_ENABLED: z.enum(["true", "false", "1", "0"]).default("false"),
+    /** The portal client only; a subset of the summary allowlist, like the employee list. */
+    GOVERNANCE_PAYROLL_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-organ")),
     // ASSET-001 §7: read-only person custody from Aset SQ ASQ-004, with a dedicated machine client.
     // A base URL only: http(s), no query or fragment, because the request path is appended to it.
     ASET_SQ_PERSON_CUSTODY_URL: z.preprocess(
@@ -354,6 +360,15 @@ const envSchema = z
         });
       }
     }
+    // ADR-0008: the payroll read routes are read routes on the summary token, so they need the
+    // same plumbing the summary sets up (identity mapping, board access, Application Access).
+    if (isGovernancePayrollReadEnabled(value) && !isGovernanceSummaryEnabled(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["GOVERNANCE_PAYROLL_READ_ENABLED"],
+        message: "GOVERNANCE_PAYROLL_READ_ENABLED=true requires GOVERNANCE_SUMMARY_ENABLED=true",
+      });
+    }
     if (value.GOVERNANCE_DECISION_AUDIENCE) {
       // Every audience this service accepts a bearer for, not only the governance ones. The actor
       // audience matters most: a decision token is issued to a person, carries no service-account
@@ -495,6 +510,13 @@ export function isGovernanceSummaryEnabled(config: { GOVERNANCE_SUMMARY_ENABLED?
 /** ORG-015: deciding from the Portal Organ Yayasan. Separate flag, separate audience. */
 export function isGovernanceDecisionsEnabled(config: { GOVERNANCE_DECISIONS_ENABLED?: string | undefined }): boolean {
   return config.GOVERNANCE_DECISIONS_ENABLED === "true" || config.GOVERNANCE_DECISIONS_ENABLED === "1";
+}
+
+/** ADR-0008: reading per-person payroll from the Portal Organ Yayasan. Its own flag. */
+export function isGovernancePayrollReadEnabled(
+  config: { GOVERNANCE_PAYROLL_READ_ENABLED?: string | undefined },
+): boolean {
+  return config.GOVERNANCE_PAYROLL_READ_ENABLED === "true" || config.GOVERNANCE_PAYROLL_READ_ENABLED === "1";
 }
 
 export interface OidcRuntimeConfig {

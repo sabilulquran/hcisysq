@@ -50,6 +50,12 @@ export const PERIOD_READ_PERMISSIONS = [
   "payroll.results.read.organization",
 ] as const;
 
+/**
+ * Report readers see a period's figures only from this state onwards (specification section 6).
+ * ADR-0008 gives the organ surface the same threshold, so the two read it from one place.
+ */
+export const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
 export function mayReadPeriods(actor: TransitionActor): boolean {
   return PERIOD_READ_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
 }

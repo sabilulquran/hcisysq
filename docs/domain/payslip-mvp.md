@@ -101,7 +101,7 @@ The UAT found one period-serialization defect where imported `2026-07` rendered 
 - PAYSLIP-001-C: employee hanya dapat membaca published payslip miliknya sendiri.
 - PAYSLIP-001-D: mengetahui UUID payslip employee lain tetap menghasilkan not found.
 - PAYSLIP-001-E: employee tidak memiliki mutation route terhadap payslip.
-- PAYSLIP-001-F: Foundation Board tidak dapat membaca personal payslip atau menjalankan import/publish.
+- PAYSLIP-001-F: Foundation Board tidak dapat membaca personal payslip atau menjalankan import/publish. *(Amandemen 2026-11-18, ADR-0008: aturan ini tetap berlaku untuk jalur slip PAY-001/PAY-002 — layar slip pegawai, import, dan publish tetap tertutup bagi Organ Yayasan. Yang dibuka keputusan owner B5 adalah angka hasil payroll per orang dan baris slip periode yang sudah disahkan, lewat route organ `GET /governance/payroll/*` dan permission `payroll.governance.results.read`.)*
 - PAYSLIP-001-G: Super Admin tidak memperoleh employee self-view hanya karena privilege administratif.
 - PAYSLIP-001-H: import/publish authorization ditegakkan server-side dan employee-role capability membutuhkan organization scope aktif.
 - PAYSLIP-001-I: sensitive read, preview, review-open, commit, dan publish diaudit tanpa menyalin isi `lines` ke audit payload.

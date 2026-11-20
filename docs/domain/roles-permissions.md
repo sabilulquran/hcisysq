@@ -231,6 +231,12 @@ Kepanitiaan Saya tidak membutuhkan permission: aksesnya keanggotaan. Kepanitiaan
 
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 
+*Amandemen 2026-11-18 (ADR-0008).* `foundation_board_viewer` tetap tidak memegang permission payroll apa pun — kalimat di atas berlaku penuh untuk role itu. Yang baru adalah role terpisah untuk akun Organ Yayasan:
+
+| Permission | Dipegang | Cakupan |
+|---|---|---|
+| `payroll.governance.results.read` | Pembaca gaji Organ Yayasan (`governance_payroll_reader`, migrasi 0180) | hasil payroll per orang dan baris slip untuk periode `APPROVED` atau sesudahnya, hanya lewat `GET /governance/payroll/*`. Tidak membawa daftar transfer, input, kebijakan, aksi siklus, `board.read`, maupun akses `/app` atau `/admin`. Diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan (nomor SK) dan tanggal berakhir; akun pegawai ditolak. Di luar seluruh bundel HC dan di luar kompatibilitas legacy Super Admin, dan tidak dapat ditautkan ke jabatan. |
+
 ## Scope
 
 Baseline:

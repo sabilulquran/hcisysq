@@ -25,6 +25,8 @@ Pada 2026-10-23 product owner memutuskan bahwa **HCIS akan menghitung payroll**.
 5. **Publikasi slip memakai jalur PAY-001/PAY-002 yang ada.** Hasil final dipetakan ke baris slip (label/value) dan dipublikasikan lewat alur draft → publish yang sudah terverifikasi. Tampilan slip pegawai tidak berubah.
 6. **Serah bayar tanpa surat.** HCIS tidak membuat memorandum, PDF, share email, atau pesan WA untuk serah bayar. Laporan payroll final tampil di HCIS untuk Kepala Keuangan dan Direktur sesuai permission.
 
+   *Amandemen 2026-11-18 (ADR-0008):* ADR tersendiri yang diminta amandemen di bawah sudah ada. Keputusan owner atas butir B5 membuka **hasil payroll per orang dan baris slip untuk periode `APPROVED` atau sesudahnya** kepada Pengurus Yayasan, lewat permission `payroll.governance.results.read` dan role `governance_payroll_reader` (migrasi 0180) pada surface organ. Sisa amandemen 2026-10-27 **tetap berlaku**: daftar transfer berisi nomor rekening tetap terpisah dan tetap tertutup, aksi siklus periode dan input tetap tertutup, dan agregat payroll di dasbor/ringkasan organ tetap dilarang ORG-003-F/ORG-010-F. Lihat `0008-pengurus-yayasan-membaca-gaji-per-orang.md` D-1 dan D-2.
+
    *Amandemen 2026-10-27:* akses Pengurus Yayasan **dikeluarkan dari v1**. ORG-003-F/ORG-010-F melarang Pengurus melihat agregat payroll dan PAYSLIP-001-F melarang slip perorangan; membuka akses itu adalah perubahan batas governance yang membutuhkan ADR tersendiri. Daftar transfer berisi nomor rekening dipisahkan dari laporan rekap (`docs/domain/payroll-calculation-v1.md` §7).
 7. **Pengesahan dua tahap.** Kepala HCM mengajukan finalisasi; Direktur mengesahkan. Reopen periode final membutuhkan persetujuan Direktur.
 8. **Kebijakan statutori berversi.** BPJS Kesehatan mengikuti peraturan (gaji pokok + tunjangan tetap, batas bawah UMK, batas atas Rp12.000.000); PPh21 ditanggung yayasan dan dilaporkan dari nominal yang benar-benar dibayar.
@@ -40,7 +42,7 @@ Pada 2026-10-23 product owner memutuskan bahwa **HCIS akan menghitung payroll**.
 ## Consequences
 
 - `AGENTS.md` §5, `docs/product/mvp.md` §7, dan `docs/product/feature-parity.yaml` (PAY-003) diperbarui bersama pengesahan ADR ini.
-- Batas Foundation Board (PAYSLIP-001-F, ORG-003-F, ORG-010-F) tidak berubah: v1 tidak memberi Pengurus Yayasan permission payroll. Test otorisasi harus membuktikan penolakannya.
+- Batas Foundation Board (PAYSLIP-001-F, ORG-003-F, ORG-010-F) tidak berubah: v1 tidak memberi Pengurus Yayasan permission payroll. Test otorisasi harus membuktikan penolakannya. *(Amandemen 2026-11-18, ADR-0008: Pengurus Yayasan kini dapat memegang satu permission payroll, `payroll.governance.results.read`, untuk membaca hasil per orang periode yang sudah disahkan di surface organ. Batas yang lain tetap, dan test otorisasi kini juga membuktikan apa yang tidak terbuka.)*
 - Perubahan nilai dibanding spreadsheet yang disengaja (dasar BPJS, perbaikan lembur, pemisahan penyesuaian gaji, dasar PPh21) harus dijelaskan per pegawai saat parallel run.
 - Auth, permission, audit, payroll, dan migration masuk kategori review tambahan (AGENTS.md §8). Setiap tahap implementasi memiliki spesifikasi implementasi dan migration rollback plan sendiri.
 - Spreadsheet dibekukan hanya setelah parallel run minimal 2–3 periode lulus; sampai itu PAY-001/PAY-002 tetap jalur slip resmi.

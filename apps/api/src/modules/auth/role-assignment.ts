@@ -4,6 +4,7 @@ import { AuthError, type AuthPrincipal } from "./service.js";
 import {
   ACCESS_REACTIVATION_PERMISSION,
   ADMIN_PERMISSIONS, ANNOUNCEMENT_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY,
+  GOVERNANCE_PAYROLL_READ_PERMISSION, GOVERNANCE_PAYROLL_READER_ROLE_KEY,
   DOCUMENT_CORRECTOR_ROLE_KEY, DOCUMENT_PERMISSIONS, EMPLOYEE_CARD_PERMISSIONS, EMPLOYEE_DOCUMENT_PERMISSIONS, EMPLOYMENT_PERMISSIONS,
   HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
@@ -26,10 +27,17 @@ export const GOVERNANCE_LEAVE_APPROVER_ROLE_KEY = "governance_leave_approver";
  */
 export const GOVERNANCE_LOAN_APPROVER_ROLE_KEY = "governance_loan_approver";
 
-/** Role key -> the single permission it may carry. These, and only these, go to organ accounts. */
+/**
+ * Role key -> the single permission it may carry. These, and only these, go to organ accounts.
+ *
+ * ADR-0008 D-3 adds the payroll reader (migration 0180) as the third. It belongs in this table and
+ * not beside it: the rule is ORG-013-2's exactly — one role, one permission, organ accounts only,
+ * never an employee account — and a second table of the same shape would be two rules that drift.
+ */
 const GOVERNANCE_ORGAN_ROLES: Readonly<Record<string, string>> = {
   [GOVERNANCE_LEAVE_APPROVER_ROLE_KEY]: "leave.governance.approve",
   [GOVERNANCE_LOAN_APPROVER_ROLE_KEY]: "loans.governance.approve",
+  [GOVERNANCE_PAYROLL_READER_ROLE_KEY]: GOVERNANCE_PAYROLL_READ_PERMISSION,
 };
 
 export function isGovernanceOrganRole(roleKey: string): boolean {
@@ -39,6 +47,7 @@ export function isGovernanceOrganRole(roleKey: string): boolean {
 const HCIS_ROLES = [
   GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
   GOVERNANCE_LOAN_APPROVER_ROLE_KEY,
+  GOVERNANCE_PAYROLL_READER_ROLE_KEY,
   "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
   HC_LEAD_ROLE_KEY, DOCUMENT_CORRECTOR_ROLE_KEY, MODULE_ADMIN_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
 ];
@@ -122,8 +131,9 @@ export function carriesIdentityPermission(role: AssignableRole): boolean {
 export function canDelegateRole(role: AssignableRole, delegated: boolean, channel?: GrantChannel): boolean {
   if (!HCIS_ROLES.includes(role.roleKey) || !role.permissions.length) return false;
   if (carriesIdentityPermission(role)) return false;
-  // ORG-013-2 / ORG-013-E: the governance role carries exactly its one permission. A bundle that
-  // grew is refused, so an organ account can never receive anything else through it.
+  // ORG-013-2 / ORG-013-E, and ADR-0008 D-3 for the payroll reader: the governance role carries
+  // exactly its one permission. A bundle that grew is refused, so an organ account can never
+  // receive anything else through it.
   const governancePermission = GOVERNANCE_ORGAN_ROLES[role.roleKey];
   if (governancePermission
       && (role.permissions.length !== 1 || role.permissions[0] !== governancePermission)) return false;
@@ -147,7 +157,9 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean, channe
  *   - the role must work at organization scope only: a seat confers organization scope, so a role
  *     that can also be granted for one unit (human_capital, finance, management) would silently
  *     widen to the whole organization through a unit head's seat;
- *   - the governance Leave role is for Organ Yayasan accounts, which never hold a seat-derived role.
+ *   - the governance roles are for Organ Yayasan accounts, which never hold a seat-derived role.
+ *     ORG-013-1 point 3 is the rule behind this: holding a position never confers a capability, so
+ *     ADR-0008's payroll reader is refused here exactly as the Leave approver is.
  * Checked against the role's stored permissions, never a list the caller supplied.
  */
 export function isSeatLinkableRole(role: AssignableRole): boolean {
@@ -229,8 +241,10 @@ async function lockTargetAccount(db: PoolClient, accountId: string): Promise<Loc
 function assertTargetForRole(target: LockedTarget, roleKey: string): void {
   const governance = isGovernanceOrganRole(roleKey);
   if (governance ? target.principalType !== "FOUNDATION_BOARD" || target.employeeId : target.principalType !== "EMPLOYEE") {
+    // "governance Organ Yayasan" rather than "penyetuju": since ADR-0008 the table also holds a
+    // read-only role, so calling every one of them an approver would be wrong on screen.
     throw new AuthError(403, "ROLE_TARGET_INVALID", governance
-      ? "Peran penyetuju governance hanya untuk akun Organ Yayasan."
+      ? "Peran governance Organ Yayasan hanya untuk akun Organ Yayasan."
       : "Peran ini hanya dapat diberikan ke akun pegawai.");
   }
 }
@@ -293,10 +307,11 @@ export async function createRoleAssignment(
     const target = await lockTargetAccount(db, accountId);
     const role = await requireDelegation(db, actor, accountId, input.roleId, context.channel);
     assertTargetForRole(target, role.roleKey);
-    // ORG-013-2: organization scope, the SK as reason, and an end date at the end of the term.
+    // ORG-013-2, and ADR-0008 D-3 for the payroll reader: organization scope, the SK as reason,
+    // and an end date at the end of the term.
     if (isGovernanceOrganRole(role.roleKey)) {
       if (input.scopeType !== "organization" || input.organizationalUnitId) {
-        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Penyetuju governance hanya dapat diberikan dengan scope organisasi.");
+        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Peran governance Organ Yayasan hanya dapat diberikan dengan scope organisasi.");
       }
       if (!input.reason?.trim()) {
         throw new AuthError(400, "ROLE_REASON_REQUIRED", "Alasan penugasan wajib diisi, misalnya nomor SK kepengurusan.");

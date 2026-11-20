@@ -36,6 +36,7 @@ Production runtime: **Mi8VPS** (Android phone, Ubuntu chroot `/data/local/ubuntu
 
 - Release flow: `docs/development/mi8vps-hcis-release.md` (OPS-MI8-REL-001). CI hanya membangun bundle linux/arm64 (`build-mi8-release.yml`); operator merilis dengan `scripts/mi8/release-mi8.sh` (dry-run default). Sejak keputusan owner 2026-10-27, `--apply` berjalan tanpa menunggu persetujuan owner, dengan gate teknis yang tetap wajib: dry-run bersih dulu, backup database sebelum migration, gate kandidat lolos, rollback segera bila verifikasi gagal, tidak pernah pada jam 19 UTC (jam backup), dan hasilnya dilaporkan sesudahnya.
 - Jalur deploy VPS lama (`deploy-production.yml`, `publish-staging-images.yml`, `activate-mobile-attendance.yml`, `uat-account-hygiene.yml`, `integration-validation.yml`, `scripts/deploy-vps.sh`, `scripts/verify-vps.sh`, Dockerfile aplikasi, `infra/docker-compose.vps.yml`, stub staging, dan konfigurasi Caddy) sudah **dihapus** dari repository pada 2026-11-04. Image GHCR `hcisysq-api`/`hcisysq-web` tidak dipakai production. Jangan membuat ulang jalur tersebut; satu-satunya jalur production adalah OPS-MI8-REL-001. Docker hanya dipakai untuk database lokal (`infra/docker-compose.local.yml`) dan di dalam `scripts/mi8/build-release.sh`.
+- Kesiapan HCIS untuk dibuka ke seluruh pegawai dicatat di `docs/development/hcis-closure-list.md` (OPS-CLOSE-001), melengkapi gate `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Jangan menyatakan sebuah butir siap tanpa bukti bertanggal; "sudah di-merge" bukan "sudah dirilis", dan "sudah dirilis" bukan "sudah pernah dipakai". Perbarui daftar itu dalam perubahan yang sama ketika salah satu butirnya berubah status.
 - Perubahan production di Mi8VPS (launcher, worker, release, database, env) mengikuti gate teknis di atas dan dilaporkan ke owner sesudahnya (keputusan owner 2026-10-27); perubahan data production wajib dry-run bersih dan jalur rollback yang jelas. Inspeksi read-only via `ssh mi8vps` / `ssh mi8vps-root` selalu diperbolehkan.
 - Runbook operasional of record: Google Doc "Mi8VPS Platform Runbook".
 
@@ -67,7 +68,7 @@ Dokumen `docs/development/vps-deployment.md`, `github-vps-production-deployment.
 - MVP payroll scope hanya import/validation data payslip dan employee read-only access.
 - Jangan membangun payroll calculation engine untuk memenuhi layar payslip MVP. PAY-001/PAY-002 tidak boleh diam-diam menghitung ulang nilai impor.
 - **Pengecualian PAY-003:** payroll calculation engine pasca-MVP diizinkan sebagai modul tersendiri melalui ADR-0003 (ACCEPTED) dan `docs/domain/payroll-calculation-v1.md`. Sampai parallel run lulus, PAY-001/PAY-002 tetap jalur slip resmi.
-- Approval chain mengikuti snapshot-on-submit behavior di `docs/domain/workflows/approval-engine.md`.
+- Approval chain mengikuti snapshot-on-submit behavior di `docs/domain/workflows/approval-engine.md`. Production masih berjalan pada mode `LEGACY` (`organization_rollout_settings` kosong), sehingga seluruh rantai persetujuan berdiri di atas `employees.direct_manager_employee_id` dan `organizational_units.leave_approver_employee_id`; keduanya gagal tertutup bila kosong. Posisi datanya ada di OPS-CLOSE-001 §5 W1–W2.
 
 ## 6. AI-assisted workflow
 

@@ -4534,6 +4534,26 @@
   {
     "file": "apps/api/src/modules/performance/routes.ts",
     "method": "POST",
+    "url": "/performance/me/:id/objection",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/performance/me/:id/objection/waive",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
     "url": "/performance/me/:id/acknowledge",
     "access": "self-service",
     "principals": [
@@ -4687,6 +4707,22 @@
     "file": "apps/api/src/modules/performance/routes.ts",
     "method": "POST",
     "url": "/admin/performance/reviews/:id/return",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/objection/uphold",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/objection/reject",
     "permissions": [
       "performance.manage"
     ]

@@ -4,6 +4,14 @@
 export const CYCLE_KINDS = ["MONTHLY", "SEMESTER", "ANNUAL"] as const;
 export type CycleKind = (typeof CYCLE_KINDS)[number];
 
+/**
+ * D-17 DRAFT: the employee's one objection to the rater's score, raised before HC validates it.
+ * `WAIVED` is the employee closing their own window ("I accept this score"), which is not an
+ * objection and therefore carries no reason.
+ */
+export const OBJECTION_STATUSES = ["OPEN", "UPHELD", "REJECTED", "WAIVED"] as const;
+export type ObjectionStatus = (typeof OBJECTION_STATUSES)[number];
+
 /** D-20: a rubric version covers every job (`DEFAULT`) or a named group of them (`JOB_GROUP`). */
 export const RUBRIC_SCOPES = ["DEFAULT", "JOB_GROUP"] as const;
 export type RubricScope = (typeof RUBRIC_SCOPES)[number];
@@ -274,6 +282,52 @@ export function trendFrom(current: number, previous: number | null): Trend {
   if (current > previous) return "IMPROVING";
   if (current < previous) return "DECLINING";
   return "STABLE";
+}
+
+/**
+ * D-17 DRAFT: how long the employee has to object, counted from the day the rater submitted the
+ * score — the first day the employee can see it. Seven days is the default this package chose
+ * (the owner's suggestion); it is one number, so HC can be given a setting later without the flow
+ * changing shape.
+ */
+export const OBJECTION_WINDOW_DAYS = 7;
+
+/** The last day an objection may be raised against a score submitted on `ratedOn`. */
+export function objectionDueOn(ratedOn: string, windowDays = OBJECTION_WINDOW_DAYS): string {
+  const due = new Date(`${ratedOn}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + windowDays);
+  return due.toISOString().slice(0, 10);
+}
+
+export interface ObjectionState {
+  status: ReviewStatus;
+  objectionStatus: ObjectionStatus | null;
+  objectionDueOn: string | null;
+  today: string;
+}
+
+/**
+ * D-17: one objection per cycle, only while the score sits with HC and the window is still open.
+ * A review HC returned and the rater scored again opens a fresh window, but an employee who
+ * already used their objection does not get a second one.
+ */
+export function canObject(input: ObjectionState): boolean {
+  return input.status === "HC_VALIDATION"
+    && input.objectionStatus === null
+    && input.objectionDueOn !== null
+    && input.today <= input.objectionDueOn;
+}
+
+/**
+ * D-17: HC may finalize once nobody is waiting on the employee — the window closed, the employee
+ * closed it themselves, or HC decided their objection. A score submitted before this package
+ * existed carries no window and is never held up.
+ */
+export function canFinalize(input: ObjectionState): boolean {
+  if (input.status !== "HC_VALIDATION") return false;
+  if (input.objectionStatus === "OPEN") return false;
+  if (input.objectionStatus !== null) return true;
+  return input.objectionDueOn === null || input.today > input.objectionDueOn;
 }
 
 /** D-10: closing the cycle. Reviews nobody finished stay without a predicate. */

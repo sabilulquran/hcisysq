@@ -19,6 +19,7 @@ import {
   closeCycle,
   createCycle,
   CYCLE_KIND_LABELS,
+  decideObjection,
   CYCLE_STATUS_LABELS,
   finalizeReview,
   formatPeriod,
@@ -374,11 +375,12 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run, revie
           ) : null}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat label="Peserta" value={cycle.recap.participants} />
           <Stat label="Menunggu pengesahan" value={cycle.recap.byStatus.HC_VALIDATION} />
           <Stat label="Final" value={cycle.recap.byStatus.FINALIZED} />
           <Stat label="Tanpa penilai" value={cycle.recap.raterMissing} warn={cycle.recap.raterMissing > 0} />
+          <Stat label="Keberatan terbuka" value={cycle.recap.objectionsOpen} warn={cycle.recap.objectionsOpen > 0} />
         </div>
         {cycle.recap.raterAccountNotReady > 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">{cycle.recap.raterAccountNotReady} penilaian menunggu penilai yang akunnya belum aktif.</p>
@@ -505,6 +507,26 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run, revie
                 ) : null}
                 actions={canManage ? (
                   <>
+                    {review.allowedActions.includes("uphold-objection") ? (
+                      <button type="button" disabled={busy} className={primary} onClick={() => {
+                        const reason = window.prompt("Alasan menerima keberatan pegawai (minimal 10 karakter). Penilaian kembali ke penilai.");
+                        if (!reason || reason.trim().length < 10) return;
+                        act(async () => {
+                          await decideObjection(review.id, "uphold", reason.trim());
+                          return "Keberatan diterima; penilaian dikembalikan ke penilai.";
+                        });
+                      }}>Terima keberatan</button>
+                    ) : null}
+                    {review.allowedActions.includes("reject-objection") ? (
+                      <button type="button" disabled={busy} className={secondary} onClick={() => {
+                        const reason = window.prompt("Alasan menolak keberatan pegawai (minimal 10 karakter). Alasan ini dibaca pegawai.");
+                        if (!reason || reason.trim().length < 10) return;
+                        act(async () => {
+                          await decideObjection(review.id, "reject", reason.trim());
+                          return "Keberatan ditolak; nilai penilai tetap berlaku.";
+                        });
+                      }}>Tolak keberatan</button>
+                    ) : null}
                     {review.allowedActions.includes("finalize") ? (
                       <button type="button" disabled={busy} className={primary} onClick={() => act(async () => {
                         await finalizeReview(review.id);

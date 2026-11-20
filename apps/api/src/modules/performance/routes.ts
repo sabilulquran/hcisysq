@@ -26,11 +26,14 @@ import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { resolveLineManager } from "../organization/line-manager.js";
 import {
   ACTIVE_REVIEW_STATUSES,
+  canFinalize,
+  canObject,
   canRaterReview,
   CYCLE_KINDS,
   CYCLE_STATUSES,
   DEFAULT_RUBRIC,
   finalScore,
+  objectionDueOn,
   PerformancePolicyError,
   predicateFor,
   REVIEW_STATUSES,
@@ -42,6 +45,7 @@ import {
   validateScores,
   type CycleKind,
   type CycleStatus,
+  type ObjectionStatus,
   type ReviewStatus,
   type Rubric,
   type RubricVersion,
@@ -98,6 +102,8 @@ const ratingBody = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
 });
 const acknowledgeBody = z.object({ comment: z.string().trim().max(1000).nullable().optional() });
+// D-17: a real reason, the same length HC's own return reason must have.
+const objectionBody = z.object({ reason: z.string().trim().min(10).max(1000) });
 const reasonBody = z.object({ reason: z.string().trim().min(5).max(500) });
 const cancelCycleBody = z.object({ reason: z.string().trim().min(10).max(500) });
 const returnBody = z.object({ reason: z.string().trim().min(10).max(1000) });
@@ -123,6 +129,7 @@ const adminReviewQuery = reviewStatusQuery.extend({
   predicate: code.optional(),
   employeeId: z.string().uuid().optional(),
   raterMissing: z.enum(["true", "false"]).optional(),
+  objection: z.enum(["OPEN"]).optional(),
   q: z.string().trim().min(2).max(100).optional(),
 });
 
@@ -136,6 +143,9 @@ class PerformanceError extends Error {
 const NOT_FOUND = () => new PerformanceError(404, "PERFORMANCE_REVIEW_NOT_FOUND", "Penilaian kinerja tidak ditemukan.");
 const CYCLE_NOT_FOUND = () => new PerformanceError(404, "PERFORMANCE_CYCLE_NOT_FOUND", "Siklus penilaian tidak ditemukan.");
 const CYCLE_NOT_OPEN = () => new PerformanceError(409, "PERFORMANCE_CYCLE_NOT_OPEN", "Siklus penilaian ini sedang tidak dibuka.");
+const NOT_IN_VALIDATION = () =>
+  new PerformanceError(409, "PERFORMANCE_NOT_IN_VALIDATION", "Penilaian ini tidak sedang menunggu pengesahan.");
+const OBJECTION_OPEN = (message: string) => new PerformanceError(409, "PERFORMANCE_OBJECTION_OPEN", message);
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
@@ -298,6 +308,8 @@ interface LockedReview {
   predicateCode: string | null;
   /** D-20: the rubric frozen onto this review, which is what its scores are read against. */
   rubric: Rubric;
+  objectionStatus: ObjectionStatus | null;
+  objectionDueOn: string | null;
 }
 
 /**
@@ -318,7 +330,8 @@ async function lockReview(
   const cycle = await loadCycle(db, cycleId.rows[0].cycleId, "FOR SHARE");
   const found = await db.query<LockedReview>(
     `SELECT id, cycle_id AS "cycleId", employee_id AS "employeeId", status,
-            rater_employee_id AS "raterEmployeeId", predicate_code AS "predicateCode", rubric
+            rater_employee_id AS "raterEmployeeId", predicate_code AS "predicateCode", rubric,
+            objection_status AS "objectionStatus", to_char(objection_due_on, 'YYYY-MM-DD') AS "objectionDueOn"
        FROM performance_reviews
       WHERE id = $1 AND ($2::uuid IS NULL OR employee_id = $2) AND ($3::uuid IS NULL OR rater_employee_id = $3)
       FOR UPDATE`,
@@ -334,7 +347,26 @@ type View = "employee" | "rater" | "hc";
 const EMPLOYEE_VISIBLE_EVENTS = [
   "performance.review.added", "performance.review.readded", "performance.review.self_submitted",
   "performance.review.finalized", "performance.review.acknowledged", "performance.review.unrated",
+  // D-17: the employee's own objection and what HC decided about it.
+  "performance.review.objected", "performance.review.objection_waived",
+  "performance.review.objection_upheld", "performance.review.objection_rejected",
 ];
+
+/**
+ * D-17: the one place that refuses an objection, so raising and waiving one answer alike. Each
+ * refusal names its own cause: already used, too late, or not with HC at all.
+ */
+function assertMayObject(review: LockedReview) {
+  if (review.objectionStatus !== null) {
+    throw new PerformanceError(409, "PERFORMANCE_OBJECTION_ALREADY_RAISED", "Keberatan untuk penilaian ini sudah pernah diajukan.");
+  }
+  if (review.status !== "HC_VALIDATION" || review.objectionDueOn === null) {
+    throw new PerformanceError(409, "PERFORMANCE_OBJECTION_NOT_ALLOWED", "Keberatan hanya dapat diajukan setelah penilai mengirim nilai dan sebelum Human Capital mengesahkannya.");
+  }
+  if (today() > review.objectionDueOn) {
+    throw new PerformanceError(409, "PERFORMANCE_OBJECTION_WINDOW_CLOSED", `Masa keberatan berakhir pada ${review.objectionDueOn}.`);
+  }
+}
 
 const REVIEW_COLUMNS = `
   review.id, review.status, review.cycle_id AS "cycleId",
@@ -347,7 +379,8 @@ const REVIEW_COLUMNS = `
   (rater_account.status = 'active') AS "raterAccountReady",
   review.self_submitted_at AS "selfSubmittedAt", review.rated_at AS "ratedAt",
   review.finalized_at AS "finalizedAt", review.acknowledged_at AS "acknowledgedAt", review.trend,
-  review.rubric_version AS "rubricVersion"`;
+  review.rubric_version AS "rubricVersion",
+  to_char(review.objection_due_on, 'YYYY-MM-DD') AS "objectionDueOn", review.objection_status AS "objectionStatus"`;
 const REVIEW_JOINS = `
   JOIN performance_cycles cycle ON cycle.id = review.cycle_id
   JOIN employees employee ON employee.id = review.employee_id
@@ -356,15 +389,19 @@ const REVIEW_JOINS = `
   LEFT JOIN accounts rater_account ON rater_account.employee_id = rater.id AND rater_account.principal_type = 'EMPLOYEE'`;
 
 /**
- * The result columns; an employee sees them only once the review is FINALIZED (D-09). In the HC
- * views `viewerParam` names the viewer's employee id, so an HC admin who is a participant does not
- * see their own result early either.
+ * The result columns. D-17 (18 Nov 2026) amends D-09 and PERF-001-A: the employee sees the rater's
+ * score once it reaches HC (`HC_VALIDATION`), because that is what they may object to; before
+ * that there is still nothing to show. In the HC views `viewerParam` names the viewer's employee
+ * id, so an HC admin who is a participant sees their own review exactly as the employee does and
+ * never earlier.
  */
+const EMPLOYEE_RESULT_VISIBLE = "review.status IN ('HC_VALIDATION', 'FINALIZED')";
+
 function resultColumns(view: View, viewerParam?: string) {
   const visible = view === "employee"
-    ? "review.status = 'FINALIZED'"
+    ? EMPLOYEE_RESULT_VISIBLE
     : view === "hc" && viewerParam
-      ? `(review.status = 'FINALIZED' OR review.employee_id IS DISTINCT FROM ${viewerParam}::uuid)`
+      ? `(${EMPLOYEE_RESULT_VISIBLE} OR review.employee_id IS DISTINCT FROM ${viewerParam}::uuid)`
       : "TRUE";
   return `
     CASE WHEN ${visible} THEN review.final_score::float8 END AS "finalScore",
@@ -392,11 +429,15 @@ async function loadReviewDetail(
     status: ReviewStatus; cycleStatus: CycleStatus; selfDueOn: string; rubric: Rubric;
     selfScores: unknown; selfNote: string | null; raterScores: unknown; strengths: string | null;
     improvements: string | null; raterNote: string | null; acknowledgementComment: string | null;
+    objectionStatus: ObjectionStatus | null; objectionDueOn: string | null; objectionReason: string | null;
+    objectionRaisedAt: string | null; objectionDecidedAt: string | null; objectionDecisionReason: string | null;
   }>(
     `SELECT ${REVIEW_COLUMNS}, ${resultColumns(view, "$5")}, review.rubric,
             review.self_scores AS "selfScores", review.self_note AS "selfNote",
             review.rater_scores AS "raterScores", review.strengths, review.improvements, review.rater_note AS "raterNote",
-            review.acknowledgement_comment AS "acknowledgementComment", review.removed_reason AS "removedReason"
+            review.acknowledgement_comment AS "acknowledgementComment", review.removed_reason AS "removedReason",
+            review.objection_reason AS "objectionReason", review.objection_raised_at AS "objectionRaisedAt",
+            review.objection_decided_at AS "objectionDecidedAt", review.objection_decision_reason AS "objectionDecisionReason"
        FROM performance_reviews review
        ${REVIEW_JOINS}
       WHERE review.id = $1
@@ -425,21 +466,36 @@ async function loadReviewDetail(
       ORDER BY event.occurred_at ASC, event.id ASC`,
     [id, restricted ? EMPLOYEE_VISIBLE_EVENTS : null, view === "hc" && !ownReview, view === "rater"],
   );
-  const { rubric, selfScores, selfNote, raterScores, strengths, improvements, raterNote, ...rest } = row;
-  const showRating = !restricted || row.status === "FINALIZED";
+  const {
+    rubric, selfScores, selfNote, raterScores, strengths, improvements, raterNote,
+    objectionReason, objectionRaisedAt, objectionDecidedAt, objectionDecisionReason, ...rest
+  } = row;
+  // D-17: the written feedback is part of what the employee may object to, so it opens with the
+  // score rather than after validation.
+  const showRating = !restricted || row.status === "HC_VALIDATION" || row.status === "FINALIZED";
   const open = row.cycleStatus === "OPEN";
   const date = today();
+  const objectionState = {
+    status: row.status, objectionStatus: row.objectionStatus, objectionDueOn: row.objectionDueOn, today: date,
+  };
+  const mayObject = open && canObject(objectionState);
+  const mayFinalize = open && canFinalize(objectionState);
+  const employeeActions = [
+    ...(mayObject ? ["object", "waive-objection"] : []),
+    ...(row.status === "FINALIZED" && !row.acknowledgedAt ? ["acknowledge"] : []),
+  ];
   const allowedActions = view === "employee"
-    ? [
-        ...(open && row.status === "SELF_ASSESSMENT" ? ["self-assessment"] : []),
-        ...(row.status === "FINALIZED" && !row.acknowledgedAt ? ["acknowledge"] : []),
-      ]
+    ? [...(open && row.status === "SELF_ASSESSMENT" ? ["self-assessment"] : []), ...employeeActions]
     : view === "rater"
       ? (open && canRaterReview({ status: row.status, selfDueOn: row.selfDueOn, today: date }) ? ["rate"] : [])
       : ownReview
-        ? []
+        // An HC admin acts on their own review only as its employee: object or waive, never validate.
+        ? employeeActions
         : [
-            ...(open && row.status === "HC_VALIDATION" && !viewerIsRater ? ["finalize", "return"] : []),
+            ...(open && row.status === "HC_VALIDATION" && !viewerIsRater && row.objectionStatus === "OPEN"
+              ? ["uphold-objection", "reject-objection"] : []),
+            ...(mayFinalize && !viewerIsRater ? ["finalize"] : []),
+            ...(open && row.status === "HC_VALIDATION" && !viewerIsRater && row.objectionStatus !== "OPEN" ? ["return"] : []),
             ...((open || row.cycleStatus === "DRAFT") && ["SELF_ASSESSMENT", "MANAGER_REVIEW"].includes(row.status) ? ["assign-rater"] : []),
             ...((open || row.cycleStatus === "DRAFT") && ACTIVE_REVIEW_STATUSES.includes(row.status) ? ["remove"] : []),
           ];
@@ -448,6 +504,20 @@ async function loadReviewDetail(
     rubric,
     selfAssessment: selfScores ? { scores: selfScores, note: selfNote } : null,
     rating: showRating && raterScores ? { scores: raterScores, strengths, improvements, note: raterNote } : null,
+    // D-17: the employee reads HC's decision here; the history carries no notes for them (§9).
+    // The rater sees that an objection happened and what came of it, never a word of what the
+    // employee wrote about them or how HC weighed it: naming the complainant to the person
+    // complained about is an invitation to retaliate, and that is what stops people using the
+    // route at all. They already learn what they need — that the score comes back to be redone.
+    objection: row.objectionStatus
+      ? {
+          status: row.objectionStatus,
+          reason: view === "rater" ? null : objectionReason,
+          raisedAt: objectionRaisedAt,
+          decidedAt: objectionDecidedAt,
+          decisionReason: view === "rater" ? null : objectionDecisionReason,
+        }
+      : null,
     allowedActions,
     events: events.rows,
   };
@@ -646,6 +716,65 @@ export async function registerPerformanceRoutes(
     });
   });
 
+  /**
+   * D-17: the employee's single objection to the rater's score, raised while HC has not validated
+   * it. The score does not change here — HC decides (§7.12) — but an open objection blocks
+   * finalization, so a result can never be made final behind the employee's back.
+   */
+  app.post("/performance/me/:id/objection", async (request, reply) => {
+    const principal = await requireEmployee(request, reply);
+    if (!principal) return;
+    const params = idParams.safeParse(request.params);
+    const body = objectionBody.safeParse(request.body);
+    if (!params.success || !body.success) return invalid(reply, "Alasan keberatan 10 sampai 1000 karakter.");
+    return transact(reply, async (client) => {
+      const employee = await loadEmployee(client, principal.id);
+      const { review, cycle } = await lockReview(client, params.data.id, { employeeId: employee.id });
+      if (review.status === "REMOVED") throw NOT_FOUND();
+      if (cycle.status !== "OPEN") throw CYCLE_NOT_OPEN();
+      assertMayObject(review);
+      await client.query(
+        `UPDATE performance_reviews
+            SET objection_status = 'OPEN', objection_reason = $2, objection_raised_at = now(), updated_at = now()
+          WHERE id = $1`,
+        [review.id, body.data.reason],
+      );
+      // The reason stays on the review rather than in the event note: HC reads it from the
+      // review, and the history is also what the rater and the employee see (spec §9).
+      await addEvent(client, {
+        cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id, eventType: "performance.review.objected",
+        metadata: { predicateCode: review.predicateCode },
+      });
+      return [200, { id: review.id, objectionStatus: "OPEN" }];
+    });
+  });
+
+  /** D-17: the employee accepts the score and closes their own window, so HC need not wait it out. */
+  app.post("/performance/me/:id/objection/waive", async (request, reply) => {
+    const principal = await requireEmployee(request, reply);
+    if (!principal) return;
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return invalid(reply);
+    return transact(reply, async (client) => {
+      const employee = await loadEmployee(client, principal.id);
+      const { review, cycle } = await lockReview(client, params.data.id, { employeeId: employee.id });
+      if (review.status === "REMOVED") throw NOT_FOUND();
+      if (cycle.status !== "OPEN") throw CYCLE_NOT_OPEN();
+      assertMayObject(review);
+      await client.query(
+        `UPDATE performance_reviews
+            SET objection_status = 'WAIVED', objection_raised_at = now(), updated_at = now()
+          WHERE id = $1`,
+        [review.id],
+      );
+      await addEvent(client, {
+        cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id,
+        eventType: "performance.review.objection_waived",
+      });
+      return [200, { id: review.id, objectionStatus: "WAIVED" }];
+    });
+  });
+
   // ------------------------------------------------------------------- rater
 
   app.get("/performance/team", async (request, reply) => {
@@ -703,20 +832,41 @@ export async function registerPerformanceRoutes(
       const scores = validateScores(review.rubric, body.data.scores);
       const score = finalScore(review.rubric, scores);
       const predicate = predicateFor(review.rubric, score);
+      // D-17: the objection window opens on the day the employee can first read this score — but
+      // only for an employee who still has an objection to raise. One objection per cycle, so once
+      // it has been used (or waived) the window is spent, and a review scored again gets no new
+      // date rather than a date that means nothing to whoever reads it through the API.
+      const dueOn = review.objectionStatus === null ? objectionDueOn(today()) : null;
       await client.query(
         `UPDATE performance_reviews
             SET status = 'HC_VALIDATION', rater_scores = $2::jsonb, strengths = $3, improvements = $4, rater_note = $5,
                 rated_by_account_id = $6, rated_at = now(), final_score = $7, predicate_code = $8, predicate_label = $9,
-                updated_at = now()
+                objection_due_on = $10::date, updated_at = now()
           WHERE id = $1`,
         [review.id, JSON.stringify(scores), body.data.strengths || null, body.data.improvements || null, body.data.note || null,
-          principal.id, score, predicate.code, predicate.label],
+          principal.id, score, predicate.code, predicate.label, dueOn],
       );
       await addEvent(client, {
         cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id, eventType: "performance.review.rated",
-        metadata: { predicateCode: predicate.code, withoutSelfAssessment: review.status === "SELF_ASSESSMENT" },
+        metadata: { predicateCode: predicate.code, withoutSelfAssessment: review.status === "SELF_ASSESSMENT", objectionDueOn: dueOn },
       });
-      return [200, { id: review.id, status: "HC_VALIDATION", finalScore: score, predicateCode: predicate.code, predicateLabel: predicate.label }];
+      // The employee is told the score is readable, and until when they may object while that is
+      // still open to them. Like every other performance notification it carries no score or
+      // predicate (spec §10).
+      await notifyEmployee(client, review.employeeId, {
+        eventKey: `performance.${review.id}.rated.${randomUUID()}`,
+        category: "system",
+        title: "Nilai kinerja Anda dapat dilihat",
+        body: dueOn
+          ? `Penilai sudah mengirim nilai ${cycle.name}. Anda dapat mengajukan keberatan paling lambat ${dueOn}.`
+          : `Penilai sudah mengirim nilai ${cycle.name} setelah keberatan Anda diputuskan.`,
+        href: `/app/performance?review=${review.id}`,
+        actorAccountId: principal.id,
+      });
+      return [200, {
+        id: review.id, status: "HC_VALIDATION", finalScore: score,
+        predicateCode: predicate.code, predicateLabel: predicate.label, objectionDueOn: dueOn,
+      }];
     });
   });
 
@@ -857,7 +1007,7 @@ export async function registerPerformanceRoutes(
     if (!params.success) return invalid(reply);
     return handle(reply, async () => {
       const cycle = await loadCycle(pool, params.data.id);
-      const [byStatus, byPredicate, byRubric, raters, events] = await Promise.all([
+      const [byStatus, byPredicate, byRubric, objections, raters, events] = await Promise.all([
         pool.query<{ status: ReviewStatus; count: number }>(
           `SELECT status, count(*)::int AS count FROM performance_reviews WHERE cycle_id = $1 GROUP BY status`,
           [cycle.id],
@@ -875,6 +1025,13 @@ export async function registerPerformanceRoutes(
             WHERE review.cycle_id = $1 AND review.status <> 'REMOVED'
             GROUP BY review.rubric_version, version.name
             ORDER BY count(*) DESC, review.rubric_version NULLS LAST`,
+          [cycle.id],
+        ),
+        pool.query<{ open: number }>(
+          // D-17: HC's queue of objections waiting for a decision on this cycle.
+          // The status filter is what makes a row written before this release read correctly too.
+          `SELECT count(*)::int AS open FROM performance_reviews
+            WHERE cycle_id = $1 AND objection_status = 'OPEN' AND status = 'HC_VALIDATION'`,
           [cycle.id],
         ),
         pool.query<{ missing: number; notReady: number }>(
@@ -907,6 +1064,7 @@ export async function registerPerformanceRoutes(
           byStatus: statusCounts,
           byPredicate: cycle.rubric.predicates.map((predicate) => ({ ...predicate, count: predicateCounts.get(predicate.code) ?? 0 })),
           byRubricVersion: byRubric.rows.map(listItem),
+          objectionsOpen: objections.rows[0]?.open ?? 0,
           raterMissing: raters.rows[0]?.missing ?? 0,
           raterAccountNotReady: raters.rows[0]?.notReady ?? 0,
         },
@@ -1018,7 +1176,14 @@ export async function registerPerformanceRoutes(
                     self_scores = NULL, self_note = NULL, self_submitted_at = NULL, rater_scores = NULL, strengths = NULL,
                     improvements = NULL, rater_note = NULL, rated_by_account_id = NULL, rated_at = NULL, final_score = NULL,
                     predicate_code = NULL, predicate_label = NULL, removed_reason = NULL,
-                    rubric = $5::jsonb, rubric_version_id = $6, rubric_version = $7, updated_at = now()
+                    rubric = $5::jsonb, rubric_version_id = $6, rubric_version = $7,
+                    -- D-17: the objection belongs to the round that was removed. Left behind it
+                    -- would deny the revived review an objection it never had, hand it a
+                    -- validation with no window at all, and show the previous round's reasons.
+                    objection_due_on = NULL, objection_raised_at = NULL, objection_reason = NULL,
+                    objection_status = NULL, objection_decided_at = NULL,
+                    objection_decided_by_account_id = NULL, objection_decision_reason = NULL,
+                    updated_at = now()
               WHERE id = $1`,
             [reviewId, rater.employeeId, rater.source, JSON.stringify(rater.snapshot),
               JSON.stringify(resolved.rubric), resolved.versionId, resolved.version],
@@ -1202,11 +1367,14 @@ export async function registerPerformanceRoutes(
           AND ($4::uuid IS NULL OR review.employee_id = $4)
           AND ($5::boolean IS NULL OR (review.rater_employee_id IS NULL) = $5)
           AND ($6::text IS NULL OR employee.full_name ILIKE '%' || $6 || '%' OR employee.employee_number ILIKE '%' || $6 || '%')
+          -- D-17: HC's queue of objections waiting for a decision. Only a review still with HC
+          -- can be decided, so only those are ever counted as open.
+          AND ($10::text IS NULL OR (review.objection_status = $10 AND review.status = 'HC_VALIDATION'))
         ORDER BY employee.full_name ASC, review.id ASC
         LIMIT $7 OFFSET $8`,
       [params.data.id, filter.status ?? null, filter.predicate ?? null, filter.employeeId ?? null,
         filter.raterMissing === undefined ? null : filter.raterMissing === "true", filter.q ?? null,
-        filter.pageSize, pageOffset(filter), viewer],
+        filter.pageSize, pageOffset(filter), viewer, filter.objection ?? null],
     );
     return send(reply, 200, { items: result.rows.map(listItem), pagination: pagination(filter, result.rows[0]?.total ?? 0) });
   });
@@ -1260,10 +1428,16 @@ export async function registerPerformanceRoutes(
     if (!params.success) return invalid(reply);
     return transact(reply, async (client) => {
       const { review, cycle } = await lockReview(client, params.data.id);
-      if (cycle.status !== "OPEN" || review.status !== "HC_VALIDATION") {
-        throw new PerformanceError(409, "PERFORMANCE_NOT_IN_VALIDATION", "Penilaian ini tidak sedang menunggu pengesahan.");
-      }
+      if (cycle.status !== "OPEN" || review.status !== "HC_VALIDATION") throw NOT_IN_VALIDATION();
       await assertNotPartyTo(client, principal.id, review);
+      // D-17: an open objection, or a window the employee may still use, holds the result back.
+      if (review.objectionStatus === "OPEN") {
+        throw OBJECTION_OPEN("Putuskan keberatan pegawai sebelum mengesahkan hasil ini.");
+      }
+      if (!canFinalize({ status: review.status, objectionStatus: review.objectionStatus, objectionDueOn: review.objectionDueOn, today: today() })) {
+        throw new PerformanceError(409, "PERFORMANCE_OBJECTION_WINDOW_OPEN",
+          `Masa keberatan pegawai berjalan sampai ${review.objectionDueOn}. Hasil dapat disahkan sesudahnya, atau setelah pegawai menerima nilainya.`);
+      }
       const scores = await client.query<{ current: number; previous: number | null }>(
         `SELECT review.final_score::float8 AS current,
                 (SELECT earlier.final_score::float8
@@ -1307,10 +1481,12 @@ export async function registerPerformanceRoutes(
     if (!params.success || !body.success) return invalid(reply, "Alasan pengembalian 10 sampai 1000 karakter.");
     return transact(reply, async (client) => {
       const { review, cycle } = await lockReview(client, params.data.id);
-      if (cycle.status !== "OPEN" || review.status !== "HC_VALIDATION") {
-        throw new PerformanceError(409, "PERFORMANCE_NOT_IN_VALIDATION", "Penilaian ini tidak sedang menunggu pengesahan.");
-      }
+      if (cycle.status !== "OPEN" || review.status !== "HC_VALIDATION") throw NOT_IN_VALIDATION();
       await assertNotPartyTo(client, principal.id, review);
+      // D-17: an open objection is decided, not bypassed; accepting it is what returns the review.
+      if (review.objectionStatus === "OPEN") {
+        throw OBJECTION_OPEN("Putuskan keberatan pegawai lebih dulu; keberatan yang diterima mengembalikan penilaian ke penilai.");
+      }
       // The rater's indicator scores stay as the starting point; the result is cleared (D-07).
       await client.query(
         `UPDATE performance_reviews
@@ -1336,6 +1512,73 @@ export async function registerPerformanceRoutes(
       return [200, { id: review.id, status: "MANAGER_REVIEW" }];
     });
   });
+
+  /**
+   * D-17: HC decides the objection. Accepting it returns the review to the rater exactly as
+   * `return` does, because the module's authority model (D-07) is that HC never types a score:
+   * an upheld objection is a re-rating by the manager, not a correction by HC. Rejecting it keeps
+   * the score and gives the employee HC's reason; the review stays with HC to finalize.
+   */
+  async function decideObjection(request: FastifyRequest, reply: FastifyReply, decision: "UPHELD" | "REJECTED") {
+    const principal = await requirePermission(request, reply, "performance.manage");
+    if (!principal) return;
+    const params = idParams.safeParse(request.params);
+    const body = objectionBody.safeParse(request.body);
+    if (!params.success || !body.success) return invalid(reply, "Alasan keputusan keberatan 10 sampai 1000 karakter.");
+    return transact(reply, async (client) => {
+      const { review, cycle } = await lockReview(client, params.data.id);
+      if (cycle.status !== "OPEN" || review.status !== "HC_VALIDATION") throw NOT_IN_VALIDATION();
+      if (review.objectionStatus !== "OPEN") {
+        throw new PerformanceError(409, "PERFORMANCE_OBJECTION_NOT_OPEN", "Tidak ada keberatan yang sedang menunggu keputusan pada penilaian ini.");
+      }
+      // D-07: neither the employee being reviewed nor their rater decides their own objection.
+      await assertNotPartyTo(client, principal.id, review);
+      const upheld = decision === "UPHELD";
+      await client.query(
+        `UPDATE performance_reviews
+            SET objection_status = $2, objection_decided_at = now(), objection_decided_by_account_id = $3,
+                objection_decision_reason = $4,
+                status = CASE WHEN $5::boolean THEN 'MANAGER_REVIEW' ELSE status END,
+                final_score = CASE WHEN $5::boolean THEN NULL ELSE final_score END,
+                predicate_code = CASE WHEN $5::boolean THEN NULL ELSE predicate_code END,
+                predicate_label = CASE WHEN $5::boolean THEN NULL ELSE predicate_label END,
+                rated_by_account_id = CASE WHEN $5::boolean THEN NULL ELSE rated_by_account_id END,
+                rated_at = CASE WHEN $5::boolean THEN NULL ELSE rated_at END,
+                updated_at = now()
+          WHERE id = $1`,
+        [review.id, decision, principal.id, body.data.reason, upheld],
+      );
+      await addEvent(client, {
+        cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id,
+        eventType: upheld ? "performance.review.objection_upheld" : "performance.review.objection_rejected",
+        note: body.data.reason, metadata: { previousPredicateCode: review.predicateCode },
+      });
+      await notifyEmployee(client, review.employeeId, {
+        eventKey: `performance.${review.id}.objection.${randomUUID()}`,
+        category: "system",
+        title: upheld ? "Keberatan Anda diterima" : "Keberatan Anda ditolak",
+        body: upheld
+          ? `Human Capital menerima keberatan Anda pada ${cycle.name}; penilaian dikembalikan ke penilai.`
+          : `Human Capital menolak keberatan Anda pada ${cycle.name}. Alasannya ada di detail penilaian.`,
+        href: `/app/performance?review=${review.id}`,
+        actorAccountId: principal.id,
+      });
+      if (upheld && review.raterEmployeeId) {
+        await notifyEmployee(client, review.raterEmployeeId, {
+          eventKey: `performance.${review.id}.objection_rerate.${randomUUID()}`,
+          category: "system",
+          title: "Penilaian kinerja dikembalikan",
+          body: `Human Capital menerima keberatan pegawai pada ${cycle.name}; mohon tinjau ulang nilainya.`,
+          href: `/app/performance?tab=team&review=${review.id}`,
+          actorAccountId: principal.id,
+        });
+      }
+      return [200, { id: review.id, objectionStatus: decision, status: upheld ? "MANAGER_REVIEW" : "HC_VALIDATION" }];
+    });
+  }
+
+  app.post("/admin/performance/reviews/:id/objection/uphold", (request, reply) => decideObjection(request, reply, "UPHELD"));
+  app.post("/admin/performance/reviews/:id/objection/reject", (request, reply) => decideObjection(request, reply, "REJECTED"));
 
   app.post("/admin/performance/reviews/:id/rater", async (request, reply) => {
     const principal = await requirePermission(request, reply, "performance.manage");
@@ -1399,6 +1642,14 @@ export async function registerPerformanceRoutes(
       await client.query(
         `UPDATE performance_reviews
             SET status = 'REMOVED', removed_reason = $2, final_score = NULL, predicate_code = NULL, predicate_label = NULL,
+                -- D-17: an objection still waiting on HC can never be decided once the review is
+                -- out of the cycle, because both decisions require HC_VALIDATION. Leaving it would
+                -- park a count HC cannot clear. Only an OPEN one is cleared: an objection HC
+                -- already decided is history, and history stays readable on the row it belongs to.
+                objection_due_on = CASE WHEN objection_status = 'OPEN' THEN NULL ELSE objection_due_on END,
+                objection_raised_at = CASE WHEN objection_status = 'OPEN' THEN NULL ELSE objection_raised_at END,
+                objection_reason = CASE WHEN objection_status = 'OPEN' THEN NULL ELSE objection_reason END,
+                objection_status = CASE WHEN objection_status = 'OPEN' THEN NULL ELSE objection_status END,
                 updated_at = now()
           WHERE id = $1`,
         [review.id, body.data.reason],

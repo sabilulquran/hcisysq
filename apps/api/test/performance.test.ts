@@ -6,10 +6,14 @@ import type { ApiConfig } from "../src/config/env.js";
 import { HC_ADMIN_PERMISSIONS, PERFORMANCE_PERMISSIONS } from "../src/modules/auth/permissions.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
 import {
+  canFinalize,
+  canObject,
   canRaterReview,
   DEFAULT_RUBRIC,
   finalScore,
   PerformancePolicyError,
+  objectionDueOn,
+  OBJECTION_WINDOW_DAYS,
   predicateFor,
   selectRubricVersion,
   statusOnClose,
@@ -130,6 +134,41 @@ describe("PERF-001 domain rules", () => {
     expect(canRaterReview({ status: "HC_VALIDATION", selfDueOn: "2026-11-25", today: "2026-12-01" })).toBe(false);
   });
 
+  it("D-17: one objection per cycle, only with HC and only inside the window", () => {
+    expect(OBJECTION_WINDOW_DAYS).toBe(7);
+    expect(objectionDueOn("2026-11-18")).toBe("2026-11-25");
+    // Across a month and a year boundary, so the window is never a string edit.
+    expect(objectionDueOn("2026-11-28")).toBe("2026-12-05");
+    expect(objectionDueOn("2026-12-29")).toBe("2027-01-05");
+
+    const open = { status: "HC_VALIDATION", objectionStatus: null, objectionDueOn: "2026-11-25" } as const;
+    expect(canObject({ ...open, today: "2026-11-18" })).toBe(true);
+    // The last day counts; the day after does not.
+    expect(canObject({ ...open, today: "2026-11-25" })).toBe(true);
+    expect(canObject({ ...open, today: "2026-11-26" })).toBe(false);
+    // Not before the rater scored, not once the result is final, and never twice.
+    expect(canObject({ ...open, status: "MANAGER_REVIEW", today: "2026-11-18" })).toBe(false);
+    expect(canObject({ ...open, status: "FINALIZED", today: "2026-11-18" })).toBe(false);
+    for (const objectionStatus of ["OPEN", "UPHELD", "REJECTED", "WAIVED"] as const) {
+      expect(canObject({ ...open, objectionStatus, today: "2026-11-18" }), objectionStatus).toBe(false);
+    }
+  });
+
+  it("D-17: HC finalizes once nobody is waiting on the employee", () => {
+    const base = { status: "HC_VALIDATION", objectionDueOn: "2026-11-25" } as const;
+    // The window is still open: the employee may yet object, so the result waits.
+    expect(canFinalize({ ...base, objectionStatus: null, today: "2026-11-20" })).toBe(false);
+    expect(canFinalize({ ...base, objectionStatus: null, today: "2026-11-26" })).toBe(true);
+    // An open objection blocks it even after the window closes; a decided one never does.
+    expect(canFinalize({ ...base, objectionStatus: "OPEN", today: "2026-12-30" })).toBe(false);
+    expect(canFinalize({ ...base, objectionStatus: "WAIVED", today: "2026-11-20" })).toBe(true);
+    expect(canFinalize({ ...base, objectionStatus: "REJECTED", today: "2026-11-20" })).toBe(true);
+    expect(canFinalize({ ...base, objectionStatus: "UPHELD", today: "2026-11-20" })).toBe(true);
+    // A score submitted before this package existed carries no window and is never held up.
+    expect(canFinalize({ ...base, objectionDueOn: null, objectionStatus: null, today: "2026-11-20" })).toBe(true);
+    expect(canFinalize({ ...base, status: "MANAGER_REVIEW", objectionStatus: null, today: "2026-12-30" })).toBe(false);
+  });
+
   it("D-16: the trend compares the final score with the previous final review", () => {
     expect(trendFrom(3.1, null)).toBe("FIRST");
     expect(trendFrom(3.1, 3)).toBe("IMPROVING");
@@ -181,6 +220,8 @@ describe("PERF-001 route guards", () => {
       "/admin/performance/cycles/not-a-uuid/participants",
       "/admin/performance/reviews/not-a-uuid/finalize",
       "/admin/performance/reviews/not-a-uuid/return",
+      "/admin/performance/reviews/not-a-uuid/objection/uphold",
+      "/admin/performance/reviews/not-a-uuid/objection/reject",
       "/admin/performance/reviews/not-a-uuid/rater",
       "/admin/performance/reviews/not-a-uuid/remove",
     ]) {

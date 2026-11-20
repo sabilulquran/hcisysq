@@ -20,6 +20,9 @@ import type { PerformancePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
+// ORG-011: the classification codes bound to an employment, SUPPORT ones included. The two-slot
+// resolver beside it drops SUPPORT, and an office boy's rubric is exactly what must not be lost.
+import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { resolveLineManager } from "../organization/line-manager.js";
 import {
   ACTIVE_REVIEW_STATUSES,
@@ -31,6 +34,8 @@ import {
   PerformancePolicyError,
   predicateFor,
   REVIEW_STATUSES,
+  RUBRIC_SCOPES,
+  selectRubricVersion,
   trendFrom,
   validateCyclePeriod,
   validateRubric,
@@ -39,6 +44,7 @@ import {
   type CycleStatus,
   type ReviewStatus,
   type Rubric,
+  type RubricVersion,
 } from "./domain.js";
 
 type Queryable = Pool | PoolClient;
@@ -96,6 +102,19 @@ const reasonBody = z.object({ reason: z.string().trim().min(5).max(500) });
 const cancelCycleBody = z.object({ reason: z.string().trim().min(10).max(500) });
 const returnBody = z.object({ reason: z.string().trim().min(10).max(1000) });
 const raterBody = z.object({ raterEmployeeId: z.string().uuid(), reason: z.string().trim().min(5).max(500) });
+// D-19/D-20: a new rubric version. `effectiveFrom` is the day it starts applying to reviews
+// created from then on; `jobClassificationCodes` is the group it covers (empty means DEFAULT).
+const jobClassificationCode = z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/);
+const rubricVersionBody = z.object({
+  name: z.string().trim().min(3).max(120),
+  scope: z.enum(RUBRIC_SCOPES),
+  effectiveFrom: isoDate,
+  source: z.string().trim().min(1).max(200),
+  note: z.string().trim().min(1).max(500).nullable().optional(),
+  jobClassificationCodes: z.array(jobClassificationCode).max(50).optional(),
+  indicators: rubricSchema.shape.indicators,
+  predicates: rubricSchema.shape.predicates,
+});
 const idParams = z.object({ id: z.string().uuid() });
 const employeeParams = z.object({ employeeId: z.string().uuid() });
 const cycleListQuery = pageQuerySchema.extend({ status: z.enum(CYCLE_STATUSES).optional() });
@@ -131,6 +150,9 @@ function knownError(error: unknown): PerformanceError | null {
   if (error instanceof PerformanceError) return error;
   if (error instanceof PerformancePolicyError) return new PerformanceError(400, error.code, error.message);
   const database = error as { code?: string; constraint?: string };
+  if (database?.code === "23505" && database.constraint === "performance_rubric_versions_version_key") {
+    return new PerformanceError(409, "PERFORMANCE_RUBRIC_VERSION_RACE", "Versi rubrik lain baru saja disimpan. Muat ulang daftar lalu simpan kembali.");
+  }
   if (database?.code === "23505" && database.constraint === "performance_cycles_period_idx") {
     return new PerformanceError(409, "PERFORMANCE_CYCLE_PERIOD_TAKEN", "Periode ini sudah memiliki siklus penilaian dengan jenis yang sama.");
   }
@@ -176,12 +198,86 @@ interface CycleRow {
   reviewDueOn: string;
   status: CycleStatus;
   rubric: Rubric;
+  rubricVersion: number | null;
 }
 
 const CYCLE_COLUMNS = `
   cycle.id, cycle.name, cycle.kind, cycle.status,
   to_char(cycle.period_start, 'YYYY-MM-DD') AS "periodStart", to_char(cycle.period_end, 'YYYY-MM-DD') AS "periodEnd",
-  to_char(cycle.self_due_on, 'YYYY-MM-DD') AS "selfDueOn", to_char(cycle.review_due_on, 'YYYY-MM-DD') AS "reviewDueOn"`;
+  to_char(cycle.self_due_on, 'YYYY-MM-DD') AS "selfDueOn", to_char(cycle.review_due_on, 'YYYY-MM-DD') AS "reviewDueOn",
+  cycle.rubric_version AS "rubricVersion"`;
+
+/**
+ * D-19/D-20: every rubric version that has already started on `date`, with the job classification
+ * codes it covers. The table is append-only and small (one row per rubric decision), so reading
+ * the whole in-force set and choosing in the domain rules keeps the choice testable without a
+ * database.
+ */
+async function rubricVersionsInForce(db: Queryable, date: string): Promise<RubricVersion[]> {
+  const result = await db.query<RubricVersion>(
+    `SELECT version.id, version.version, version.scope, version.name,
+            to_char(version.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+            version.payload AS rubric,
+            COALESCE(
+              (SELECT array_agg(job.job_classification_code ORDER BY job.job_classification_code)
+                 FROM performance_rubric_version_jobs job WHERE job.rubric_version_id = version.id),
+              ARRAY[]::text[]
+            ) AS "jobCodes"
+       FROM performance_rubric_versions version
+      WHERE version.effective_from <= $1::date
+      ORDER BY version.version ASC`,
+    [date],
+  );
+  return result.rows;
+}
+
+/**
+ * D-20: the job classification codes bound to an employee on `date`, across every employment they
+ * hold then. Codes only — the catalog carries no authority (ADR-0004) and this never reads one.
+ */
+async function jobCodesOf(db: Queryable, employeeId: string, date: string): Promise<string[]> {
+  const employments = await db.query<{ id: string }>(
+    `SELECT id FROM employments
+      WHERE employee_id = $1 AND voided_by_action_id IS NULL
+        AND (started_on IS NULL OR started_on <= $2::date)
+        AND (ended_on IS NULL OR ended_on >= $2::date)
+      ORDER BY started_on NULLS FIRST, id`,
+    [employeeId, date],
+  );
+  const codes = new Set<string>();
+  for (const employment of employments.rows) {
+    for (const binding of await bindingsOn(db, employment.id, date)) codes.add(binding.code);
+  }
+  return [...codes].sort();
+}
+
+interface ResolvedRubric {
+  rubric: Rubric;
+  versionId: string | null;
+  version: number | null;
+  jobCodes: string[];
+}
+
+/**
+ * D-20: the rubric one participant is scored against, frozen onto their review. The cycle's own
+ * rubric is the last resort: HC may have typed one for this cycle, and before any version exists
+ * it is the seeded default.
+ */
+async function resolveRubricFor(
+  db: Queryable, input: { employeeId: string; date: string; versions: RubricVersion[]; cycle: CycleRow },
+): Promise<ResolvedRubric> {
+  // A cycle whose rubric HC typed (`rubricVersion` null) says what this cycle's everyone-rubric
+  // is, so it takes the place of the DEFAULT version rather than losing to it. A JOB_GROUP
+  // version is still more specific than any cycle-level statement and still wins.
+  const ownRubric = input.cycle.rubricVersion === null;
+  const candidates = ownRubric ? input.versions.filter((version) => version.scope === "JOB_GROUP") : input.versions;
+  const jobCodes = candidates.some((version) => version.scope === "JOB_GROUP")
+    ? await jobCodesOf(db, input.employeeId, input.date)
+    : [];
+  const chosen = selectRubricVersion(candidates, jobCodes, input.date);
+  if (!chosen) return { rubric: input.cycle.rubric, versionId: null, version: null, jobCodes };
+  return { rubric: chosen.rubric, versionId: chosen.id, version: chosen.version, jobCodes };
+}
 
 async function loadCycle(db: Queryable, id: string, lock: "" | "FOR UPDATE" | "FOR SHARE" = ""): Promise<CycleRow> {
   const result = await db.query<CycleRow>(
@@ -200,6 +296,8 @@ interface LockedReview {
   status: ReviewStatus;
   raterEmployeeId: string | null;
   predicateCode: string | null;
+  /** D-20: the rubric frozen onto this review, which is what its scores are read against. */
+  rubric: Rubric;
 }
 
 /**
@@ -220,7 +318,7 @@ async function lockReview(
   const cycle = await loadCycle(db, cycleId.rows[0].cycleId, "FOR SHARE");
   const found = await db.query<LockedReview>(
     `SELECT id, cycle_id AS "cycleId", employee_id AS "employeeId", status,
-            rater_employee_id AS "raterEmployeeId", predicate_code AS "predicateCode"
+            rater_employee_id AS "raterEmployeeId", predicate_code AS "predicateCode", rubric
        FROM performance_reviews
       WHERE id = $1 AND ($2::uuid IS NULL OR employee_id = $2) AND ($3::uuid IS NULL OR rater_employee_id = $3)
       FOR UPDATE`,
@@ -248,7 +346,8 @@ const REVIEW_COLUMNS = `
   review.rater_employee_id AS "raterEmployeeId", rater.full_name AS "raterName", review.rater_source AS "raterSource",
   (rater_account.status = 'active') AS "raterAccountReady",
   review.self_submitted_at AS "selfSubmittedAt", review.rated_at AS "ratedAt",
-  review.finalized_at AS "finalizedAt", review.acknowledged_at AS "acknowledgedAt", review.trend`;
+  review.finalized_at AS "finalizedAt", review.acknowledged_at AS "acknowledgedAt", review.trend,
+  review.rubric_version AS "rubricVersion"`;
 const REVIEW_JOINS = `
   JOIN performance_cycles cycle ON cycle.id = review.cycle_id
   JOIN employees employee ON employee.id = review.employee_id
@@ -294,7 +393,7 @@ async function loadReviewDetail(
     selfScores: unknown; selfNote: string | null; raterScores: unknown; strengths: string | null;
     improvements: string | null; raterNote: string | null; acknowledgementComment: string | null;
   }>(
-    `SELECT ${REVIEW_COLUMNS}, ${resultColumns(view, "$5")}, cycle.rubric,
+    `SELECT ${REVIEW_COLUMNS}, ${resultColumns(view, "$5")}, review.rubric,
             review.self_scores AS "selfScores", review.self_note AS "selfNote",
             review.rater_scores AS "raterScores", review.strengths, review.improvements, review.rater_note AS "raterNote",
             review.acknowledgement_comment AS "acknowledgementComment", review.removed_reason AS "removedReason"
@@ -497,7 +596,8 @@ export async function registerPerformanceRoutes(
       if (review.status !== "SELF_ASSESSMENT") {
         throw new PerformanceError(409, "PERFORMANCE_SELF_NOT_ALLOWED", "Penilaian diri sudah dikirim atau penilai sudah menilai.");
       }
-      const scores = validateScores(cycle.rubric, body.data.scores);
+      // D-20: the review's own rubric, not the cycle's, since one cycle holds several.
+      const scores = validateScores(review.rubric, body.data.scores);
       await client.query(
         `UPDATE performance_reviews
             SET status = 'MANAGER_REVIEW', self_scores = $2::jsonb, self_note = $3, self_submitted_at = now(), updated_at = now()
@@ -599,9 +699,10 @@ export async function registerPerformanceRoutes(
           ? `Penilaian dapat dikirim setelah pegawai mengisi penilaian diri atau setelah ${cycle.selfDueOn}.`
           : "Penilaian ini sudah dinilai.");
       }
-      const scores = validateScores(cycle.rubric, body.data.scores);
-      const score = finalScore(cycle.rubric, scores);
-      const predicate = predicateFor(cycle.rubric, score);
+      // D-20: scored against the rubric frozen onto this review when its employee joined.
+      const scores = validateScores(review.rubric, body.data.scores);
+      const score = finalScore(review.rubric, scores);
+      const predicate = predicateFor(review.rubric, score);
       await client.query(
         `UPDATE performance_reviews
             SET status = 'HC_VALIDATION', rater_scores = $2::jsonb, strengths = $3, improvements = $4, rater_note = $5,
@@ -620,6 +721,87 @@ export async function registerPerformanceRoutes(
   });
 
   // ------------------------------------------------------------------- admin
+
+  /**
+   * D-19/D-20: the rubric HC manages, as dated versions, each covering every job or a group of
+   * job classification codes. Append-only, so the list is also the history.
+   */
+  app.get("/admin/performance/rubric-versions", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "performance.read"))) return;
+    const query = pageQuerySchema.safeParse(request.query);
+    if (!query.success) return invalid(reply, "Filter tidak valid.");
+    const result = await pool.query<{ total: number }>(
+      `SELECT version.id, version.version, version.scope, version.name,
+              to_char(version.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+              version.payload AS rubric, version.source, version.note, version.created_at AS "createdAt",
+              author.full_name AS "createdByName",
+              COALESCE(
+                (SELECT array_agg(job.job_classification_code ORDER BY job.job_classification_code)
+                   FROM performance_rubric_version_jobs job WHERE job.rubric_version_id = version.id),
+                ARRAY[]::text[]
+              ) AS "jobClassificationCodes",
+              (SELECT count(*)::int FROM performance_reviews review WHERE review.rubric_version_id = version.id) AS "reviewCount",
+              count(*) OVER ()::int AS total
+         FROM performance_rubric_versions version
+         LEFT JOIN accounts account ON account.id = version.created_by_account_id
+         LEFT JOIN employees author ON author.id = account.employee_id
+        ORDER BY version.version DESC
+        LIMIT $1 OFFSET $2`,
+      [query.data.pageSize, pageOffset(query.data)],
+    );
+    const inForce = await rubricVersionsInForce(pool, today());
+    return send(reply, 200, {
+      items: result.rows.map(listItem),
+      pagination: pagination(query.data, result.rows[0]?.total ?? 0),
+      // What a participant with no covered job would be scored against today.
+      defaultVersion: selectRubricVersion(inForce, [], today())?.version ?? null,
+    });
+  });
+
+  app.post("/admin/performance/rubric-versions", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "performance.manage");
+    if (!principal) return;
+    const body = rubricVersionBody.safeParse(request.body);
+    if (!body.success) return invalid(reply, "Nama, indikator, predikat, tanggal berlaku, atau cakupan jabatan rubrik tidak valid.");
+    const jobCodes = [...new Set(body.data.jobClassificationCodes ?? [])].sort();
+    if ((body.data.scope === "JOB_GROUP") !== (jobCodes.length > 0)) {
+      return invalid(reply, "Rubrik bercakupan jabatan menyebut minimal satu kode klasifikasi; rubrik dasar tidak menyebut satu pun.");
+    }
+    return transact(reply, async (client) => {
+      // D-19: the same rules a cycle rubric obeys, whole-percent weights summing to 100 included.
+      const rubric = validateRubric({ indicators: body.data.indicators, predicates: body.data.predicates });
+      // Serializes the version numbering: two HC admins saving at once must not both take n+1.
+      const latest = await client.query<{ version: number; effectiveFrom: string }>(
+        `SELECT version, to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom" FROM performance_rubric_versions
+          ORDER BY version DESC LIMIT 1 FOR UPDATE`,
+      );
+      const previous = latest.rows[0];
+      // A version that starts before the newest one would change which rubric was in force on a
+      // day already scored. New rubrics start from the newest start date onward.
+      if (previous && body.data.effectiveFrom < previous.effectiveFrom) {
+        throw new PerformanceError(409, "PERFORMANCE_RUBRIC_VERSION_BACKDATED",
+          `Versi rubrik baru berlaku paling awal ${previous.effectiveFrom}, tanggal berlaku versi terakhir.`);
+      }
+      const id = randomUUID();
+      const version = (previous?.version ?? 0) + 1;
+      await client.query(
+        `INSERT INTO performance_rubric_versions (
+           id, version, scope, name, effective_from, payload, source, note, created_by_account_id
+         ) VALUES ($1, $2, $3, $4, $5::date, $6::jsonb, $7, $8, $9)`,
+        [id, version, body.data.scope, body.data.name, body.data.effectiveFrom, JSON.stringify(rubric),
+          body.data.source, body.data.note || null, principal.id],
+      );
+      if (jobCodes.length > 0) {
+        await client.query(
+          `INSERT INTO performance_rubric_version_jobs (rubric_version_id, job_classification_code)
+           SELECT $1, code FROM unnest($2::text[]) AS code`,
+          [id, jobCodes],
+        );
+      }
+      // The row itself is the audit record: append-only, carrying its author and time (spec §9).
+      return [201, { id, version, scope: body.data.scope, effectiveFrom: body.data.effectiveFrom, jobClassificationCodes: jobCodes }];
+    });
+  });
 
   app.get("/admin/performance/cycles", async (request, reply) => {
     if (!(await requirePermission(request, reply, "performance.read"))) return;
@@ -646,17 +828,26 @@ export async function registerPerformanceRoutes(
     if (!body.success) return invalid(reply, "Nama, jenis, tanggal, atau rubrik siklus tidak valid.");
     return transact(reply, async (client) => {
       validateCyclePeriod(body.data);
-      const rubric = validateRubric(body.data.rubric ?? DEFAULT_RUBRIC);
+      // D-19: the cycle's own rubric is the fallback for participants no scoped version covers.
+      // Unless HC types one here, it is the DEFAULT version in force today, recorded by number.
+      const fallback = body.data.rubric
+        ? null
+        : selectRubricVersion(await rubricVersionsInForce(client, today()), [], today());
+      const rubric = validateRubric(body.data.rubric ?? fallback?.rubric ?? DEFAULT_RUBRIC);
       const id = randomUUID();
       await client.query(
         `INSERT INTO performance_cycles (
-           id, name, kind, period_start, period_end, self_due_on, review_due_on, status, rubric, created_by_account_id
-         ) VALUES ($1, $2, $3, $4::date, $5::date, $6::date, $7::date, 'DRAFT', $8::jsonb, $9)`,
+           id, name, kind, period_start, period_end, self_due_on, review_due_on, status, rubric,
+           rubric_version_id, rubric_version, created_by_account_id
+         ) VALUES ($1, $2, $3, $4::date, $5::date, $6::date, $7::date, 'DRAFT', $8::jsonb, $9, $10, $11)`,
         [id, body.data.name, body.data.kind, body.data.periodStart, body.data.periodEnd, body.data.selfDueOn,
-          body.data.reviewDueOn, JSON.stringify(rubric), principal.id],
+          body.data.reviewDueOn, JSON.stringify(rubric), fallback?.id ?? null, fallback?.version ?? null, principal.id],
       );
-      await addEvent(client, { cycleId: id, actorAccountId: principal.id, eventType: "performance.cycle.created", metadata: { kind: body.data.kind } });
-      return [201, { id, status: "DRAFT" }];
+      await addEvent(client, {
+        cycleId: id, actorAccountId: principal.id, eventType: "performance.cycle.created",
+        metadata: { kind: body.data.kind, rubricVersion: fallback?.version ?? null },
+      });
+      return [201, { id, status: "DRAFT", rubricVersion: fallback?.version ?? null }];
     });
   });
 
@@ -666,7 +857,7 @@ export async function registerPerformanceRoutes(
     if (!params.success) return invalid(reply);
     return handle(reply, async () => {
       const cycle = await loadCycle(pool, params.data.id);
-      const [byStatus, byPredicate, raters, events] = await Promise.all([
+      const [byStatus, byPredicate, byRubric, raters, events] = await Promise.all([
         pool.query<{ status: ReviewStatus; count: number }>(
           `SELECT status, count(*)::int AS count FROM performance_reviews WHERE cycle_id = $1 GROUP BY status`,
           [cycle.id],
@@ -674,6 +865,16 @@ export async function registerPerformanceRoutes(
         pool.query<{ code: string; count: number }>(
           `SELECT predicate_code AS code, count(*)::int AS count FROM performance_reviews
             WHERE cycle_id = $1 AND status = 'FINALIZED' GROUP BY predicate_code`,
+          [cycle.id],
+        ),
+        pool.query<{ version: number | null; name: string | null; count: number }>(
+          // D-20: which rubrics this cycle actually scores against, so HC sees the groups at work.
+          `SELECT review.rubric_version AS version, version.name, count(*)::int AS count
+             FROM performance_reviews review
+             LEFT JOIN performance_rubric_versions version ON version.id = review.rubric_version_id
+            WHERE review.cycle_id = $1 AND review.status <> 'REMOVED'
+            GROUP BY review.rubric_version, version.name
+            ORDER BY count(*) DESC, review.rubric_version NULLS LAST`,
           [cycle.id],
         ),
         pool.query<{ missing: number; notReady: number }>(
@@ -705,6 +906,7 @@ export async function registerPerformanceRoutes(
           participants: REVIEW_STATUSES.filter((status) => status !== "REMOVED").reduce((sum, status) => sum + statusCounts[status], 0),
           byStatus: statusCounts,
           byPredicate: cycle.rubric.predicates.map((predicate) => ({ ...predicate, count: predicateCounts.get(predicate.code) ?? 0 })),
+          byRubricVersion: byRubric.rows.map(listItem),
           raterMissing: raters.rows[0]?.missing ?? 0,
           raterAccountNotReady: raters.rows[0]?.notReady ?? 0,
         },
@@ -731,9 +933,13 @@ export async function registerPerformanceRoutes(
       await client.query(
         `UPDATE performance_cycles
             SET name = $2, kind = $3, period_start = $4::date, period_end = $5::date, self_due_on = $6::date,
-                review_due_on = $7::date, rubric = $8::jsonb, updated_at = now()
+                review_due_on = $7::date, rubric = $8::jsonb, updated_at = now(),
+                -- D-19: a rubric HC types here is this cycle's own, no longer a version.
+                rubric_version_id = CASE WHEN $9::boolean THEN NULL ELSE rubric_version_id END,
+                rubric_version = CASE WHEN $9::boolean THEN NULL ELSE rubric_version END
           WHERE id = $1`,
-        [cycle.id, next.name, next.kind, next.periodStart, next.periodEnd, next.selfDueOn, next.reviewDueOn, JSON.stringify(rubric)],
+        [cycle.id, next.name, next.kind, next.periodStart, next.periodEnd, next.selfDueOn, next.reviewDueOn,
+          JSON.stringify(rubric), body.data.rubric !== undefined],
       );
       await addEvent(client, {
         cycleId: cycle.id, actorAccountId: principal.id, eventType: "performance.cycle.updated",
@@ -787,7 +993,10 @@ export async function registerPerformanceRoutes(
         throw new PerformanceError(403, "PERFORMANCE_SELF_VALIDATION", "Anda tidak dapat memasukkan kembali penilaian Anda sendiri.");
       }
       const effectiveDate = today() < cycle.periodEnd ? today() : cycle.periodEnd;
-      const summary = { added: 0, readded: 0, alreadyIn: 0, withoutRater: 0 };
+      // D-20: one read of the rubric versions in force, then one rubric per participant from the
+      // job they hold on the same effective date the rater is resolved against.
+      const versions = await rubricVersionsInForce(client, effectiveDate);
+      const summary = { added: 0, readded: 0, alreadyIn: 0, withoutRater: 0, withoutJobRubric: 0 };
       for (const employeeId of candidates) {
         const current = byEmployee.get(employeeId);
         if (current && current.status !== "REMOVED") {
@@ -796,37 +1005,84 @@ export async function registerPerformanceRoutes(
         }
         const rater = await resolveLineManager(client, { workflowKey: PERFORMANCE_WORKFLOW_KEY, employeeId, effectiveDate });
         if (!rater.employeeId) summary.withoutRater += 1;
+        const resolved = await resolveRubricFor(client, { employeeId, date: effectiveDate, versions, cycle });
+        if (resolved.version === null) summary.withoutJobRubric += 1;
         const reviewId = current?.id ?? randomUUID();
         if (current) {
-          // D-14: re-adding revives the same review from the start.
+          // D-14: re-adding revives the same review from the start, including its rubric: the
+          // employee may have changed jobs since, and the next scoring must use the job they
+          // hold now.
           await client.query(
             `UPDATE performance_reviews
                 SET status = 'SELF_ASSESSMENT', rater_employee_id = $2, rater_source = $3, rater_snapshot = $4::jsonb,
                     self_scores = NULL, self_note = NULL, self_submitted_at = NULL, rater_scores = NULL, strengths = NULL,
                     improvements = NULL, rater_note = NULL, rated_by_account_id = NULL, rated_at = NULL, final_score = NULL,
-                    predicate_code = NULL, predicate_label = NULL, removed_reason = NULL, updated_at = now()
+                    predicate_code = NULL, predicate_label = NULL, removed_reason = NULL,
+                    rubric = $5::jsonb, rubric_version_id = $6, rubric_version = $7, updated_at = now()
               WHERE id = $1`,
-            [reviewId, rater.employeeId, rater.source, JSON.stringify(rater.snapshot)],
+            [reviewId, rater.employeeId, rater.source, JSON.stringify(rater.snapshot),
+              JSON.stringify(resolved.rubric), resolved.versionId, resolved.version],
           );
           summary.readded += 1;
         } else {
           await client.query(
-            `INSERT INTO performance_reviews (id, cycle_id, employee_id, status, rater_employee_id, rater_source, rater_snapshot)
-             VALUES ($1, $2, $3, 'SELF_ASSESSMENT', $4, $5, $6::jsonb)`,
-            [reviewId, cycle.id, employeeId, rater.employeeId, rater.source, JSON.stringify(rater.snapshot)],
+            `INSERT INTO performance_reviews (
+               id, cycle_id, employee_id, status, rater_employee_id, rater_source, rater_snapshot,
+               rubric, rubric_version_id, rubric_version
+             ) VALUES ($1, $2, $3, 'SELF_ASSESSMENT', $4, $5, $6::jsonb, $7::jsonb, $8, $9)`,
+            [reviewId, cycle.id, employeeId, rater.employeeId, rater.source, JSON.stringify(rater.snapshot),
+              JSON.stringify(resolved.rubric), resolved.versionId, resolved.version],
           );
           summary.added += 1;
         }
         await addEvent(client, {
           cycleId: cycle.id, reviewId, actorAccountId: principal.id,
           eventType: current ? "performance.review.readded" : "performance.review.added",
-          metadata: { raterEmployeeId: rater.employeeId, raterSource: rater.source, unresolved: rater.snapshot.unresolved ?? null },
+          metadata: {
+            raterEmployeeId: rater.employeeId, raterSource: rater.source, unresolved: rater.snapshot.unresolved ?? null,
+            // D-20: why this review got this rubric, so a past result stays explainable.
+            rubricVersion: resolved.version, jobClassificationCodes: resolved.jobCodes,
+          },
         });
         if (cycle.status === "OPEN") await notifyParticipant(client, cycle, employeeId, reviewId, principal.id);
       }
       return [200, summary];
     });
   });
+
+  /**
+   * D-20: re-resolve and re-freeze the rubric of every participant who is still in the cycle.
+   * Returns how many reviews actually changed, so the audit event says whether anything moved.
+   * Only reviews that nobody has scored yet are touched: a rubric must never change under a score
+   * that was already given against it.
+   */
+  async function refreezeRubrics(client: PoolClient, cycle: CycleRow, actorAccountId: string): Promise<number> {
+    const effectiveDate = today() < cycle.periodEnd ? today() : cycle.periodEnd;
+    const versions = await rubricVersionsInForce(client, effectiveDate);
+    const reviews = await client.query<{ id: string; employeeId: string; rubricVersion: number | null; rubric: Rubric }>(
+      `SELECT id, employee_id AS "employeeId", rubric_version AS "rubricVersion", rubric
+         FROM performance_reviews
+        WHERE cycle_id = $1 AND status = 'SELF_ASSESSMENT' AND self_scores IS NULL
+        FOR UPDATE`,
+      [cycle.id],
+    );
+    let changed = 0;
+    for (const review of reviews.rows) {
+      const resolved = await resolveRubricFor(client, { employeeId: review.employeeId, date: effectiveDate, versions, cycle });
+      if (resolved.version === review.rubricVersion && JSON.stringify(resolved.rubric) === JSON.stringify(review.rubric)) continue;
+      await client.query(
+        `UPDATE performance_reviews SET rubric = $2::jsonb, rubric_version_id = $3, rubric_version = $4, updated_at = now()
+          WHERE id = $1`,
+        [review.id, JSON.stringify(resolved.rubric), resolved.versionId, resolved.version],
+      );
+      await addEvent(client, {
+        cycleId: cycle.id, reviewId: review.id, actorAccountId, eventType: "performance.review.rubric_refrozen",
+        metadata: { from: review.rubricVersion, to: resolved.version, jobClassificationCodes: resolved.jobCodes },
+      });
+      changed += 1;
+    }
+    return changed;
+  }
 
   app.post("/admin/performance/cycles/:id/open", async (request, reply) => {
     const principal = await requirePermission(request, reply, "performance.manage");
@@ -847,10 +1103,16 @@ export async function registerPerformanceRoutes(
       }
       // The stored rubric is re-validated so a cycle never opens on a rubric the rules reject.
       validateRubric(cycle.rubric);
+      // D-20: every participant's rubric is frozen again here, because both inputs may have moved
+      // since they were added while the cycle was still DRAFT — HC may have corrected a weight on
+      // the cycle rubric, and a new rubric version may have started. Opening the cycle is the last
+      // moment anything can change, so this is where the freeze is made to stick. Participants
+      // added later, while the cycle is already OPEN, keep the rubric resolved at that moment.
+      const refrozen = await refreezeRubrics(client, cycle, principal.id);
       await client.query(`UPDATE performance_cycles SET status = 'OPEN', opened_at = now(), updated_at = now() WHERE id = $1`, [cycle.id]);
       await addEvent(client, {
         cycleId: cycle.id, actorAccountId: principal.id, eventType: "performance.cycle.opened",
-        metadata: { participants: participants.rows.length },
+        metadata: { participants: participants.rows.length, rubricsRefrozen: refrozen },
       });
       for (const row of participants.rows) await notifyParticipant(client, cycle, row.employeeId, row.id, principal.id);
       return [200, { id: cycle.id, status: "OPEN", participants: participants.rows.length }];

@@ -37,6 +37,7 @@ function review(overrides: Partial<ReviewDetail> = {}): ReviewDetail {
     raterName: "Atasan Sintetis",
     raterSource: "DIRECT_MANAGER",
     raterAccountReady: true,
+    rubricVersion: 1,
     selfSubmittedAt: "2026-11-20T02:00:00.000Z",
     ratedAt: null,
     finalizedAt: null,

@@ -2,7 +2,7 @@
 // `allowedActions`); this module only shapes requests and labels states.
 // Spec: docs/domain/performance-review.md.
 
-export type CycleKind = "MONTHLY" | "ANNUAL";
+export type CycleKind = "MONTHLY" | "SEMESTER" | "ANNUAL";
 export type CycleStatus = "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
 export type ReviewStatus = "SELF_ASSESSMENT" | "MANAGER_REVIEW" | "HC_VALIDATION" | "FINALIZED" | "UNRATED" | "REMOVED";
 export type ReviewAction = "self-assessment" | "acknowledge" | "rate" | "finalize" | "return" | "assign-rater" | "remove";
@@ -48,10 +48,14 @@ export interface CycleSummary {
 
 export interface CycleDetail extends CycleSummary {
   rubric: Rubric;
+  /** D-19: the rubric version this cycle's fallback rubric came from; null when HC typed it. */
+  rubricVersion: number | null;
   recap: {
     participants: number;
     byStatus: Record<ReviewStatus, number>;
     byPredicate: Array<Predicate & { count: number }>;
+    /** D-20: how many reviews each job-group rubric scores in this cycle. */
+    byRubricVersion: Array<{ version: number | null; name: string | null; count: number }>;
     raterMissing: number;
     raterAccountNotReady: number;
   };
@@ -85,6 +89,8 @@ export interface ReviewSummary {
   finalScore: number | null;
   predicateCode: string | null;
   predicateLabel: string | null;
+  /** D-20: the rubric version this review is scored against; null means the cycle's own rubric. */
+  rubricVersion: number | null;
 }
 
 export interface PerformanceEvent {
@@ -207,7 +213,11 @@ export const CYCLE_STATUS_LABELS: Record<CycleStatus, string> = {
   CANCELLED: "Dibatalkan",
 };
 
-export const CYCLE_KIND_LABELS: Record<CycleKind, string> = { MONTHLY: "Bulanan", ANNUAL: "Tahunan (tahun ajaran)" };
+export const CYCLE_KIND_LABELS: Record<CycleKind, string> = {
+  MONTHLY: "Bulanan",
+  SEMESTER: "Semesteran (ganjil/genap)",
+  ANNUAL: "Tahunan (tahun ajaran)",
+};
 
 /** D-04: the legacy 1-4 scale. */
 export const SCALE_OPTIONS = [
@@ -238,6 +248,7 @@ const EVENT_LABELS: Record<string, string> = {
   "performance.review.rater_assigned": "Penilai ditunjuk HC",
   "performance.review.self_submitted": "Penilaian diri dikirim",
   "performance.review.rated": "Dinilai penilai",
+  "performance.review.rubric_refrozen": "Rubrik diperbarui saat siklus dibuka",
   "performance.review.returned": "Dikembalikan HC",
   "performance.review.finalized": "Disahkan HC",
   "performance.review.acknowledged": "Ditandai dibaca",
@@ -282,19 +293,42 @@ export function formatTimestamp(value: string | null) {
   return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
 }
 
-/** Defaults for a new cycle form: the current Jakarta month, deadlines on its last day. */
-export function monthlyDefaults(): CycleInput {
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const year = Number(today.slice(0, 4));
-  const month = Number(today.slice(5, 7));
+/**
+ * D-18: the period a new cycle of each kind covers, from today in Jakarta. Monthly is the current
+ * calendar month, semester the running half of the school year (ganjil from July, genap from
+ * January), annual the running school year. The API validates all three again.
+ */
+export function periodDefaultsFor(kind: CycleKind, from = jakartaToday()): { periodStart: string; periodEnd: string; name: string } {
+  const year = Number(from.slice(0, 4));
+  const month = Number(from.slice(5, 7));
+  if (kind === "SEMESTER") {
+    const ganjil = month >= 7;
+    return {
+      periodStart: `${year}-${ganjil ? "07-01" : "01-01"}`,
+      periodEnd: `${year}-${ganjil ? "12-31" : "06-30"}`,
+      name: `Penilaian kinerja semester ${ganjil ? "ganjil" : "genap"} ${year}`,
+    };
+  }
+  if (kind === "ANNUAL") {
+    const start = month >= 7 ? year : year - 1;
+    return {
+      periodStart: `${start}-07-01`,
+      periodEnd: `${start + 1}-06-30`,
+      name: `Penilaian kinerja tahun ajaran ${start}/${start + 1}`,
+    };
+  }
   const last = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
   const label = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
-  return {
-    name: `Penilaian kinerja ${label}`,
-    kind: "MONTHLY",
-    periodStart: `${today.slice(0, 7)}-01`,
-    periodEnd: last,
-    selfDueOn: last,
-    reviewDueOn: last,
-  };
+  return { periodStart: `${from.slice(0, 7)}-01`, periodEnd: last, name: `Penilaian kinerja ${label}` };
 }
+
+function jakartaToday() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+/** Defaults for a new cycle form: the running period of `kind`, deadlines on its last day. */
+export function cycleDefaults(kind: CycleKind = "MONTHLY"): CycleInput {
+  const period = periodDefaultsFor(kind);
+  return { ...period, kind, selfDueOn: period.periodEnd, reviewDueOn: period.periodEnd };
+}
+

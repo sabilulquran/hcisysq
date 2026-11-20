@@ -28,7 +28,7 @@ import {
   getCycleReviews,
   getCycles,
   getEmployeeHistory,
-  monthlyDefaults,
+  cycleDefaults,
   openCycle,
   PerformanceApiError,
   raterSourceLabel,
@@ -222,12 +222,17 @@ export function AdminPerformancePage() {
 }
 
 function CycleForm({ busy, onSubmit }: { busy: boolean; onSubmit: (input: CycleInput) => void }) {
-  const [form, setForm] = useState<CycleInput>(monthlyDefaults);
+  const [form, setForm] = useState<CycleInput>(() => cycleDefaults("MONTHLY"));
   const update = (patch: Partial<CycleInput>) => setForm((current) => ({ ...current, ...patch }));
+  // D-18: each kind owns its period shape, so switching refills the dates the API would reject.
+  const switchKind = (kind: CycleKind) => setForm(cycleDefaults(kind));
   return (
     <form onSubmit={(event) => { event.preventDefault(); onSubmit({ ...form, name: form.name.trim() }); }}>
       <p className="text-xs text-muted-foreground">
-        Bulanan memakai satu bulan kalender penuh; tahunan memakai satu tahun ajaran (1 Juli–30 Juni). Rubrik bawaan dipakai dan dapat diubah selama draf.
+        Bulanan memakai satu bulan kalender penuh; semesteran mengikuti kalender pendidikan (ganjil 1 Juli–31 Desember, genap
+        1 Januari–30 Juni); tahunan memakai satu tahun ajaran (1 Juli–30 Juni). Rubrik yang dipakai setiap peserta mengikuti
+        versi rubrik yang berlaku untuk kelompok jabatannya; rubrik siklus di bawah ini menjadi cadangan bagi jabatan yang
+        belum dicakup, dan dapat diubah selama draf.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
@@ -236,7 +241,7 @@ function CycleForm({ busy, onSubmit }: { busy: boolean; onSubmit: (input: CycleI
         </label>
         <label className="text-xs font-semibold text-muted-foreground">
           Jenis
-          <select value={form.kind} onChange={(event) => update({ kind: event.target.value as CycleKind })} className={field}>
+          <select value={form.kind} onChange={(event) => switchKind(event.target.value as CycleKind)} className={field}>
             {(Object.keys(CYCLE_KIND_LABELS) as CycleKind[]).map((key) => <option key={key} value={key}>{CYCLE_KIND_LABELS[key]}</option>)}
           </select>
         </label>
@@ -377,6 +382,14 @@ function CycleWorkspace({ cycle, canManage, canSearchEmployees, busy, run, revie
         </div>
         {cycle.recap.raterAccountNotReady > 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">{cycle.recap.raterAccountNotReady} penilaian menunggu penilai yang akunnya belum aktif.</p>
+        ) : null}
+        {cycle.recap.byRubricVersion.length > 1 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Rubrik yang dipakai siklus ini:{" "}
+            {cycle.recap.byRubricVersion
+              .map((item) => `${item.name ?? "rubrik siklus"}${item.version ? ` (v${item.version})` : ""}: ${item.count}`)
+              .join(" · ")}
+          </p>
         ) : null}
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           {cycle.recap.byPredicate.map((item) => (

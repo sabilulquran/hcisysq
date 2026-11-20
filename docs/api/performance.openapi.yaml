@@ -140,6 +140,44 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /admin/performance/rubric-versions:
+    get:
+      tags: [Performance]
+      operationId: listPerformanceRubricVersions
+      summary: Rubric versions, newest first, with the job groups they cover (performance.read)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of rubric versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RubricVersion' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  defaultVersion: { type: [integer, 'null'], description: The DEFAULT version in force today }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Performance]
+      operationId: createPerformanceRubricVersion
+      summary: Add a rubric version (performance.manage); versions are append-only and never edited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RubricVersionInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Transition' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/performance/cycles:
     get:
       tags: [Performance]
@@ -195,7 +233,7 @@ paths:
     get:
       tags: [Performance]
       operationId: getPerformanceCycle
-      summary: One cycle with its rubric, the recap by status and predicate, and cycle-level history
+      summary: One cycle with its fallback rubric, the recap by status, predicate and rubric version, and cycle-level history
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200':
@@ -221,6 +259,15 @@ paths:
                                 - type: object
                                   properties:
                                     count: { type: integer }
+                          byRubricVersion:
+                            type: array
+                            description: D-20 which rubrics this cycle scores against and how many reviews each
+                            items:
+                              type: object
+                              properties:
+                                version: { type: [integer, 'null'] }
+                                name: { type: [string, 'null'] }
+                                count: { type: integer }
                           raterMissing: { type: integer }
                           raterAccountNotReady: { type: integer }
                       events: { type: array, items: { $ref: '#/components/schemas/Event' } }
@@ -520,7 +567,14 @@ components:
         pageCount: { type: integer }
     CycleKind:
       type: string
-      enum: [MONTHLY, ANNUAL]
+      description: >-
+        MONTHLY = one calendar month; SEMESTER = one half of the school year (D-18, ganjil
+        1 July-31 December, genap 1 January-30 June); ANNUAL = one school year.
+      enum: [MONTHLY, SEMESTER, ANNUAL]
+    RubricScope:
+      type: string
+      description: DEFAULT covers every job; JOB_GROUP covers the ORG-011 classification codes it names (D-20).
+      enum: [DEFAULT, JOB_GROUP]
     CycleStatus:
       type: string
       enum: [DRAFT, OPEN, CLOSED, CANCELLED]
@@ -557,8 +611,8 @@ components:
       properties:
         name: { type: string, minLength: 3, maxLength: 120 }
         kind: { $ref: '#/components/schemas/CycleKind' }
-        periodStart: { type: string, format: date, description: MONTHLY = first day of a month; ANNUAL = 1 July }
-        periodEnd: { type: string, format: date, description: MONTHLY = last day of the same month; ANNUAL = 30 June }
+        periodStart: { type: string, format: date, description: MONTHLY = first day of a month; SEMESTER = 1 July or 1 January; ANNUAL = 1 July }
+        periodEnd: { type: string, format: date, description: MONTHLY = last day of the same month; SEMESTER = 31 December or 30 June; ANNUAL = 30 June }
         selfDueOn: { type: string, format: date }
         reviewDueOn: { type: string, format: date }
         rubric: { $ref: '#/components/schemas/Rubric' }
@@ -573,6 +627,38 @@ components:
         periodEnd: { type: string, format: date }
         selfDueOn: { type: string, format: date }
         reviewDueOn: { type: string, format: date }
+        rubricVersion: { type: [integer, 'null'], description: D-19 rubric version this cycle's fallback rubric copied; null when HC typed its own }
+    RubricVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        scope: { $ref: '#/components/schemas/RubricScope' }
+        name: { type: string }
+        effectiveFrom: { type: string, format: date }
+        rubric: { $ref: '#/components/schemas/Rubric' }
+        source: { type: string }
+        note: { type: [string, 'null'] }
+        jobClassificationCodes: { type: array, items: { type: string } }
+        reviewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        createdByName: { type: [string, 'null'] }
+    RubricVersionInput:
+      type: object
+      required: [name, scope, effectiveFrom, source, indicators, predicates]
+      properties:
+        name: { type: string, minLength: 3, maxLength: 120 }
+        scope: { $ref: '#/components/schemas/RubricScope' }
+        effectiveFrom: { type: string, format: date, description: Never earlier than the newest version's own start date }
+        source: { type: string, minLength: 1, maxLength: 200 }
+        note: { type: [string, 'null'], maxLength: 500 }
+        jobClassificationCodes:
+          type: array
+          maxItems: 50
+          items: { type: string, pattern: '^[A-Z][A-Z0-9_]{0,47}$' }
+          description: Required and non-empty for JOB_GROUP, empty or absent for DEFAULT
+        indicators: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/Indicator' } }
+        predicates: { type: array, minItems: 2, maxItems: 6, items: { $ref: '#/components/schemas/Predicate' } }
     ReviewSummary:
       type: object
       properties:
@@ -598,6 +684,7 @@ components:
         ratedAt: { type: [string, 'null'], format: date-time }
         finalizedAt: { type: [string, 'null'], format: date-time }
         acknowledgedAt: { type: [string, 'null'], format: date-time }
+        rubricVersion: { type: [integer, 'null'], description: D-20 rubric version this review is scored against; null means the cycle's own rubric }
         trend:
           type: [string, 'null']
           enum: [FIRST, IMPROVING, STABLE, DECLINING, null]

@@ -21,7 +21,7 @@ export function PaginationBar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] text-muted-foreground">
       <div>{total === 0 ? "Tidak ada data" : `Menampilkan ${start}–${end} dari ${total}`}</div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange ? (
           <label className="flex items-center gap-2">
             <span>Per halaman</span>

@@ -4,10 +4,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { buildRequest, emptyDraft, EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
+import { ActionReview, buildRequest, emptyDraft, EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
 import { EmploymentActionButtons } from "@/components/employment/EmploymentPanels";
 import { TemporaryReactivationPanel } from "@/components/employment/TemporaryReactivationPanel";
-import { requiredDocumentKind } from "@/lib/employment-actions";
+import { requiredDocumentKind, type EmploymentActionPreview } from "@/lib/employment-actions";
 
 const EMPLOYEE_ID = "10000000-0000-4000-8000-000000000001";
 
@@ -199,5 +199,41 @@ describe("ORG-011 classification on a placement", () => {
     for (const action of ["HIRE", "PLACEMENT", "TRANSFER", "PROMOTION", "DEMOTION"] as const) {
       expect(placementOf(buildRequest(action, draft, false, [])).jobClassificationCode).toBe("FUNC_GURU");
     }
+  });
+});
+
+describe("UX-FLOW-001 one step per screen in the action dialog", () => {
+  const preview: EmploymentActionPreview = {
+    actionType: "CONTRACT_EXTENSION",
+    effectiveOn: "2099-01-01",
+    reasonCode: null,
+    warnings: ["BACKDATED"],
+    previous: { category: "KONTRAK", termFrom: "2098-01-01", termTo: "2098-12-31" },
+    next: { category: "KONTRAK", termFrom: "2099-01-01", termTo: "2099-12-31" },
+    documentIds: [],
+    expectedVersion: 1,
+    state: "AKTIF",
+    structureNote: null,
+    accountDeactivation: { willDeactivate: false, onDate: null },
+  };
+
+  it("opens on the form alone, without the summary or the save button", () => {
+    const html = dialog("CONTRACT_EXTENSION");
+    expect(html).toContain("Langkah 1 dari 2");
+    expect(html).toContain("Periksa");
+    expect(html).not.toContain("Dari → Menjadi");
+    expect(html).not.toContain("Simpan");
+  });
+
+  it("shows the check step without any form field, with a way back", () => {
+    const html = render(
+      <ActionReview preview={preview} acknowledged={false} busy={false} onAcknowledge={() => undefined} onBack={() => undefined} onSave={() => undefined} />,
+    );
+    expect(html).toContain("Dari → Menjadi");
+    expect(html).toContain("Saya sudah memeriksa");
+    expect(html).toContain("Ubah data");
+    expect(html).toContain("Simpan");
+    expect(html).not.toContain("Tanggal berlaku");
+    expect(html).not.toContain('type="date"');
   });
 });

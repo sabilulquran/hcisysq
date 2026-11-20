@@ -3,14 +3,12 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
-  Clock3,
   Loader2,
   ShieldCheck,
   Stethoscope,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
 import { PostponementResponse } from "@/components/leave/PostponementResponse";
 import { postponementStatusNote } from "@/lib/leavePostponementView";
@@ -18,9 +16,6 @@ import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
   getEmployeeLeaveSummary,
-  previewAnnualLeave,
-  submitAnnualLeave,
-  type AnnualLeavePreview,
   type EmployeeLeaveSummary,
 } from "@/lib/employeeLeave";
 
@@ -54,13 +49,7 @@ function statusLabel(status: string) {
 
 export function EmployeeLeavePage() {
   const [summary, setSummary] = useState<EmployeeLeaveSummary | null>(null);
-  const [startOn, setStartOn] = useState("");
-  const [endOn, setEndOn] = useState("");
-  const [reason, setReason] = useState("");
-  const [preview, setPreview] = useState<AnnualLeavePreview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [previewing, setPreviewing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -96,59 +85,6 @@ export function EmployeeLeavePage() {
     };
   }, [summary]);
 
-  const handlePreview = async () => {
-    setError(null);
-    setSuccess(null);
-    setPreview(null);
-    if (!startOn || !endOn) {
-      setError("Pilih tanggal mulai dan selesai terlebih dahulu.");
-      return;
-    }
-    setPreviewing(true);
-    try {
-      setPreview(await previewAnnualLeave({ startOn, endOn, reason: reason || null }));
-    } catch (cause) {
-      setError(
-        cause instanceof EmployeeLeaveApiError
-          ? cause.message
-          : "Pengajuan belum dapat diperiksa.",
-      );
-    } finally {
-      setPreviewing(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!preview) return;
-    setSubmitting(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const result = await submitAnnualLeave({
-        startOn,
-        endOn,
-        reason: reason || null,
-        idempotencyKey: crypto.randomUUID(),
-      });
-      setSuccess(
-        `Pengajuan ${result.workingDays} hari kerja berhasil dikirim dan menunggu persetujuan.`,
-      );
-      setPreview(null);
-      setStartOn("");
-      setEndOn("");
-      setReason("");
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof EmployeeLeaveApiError
-          ? cause.message
-          : "Pengajuan cuti tidak dapat dikirim.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const annual = summary?.annualLeave;
   const group = summary?.employee.leaveEntitlementGroup;
 
@@ -179,7 +115,7 @@ export function EmployeeLeavePage() {
 
       <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <a
-          href="#annual-form"
+          href="/app/leave/annual"
           className="group rounded-3xl border border-brand-primary/25 bg-brand-primary-pale/45 p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex items-start gap-3">
@@ -246,7 +182,7 @@ export function EmployeeLeavePage() {
         </div>
       ) : null}
 
-      <section className="mt-5 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+      <section className="mt-5">
         <article className="rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -296,109 +232,16 @@ export function EmployeeLeavePage() {
                   </div>
                 ))}
               </div>
-            </div>
-          ) : null}
-        </article>
-
-        <article id="annual-form" className="scroll-mt-24 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
-          <h2 className="text-base font-bold text-brand-heading">Ajukan Cuti Tahunan</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Isi tanggal cuti. Sistem akan memeriksa H-7, masa kerja, kuota periode, hari kerja, dan siapa yang perlu menyetujui.
-          </p>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-semibold">
-              Mulai cuti
-              <input
-                type="date"
-                value={startOn}
-                onChange={(event) => {
-                  setStartOn(event.target.value);
-                  setPreview(null);
-                }}
-                disabled={group !== "non_education"}
-                className="mt-2 h-11 w-full rounded-xl border border-border bg-surface-raised px-3 font-normal outline-none focus:border-brand-primary disabled:bg-muted"
-              />
-            </label>
-            <label className="text-sm font-semibold">
-              Selesai cuti
-              <input
-                type="date"
-                value={endOn}
-                onChange={(event) => {
-                  setEndOn(event.target.value);
-                  setPreview(null);
-                }}
-                disabled={group !== "non_education"}
-                className="mt-2 h-11 w-full rounded-xl border border-border bg-surface-raised px-3 font-normal outline-none focus:border-brand-primary disabled:bg-muted"
-              />
-            </label>
-          </div>
-          <label className="mt-4 block text-sm font-semibold">
-            Keterangan <span className="font-normal text-muted-foreground">(opsional)</span>
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              disabled={group !== "non_education"}
-              rows={3}
-              maxLength={1000}
-              className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2.5 font-normal outline-none focus:border-brand-primary disabled:bg-muted"
-            />
-          </label>
-
-          <button
-            type="button"
-            disabled={previewing || group !== "non_education"}
-            onClick={() => void handlePreview()}
-            className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold hover:bg-muted/50 disabled:opacity-50"
-          >
-            {previewing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Clock3 className="h-4 w-4" aria-hidden="true" />}
-            Lanjutkan
-          </button>
-
-          {preview ? (
-            <div className="mt-5 rounded-2xl border border-brand-primary/20 bg-brand-primary-pale/45 p-4">
-              <p className="text-sm font-bold text-brand-heading">Periksa sebelum dikirim</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Hari kerja</p>
-                  <p className="mt-1 text-lg font-bold text-brand-heading">{preview.requestedWorkingDays}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Tersedia sebelum</p>
-                  <p className="mt-1 text-lg font-bold text-brand-heading">{preview.availableDaysBeforeRequest}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Tersisa setelah</p>
-                  <p className="mt-1 text-lg font-bold text-brand-heading">{preview.availableDaysAfterRequest}</p>
-                </div>
-              </div>
-              <div className="mt-4 border-t border-brand-primary/15 pt-4">
-                <p className="text-xs font-semibold text-muted-foreground">Alur persetujuan</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {preview.approvalChain.map((step, index) => (
-                    <div key={step.employeeId} className="flex items-center gap-2">
-                      {index > 0 ? <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /> : null}
-                      <span className="rounded-full bg-surface-raised px-3 py-1.5 text-xs font-semibold text-brand-heading shadow-sm">
-                        {step.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <CriticalPeriodNotice periods={preview.criticalPeriods} />
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => void handleSubmit()}
-                className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-60"
+              <a
+                href="/app/leave/annual"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] sm:w-auto"
               >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
-                Kirim pengajuan
-              </button>
+                Ajukan Cuti Tahunan <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
             </div>
           ) : null}
         </article>
+
       </section>
 
       <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">

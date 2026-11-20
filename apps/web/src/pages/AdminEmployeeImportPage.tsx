@@ -1,7 +1,9 @@
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
-import { useRef, useState, type FormEvent } from "react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
@@ -12,7 +14,11 @@ import {
   type EmployeeImportPreview,
   type EmployeeImportRowFilter,
 } from "@/lib/adminEmployees";
+import { useWizardStep } from "@/lib/useWizardStep";
 
+/** UX-FLOW-001: unggah → periksa → selesai, one step per screen (`?langkah=`). */
+const STEPS = ["unggah", "periksa", "selesai"] as const;
+const STEP_LABELS = ["Unggah berkas", "Periksa", "Selesai"] as const;
 
 const CSV_TEMPLATE = [
   "NIP,NAMA,STATUS AKTIF,STATUS KEPEGAWAIAN,UNIT,JABATAN,JENIS KEPEGAWAIAN,JABATAN FUNGSIONAL,JABATAN STRUKTURAL,EMAIL,NO HP,PENDIDIKAN TERAKHIR,TMT,TAHUN KELUAR (TTTT-BB)",
@@ -37,6 +43,7 @@ function summaryCard(label: string, value: number, tone: "neutral" | "good" | "w
 }
 
 export function AdminEmployeeImportPage() {
+  const { step, index, goTo } = useWizardStep(STEPS);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<EmployeeImportPreview | null>(null);
   const [committed, setCommitted] = useState<EmployeeImportCommitResult | null>(null);
@@ -48,6 +55,22 @@ export function AdminEmployeeImportPage() {
   const [rowsLoading, setRowsLoading] = useState(false);
   // Only the newest page request may land, so quick clicks cannot show an older page last.
   const rowsRequest = useRef(0);
+
+  // A later step cannot open without the data of the step before it (e.g. after a refresh).
+  useEffect(() => {
+    if (step === "periksa" && !preview) goTo("unggah", { replace: true });
+    if (step === "selesai" && !committed) goTo("unggah", { replace: true });
+  }, [step, preview, committed, goTo]);
+
+  // The file input is re-created on the upload step, so a file chosen earlier is no longer shown there.
+  useEffect(() => {
+    if (step === "unggah") setFile(null);
+  }, [step]);
+
+  const showError = (message: string) => {
+    setError(message);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   // Counts come from the server for the whole import; only the row table is paged (ENG-LIST-001).
   const validationSummary = preview?.issueSummary ?? [];
@@ -82,8 +105,9 @@ export function AdminEmployeeImportPage() {
     setRowFilter("all");
     try {
       setPreview(await previewEmployeeImport(file));
+      goTo("periksa");
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof AdminApiError
           ? cause.message
           : "File import tidak dapat dipreview.",
@@ -106,8 +130,9 @@ export function AdminEmployeeImportPage() {
           ? { ...current, status: result.status, committedAt: result.committedAt }
           : current,
       );
+      goTo("selesai", { replace: true });
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof AdminApiError
           ? cause.message
           : "Import tidak dapat di-commit.",
@@ -117,67 +142,85 @@ export function AdminEmployeeImportPage() {
     }
   };
 
+  const changeFile = () => {
+    setPreview(null);
+    setCommitted(null);
+    setError(null);
+    goTo("unggah");
+  };
+
+  const startOver = () => {
+    setPreview(null);
+    setCommitted(null);
+    setError(null);
+    goTo("unggah", { replace: true });
+  };
+
   return (
     <AdminShell
       active="import"
       title="Impor Pegawai"
       description="CSV UTF-8 adalah format yang disarankan; XLSX tetap didukung. Tidak ada perubahan employee master sebelum konfirmasi dijalankan."
     >
-      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary-pale/60 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-brand-heading">Gunakan CSV untuk import rutin</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              CSV lebih deterministik karena tidak membawa formula, format tanggal Excel, merged cells, atau hidden rows. XLSX tetap tersedia untuk kompatibilitas master lama.
-            </p>
-          </div>
-          <a
-            href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}
-            download="template-import-pegawai.csv"
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-surface-raised px-4 text-sm font-bold text-brand-primary-deep"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Template CSV
-          </a>
-        </div>
-
-        <form onSubmit={handlePreview} className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-foreground">File pegawai (.csv / .xlsx)</span>
-            <input
-              type="file"
-              accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null);
-                setPreview(null);
-                setCommitted(null);
-                setError(null);
-              }}
-              className="block w-full rounded-xl border border-border bg-surface p-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary-pale file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-primary-deep"
-            />
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              CSV membaca header pada baris pertama. XLSX membaca sheet <strong>Master Data SDM YSQ</strong>. Raw upload dibuang setelah request selesai.
-            </p>
-          </label>
-          <button
-            type="submit"
-            disabled={!file || loading}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Upload className="h-4 w-4" aria-hidden="true" />
-            {loading ? "Memproses..." : "Buat preview"}
-          </button>
-        </form>
-      </section>
+      <WizardSteps steps={STEP_LABELS} current={index} />
 
       {error ? (
-        <div className="mt-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
+        <div role="alert" className="mt-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <p>{error}</p>
         </div>
       ) : null}
 
-      {preview ? (
+      {step === "unggah" ? (
+        <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary-pale/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-brand-heading">Gunakan CSV untuk import rutin</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                CSV lebih deterministik karena tidak membawa formula, format tanggal Excel, merged cells, atau hidden rows. XLSX tetap tersedia untuk kompatibilitas master lama.
+              </p>
+            </div>
+            <a
+              href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}
+              download="template-import-pegawai.csv"
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-surface-raised px-4 text-sm font-bold text-brand-primary-deep"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Template CSV
+            </a>
+          </div>
+
+          <form onSubmit={handlePreview} className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-foreground">File pegawai (.csv / .xlsx)</span>
+              <input
+                type="file"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                  setPreview(null);
+                  setCommitted(null);
+                  setError(null);
+                }}
+                className="block w-full rounded-xl border border-border bg-surface p-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary-pale file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-primary-deep"
+              />
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                CSV membaca header pada baris pertama. XLSX membaca sheet <strong>Master Data SDM YSQ</strong>. Raw upload dibuang setelah request selesai.
+              </p>
+            </label>
+            <button
+              type="submit"
+              disabled={!file || loading}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              {loading ? "Memproses..." : "Buat preview"}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      {step === "periksa" && preview ? (
         <>
           <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -222,32 +265,35 @@ export function AdminEmployeeImportPage() {
               </div>
             ) : null}
 
-            <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-foreground">
-                  {preview.errorCount > 0
-                    ? "Preview belum dapat di-commit"
-                    : committed
-                      ? "Import sudah berhasil di-commit"
-                      : "Preview siap dikonfirmasi"}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {preview.errorCount > 0
-                    ? "Perbaiki error lalu buat preview baru. Warning dan record skip tidak memblokir commit."
-                    : committed
-                      ? `${committed.committedCount} employee diproses. Buka Daftar Pegawai untuk melihat hasilnya.`
-                      : "Duplicate NIP memilih satu kondisi terkini: valid, lalu aktif, lalu TMT terbaru, lalu baris terakhir. Record lain dilewati sebagai skip."}
-                </p>
+            <div className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
+              <p className="text-sm font-bold text-foreground">
+                {preview.errorCount > 0 ? "Preview belum dapat di-commit" : "Preview siap dikonfirmasi"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {preview.errorCount > 0
+                  ? "Perbaiki error lalu buat preview baru. Warning dan record skip tidak memblokir commit."
+                  : "Duplicate NIP memilih satu kondisi terkini: valid, lalu aktif, lalu TMT terbaru, lalu baris terakhir. Record lain dilewati sebagai skip."}
+              </p>
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                <button
+                  type="button"
+                  onClick={changeFile}
+                  disabled={committing}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                  Ganti berkas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCommit()}
+                  disabled={preview.errorCount > 0 || preview.status !== "previewed" || committing}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  {committing ? "Mengimpor..." : "Konfirmasi import"}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleCommit()}
-                disabled={preview.errorCount > 0 || preview.status !== "previewed" || committing || Boolean(committed)}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                {committing ? "Mengimpor..." : committed ? "Sudah diimpor" : "Konfirmasi import"}
-              </button>
             </div>
           </section>
 
@@ -319,6 +365,33 @@ export function AdminEmployeeImportPage() {
             />
           </section>
         </>
+      ) : null}
+
+      {step === "selesai" && committed ? (
+        <WizardDone
+          title="Import sudah berhasil di-commit"
+          message={`${committed.committedCount} employee diproses. Buka Daftar Pegawai untuk melihat hasilnya.`}
+        >
+          <a
+            href="/admin/employees"
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground"
+          >
+            Buka Daftar Pegawai
+          </a>
+          <a
+            href="/admin/employees/imports"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-surface-raised px-5 text-sm font-semibold"
+          >
+            Lihat riwayat impor
+          </a>
+          <button
+            type="button"
+            onClick={startOver}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-surface-raised px-5 text-sm font-semibold"
+          >
+            Impor berkas lain
+          </button>
+        </WizardDone>
       ) : null}
     </AdminShell>
   );

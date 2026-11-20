@@ -73,6 +73,7 @@ Production berhenti di `127b6068`. Semua yang di-merge sesudahnya **belum ada di
 
 | PR | Commit merge | Isi | Status |
 |---|---|---|---|
+| #396 | _(commit merge)_ | LEAVE-UX-001 / UX-FLOW-001 satu langkah per layar: 14 alur bertahap jadi wizard, route baru `/app/leave/annual` (frontend saja, tanpa migrasi) | Selesai belum dirilis |
 | #391 | `838d1e24` | LOAN-002 jalur tulis pemetaan kursi persetujuan untuk HC (migrasi 0181) | Selesai belum dirilis |
 | #383 | `c84dd4dd` | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang, di balik `GOVERNANCE_PAYROLL_READ_ENABLED` yang mati (migrasi 0180) | Selesai belum dirilis |
 | #390 | `2560b04f` | PERF-001 jalur keberatan kinerja (migrasi 0176) | Selesai belum dirilis |

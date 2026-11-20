@@ -4,6 +4,7 @@
 
 import { useRef, useState } from "react";
 
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   importJobCatalog,
@@ -26,6 +27,16 @@ export function canApply(checked: { csv: string; report: CatalogImportReport } |
   return checked !== null && csv !== null && checked.csv === csv
     && checked.report.dryRun && checked.report.summary.error === 0
     && checked.report.summary.create + checked.report.summary.amend > 0;
+}
+
+const IMPORT_STEPS = ["unggah", "periksa", "hasil"] as const;
+const IMPORT_STEP_LABELS = ["Unggah berkas", "Periksa", "Hasil"] as const;
+type ImportStep = (typeof IMPORT_STEPS)[number];
+
+/** No report yet: upload. A dry-run report: check it, then apply. A real attempt: its outcome. */
+function importStep(report: CatalogImportReport | null): ImportStep {
+  if (!report) return "unggah";
+  return report.dryRun ? "periksa" : "hasil";
 }
 
 export function JobCatalogImportPanel({ kind, onApplied }: { kind: CatalogKind; onApplied: () => void }) {
@@ -74,35 +85,64 @@ export function JobCatalogImportPanel({ kind, onApplied }: { kind: CatalogKind; 
     }
   }
 
+  // UX-FLOW-001: one step per screen, held in local state (the panel sits inside a page).
+  const step = importStep(report);
+  const backToUpload = () => {
+    setReport(null);
+    setChecked(null);
+    setError(null);
+  };
+
   return (
     <section className="space-y-3 rounded-lg border p-4" aria-label={`Impor ${noun}`}>
       <h2 className="text-sm font-bold text-brand-heading">Impor {noun} dari CSV</h2>
-      <p className="text-xs text-muted-foreground">
-        Kode baru dibuat, kode yang sudah ada mendapat versi baru mulai <span className="font-mono">effective_from</span>,
-        dan baris yang sama persis dilewati. Penutupan kode tetap lewat tombol Tutup. Satu baris salah membatalkan
-        seluruh berkas, dan setiap perubahan tercatat di riwayat.{" "}
-        <a href={templateHref(kind)} download={`templat-${noun}.csv`} className="font-bold text-brand-primary">Unduh templat</a>
-      </p>
-      {fileName ? <p className="text-xs text-muted-foreground">Berkas: {fileName}</p> : null}
-      <input
-        type="file"
-        accept=".csv,text/csv"
-        aria-label={`Berkas CSV ${noun}`}
-        onChange={(event) => void choose(event.target)}
-        className="block text-sm"
-      />
-      <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={!csv || busy} onClick={() => void send(true)}
-          className="rounded-md border px-4 py-2 text-sm font-bold disabled:opacity-50">
-          {busy ? "Memeriksa…" : "Periksa berkas"}
-        </button>
-        <button type="button" disabled={!canApply(checked, csv) || busy} onClick={() => void send(false)}
-          className="rounded-md bg-brand px-4 py-2 text-sm font-bold text-brand-ink disabled:opacity-50">
-          Terapkan impor
-        </button>
-      </div>
+      <WizardSteps steps={IMPORT_STEP_LABELS} current={IMPORT_STEPS.indexOf(step)} />
+      {step === "unggah" ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Kode baru dibuat, kode yang sudah ada mendapat versi baru mulai <span className="font-mono">effective_from</span>,
+            dan baris yang sama persis dilewati. Penutupan kode tetap lewat tombol Tutup. Satu baris salah membatalkan
+            seluruh berkas, dan setiap perubahan tercatat di riwayat.{" "}
+            <a href={templateHref(kind)} download={`templat-${noun}.csv`} className="font-bold text-brand-primary">Unduh templat</a>
+          </p>
+          {fileName ? <p className="text-xs text-muted-foreground">Berkas: {fileName}</p> : null}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label={`Berkas CSV ${noun}`}
+            onChange={(event) => void choose(event.target)}
+            className="block text-sm"
+          />
+        </>
+      ) : fileName ? (
+        <p className="text-xs text-muted-foreground">Berkas: {fileName}</p>
+      ) : null}
       {error ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
-      {report ? <ImportReportView report={report} /> : null}
+      {step !== "unggah" && report ? <ImportReportView report={report} /> : null}
+      <div className="flex flex-wrap gap-2">
+        {step === "unggah" ? (
+          <button type="button" disabled={!csv || busy} onClick={() => void send(true)}
+            className="rounded-md bg-brand px-4 py-2 text-sm font-bold text-brand-ink disabled:opacity-50">
+            {busy ? "Memeriksa…" : "Periksa berkas"}
+          </button>
+        ) : step === "periksa" ? (
+          <>
+            <button type="button" disabled={busy} onClick={backToUpload}
+              className="rounded-md border px-4 py-2 text-sm font-bold disabled:opacity-50">
+              Ganti berkas
+            </button>
+            <button type="button" disabled={!canApply(checked, csv) || busy} onClick={() => void send(false)}
+              className="rounded-md bg-brand px-4 py-2 text-sm font-bold text-brand-ink disabled:opacity-50">
+              {busy ? "Menerapkan…" : "Terapkan impor"}
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={backToUpload}
+            className="rounded-md border px-4 py-2 text-sm font-bold">
+            {report?.applied ? "Impor berkas lain" : "Kembali ke unggah berkas"}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

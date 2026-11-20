@@ -9,7 +9,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { WizardDone } from "@/components/wizard/WizardDone";
+import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
+import { useWizardStep } from "@/lib/useWizardStep";
 import {
   getSpecialLeaveSummary,
   previewSpecialLeave,
@@ -21,6 +24,9 @@ import {
   type SupportedSpecialLeaveKey,
   uploadSpecialLeaveEvidence,
 } from "@/lib/specialLeave";
+
+const STEPS = ["pilih", "isi", "periksa", "selesai"] as const;
+const STEP_LABELS = ["Pilih", "Isi data", "Periksa", "Selesai"] as const;
 
 function initials(name: string) {
   return name
@@ -100,6 +106,8 @@ async function fileToEvidence(file: File): Promise<SpecialLeaveEvidenceInput> {
 }
 
 export function EmployeeSpecialLeavePage() {
+  const { step, index, goTo } = useWizardStep(STEPS);
+  const [submitted, setSubmitted] = useState<string | null>(null);
   const [summary, setSummary] = useState<SpecialLeaveSummary | null>(null);
   const [policyKey, setPolicyKey] = useState<SupportedSpecialLeaveKey | null>(null);
   const [startOn, setStartOn] = useState("");
@@ -133,6 +141,11 @@ export function EmployeeSpecialLeavePage() {
     void load();
   }, []);
 
+  const showError = (message: string) => {
+    setError(message);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const selectedPolicy = policyKey
     ? summary?.policies.find((policy) => policy.key === policyKey) ?? null
     : null;
@@ -156,6 +169,7 @@ export function EmployeeSpecialLeavePage() {
     setPreview(null);
     setError(null);
     setSuccess(null);
+    goTo("isi");
   };
 
   const handlePreview = async () => {
@@ -163,11 +177,11 @@ export function EmployeeSpecialLeavePage() {
     setSuccess(null);
     setPreview(null);
     if (!policyKey) {
-      setError("Pilih kondisi yang sesuai terlebih dahulu.");
+      showError("Pilih kondisi yang sesuai terlebih dahulu.");
       return;
     }
     if (!startOn || !endOn) {
-      setError("Pilih tanggal mulai dan selesai.");
+      showError("Pilih tanggal mulai dan selesai.");
       return;
     }
     setBusy(true);
@@ -180,8 +194,9 @@ export function EmployeeSpecialLeavePage() {
           hasEvidence: file !== null,
         }),
       );
+      goTo("periksa");
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof SpecialLeaveApiError
           ? cause.message
           : "Data belum dapat diperiksa. Coba cek kembali tanggal dan dokumen.",
@@ -206,7 +221,7 @@ export function EmployeeSpecialLeavePage() {
         idempotencyKey: crypto.randomUUID(),
         evidence,
       });
-      setSuccess(
+      setSubmitted(
         result.hcHandling === "validate"
           ? "Laporan berhasil dikirim. Atasan sudah diberi tahu dan Human Capital akan memeriksa administrasinya."
           : "Laporan berhasil dicatat dan pihak terkait sudah diberi tahu.",
@@ -217,9 +232,10 @@ export function EmployeeSpecialLeavePage() {
       setReason("");
       setFile(null);
       setPreview(null);
+      goTo("selesai", { replace: true });
       await load();
     } catch (cause) {
-      setError(
+      showError(
         cause instanceof SpecialLeaveApiError || cause instanceof Error
           ? cause.message
           : "Laporan tidak dapat dikirim.",
@@ -228,6 +244,13 @@ export function EmployeeSpecialLeavePage() {
       setBusy(false);
     }
   };
+
+  // Langkah lanjutan tidak boleh dibuka tanpa data langkah sebelumnya (mis. setelah refresh).
+  useEffect(() => {
+    if (step === "isi" && !policyKey) goTo("pilih", { replace: true });
+    if (step === "periksa" && !preview) goTo(policyKey ? "isi" : "pilih", { replace: true });
+    if (step === "selesai" && !submitted) goTo("pilih", { replace: true });
+  }, [step, policyKey, preview, submitted, goTo]);
 
   const handleCorrectionUpload = async () => {
     if (!correctionRequestId || !correctionFile) return;
@@ -273,15 +296,12 @@ export function EmployeeSpecialLeavePage() {
         </div>
       </section>
 
-      <div className="mt-5 grid grid-cols-3 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised text-center text-[11px] font-semibold text-muted-foreground shadow-[var(--shadow-soft)]">
-        <div className={`px-2 py-3 ${!policyKey ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>1 · Pilih kondisi</div>
-        <div className={`border-x border-border/70 px-2 py-3 ${policyKey && !preview ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>2 · Isi data</div>
-        <div className={`px-2 py-3 ${preview ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>3 · Periksa & kirim</div>
-      </div>
+      <WizardSteps steps={STEP_LABELS} current={index} />
 
       {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-      {success ? <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{success}</div> : null}
+      {success && step === "pilih" ? <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{success}</div> : null}
 
+      {step === "pilih" ? (
       <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
@@ -320,9 +340,10 @@ export function EmployeeSpecialLeavePage() {
           </div>
         )}
       </section>
+      ) : null}
 
-      {selectedPolicy ? (
-        <section className="mt-4 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
+      {step === "isi" && selectedPolicy ? (
+        <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground">Pilihan Anda</p>
@@ -332,8 +353,8 @@ export function EmployeeSpecialLeavePage() {
             <button
               type="button"
               onClick={() => {
-                setPolicyKey(null);
                 setPreview(null);
+                goTo("pilih");
               }}
               className="text-left text-xs font-bold text-brand-primary-deep sm:text-right"
             >
@@ -397,18 +418,22 @@ export function EmployeeSpecialLeavePage() {
             />
           </label>
 
+          <div className="mt-6 flex justify-end">
           <button
             type="button"
             disabled={busy}
             onClick={() => void handlePreview()}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 sm:w-auto rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50"
           >
             {busy && !preview ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
             Lanjutkan
           </button>
+          </div>
+        </section>
+      ) : null}
 
-          {preview ? (
-            <div className="mt-5 rounded-2xl border border-brand-primary/20 bg-brand-primary-pale/40 p-4">
+      {step === "periksa" && preview && selectedPolicy ? (
+            <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-bold text-brand-heading">Periksa sebelum dikirim</p>
@@ -435,20 +460,47 @@ export function EmployeeSpecialLeavePage() {
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleSubmit()}
-                className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground disabled:opacity-60"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
-                Kirim laporan
-              </button>
-            </div>
-          ) : null}
-        </section>
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => goTo("isi")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Ubah data
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleSubmit()}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-60"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
+                  Kirim laporan
+                </button>
+              </div>
+            </section>
       ) : null}
 
+      {step === "selesai" && submitted ? (
+        <WizardDone title="Laporan terkirim" message={submitted}>
+          <button
+            type="button"
+            onClick={() => {
+              setSubmitted(null);
+              goTo("pilih", { replace: true });
+            }}
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground"
+          >
+            Lihat riwayat laporan
+          </button>
+          <a href="/app/leave" className="inline-flex h-11 items-center justify-center rounded-xl border border-border px-5 text-sm font-semibold">
+            Semua Cuti & Izin
+          </a>
+        </WizardDone>
+      ) : null}
+
+      {step === "pilih" ? (
       <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4">
           <h2 className="text-base font-bold text-brand-heading">Riwayat kondisi khusus</h2>
@@ -502,6 +554,7 @@ export function EmployeeSpecialLeavePage() {
           )}
         </div>
       </section>
+      ) : null}
     </AppShell>
   );
 }

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { auditEventDetail } from "@/components/job-classifications/JobCatalogAuditList";
 import { EmployeeJobClassificationCard } from "@/components/job-classifications/EmployeeJobClassificationCard";
-import { ImportReportView, canApply, templateHref } from "@/components/job-classifications/JobCatalogImportPanel";
+import { ImportReportView, JobCatalogImportPanel, canApply, templateHref } from "@/components/job-classifications/JobCatalogImportPanel";
 import { classificationLabel } from "@/components/employment/EmploymentPanels";
 import {
   catalogExportUrl,
@@ -36,6 +36,17 @@ const cleanCheck: CatalogImportReport = {
     { line: 3, code: "STRUCT_SINTETIS", outcome: "UNCHANGED" },
   ],
 };
+
+describe("UX-FLOW-001 catalog import steps", () => {
+  it("opens on the upload step alone, without the report or the apply button", () => {
+    const html = renderToStaticMarkup(<JobCatalogImportPanel kind="CLASSIFICATION" onApplied={() => undefined} />);
+    expect(html).toContain("Unggah berkas");
+    expect(html).toContain('type="file"');
+    expect(html).toContain("Periksa berkas");
+    expect(html).not.toContain("Terapkan impor");
+    expect(html).not.toContain('role="status"');
+  });
+});
 
 describe("ORG-011 Package 4 export and import client", () => {
   it("builds the export link for a date, or for every version without a date", () => {

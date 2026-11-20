@@ -114,6 +114,7 @@ import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
 import { EmployeePayslipsPage } from "@/pages/EmployeePayslipsPage";
 import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
+import { EmployeeAnnualLeavePage } from "@/pages/EmployeeAnnualLeavePage";
 import { EmployeeServicesPage } from "@/pages/EmployeeServicesPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
@@ -378,6 +379,13 @@ const employeePayslipsRoute = createRoute({
   path: "/app/payslips",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeePayslipsPage,
+});
+
+const employeeAnnualLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/leave/annual",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeAnnualLeavePage,
 });
 
 const employeeSpecialLeaveRoute = createRoute({
@@ -988,6 +996,7 @@ const routeTree = rootRoute.addChildren([
   employeeDataChangesRoute,
   adminDataChangeRequestsRoute,
   employeePayslipsRoute,
+  employeeAnnualLeaveRoute,
   employeeSpecialLeaveRoute,
   employeePlannedLeaveRoute,
   employeeAttendanceResolutionRoute,

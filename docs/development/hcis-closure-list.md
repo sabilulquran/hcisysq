@@ -5,7 +5,7 @@
 **Gate induk:** `docs/product/scope.md` ("Pilot ready", "Production ready") lewat `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Keputusan pembukaan dicatat di `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001).
 **Rilis production saat dokumen ini ditulis:** `hcis-127b6068-20261118` (symlink `/srv/hcis/current` dipasang 18 Nov 16:05 WIB), bukti `docs/development/production-release-verification-2026-11-18-127b6068.md`.
 **Sumber angka production:** pengukuran owner sendiri pada 2026-11-20 (§3). Penulis dokumen ini tidak punya akses production dan tidak menurunkan ulang angka tersebut.
-**Sumber angka repository:** `origin/main` pada `2560b04f` (merge #390).
+**Sumber angka repository:** `origin/main` pada `c84dd4dd` (merge #383, 2026-11-20 02:03 UTC).
 
 ## 1. Kesimpulan yang harus dibaca lebih dulu
 
@@ -73,6 +73,7 @@ Production berhenti di `127b6068`. Semua yang di-merge sesudahnya **belum ada di
 
 | PR | Commit merge | Isi | Status |
 |---|---|---|---|
+| #383 | `c84dd4dd` | ADR-0008 B5 Pengurus Yayasan membaca gaji per orang, di balik `GOVERNANCE_PAYROLL_READ_ENABLED` yang mati (migrasi 0180) | Selesai belum dirilis |
 | #390 | `2560b04f` | PERF-001 jalur keberatan kinerja (migrasi 0176) | Selesai belum dirilis |
 | #387 | `7df37cf3` | PERF-001 rubrik berversi per kelompok jabatan + siklus semesteran (migrasi 0175) | Selesai belum dirilis |
 | #384 | `64fe64bf` | LOAN-002 rantai persetujuan kasbon berbasis kursi (migrasi 0177, 0178) | Selesai belum dirilis |
@@ -84,18 +85,19 @@ Masih terbuka:
 
 | PR | Isi | Status |
 |---|---|---|
-| #383 | ADR-0008 — Pengurus Yayasan membaca gaji per orang | **Belum selesai**: `CONFLICTING`, menunggu owner. Migrasinya masih bernomor `0168_governance_payroll_reader.sql`, nomor yang sudah dipakai ulang di `main`, jadi perlu penomoran ulang sebelum merge |
 | #391 | LOAN-002 jalur tulis pemetaan kursi persetujuan | **Belum selesai**: `CONFLICTING`, sedang diperbaiki |
+
+**#383 (ADR-0008, Pengurus Yayasan membaca gaji per orang) di-merge pada 2026-11-20 02:03 UTC** sebagai `c84dd4dd`, setelah konfliknya diselesaikan dan migrasinya dinomori ulang menjadi `0180_governance_payroll_reader.sql`. Statusnya sekarang **Selesai belum dirilis**, dan saklarnya `GOVERNANCE_PAYROLL_READ_ENABLED` tetap mati (§6).
 
 ### Migrasi
 
 | | |
 |---|---|
 | Di bundel rilis production `127b6068` | 145 berkas `.sql`, tertinggi **`0167_payroll_thr_non_permanent.sql`**; yang baru diterapkan pada rilis itu hanya `0166_leave_decision_request_id` |
-| Di `origin/main` sekarang | 151 berkas `.sql` |
-| **Belum ada di production** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals` — enam migrasi |
+| Di `origin/main` sekarang | 152 berkas `.sql` |
+| **Belum ada di production** | `0172_trip_per_diem_decree`, `0174_leave_critical_review_retired`, `0175_performance_rubric_versions`, `0176_performance_objection`, `0177_approval_seat_registry`, `0178_employee_loan_approval_principals`, `0180_governance_payroll_reader` — tujuh migrasi |
 
-Nomor 0168–0171 dan 0173 tidak ada di `main`: nomor-nomor itu terpakai lalu dinomori ulang saat rebase (riwayatnya masih terbaca di `eb7cb663`, `b5b38cc1`, `8cc03998`, `ee70b7e2`). Identitas migrasi adalah nama berkas penuh, bukan awalannya (`apps/api/migrations/production-history-manifest.json`), jadi lompatan nomor bukan masalah selama tidak ada nama berkas yang dipakai ulang.
+Nomor 0168–0171, 0173, dan 0179 tidak ada di `main`: nomor-nomor itu terpakai lalu dinomori ulang saat rebase (riwayatnya masih terbaca di `eb7cb663`, `b5b38cc1`, `8cc03998`, `ee70b7e2`). Identitas migrasi adalah nama berkas penuh, bukan awalannya (`apps/api/migrations/production-history-manifest.json`), jadi lompatan nomor bukan masalah selama tidak ada nama berkas yang dipakai ulang.
 
 ## 5. Cakupan wajib pra-pembukaan
 
@@ -263,11 +265,11 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 
 | | |
 |---|---|
-| **Status** | **Selesai belum dirilis.** Enam PR dan enam migrasi menunggu. |
+| **Status** | **Selesai belum dirilis.** Tujuh PR dan tujuh migrasi menunggu. |
 | **Bukti bertanggal** | §4. Production berhenti di `127b6068` sejak 2026-11-18 16:05 WIB. |
-| **Penghambat** | Dua di antaranya menyentuh perilaku yang relevan untuk pembukaan: #386 (jendela pengingat 04.00–23.00, masa kritis cuti tanpa tinjauan HC) dan #389 (tarif uang saku). Empat migrasi dari rantai LOAN-002/PERF-001 membawa tabel baru yang belum pernah ada di production. |
+| **Penghambat** | Dua di antaranya menyentuh perilaku yang relevan untuk pembukaan: #386 (jendela pengingat 04.00–23.00, masa kritis cuti tanpa tinjauan HC) dan #389 (tarif uang saku). Empat migrasi dari rantai LOAN-002/PERF-001 membawa tabel baru yang belum pernah ada di production. #383 menambah jalur baca data gaji per orang — rilisnya aman karena `GOVERNANCE_PAYROLL_READ_ENABLED` mati, tetapi **penyalaannya** adalah keputusan owner tersendiri dan bukan bagian dari rilis ini. |
 | **Langkah berikutnya** | Rilis `main` lewat OPS-MI8-REL-001 dengan pengaman teknis yang biasa: dry-run bersih, backup sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC, laporan sesudahnya. Keenam migrasi diterapkan dalam satu rilis. |
-| **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0178`. |
+| **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0180`. |
 
 ## 6. Saklar fitur: apa yang mati dan apa yang menunggu di baliknya
 
@@ -280,6 +282,7 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 | `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` | `sq-hub,sq-organ` sejak 2026-11-13 | — (Portal Organ R1 menyala) |
 | `BIOMETRIC_COLLECTION_ENABLED` | **Tidak ada → mati.** Ini kebijakan, bukan celah | Pengumpulan template biometrik ATT-005, yang menunggu gate keamanan, retensi, dan manajemen kunci tersendiri |
 | `GOVERNANCE_DECISIONS_ENABLED` | Tidak ada → mati (default `false`) | ORG-015: anggota organ memutuskan langkah persetujuan dari Portal Organ (R2) |
+| `GOVERNANCE_PAYROLL_READ_ENABLED` | Tidak ada → mati (default `false`); kodenya bahkan belum dirilis (#383 di-merge 2026-11-20, migrasi `0180`) | ADR-0008 B5: Pengurus Yayasan membaca gaji per orang. Menyalakannya menuntut `GOVERNANCE_SUMMARY_ENABLED=true` lebih dulu (`apps/api/src/config/env.ts`). Ini jalur baca data gaji per orang, jadi penyalaannya adalah keputusan owner, bukan langkah operasional |
 | `LOAN_PAYROLL_DEDUCTION_ENABLED` | Tidak ada → `0` (dipastikan 2026-11-17) | LOAN-001 Paket 2: potongan angsuran otomatis lewat payroll; menunggu PAY-003 menjadi jalur slip resmi |
 | `REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED` | Tidak ada → `0` (dipastikan 2026-11-13 dan 2026-11-17) | REIMB-001 §9: penyerahan reimbursement ke payroll; menunggu hal yang sama |
 | `TRAINING_ONLINE_ENABLED` | Tidak ada → `0` (dipastikan 2026-11-17) | TRAIN-001 R4: modul daring dengan video; menunggu kapasitas media disediakan |

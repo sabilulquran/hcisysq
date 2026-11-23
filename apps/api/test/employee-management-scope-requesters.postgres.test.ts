@@ -499,6 +499,29 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: attendance self-service refuses a 
     expect(refused.statusCode, refused.body).toBe(409);
     expect(refused.json().code).toBe(OUTSIDE_HCIS_CODE);
     expect(refused.json().employees).toEqual([{ employeeId: counterpartEmployeeId }]);
+    // The supervisor is reading, about someone else: the administrator wording, never "Data Anda".
+    expect(refused.json().message).toBe("Data ini di luar pengelolaan HCIS dan hanya dapat dibaca.");
+    expect(refused.json().message).not.toBe(OUTSIDE_SELF_SERVICE_MESSAGE_EXPECTED);
+  });
+
+  it("perintah lembur atasan: bukan bawahan ditolak 403 sebelum EMP-005 sempat menjawab", async () => {
+    // Authorization first: someone who is not your subordinate must not become a way to learn that
+    // a given employee is marked.
+    const stranger = randomUUID();
+    await client.query(
+      `INSERT INTO employees(id, employee_number, full_name, status, started_on)
+       VALUES ($1, $2, 'Pegawai luar tim', 'active', '2020-01-06')`,
+      [stranger, `EMP005X-${stranger.slice(0, 8)}`],
+    );
+    await markEmployee(stranger);
+    const refused = await post("/attendance/team-overtime/orders", {
+      employeeIds: [stranger],
+      workDate: jakartaToday(),
+      requestedMinutes: 60,
+      note: "Menyelesaikan laporan bulanan unit.",
+    });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.json().code).toBe("OVERTIME_NOT_SUBORDINATE");
   });
 
   it("tukar shift: pengajuan ditolak setelah ditandai", async () => {

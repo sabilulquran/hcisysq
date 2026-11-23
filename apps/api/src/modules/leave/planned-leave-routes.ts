@@ -227,7 +227,11 @@ async function loadEmployeeContext(
   return employee;
 }
 
-/** EMP-005 S2B §8.7: a record outside HCIS management files no new leave; its history stays. */
+/**
+ * EMP-005 S2B §8.7: a record outside HCIS management files no new leave; its history stays.
+ * Self-service only — every caller is a route where the marked person is the one asking, so the
+ * wording is the one written for them. An approver route must not use this.
+ */
 async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
   if (await isOutsideHcis(db, employeeId)) {
     throw new PlannedLeaveRouteError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);

@@ -43,7 +43,8 @@ import {
   insertAnnualRequest,
   jakartaToday,
   loadEmployeeContext,
-  refuseOutsideHcis,
+  refuseOutsideHcisToApprover,
+  refuseOutsideHcisToRequester,
   type EmployeeContextRow,
 } from "./employee-routes.js";
 import { LeaveOrganizationAuthorityError, governanceActorIsRequester } from "./organization-authority.js";
@@ -231,7 +232,8 @@ async function evaluateProposal(
   });
   // EMP-005 S2B §8.7: other dates would become a new request, which a requester outside HCIS
   // management may not file; the approver approves or rejects the request as it stands.
-  await refuseOutsideHcis(db, step.requesterEmployeeId);
+  // The approver is the one reading this, not the marked person, so it is the admin wording.
+  await refuseOutsideHcisToApprover(db, step.requesterEmployeeId);
   const requester = await loadRequesterContext(db, step.requesterEmployeeId);
   await assertNoOtherActiveLeave(db, {
     employeeId: step.requesterEmployeeId,
@@ -574,7 +576,8 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
       assertOpen(proposal);
       // EMP-005 S2B §8.7: accepting inserts a replacement request, i.e. new leave. A replay of an
       // acceptance that went through before the mark is answered above.
-      await refuseOutsideHcis(client, employee.id);
+      // The employee accepting the proposal reads this one.
+      await refuseOutsideHcisToRequester(client, employee.id);
       assertPostponementStillAhead(proposal.proposedStartOn, jakartaToday());
       const reused = await client.query(
         `SELECT 1 FROM leave_requests WHERE employee_id = $1 AND idempotency_key = $2`,

@@ -4,7 +4,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
+import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_MESSAGE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+  isOutsideHcis,
+} from "../employees/management-scope.js";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
@@ -213,10 +218,21 @@ export async function loadEmployeeContext(
 /**
  * EMP-005 S2B §8.7: a record marked "di luar pengelolaan HCIS" files no new leave. Its earlier
  * requests stay readable and are not touched; only a new preview or submission is refused.
+ *
+ * Two functions rather than one, because the wording depends on who reads the answer and a helper
+ * cannot tell: on a self-service route the marked person is the one asking, on an approver route
+ * the marked person is the subject and the approver is the reader. Same code, same status.
  */
-export async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
+export async function refuseOutsideHcisToRequester(db: Pool | PoolClient, employeeId: string): Promise<void> {
   if (await isOutsideHcis(db, employeeId)) {
     throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
+  }
+}
+
+/** The same refusal shown to an approver acting on someone else's request. */
+export async function refuseOutsideHcisToApprover(db: Pool | PoolClient, employeeId: string): Promise<void> {
+  if (await isOutsideHcis(db, employeeId)) {
+    throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
   }
 }
 
@@ -800,7 +816,7 @@ export async function registerEmployeeLeaveRoutes(
 
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
-      await refuseOutsideHcis(pool, employee.id);
+      await refuseOutsideHcisToRequester(pool, employee.id);
       const preview = await buildAnnualPreview(pool, employee, parsed.data, jakartaToday());
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -854,7 +870,7 @@ export async function registerEmployeeLeaveRoutes(
       }
 
       // After the replay: a retry of a submission that already went through is not new leave.
-      await refuseOutsideHcis(client, employee.id);
+      await refuseOutsideHcisToRequester(client, employee.id);
       const { requestId, preview, insertedSteps } = await insertAnnualRequest(client, {
         employee,
         actorAccountId: principal.id,

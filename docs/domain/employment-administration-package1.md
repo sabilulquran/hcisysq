@@ -507,7 +507,10 @@ Implementation notes (S2B-c, 2026-11-23) — the requester side:
   something for themselves: business travel (TRIP-001), trip advances (TRIP-002), employee loans
   (LOAN-001), reimbursements (REIMB-001), overtime and attendance clarification (ATT-011), shift
   swaps, work arrangements, performance self-assessment (PERF-001), external training records
-  (TRAIN-001) and HR letter requests (DOC-001). Preview and submission are both refused, with the
+  (TRAIN-001) and HR letter requests (DOC-001). Two acceptances count as submissions because they
+  file a new leave request: a LEAVE-008 postponement proposal and a LEAVE-008 annual-conversion
+  offer (`attendance-resolution-routes.ts`); rejecting either stays open, since it closes a case
+  opened before the mark. Preview and submission are both refused, with the
   same HTTP 409 and the same `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` code the leave modules already use.
   The person filing is told
   "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap
@@ -797,7 +800,7 @@ Status: **Accepted** = owner accepted (as proposed or as amended). D-01 to D-19 
 | D-17 | Employee sees own employment history. | Accepted | Yes, without reasons/internal notes. |
 | D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | Accepted | No automatic ORG-004 seat update; mismatch warning and report only. |
 | D-19 | Workbook role after AUTHORITATIVE. | Accepted | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only; transitional baseline for new NIPs allowed. |
-| D-20 | Does "no new leave" for a record outside HCIS management (§8.7) cover the other self-service modules too? | Accepted 2026-11-23 | Yes. Before this date the rule had only been set for leave (S2B-b, 2026-11-11). From 2026-11-23 a marked record files nothing new in any module where an employee submits for themselves — business travel, trip advances, loans, reimbursements, overtime, attendance clarification, shift swaps, work arrangements, performance self-assessment and external training records — answered with the existing 409 `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. The decision is about who may file **for themselves**; what HC or a line manager may do for a marked person is not settled by it (§8.7, `DRAFT`). |
+| D-20 | Does "no new leave" for a record outside HCIS management (§8.7) cover the other self-service modules too? | Accepted 2026-11-23 | Yes. Before this date the rule had only been set for leave (S2B-b, 2026-11-11). From 2026-11-23 a marked record files nothing new in any module where an employee submits for themselves — business travel, trip advances, loans, reimbursements, overtime, attendance clarification, shift swaps, work arrangements, performance self-assessment, external training records and HR letter requests (DOC-001) — answered with the existing 409 `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. The decision is about who may file **for themselves**; what HC or a line manager may do for a marked person is not settled by it (§8.7, `DRAFT`). |
 
 ## 16. Remaining implementation-time checks (no owner decision needed)
 

@@ -8,6 +8,11 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+  isOutsideHcis,
+} from "../employees/management-scope.js";
+import {
   AuthError,
   AuthService,
   type AuthPrincipal,
@@ -935,6 +940,15 @@ export async function registerAttendanceResolutionRoutes(
         );
         await client.query("COMMIT");
         return reply.send({ caseId: item.caseId, status: "open", decision: "reject" });
+      }
+
+      // EMP-005 S2B §8.7, the rule owner set for leave on 2026-11-11: accepting the offer files a
+      // new annual leave request below, so a marked record may not accept it — the same reason
+      // LEAVE-008 refuses the acceptance of a postponement proposal (postponement-routes.ts).
+      // `reject` above is deliberately left open: it closes a case opened before the mark, and a
+      // mark must never trap someone in the middle of one.
+      if (await isOutsideHcis(client, actor.id)) {
+        throw new AttendanceResolutionRouteError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
       }
 
       const offer = await annualOfferForCase(client, item);

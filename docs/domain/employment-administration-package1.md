@@ -508,8 +508,8 @@ Implementation notes (S2B-c, 2026-11-23) — the requester side:
   (LOAN-001), reimbursements (REIMB-001), overtime and attendance clarification (ATT-011), shift
   swaps, work arrangements, performance self-assessment (PERF-001), external training records
   (TRAIN-001) and HR letter requests (DOC-001). Preview and submission are both refused, with the
-  same HTTP 409 and the same
-  `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` code the leave modules already use. The person filing is told
+  same HTTP 409 and the same `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` code the leave modules already use.
+  The person filing is told
   "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap
   terbaca. Hubungi Human Capital bila ini keliru." — the same code and status as the admin-facing
   wording, worded for the person in front of it: what is refused, what still works, and the next
@@ -560,7 +560,6 @@ Implementation notes (S2B-c, 2026-11-23) — the requester side:
   inconsistent with itself; closing them would set new policy about HC's work rather than tidy an
   accident, so they wait for an owner decision. A marked person can therefore still be enrolled in a
   cycle or a programme.
-
 - **Left open on purpose, each for its own reason** — written down rather than dropped from the
   list, so the next reader can tell a decision from an oversight:
   - *Meetings* (`meetings/routes.ts:478`, `:518`, `:597`): a marked person may still propose,

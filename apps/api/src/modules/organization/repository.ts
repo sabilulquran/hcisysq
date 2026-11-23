@@ -1036,13 +1036,20 @@ function rolloutScopeAncestry(
     const key: string = current;
     if (seen.has(key)) break;
     seen.add(key);
-    ancestry.push(key);
     const node = snapshot.nodes.find(
       (item) => item.stableKey === key && item.active
         && item.effectiveFrom <= effectiveDate
         && (item.effectiveTo === null || item.effectiveTo >= effectiveDate),
     );
+    // ORG-004 (DRAFT D-R2, direvisi 2026-11-23): node yang tidak berlaku/tidak aktif pada tanggal
+    // itu tidak masuk lingkup sama sekali, dan pendakian berhenti di situ. Sebelumnya node pertama
+    // dimasukkan lebih dahulu baru diperiksa, sehingga baris `STRUCTURE` pada node yang sudah
+    // pensiun tetap berlaku — kode dan spesifikasi berbeda, dan yang berbeda itu memindahkan
+    // kewenangan. Pada sakelar kewenangan, selisih apa pun jatuh ke `LEGACY`: tanpa node yang
+    // berlaku hanya baris global yang masih bisa cocok, dan tanpa itu pun hasilnya `LEGACY` —
+    // perilaku produksi hari ini.
     if (!node) break;
+    ancestry.push(key);
     current = node.parentNodeKey;
   }
   return ancestry;

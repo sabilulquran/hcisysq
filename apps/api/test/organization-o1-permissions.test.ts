@@ -108,7 +108,13 @@ const COMPOSE: Array<[string, string, string, unknown]> = [
 /** What takes effect: only the second pair of eyes. */
 const TAKE_EFFECT: Array<[string, string, string, unknown]> = [
   ["terbitkan", "POST", `${drafts}/publish`, undefined],
-  ["ubah rollout", "PATCH", "/admin/organization/rollout", { mode: "LEGACY", workflowKey: "LEAVE" }],
+  // ORG-004 (DRAFT D-R1): kunci dari himpunan tertutup. Dengan `"LEAVE"` payload ini ditolak 400
+  // sebelum mencapai INSERT, dan baris positif di bawah — satu-satunya pernyataan di repo bahwa
+  // Kepala HC benar-benar bisa mengoperasikan sakelar rollout — menyusut jadi "bukan 401/403".
+  ["ubah rollout", "PATCH", "/admin/organization/rollout", { mode: "LEGACY", workflowKey: "leave.annual" }],
+  // ORG-004 (DRAFT D-R4): mengakhiri baris rollout juga berlaku seketika — ia memindahkan sebuah
+  // unit kembali ke LEGACY — jadi ia duduk di sisi yang sama dengan menyalakannya.
+  ["akhiri rollout", "POST", `/admin/organization/rollout/${ITEM}/end`, { reason: "Sintetis" }],
 ];
 
 const DENIED = new Set([401, 403]);
@@ -149,6 +155,7 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
     expect(permissionsOf("PATCH", "/admin/leave/units/:unitId/approver")).toEqual(["approvals.policy.manage"]);
     expect(permissionsOf("POST", "/admin/organization/designer/drafts/:draftId/publish")).toEqual(["approvals.policy.manage"]);
     expect(permissionsOf("PATCH", "/admin/organization/rollout")).toEqual(["approvals.policy.manage"]);
+    expect(permissionsOf("POST", "/admin/organization/rollout/:id/end")).toEqual(["approvals.policy.manage"]);
   });
 
   it("leaves approvals.policy.manage guarding exactly what takes effect, and nothing else", async () => {
@@ -171,6 +178,8 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
       "POST /admin/employees/manager-assignments/apply",
       "POST /admin/employees/manager-assignments/preview",
       "POST /admin/organization/designer/drafts/:draftId/publish",
+      // ORG-004 (DRAFT D-R4): mematikan sakelar sama beratnya dengan menyalakannya.
+      "POST /admin/organization/rollout/:id/end",
     ]);
   });
 });

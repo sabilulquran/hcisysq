@@ -31,6 +31,10 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'organization_rollout_settings_workflow_key_known'
+      -- Nama constraint unik per tabel, bukan per database. Tanpa `conrelid` penjaga ini akan
+      -- dilewati karena nama yang sama kebetulan ada pada tabel lain — di schema sekali pakai
+      -- milik suite test, beberapa schema hidup berdampingan dalam satu database.
+      AND conrelid = 'organization_rollout_settings'::regclass
   ) THEN
     ALTER TABLE organization_rollout_settings
       ADD CONSTRAINT organization_rollout_settings_workflow_key_known

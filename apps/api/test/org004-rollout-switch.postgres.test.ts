@@ -3,6 +3,15 @@
 // ikut bergerak. Berkas ini menjawab lima bukti yang diminta owner sebelum satu unit mana pun
 // dipertimbangkan untuk `STRUCTURE`.
 //
+// Dua jenis uji di sini, dan membedakannya penting supaya tidak ada yang mengklaim lebih:
+//
+// - uji berlabel "bukti" menyatakan apa yang ORG-004 lakukan. Kecuali bagian lingkup, semuanya
+//   menaruh baris rollout tepat di node keanggotaan utama pemohon, jadi pencocokan persis yang
+//   berlaku sebelum D-R2 pun menyelesaikannya identik. Berharga sebagai jaminan perilaku, bukan
+//   sebagai bukti bahwa perbaikan di cabang ini bekerja;
+// - uji berlabel "pendakian" dan "D-R4", serta kedua uji pratinjau, adalah regresi sebenarnya:
+//   masing-masing merah tanpa perbaikan yang bersangkutan.
+//
 // Semua baris sintetis, satu transaksi yang selalu di-ROLLBACK, dan tidak satu pun kolom atasan
 // lama (`employees.direct_manager_employee_id`) diisi: justru kosongnya kolom itu yang diuji.
 //
@@ -214,10 +223,13 @@ describe.skipIf(!allowed)("ORG-004 saklar rollout (PostgreSQL)", () => {
       "INSERT INTO roles(id, role_key, name, is_system) VALUES ($1, $2, 'Peran sintetis ORG-004', false)",
       [roleId, `org004-${roleId}`],
     );
-    await client.query(
-      "INSERT INTO role_permissions(role_id, permission_key) VALUES ($1, 'organization.manage')",
-      [roleId],
-    );
+    // `organization.manage` membaca pratinjau; `approvals.policy.manage` mengoperasikan sakelar.
+    for (const permission of ["organization.manage", "approvals.policy.manage"]) {
+      await client.query(
+        "INSERT INTO role_permissions(role_id, permission_key) VALUES ($1, $2)",
+        [roleId, permission],
+      );
+    }
     await client.query(
       "INSERT INTO account_role_assignments(id, account_id, role_id, scope_type) VALUES ($1, $2, $3, 'organization')",
       [randomUUID(), people.hc.accountId, roleId],
@@ -423,6 +435,81 @@ describe.skipIf(!allowed)("ORG-004 saklar rollout (PostgreSQL)", () => {
   });
 
   /**
+   * Seberapa jauh pendakian menjangkau — pertanyaan yang review independen minta dijawab dengan
+   * test, bukan dengan bacaan kode.
+   *
+   * Satu baris di akar memindahkan seluruh yayasan sekaligus, dua tingkat ke bawah dan lebih.
+   * Itu bukan efek samping melainkan konsekuensi yang harus tertulis dan terjaga: siapa pun yang
+   * memasang baris pada node akar harus tahu persis apa yang baru saja dia lakukan.
+   */
+  it("pendakian: satu baris di node akar menutup seluruh subtree, dua tingkat ke bawah", async () => {
+    const root = await rolloutRow(ANNUAL, "STRUCTURE", nodes.root);
+
+    for (const [who, node] of [
+      ["requester", nodes.pilot],
+      ["childMember", nodes.pilotChild],
+      ["outsider", nodes.other],
+    ] as const) {
+      await expect(repository.resolveRolloutSetting(ANNUAL, people[who].employeeId, TODAY))
+        .resolves.toEqual({
+          mode: "STRUCTURE", matchedNodeKey: nodes.root, requesterNodeKey: node, settingId: root,
+        });
+    }
+  });
+
+  /**
+   * Pemohon tanpa keanggotaan utama. Tidak ada node berarti tidak ada lingkup untuk didaki, dan
+   * hasilnya `LEGACY` — bukan galat, karena mencari mode rollout tidak boleh menggagalkan
+   * pengajuan, dan bukan `STRUCTURE`, karena tidak ada apa pun yang menyatakannya begitu.
+   * Baris global tetap menjangkaunya: itu memang arti "pilihan terakhir".
+   */
+  it("pendakian: pemohon tanpa keanggotaan utama jatuh ke LEGACY, tetapi baris global tetap kena", async () => {
+    await client.query(
+      "DELETE FROM organization_memberships WHERE change_set_id = $1 AND employee_id = $2",
+      [changeSet, people.requester.employeeId],
+    );
+    const pilot = await rolloutRow(ANNUAL, "STRUCTURE", nodes.pilot);
+
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, TODAY))
+      .resolves.toEqual({
+        mode: "LEGACY", matchedNodeKey: null, requesterNodeKey: null, settingId: null,
+      });
+    // Baris pilot tetap berlaku bagi yang keanggotaannya utuh, jadi yang hilang hanya pemohon ini.
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.childMember.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "STRUCTURE", settingId: pilot });
+
+    const global = await rolloutRow(ANNUAL, "SHADOW", null);
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "SHADOW", matchedNodeKey: null, settingId: global });
+  });
+
+  /**
+   * Leluhur yang tidak aktif. Node yang tidak berlaku pada tanggal itu tidak masuk lingkup sama
+   * sekali dan pendakian berhenti di situ, jadi baris `STRUCTURE` padanya tidak berlaku dan tidak
+   * ada apa pun di atasnya yang terjangkau. Pada sakelar kewenangan, selisih jatuh ke `LEGACY`.
+   */
+  it("pendakian: baris pada leluhur yang tidak aktif tidak berlaku, dan menutup jalan ke atasnya", async () => {
+    await rolloutRow(ANNUAL, "STRUCTURE", nodes.pilot);
+    await rolloutRow(ANNUAL, "STRUCTURE", nodes.root);
+    await client.query(
+      "UPDATE organization_nodes SET active = false WHERE change_set_id = $1 AND stable_key = $2",
+      [changeSet, nodes.pilot],
+    );
+
+    // Pemohon duduk di node pilot yang kini tidak aktif: tidak ada lingkup sama sekali.
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "LEGACY", matchedNodeKey: null, settingId: null });
+    // Anaknya pun berhenti di node pilot, jadi baris di akar tidak terjangkau.
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.childMember.employeeId, TODAY))
+      .resolves.toMatchObject({
+        mode: "LEGACY", matchedNodeKey: null, requesterNodeKey: nodes.pilotChild, settingId: null,
+      });
+    // Unit lain, yang leluhurnya utuh, tetap mengikuti baris di akar.
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.outsider.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "STRUCTURE", matchedNodeKey: nodes.root });
+  });
+
+  /**
    * Bukti 5. Jalur pilot tidak bergantung pada kolom atasan lama.
    *
    * 95 kolom `direct_manager_employee_id` masih kosong di produksi. Kalau `STRUCTURE` diam-diam
@@ -452,9 +539,15 @@ describe.skipIf(!allowed)("ORG-004 saklar rollout (PostgreSQL)", () => {
   });
 
   /**
-   * `LEGACY` tidak berubah satu bit pun untuk orang lain. Produksi menjalankan `LEGACY` di
-   * mana-mana, jadi inilah yang paling penting dijaga: dengan kolom atasan lama terisi, hasil
-   * `LEGACY` sama persis seperti hari ini, dan baris rollout pada unit pilot tidak mengubahnya.
+   * Routing `LEGACY` tidak berubah untuk orang lain. Produksi menjalankan `LEGACY` di mana-mana,
+   * jadi inilah yang paling penting dijaga: dengan kolom atasan lama terisi, siapa yang menyetujui
+   * sama persis seperti hari ini, dan baris rollout pada unit lain tidak mengubahnya.
+   *
+   * Satu hal memang berubah, dan disebut apa adanya di sini alih-alih diklaim tidak ada
+   * (D-R2, 2026-11-23): konteks yang tersimpan pada pengajuan kini membawa `rolloutScope` juga
+   * untuk pengajuan `LEGACY` — baris mana yang memutuskan modenya, atau tidak ada. Aditif, tidak
+   * dibaca siapa pun, dan justru diagnostik yang dicari operator saat bertanya "kenapa ini masih
+   * LEGACY". Jadi: routing byte-for-byte sama, lapisan penyimpanan bertambah tiga field.
    */
   it("LEGACY tidak berubah untuk orang di luar pilot, dengan atau tanpa baris pada unit pilot", async () => {
     await client.query(
@@ -539,5 +632,148 @@ describe.skipIf(!allowed)("ORG-004 saklar rollout (PostgreSQL)", () => {
     expect(response.json().workflowKey).toBe(UNPAID);
     expect(response.json().steps.map((step: { employeeId: string }) => step.employeeId))
       .toEqual(runtime.approvalChain.map((step) => step.employeeId));
+  });
+
+  /**
+   * Pratinjau dari sebuah perubahan struktur adalah endpoint kedua, dan ia juga harus meminta
+   * rantai yang diminta runtime. Layar hari ini hanya mengirim `leave.annual`, tetapi himpunan
+   * kunci yang diterima adalah ketiga belasnya, dan default `LINE_AND_UNIT` pada resolver akan
+   * menyusun rantai dua langkah untuk Cuti Tanpa Gaji yang runtime-nya satu langkah.
+   */
+  it("pratinjau perubahan struktur meminta requirement yang sama dengan runtime", async () => {
+    await rolloutRow(UNPAID, "STRUCTURE", nodes.pilot);
+    const runtime = await runtimeChain("requester", UNPAID, "UNIT_ONLY");
+
+    const unpaid = await call("hc", "POST", `/admin/organization/designer/drafts/${changeSet}/resolution-preview`, {
+      employeeId: people.requester.employeeId, workflowKey: UNPAID, effectiveDate: TODAY,
+    });
+    expect(unpaid.statusCode, unpaid.body).toBe(200);
+    expect(unpaid.json().steps.map((step: { employeeId: string }) => step.employeeId))
+      .toEqual(runtime.approvalChain.map((step) => step.employeeId));
+    expect(unpaid.json().steps).toHaveLength(1);
+
+    // Cuti Tahunan tetap dua langkah pada endpoint yang sama, jadi yang berubah memang
+    // requirement per kunci, bukan pratinjau yang menyusut untuk semua orang.
+    const annual = await call("hc", "POST", `/admin/organization/designer/drafts/${changeSet}/resolution-preview`, {
+      employeeId: people.requester.employeeId, workflowKey: ANNUAL, effectiveDate: TODAY,
+    });
+    expect(annual.statusCode, annual.body).toBe(200);
+    expect(annual.json().steps.map((step: { employeeId: string }) => step.employeeId))
+      .toEqual([people.head.employeeId, people.director.employeeId]);
+  });
+
+  it("pratinjau perubahan struktur menolak kasbon, bukan menjawab rantai yang lebih pendek", async () => {
+    // `LOAN` berjalan `UNIT_AND_APPROVAL_SEATS`: kursi tetap di atas approver unit, dan jumlah
+    // kursinya bergantung pada nominal pinjaman. Endpoint ini tidak punya keduanya, jadi
+    // meresolusinya akan memberi rantai satu langkah yang tampak sah.
+    const response = await call("hc", "POST", `/admin/organization/designer/drafts/${changeSet}/resolution-preview`, {
+      employeeId: people.requester.employeeId, workflowKey: "LOAN", effectiveDate: TODAY,
+    });
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.json()).toMatchObject({ code: "ORGANIZATION_PREVIEW_WORKFLOW_UNSUPPORTED" });
+  });
+
+  /**
+   * D-R4: sakelarnya bisa dimatikan kembali.
+   *
+   * Route rollout selalu INSERT, dan trigger overlap migrasi 0019 menolak baris kedua untuk
+   * pasangan (kunci workflow, lingkup) yang sama. Tanpa jalan mengakhiri baris yang terbuka,
+   * sakelar ini hanya bisa dinyalakan — dan keputusan owner mensyaratkan jalur rollback yang jelas
+   * untuk setiap perubahan routing produksi.
+   */
+  it("D-R4: baris rollout yang bertindih ditolak 409 bernama, bukan 500 telanjang", async () => {
+    const first = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "STRUCTURE", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: TODAY, reason: "Uji sintetis",
+    });
+    expect(first.statusCode, first.body).toBe(200);
+
+    const second = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "LEGACY", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: TODAY, reason: "Uji sintetis kedua",
+    });
+    expect(second.statusCode, second.body).toBe(409);
+    expect(second.json()).toMatchObject({ code: "ORGANIZATION_ROLLOUT_PERIOD_OVERLAP" });
+    // Yang pertama tetap berdiri; penolakan tidak boleh ikut membuang baris yang sah.
+    expect((await client.query("SELECT 1 FROM organization_rollout_settings")).rowCount).toBe(1);
+  });
+
+  it("D-R4: mengakhiri baris mengembalikan unit itu ke LEGACY, dan membuka jalan memasang yang baru", async () => {
+    const created = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "STRUCTURE", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: "2020-01-01", reason: "Uji sintetis",
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const id = created.json().id as string;
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "STRUCTURE", settingId: id });
+
+    const ended = await call("hc", "POST", `/admin/organization/rollout/${id}/end`, {
+      reason: "Pilot dihentikan, kembali ke data atasan lama",
+    });
+    expect(ended.statusCode, ended.body).toBe(200);
+    // Hari terakhir adalah HARI INI, bukan kemarin: baris ini sudah menjelaskan setiap rantai yang
+    // diselesaikan hari ini, jadi mengakhirinya di masa lalu akan menulis ulang sejarah.
+    expect(ended.json()).toMatchObject({ effectiveTo: TODAY, mode: "STRUCTURE" });
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, TODAY))
+      .resolves.toMatchObject({ mode: "STRUCTURE", settingId: id });
+    const tomorrow = "2099-01-06";
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, tomorrow))
+      .resolves.toMatchObject({ mode: "LEGACY", matchedNodeKey: null, settingId: null });
+
+    // Mengakhiri dua kali tidak diam-diam berhasil.
+    const again = await call("hc", "POST", `/admin/organization/rollout/${id}/end`, { reason: "Sekali lagi" });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ code: "ORGANIZATION_ROLLOUT_ALREADY_ENDED" });
+
+    // Dan jalan itu benar-benar jalan: baris berikutnya untuk pasangan yang sama kini diterima.
+    const next = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "SHADOW", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: tomorrow, reason: "Kembali ke SHADOW",
+    });
+    expect(next.statusCode, next.body).toBe(200);
+    await expect(repository.resolveRolloutSetting(ANNUAL, people.requester.employeeId, tomorrow))
+      .resolves.toMatchObject({ mode: "SHADOW" });
+
+    // Keduanya tercatat, karena ini perubahan routing.
+    const audits = await client.query<{ action: string }>(
+      `SELECT action FROM organization_audit_events
+        WHERE entity_type = 'organization_rollout_setting' ORDER BY occurred_at, action`,
+    );
+    expect(audits.rows.map((row) => row.action)).toEqual([
+      "organization.rollout.changed", "organization.rollout.changed", "organization.rollout.ended",
+    ]);
+  });
+
+  it("D-R4: menolak mengakhiri baris yang tidak ada, dan tanggal yang menulis ulang masa lalu", async () => {
+    const missing = await call("hc", "POST", `/admin/organization/rollout/${randomUUID()}/end`, { reason: "Tidak ada" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: "ORGANIZATION_ROLLOUT_NOT_FOUND" });
+
+    const created = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "STRUCTURE", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: "2020-01-01", reason: "Uji sintetis",
+    });
+    const id = created.json().id as string;
+    const backdated = await call("hc", "POST", `/admin/organization/rollout/${id}/end`, {
+      lastDay: "2098-12-31", reason: "Mundurkan ke masa lalu",
+    });
+    expect(backdated.statusCode).toBe(422);
+    expect(backdated.json()).toMatchObject({ code: "ORGANIZATION_ROLLOUT_END_TOO_EARLY" });
+    // Penolakan mengembalikan transaksi: tidak ada baris setengah tertutup, dan tidak ada jejak
+    // audit yang mengatakan sesuatu terjadi. Yang kedua yang membuktikan ROLLBACK-nya, karena
+    // UPDATE dan audit ditulis bersama — satu tanpa yang lain berarti separuh jalan.
+    const ended = await client.query(
+      "SELECT 1 FROM organization_audit_events WHERE action = 'organization.rollout.ended'",
+    );
+    expect(ended.rowCount).toBe(0);
+    const row = await client.query<{ effectiveTo: string | null }>(
+      `SELECT effective_to::text AS "effectiveTo" FROM organization_rollout_settings WHERE id = $1`, [id],
+    );
+    expect(row.rows[0]!.effectiveTo).toBeNull();
+
+    // Alasan wajib: mematikan sakelar kewenangan tanpa alasan tidak bisa dijelaskan sesudahnya.
+    const noReason = await call("hc", "POST", `/admin/organization/rollout/${id}/end`, {});
+    expect(noReason.statusCode).toBe(400);
   });
 });

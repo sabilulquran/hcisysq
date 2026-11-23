@@ -20,6 +20,8 @@
  * memperbarui constraint itu. `workflow-keys.test.ts` menjaga keduanya tetap sama.
  */
 
+import type { AuthorityRequirement } from "./domain.js";
+
 /** Kunci kebijakan cuti yang punya rantai approval sendiri; lihat `planned-leave-policy.ts`. */
 export const LEAVE_WORKFLOW_POLICY_KEYS = [
   "annual",
@@ -71,4 +73,50 @@ export function leaveWorkflowKey(policyKey: LeaveWorkflowPolicyKey): Organizatio
 export function isOrganizationWorkflowKey(value: unknown): value is OrganizationWorkflowKey {
   return typeof value === "string"
     && (ORGANIZATION_WORKFLOW_KEYS as readonly string[]).includes(value);
+}
+
+/**
+ * ORG-004 (DRAFT D-R3, 2026-11-23): rantai mana yang diminta runtime untuk tiap kunci.
+ *
+ * Tabel ini ada supaya pratinjau tidak lagi menebak. Resolver memakai `LINE_AND_UNIT` sebagai
+ * default parameternya, jadi pemanggil yang lupa menyebut requirement diam-diam mendapat rantai
+ * yang salah untuk workflow yang bukan `LINE_AND_UNIT` — bukan galat, melainkan rantai lain:
+ * Cuti Tanpa Gaji berjalan `UNIT_ONLY`, dan kasbon `UNIT_AND_APPROVAL_SEATS`.
+ *
+ * Setiap baris di bawah disalin dari pemanggil runtime-nya, bukan dari ingatan:
+ *
+ * - `leave.unpaid` — `leave/planned-leave-routes.ts` (`policyKey === "unpaid" ? UNIT_ONLY : ...`);
+ * - kunci `leave.*` lainnya — `leave/employee-routes.ts` dan `planned-leave-routes.ts`;
+ * - `LOAN` — `loans/routes.ts` (`UNIT_AND_APPROVAL_SEATS`, dengan daftar kursi yang bergantung
+ *   pada nominal pinjaman);
+ * - `OVERTIME` — `attendance/overtime-approver.ts`;
+ * - `PERF` dan `TRAINING` — `organization/line-manager.ts`;
+ * - `REIMBURSEMENT`, `TRIP`, `WORK_ARRANGEMENT` — route modulnya masing-masing.
+ *
+ * Menambah kunci workflow baru tanpa menambahnya di sini gagal pada typecheck, karena peta ini
+ * `Record<OrganizationWorkflowKey, ...>` yang lengkap.
+ */
+export const ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS: Record<
+  OrganizationWorkflowKey,
+  AuthorityRequirement
+> = {
+  "leave.annual": "LINE_AND_UNIT",
+  "leave.employee_marriage": "LINE_AND_UNIT",
+  "leave.child_marriage": "LINE_AND_UNIT",
+  "leave.child_circumcision": "LINE_AND_UNIT",
+  "leave.hajj": "LINE_AND_UNIT",
+  "leave.unpaid": "UNIT_ONLY",
+  LOAN: "UNIT_AND_APPROVAL_SEATS",
+  OVERTIME: "LINE_AND_UNIT",
+  PERF: "LINE_AND_UNIT",
+  REIMBURSEMENT: "LINE_AND_UNIT",
+  TRAINING: "LINE_AND_UNIT",
+  TRIP: "LINE_AND_UNIT",
+  WORK_ARRANGEMENT: "LINE_AND_UNIT",
+};
+
+export function authorityRequirementOf(
+  workflowKey: OrganizationWorkflowKey,
+): AuthorityRequirement {
+  return ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS[workflowKey];
 }

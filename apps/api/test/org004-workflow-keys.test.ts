@@ -3,18 +3,26 @@
 // yang pertama; penolakan oleh database diuji terhadap skema sungguhan di
 // `org004-rollout-switch.postgres.test.ts`, karena hanya di sana constraint itu benar-benar ada.
 //
+// Di sini juga dijaga tabel requirement (D-R3): tiap kunci menyebut rantai yang diminta runtime,
+// karena default `LINE_AND_UNIT` pada resolver membuat pemanggil yang lupa mendapat rantai lain
+// — bukan galat.
+//
 // Yang dicegah: baris rollout dengan kunci yang tidak dicari runtime mana pun tersimpan tanpa
 // keluhan, lalu `resolveRolloutSetting` jatuh diam-diam ke `LEGACY`. Operator mengira satu unit
 // sudah pindah ke `STRUCTURE` padahal tidak, dan tidak ada apa pun di layar yang mengatakannya.
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 
 import Fastify from "fastify";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 import { registerOrganizationAdminRoutes } from "../src/modules/organization/admin-routes.js";
-import { ORGANIZATION_WORKFLOW_KEYS } from "../src/modules/organization/workflow-keys.js";
+import {
+  authorityRequirementOf,
+  ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS,
+  ORGANIZATION_WORKFLOW_KEYS,
+} from "../src/modules/organization/workflow-keys.js";
 
 const config = {
   NODE_ENV: "test" as const,
@@ -106,17 +114,47 @@ describe("ORG-004 kunci workflow rollout", () => {
     }
   });
 
-  it("menjaga daftar kanonik sama persis dengan constraint migrasi 0182", async () => {
+  it("menjaga daftar kanonik sama persis dengan constraint pada migrasi terakhir yang mendefinisikannya", async () => {
     // Daftar yang dibaca route dan daftar yang dipaksakan database harus satu benda. Kalau
     // berbeda, salah satu jalur penulisan menerima kunci yang jalur lain tolak — dan yang
     // diterima diam-diam itulah yang berbahaya.
-    const sql = await readFile(
-      new URL("../migrations/0182_organization_rollout_workflow_keys.sql", import.meta.url),
-      "utf8",
-    );
-    const checkBody = /CHECK \(workflow_key IN \(([\s\S]*?)\)\)/.exec(sql)?.[1];
-    expect(checkBody, "migrasi 0182 harus memuat satu CHECK (workflow_key IN (...))").toBeTruthy();
-    const migrationKeys = [...checkBody!.matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    expect(migrationKeys).toEqual([...ORGANIZATION_WORKFLOW_KEYS]);
+    //
+    // Uji ini sengaja TIDAK menyebut 0182. Menambah kunci workflow berarti menambah satu entri
+    // konstanta dan satu migrasi baru, sementara migrasi yang sudah dirilis masuk manifest
+    // terlindungi dan tidak boleh diedit lagi. Memaku uji ini ke 0182 akan membuat kedua penjaga
+    // itu saling meniadakan pada kunci berikutnya: mengedit 0182 melanggar manifest, dan tidak
+    // mengeditnya menggagalkan uji ini. Jadi yang dibaca adalah migrasi bernomor tertinggi yang
+    // mendefinisikan constraint itu — yang terakhir dijalankan, karena migrasi berjalan terurut.
+    const migrations = new URL("../migrations/", import.meta.url);
+    const defining: Array<{ name: string; keys: string[] }> = [];
+    for (const name of (await readdir(migrations)).filter((file) => file.endsWith(".sql")).sort()) {
+      const sql = await readFile(new URL(name, migrations), "utf8");
+      if (!sql.includes("organization_rollout_settings_workflow_key_known")) continue;
+      const checkBody = /CHECK \(\s*workflow_key IN \(([\s\S]*?)\)\s*\)/.exec(sql)?.[1];
+      if (!checkBody) continue;
+      defining.push({ name, keys: [...checkBody.matchAll(/'([^']+)'/g)].map((match) => match[1]!) });
+    }
+    expect(defining.length, "satu migrasi pun harus mendefinisikan constraint kunci workflow")
+      .toBeGreaterThan(0);
+    const latest = defining.at(-1)!;
+    expect(latest.keys, `migrasi ${latest.name}`).toEqual([...ORGANIZATION_WORKFLOW_KEYS]);
+  });
+});
+
+describe("ORG-004 rantai yang diminta tiap workflow", () => {
+  it("menyebut satu requirement untuk setiap kunci, tanpa celah", () => {
+    expect(Object.keys(ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS).sort())
+      .toEqual([...ORGANIZATION_WORKFLOW_KEYS].sort());
+  });
+
+  it("menyimpan dua workflow yang bukan LINE_AND_UNIT, karena itulah yang pernah salah", () => {
+    // Cuti Tanpa Gaji adalah ketidakcocokan yang ditemukan saat memperbaiki pratinjau: runtime
+    // `UNIT_ONLY`, pratinjau `LINE_AND_UNIT` — bukan galat, melainkan rantai lain, dua langkah
+    // alih-alih satu. Kasbon menambah kursi tetap di atas approver unit.
+    expect(authorityRequirementOf("leave.unpaid")).toBe("UNIT_ONLY");
+    expect(authorityRequirementOf("LOAN")).toBe("UNIT_AND_APPROVAL_SEATS");
+    const others = ORGANIZATION_WORKFLOW_KEYS
+      .filter((key) => key !== "leave.unpaid" && key !== "LOAN");
+    expect(others.map(authorityRequirementOf)).toEqual(others.map(() => "LINE_AND_UNIT"));
   });
 });

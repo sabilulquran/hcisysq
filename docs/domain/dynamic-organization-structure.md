@@ -75,13 +75,13 @@ The reusable backend resolver applies this precedence:
 2. applicable governance binding for an incumbent requester;
 3. effective membership/position and structural leader or supervisory authority;
 4. explicit acting incumbent before vacancy fallback;
-5. configured vacancy behavior (`CLIMB_TO_PARENT`, `REQUIRE_ACTING_OR_BLOCK`, or `BLOCK`);
+5. configured vacancy behavior (`CLIMB_TO_PARENT`, `REQUIRE_ACTING_OR_BLOCK`, or `BLOCK`), which applies to a seat nobody holds and not to a seat whose incumbent is present but not yet eligible (D-R5);
 6. active employee, active account, and required capability validation;
 7. self-removal, deduplication, bounded traversal, and cycle failure.
 
 Dates use the Asia/Jakarta business date when the caller does not supply an explicit date. Visual rank is excluded from every authority-resolution input.
 
-Structural incumbency validity is intentionally narrower than workflow eligibility. A position may be occupied by an active employee who has no active HCIS account yet, so account preparation does not block structure publication. When that position is selected as a workflow authority, the resolver separately requires the active employee account and any requested capability and fails closed with an actionable eligibility error until those prerequisites exist. ORG-004 never creates or activates an account automatically.
+Structural incumbency validity is intentionally narrower than workflow eligibility. A position may be occupied by an active employee who has no active HCIS account yet, so account preparation does not block structure publication. When that position is selected as a workflow authority, the resolver separately requires the active employee account and any requested capability and fails closed with an actionable eligibility error until those prerequisites exist — whatever the vacancy policy says, because the seat is held and therefore not vacant (D-R5). ORG-004 never creates or activates an account automatically.
 
 ### Rollout and Leave integration
 
@@ -124,6 +124,40 @@ The row that decided the mode travels with the result (`rolloutScope`: matched n
 - `POST /admin/organization/rollout/:id/end` (`approvals.policy.manage`, reason required, audited as `organization.rollout.ended`) sets `effective_to`. A setting is ended, never edited or deleted.
 - The earliest end is **today**, not yesterday: a setting in force today has already explained every chain resolved today, so ending it in the past would make the record deny a day it demonstrably governed. A setting that has not started yet is ended the day before it starts, which leaves its period empty.
 - A rejected overlap is now `409 ORGANIZATION_ROLLOUT_PERIOD_OVERLAP` naming the way out, not a bare `23P01` surfacing as `500`.
+
+### Kursi yang pejabatnya belum layak bukan kursi yang kosong (D-R5 `DRAFT`, 2026-11-23)
+
+`vacancy_policy` menjawab satu pertanyaan: apa yang dilakukan ketika sebuah kursi **tidak ada yang menduduki**. `CLIMB_TO_PARENT` menjawab "naik ke kursi induknya", dan untuk kursi yang memang kosong itu benar.
+
+Resolver sebelumnya memakai jawaban yang sama untuk keadaan yang berbeda. Kursi yang pejabatnya tertulis di bagan, orangnya ada dan bekerja, tetapi akun HCIS-nya belum aktif, dinilai sebagai incumbent yang tidak layak (`ACCOUNT_NOT_ACTIVE`), lalu diperlakukan persis seperti kursi kosong: dilewati, dan rantainya naik satu tingkat. Tidak ada galat, tidak ada catatan, tidak ada apa pun di layar. Pada bagan terbit yang berjalan hari ini **setiap binding dan setiap kursi memakai `CLIMB_TO_PARENT`**, dan 74 akun pegawai masih `invited`, sehingga menyalakan `STRUCTURE` pada unit pilot berarti langkah kepala unit **hilang diam-diam** dan — untuk bentuk unit itu — dua langkah menyusut menjadi satu orang. Cutinya tetap disetujui. Kepala unitnya tidak pernah melihatnya.
+
+Itu bukan yang yayasan konfigurasikan. Jadi garisnya ditarik ulang:
+
+- **kursi yang tidak ada yang menduduki** tetap mengikuti `vacancy_policy`, termasuk memanjat — tidak ada yang berubah;
+- **kursi yang pejabatnya ada tetapi belum layak karena keadaan akunnya** menolak resolusinya, apa pun `vacancy_policy`-nya.
+
+Penolakannya baru terjadi setelah kedua jenis pejabat dicoba, jadi pelaksana harian (`ACTING`) yang akunnya aktif tetap menyelamatkan kursi yang pejabat tetapnya belum siap — jalan keluar yang memang disediakan bagan tidak ikut tertutup.
+
+**Setiap alasan ketidaklayakan diputuskan satu per satu**, bukan disamaratakan (`AuthorityEligibilityResult.reason`, `apps/api/src/modules/organization/repository.ts`):
+
+| Alasan | Artinya | Sisi garis | Mengapa |
+|---|---|---|---|
+| `ACCOUNT_NOT_ACTIVE` | pegawainya aktif dan dikelola HCIS, atau akun organnya terdaftar, tetapi akun HCIS-nya belum `active` | **menolak** | orangnya ada dan memang pejabatnya; keadaan ini selesai dengan mengaktifkan akun, dan diam-diam menghapus langkahnya menghilangkan persetujuan yang dikonfigurasikan |
+| `CAPABILITY_MISSING` | akunnya aktif tetapi belum memegang izin yang diminta workflow (hari ini hanya kursi akun organ ORG-013 yang memintanya) | **menolak** | sama: orangnya ada, jalan keluarnya memberikan izin lewat peran akun. Memanjat diam-diam justru menyembunyikan satu-satunya petunjuk bahwa izin itu kurang |
+| `EMPLOYEE_NOT_ACTIVE` | orangnya sudah tidak menjadi pegawai (keluar, `removed_at`), atau berada di luar pengelolaan HCIS (`management_scope <> 'MANAGED'`) | **memanjat**, tidak berubah | kursinya memang tidak lagi berpenghuni dalam arti yang sebenarnya, dan menunggu orang itu tidak akan pernah selesai. Ini juga keputusan EMP-005 S2B §8.7 yang sudah diterima, dan tidak dibuka kembali di sini |
+
+`INVALID` dan `CONFLICT` dari `validateAccount` (ORG-013) tidak lewat garis ini sama sekali: keduanya sudah gagal tertutup sebelum `vacancy_policy` sempat dibaca, dan tetap begitu.
+
+**Penolakannya kini terbaca.** `AUTHORITY_INELIGIBLE` apa adanya berbunyi "The configured incumbent is not eligible for this authority" dan tidak menyebut siapa pun; alasannya ada di `details`, yang `mapKnownError` tidak teruskan. Yang membaca penolakan itu adalah petugas Human Capital selama pilot, dan pembedaan yang ia butuhkan adalah "bagannya salah" versus "akunnya belum siap". Jadi:
+
+- `ACCOUNT_NOT_ACTIVE` dan `CAPABILITY_MISSING` dijawab dengan kode yang **sudah ada**, `APPROVER_ACCOUNT_NOT_READY` — kode yang `LEGACY` jawab pada keadaan yang sama, yang sudah dipakai setiap modul lain, dan yang sudah tercatat di `docs/api/leave.openapi.yaml`. Tidak ada kode baru: kode baru akan berarti dua kode untuk satu keadaan, satu untuk `LEGACY` dan satu untuk `STRUCTURE`, padahal yang dicari petugas justru kesamaannya. Kalimatnya berbahasa Indonesia dan menyebut kursinya, orangnya, dan apa yang harus terjadi; kedua alasan itu memakai kalimat yang berbeda karena jalan keluarnya berbeda;
+- `EMPLOYEE_NOT_ACTIVE` tetap `AUTHORITY_INELIGIBLE`, karena itu memang "bagan atau data kepegawaiannya yang harus diperbaiki", dan kode yang berbeda menjaga pembedaan itu tetap terlihat. Hanya kalimatnya yang kini berbahasa Indonesia dan menyebut kursi serta orangnya.
+
+Nama orangnya dicari oleh lapisan yang memegang basis data (`resolveLeaveAuthorities`), bukan oleh resolver; principal akun organ tidak disebut nama maupun surelnya, mengikuti `hydrateApprovalChain` yang menyebutnya "Penyetuju Pengurus Yayasan".
+
+`AUTHORITY_VACANT` — kursi yang benar-benar kosong dengan kebijakan `BLOCK` — sengaja tidak ikut diubah di sini; pesannya masih berbahasa Inggris dan belum menyebut kursinya.
+
+**`LEGACY` tidak tersentuh.** Seluruh perubahan ini berada di jalur resolver, yang `LEGACY` tidak panggil sama sekali; production menjalankan `LEGACY` di mana-mana (`organization_rollout_settings` kosong) dan tetap menjawab persis seperti sebelumnya. Dalam mode `SHADOW` perubahan ini hanya mengubah diagnostik: keadaan yang dulu menghasilkan ketidakcocokan rantai kini menghasilkan `shadow.error` dengan kodenya, yang justru lebih dekat ke keadaan sebenarnya.
 
 ### The preview asks what the runtime asks (D-R3 `DRAFT`, 2026-11-20, extended 2026-11-23)
 
@@ -368,6 +402,8 @@ Initial vocabulary:
 - `BLOCK`
 
 Direct-manager resolution should normally support structural climbing. Higher-risk authorities may use stricter behavior.
+
+Every one of these answers one question only: what to do with a seat **nobody holds**. A seat whose incumbent is named and present but not yet eligible — the account is not active, or the required capability has not been granted — is not a vacant seat, and no vacancy policy lets the resolver pass over it (D-R5).
 
 ## Structural direct-manager resolution
 

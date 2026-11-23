@@ -39,7 +39,8 @@ Complete outside Git with real identities; use synthetic identifiers in reposito
 For each participant/authority, verify:
 
 - employee is active where employee principal is required;
-- account is active;
+- account is active — an approver whose account is not yet active now **refuses** the resolution instead of being passed over, whatever the seat's vacancy policy says (ORG-004 D-R5), and the refusal names the seat and the person (`409 APPROVER_ACCOUNT_NOT_READY`, the same code `LEGACY` answers);
+- the vacancy policy on the unit's `LEADER` and `UNIT_APPROVER` bindings is read and recorded before the rollout setting is written — it still decides what happens to a seat **nobody holds**, which on a published chart that uses `CLIMB_TO_PARENT` throughout means the chain climbs to the parent seat and the two steps may collapse into one person;
 - assignment/incumbency is effective for the test date;
 - authority binding is explicit and in scope;
 - acting assignment has effective dates and reason;

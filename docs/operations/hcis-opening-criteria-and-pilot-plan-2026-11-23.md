@@ -83,12 +83,13 @@ Akibatnya untuk kriteria:
 | **Kursi kosong, rangkap jabatan, dan sub-bagian tanpa kursi kepala bukan penghambat** | Pencarian naik melewatinya. Sudah diperiksa pada 2026-11-23: Bidang Operasional kosong dan tidak ada orang yang tersangkut karenanya; Tata Usaha tidak punya kursi kepala dan orangnya naik satu tingkat. Ketiganya **keadaan yang sudah diperiksa dan tidak berakibat**, bukan pekerjaan yang tertunda |
 | **Yang tersisa pada G2 tinggal satu hal** | Belum pernah ada **satu pun pengajuan nyata yang dirutekan lewat bagan di production**. Penelusuran dan test ORG-004 seluruhnya memakai data sintetis dalam transaksi yang di-rollback dan tidak menyalakan apa pun. Bukti itu hanya dapat datang dari pengajuan sungguhan, dan karena itu ia menjadi salah satu syarat keberhasilan pilot (§7.6) |
 
-### 3.2 Dua perilaku yang dibutuhkan pilot masih tertahan di `main`
+### 3.2 Tiga perilaku yang dibutuhkan pilot masih tertahan di `main`
 
-Keduanya masuk `main` lewat #399 (`1e5d46fd`, 2026-11-23) dan **belum ada di production**, sehingga keduanya bergantung pada G12:
+Dua yang pertama masuk `main` lewat #399 (`1e5d46fd`, 2026-11-23); yang ketiga menyusul 2026-11-23. Ketiganya **belum ada di production**, sehingga ketiganya bergantung pada G12:
 
 1. **Satu baris pengaturan pada node unit kini menjangkau seluruh sub-nodenya.** Sebelumnya Taman Tahfizh menuntut 18 baris karena orangnya duduk di tiga node berbeda. Baris pada leluhur mana pun menjangkau seluruh subtree-nya pada kedalaman berapa pun — yang juga berarti baris di node akar memindahkan seluruh yayasan sekaligus, jadi pemilihan node adalah cakupannya.
 2. **Saklarnya kini dapat dimatikan kembali** lewat `POST /admin/organization/rollout/:id/end` (izin `approvals.policy.manage`, alasan wajib, teraudit sebagai `organization.rollout.ended`, paling awal berakhir hari ini). Sebelum ini rollout hanya bisa dinyalakan, sehingga bagian jalan mundur pilot tidak punya jalur nyata di luar rollback migrasi. Sekarang punya (§7.8).
+3. **Penyetuju yang akunnya belum aktif tidak lagi dilewati diam-diam dalam mode `STRUCTURE`** (ORG-004 D-R5). Sebelum ini `vacancy_policy` memperlakukan kursi yang pejabatnya ada tetapi akunnya belum `active` persis seperti kursi kosong; dengan `CLIMB_TO_PARENT` — kebijakan yang dipakai **setiap** binding dan **setiap** kursi pada bagan terbit — kursi kepala unit itu dilewati tanpa galat, rantainya naik ke kursi induk, dan di unit kandidat §7.1 kedua langkahnya menyusut menjadi satu orang: cutinya disetujui, kepala unitnya tidak pernah melihatnya, dan tidak ada pesan apa pun yang mengatakan demikian. Sekarang keadaan itu **menolak**, dengan kode yang sama seperti `LEGACY` (`409 APPROVER_ACCOUNT_NOT_READY`) dan kalimat berbahasa Indonesia yang menyebut kursinya, orangnya, dan bahwa yang perlu diselesaikan adalah aktivasi akunnya, bukan bagannya. Kursi yang benar-benar **kosong** tetap memanjat seperti sebelumnya, jadi kebijakan kekosongan binding node pilot tetap perlu dibaca dan dicatat sebelum baris rollout ditulis (§7.1).
 
 ## 4. Kriteria per modul — membuka kehadiran bukan membuka payroll
 

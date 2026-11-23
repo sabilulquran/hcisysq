@@ -54,7 +54,9 @@ async function request(
     method,
     url,
     headers: { cookie: "hcis_session=synthetic" },
-    payload: method === "PATCH" ? { mode: "STRUCTURE", workflowKey: "LEAVE" } : undefined,
+    // ORG-004 (DRAFT D-R1): a key from the closed set, so a 403 here is about the principal and
+    // not about the payload.
+    payload: method === "PATCH" ? { mode: "STRUCTURE", workflowKey: "leave.annual" } : undefined,
   });
   await app.close();
   return { response, query };
@@ -81,9 +83,11 @@ describe("Organization Designer administration boundary", () => {
     expect(response.statusCode).toBe(200);
     // ORG-008-2 added asOf, configuredRowCount and the effective rows; the fields clients already
     // read are unchanged, and no configured row is still the one case LEGACY is a stated fact.
+    // ORG-004 (DRAFT D-R1): with no row at all there is no workflow key to name. The `"LEAVE"`
+    // this used to answer was not a key any runtime looks up, so the screen was told a fiction.
     expect(response.json()).toMatchObject({
       mode: "LEGACY",
-      workflowKey: "LEAVE",
+      workflowKey: null,
       organizationalNodeKey: null,
       configuredRowCount: 0,
       settings: [],

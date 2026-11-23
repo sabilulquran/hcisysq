@@ -136,7 +136,7 @@ describe("ORG-008-1 pesan masalah", () => {
 describe("ORG-008-1 banner mode (acceptance ORG-008-K)", () => {
   it("states LEGACY as a fact only when no rollout row exists", () => {
     // GET /admin/organization/rollout answers with its default object, so no row carries updatedAt.
-    const banner = organizationModeBanner({ mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null });
+    const banner = organizationModeBanner({ mode: "LEGACY", workflowKey: null, organizationalNodeKey: null });
     expect(banner.certain).toBe(true);
     expect(banner.tone).toBe("info");
     expect(banner.title).toContain("data atasan lama");
@@ -145,7 +145,7 @@ describe("ORG-008-1 banner mode (acceptance ORG-008-K)", () => {
 
   it("refuses to claim a mode once any rollout row is configured", () => {
     const configured: OrganizationRolloutConfiguration = {
-      mode: "SHADOW", workflowKey: "LEAVE", organizationalNodeKey: null,
+      mode: "SHADOW", workflowKey: "leave.annual", organizationalNodeKey: null,
       effectiveFrom: "2026-11-01", updatedAt: "2026-11-01T00:00:00Z",
     };
     const banner = organizationModeBanner(configured);

@@ -93,6 +93,34 @@ Leave is the first consumer. Annual and Planned Leave preserve Direct Manager th
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
+### Kunci workflow rollout (D-R1 `DRAFT`, 2026-11-20)
+
+`organization_rollout_settings.workflow_key` is a closed set, not free text. One list — `apps/api/src/modules/organization/workflow-keys.ts` — is read by the admin route (`z.enum`), by every runtime module (as a type annotation, so a typo fails typecheck), and by the database (`organization_rollout_settings_workflow_key_known`, migration `0182`). Adding a workflow means adding one entry there **and** one migration that updates the constraint; a test compares the two.
+
+The keys are the ones the runtime actually looks up: `leave.annual`, `leave.employee_marriage`, `leave.child_marriage`, `leave.child_circumcision`, `leave.hajj`, `leave.unpaid`, `LOAN`, `OVERTIME`, `PERF`, `REIMBURSEMENT`, `TRAINING`, `TRIP`, `WORK_ARRANGEMENT`.
+
+`PATCH /admin/organization/rollout` no longer defaults `workflowKey` to `"LEAVE"`. No runtime ever looked that key up, so a row carrying it was stored without complaint while mode resolution fell silently back to `LEGACY`: the operator believed a unit had been moved to `STRUCTURE` when it had not. A silent failure on an authority switch is the worst shape this defect can take, so the database refuses such a row too, and every other write path — psql, scripts, data corrections — is refused with it. For the same reason `GET /admin/organization/rollout` now answers `workflowKey: null` when no row exists at all, instead of naming a key that means nothing.
+
+### Rollout scope climbs (D-R2 `DRAFT`, 2026-11-20)
+
+A rollout row is matched against the requester's primary membership node **and its ancestors**, nearest first, with a global row (`node_key IS NULL`) as the last resort — the same climb `findNodeBinding` performs for authority bindings. No match still yields `LEGACY`.
+
+People rarely sit on a unit node itself; they sit in its children. Exact matching therefore demanded one row per node where people actually are, multiplied by every workflow key, entered one at a time through the API with no screen — and any row that was forgotten failed silently to `LEGACY`. Climbing closes that: one row on a unit covers the unit.
+
+Nearest wins, so climbing only adds reach. A child can still be pinned to `LEGACY` while its parent is `STRUCTURE`, by giving that child its own explicit `LEGACY` row. The climb stops at a node that is not effective/active on the date, on a cycle, and at the resolver's depth limit, and never throws: resolving a rollout mode must not fail a submission.
+
+The row that decided the mode travels with the result (`rolloutScope`: matched node, requester node, row id), so diagnostics can name which row applied instead of leaving the operator to guess.
+
+### The preview asks what the runtime asks (D-R3 `DRAFT`, 2026-11-20)
+
+The ORG-008-2 approval preview resolves with exactly the inputs the runtime resolves with, and nothing more.
+
+- No `requiredCapability`. The Leave runtime never sends one — not when building the chain, and not when deciding, where the check is that the actor is the principal stored on the step. Since no employee holds `leave.approve`, the old preview would have called a chain that genuinely works broken as soon as accounts are activated, and Human Capital would have chased a problem that does not exist. `accountCapability` stays, because the runtime does send it for organ account principals.
+- The real runtime keys, `leave.annual` and `leave.unpaid`, not `"LEAVE"`.
+- The runtime's own `AuthorityRequirement` per workflow. This caught that Unpaid Leave runs `UNIT_ONLY` at runtime while the preview had been resolving it as `LINE_AND_UNIT`, which is a different chain.
+
+Overtime remains marked as a preview: its approver capability belongs to ATT-011-6b and is not decided (§4.6, gap X-5).
+
 ### Synthetic implementation evidence
 
 Focused synthetic ORG-004 browser UAT established these implementation invariants:
@@ -102,6 +130,8 @@ Focused synthetic ORG-004 browser UAT established these implementation invariant
 - impact comparison is based on stable structural/authority content rather than per-snapshot physical row IDs, so a visual-rank-only future draft is reported as **no approval-routing impact**.
 
 Automated regression coverage accompanies each invariant. The browser UAT used only a disposable loopback PostgreSQL cluster and synthetic personas; it did not validate or alter production employee configuration.
+
+The five questions asked of the rollout switch before any unit is considered for `STRUCTURE` are answered by tests, against the real schema where the SQL and the migration are what is being asked about (`apps/api/test/org004-rollout-switch.postgres.test.ts`, `apps/api/test/org004-workflow-keys.test.ts`, and the ORG-004 rollout block of `apps/api/test/organization-resolver.test.ts`): an officer replaced in one place in the chart moves new requests and nothing else; a request already submitted keeps the approvers recorded on it; a unit outside the covered scope does not switch, while a child of a covered unit is covered by its parent's single row and a child with its own `LEGACY` row stays `LEGACY`; one person holding two roles produces one step carrying both sources; and a requester whose `employees.direct_manager_employee_id` is NULL resolves a complete chain under `STRUCTURE` while the same requester is refused under `LEGACY`. `LEGACY` behaviour for everyone outside that scope is asserted unchanged, with and without a rollout row present elsewhere. All of it is synthetic data in a rolled-back transaction; no production row, mode or account is read or written, and none of this activates anything.
 
 ### Deployment and deferred operational work
 

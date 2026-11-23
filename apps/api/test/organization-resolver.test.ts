@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { snapshotLeaveRolloutAuthorities } from "../src/modules/leave/organization-authority.js";
 import {
   jakartaBusinessDate,
   OrganizationAuthorityResolver,
@@ -471,6 +472,46 @@ describe("ORG-004 rollout service", () => {
     });
     expect(result.authorities).toEqual([
       expect.objectContaining({ employeeId: employeeIds.director, source: "UNIT_APPROVER" }),
+    ]);
+  });
+
+  /**
+   * ORG-004 bukti 4. Satu orang yang memegang dua peran menghasilkan satu langkah, bukan dua.
+   *
+   * Di unit kecil kepala unit kerap sekaligus approver unit.
+   * Kalau kedua peran itu menjadi dua langkah, pemohon menunggu orang yang sama menekan setuju
+   * dua kali dan rantai terlihat lebih panjang daripada yang diputuskan. Yang dijaga di sini:
+   * satu langkah, dengan kedua sumbernya tercatat, sehingga alasan orang itu berwenang tidak
+   * hilang saat digabung. Dibandingkan dengan `snapshot()` biasa, hanya target binding
+   * UNIT_APPROVER yang berubah.
+   */
+  it("gabungkan dua peran satu orang menjadi satu langkah yang membawa kedua sumbernya", async () => {
+    const structure = snapshot({
+      authorityBindings: [
+        binding("binding-leader", "NODE", "node-team", "LEADER", "position-head"),
+        binding("binding-unit", "NODE", "node-team", "UNIT_APPROVER", "position-head"),
+      ],
+    });
+    const result = await rollout("STRUCTURE", structure).resolveAuthorities(input);
+
+    expect(result.authoritativeSource).toBe("STRUCTURE");
+    expect(result.authorities).toHaveLength(1);
+    expect(result.authorities[0]).toMatchObject({
+      employeeId: employeeIds.head,
+      source: "DIRECT_MANAGER",
+      sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+    });
+
+    // Rantai yang disimpan pada pengajuan pun satu langkah, bukan dua.
+    const snapshotted = snapshotLeaveRolloutAuthorities(result, {
+      requesterEmployeeId: employeeIds.staff,
+      policyChain: "LINE_AND_UNIT",
+    });
+    expect(snapshotted.approvalChain).toEqual([
+      expect.objectContaining({
+        employeeId: employeeIds.head,
+        sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+      }),
     ]);
   });
 });

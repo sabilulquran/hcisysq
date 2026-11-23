@@ -224,7 +224,7 @@ describe("ORG-008-2b Cek persetujuan", () => {
     employee: { id: "employee-ahmad", fullName: "Ahmad Sintetis" },
     effectiveDate: "2026-10-24",
     workflow: "LEAVE_ANNUAL",
-    workflowKey: "LEAVE",
+    workflowKey: "leave.annual",
     changeSetId: "change-set",
     preview: false,
     governanceApplied: false,
@@ -272,7 +272,7 @@ describe("ORG-008-2b Cek persetujuan", () => {
 describe("ORG-008-2b banner is now exact (acceptance ORG-008-K)", () => {
   it("states LEGACY as a fact when the server reports no rollout row", () => {
     const banner = organizationModeBanner({
-      mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null,
+      mode: "LEGACY", workflowKey: "leave.annual", organizationalNodeKey: null,
       configuredRowCount: 0, settings: [], asOf: "2026-10-24", updatedAt: "2026-10-01T00:00:00Z",
     });
     expect(banner.certain).toBe(true);
@@ -281,8 +281,8 @@ describe("ORG-008-2b banner is now exact (acceptance ORG-008-K)", () => {
 
   it("still states LEGACY when every effective row is LEGACY", () => {
     const banner = organizationModeBanner({
-      mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null, configuredRowCount: 1,
-      settings: [{ workflowKey: "LEAVE", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null }],
+      mode: "LEGACY", workflowKey: "leave.annual", organizationalNodeKey: null, configuredRowCount: 1,
+      settings: [{ workflowKey: "leave.annual", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null }],
     });
     expect(banner.certain).toBe(true);
     expect(banner.tone).toBe("info");
@@ -290,10 +290,10 @@ describe("ORG-008-2b banner is now exact (acceptance ORG-008-K)", () => {
 
   it("warns, and no longer hedges, once a unit is on another mode", () => {
     const banner = organizationModeBanner({
-      mode: "SHADOW", workflowKey: "LEAVE", organizationalNodeKey: null, configuredRowCount: 2,
+      mode: "SHADOW", workflowKey: "leave.annual", organizationalNodeKey: null, configuredRowCount: 2,
       settings: [
-        { workflowKey: "LEAVE", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null },
-        { workflowKey: "LEAVE", organizationalNodeKey: "node-sdit", mode: "SHADOW", effectiveFrom: "2026-10-01", effectiveTo: null },
+        { workflowKey: "leave.annual", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null },
+        { workflowKey: "leave.annual", organizationalNodeKey: "node-sdit", mode: "SHADOW", effectiveFrom: "2026-10-01", effectiveTo: null },
       ],
     });
     expect(banner.certain).toBe(true);

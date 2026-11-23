@@ -9,8 +9,12 @@ import { pageQuerySchema } from "../../lib/pagination.js";
 import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
-import { assertManagedByHcis, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, OutsideHcisError }
-  from "../employees/management-scope.js";
+import {
+  assertManagedByHcis,
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_MESSAGE,
+  OutsideHcisError,
+} from "../employees/management-scope.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import {
   haversineDistanceMeters,

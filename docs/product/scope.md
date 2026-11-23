@@ -279,7 +279,7 @@ MVP complete and deployed ORG-004 code do not automatically mean Pilot Ready. Be
 - decide whether password recovery and production notification delivery are required for the selected pilot population or whether documented administrative/manual fallback is acceptable;
 - record a human go/no-go decision before STRUCTURE activation/deployment changes.
 
-Current gate-by-gate evidence: `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Restore drill runbook: `docs/operations/hcis-isolated-restore-drill.md` (OPS-MI8-DRILL-001). Go/no-go template: `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001).
+Current gate-by-gate evidence: `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Restore drill runbook: `docs/operations/hcis-isolated-restore-drill.md` (OPS-MI8-DRILL-001). Go/no-go template: `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001). Proposed go/no-go criteria and a limited one-unit pilot plan, awaiting the owner's decision: `docs/operations/hcis-opening-criteria-and-pilot-plan-2026-11-23.md` (OPS-OPEN-001) — it restates these gates as yes/no checks and adds a per-module layer; it does not add gates here.
 
 ## Production ready — PENDING
 

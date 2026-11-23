@@ -19,20 +19,25 @@
 -- tanda dolar, atau backtick.
 --
 -- Setiap baris keluaran (psql -At, satu kolom): SEVERITY|KIND|DETAIL
+--   OK    baris sentinel, selalu ada. Keluaran tanpa baris ini berarti kuerinya tidak pernah
+--         menjawab, dan itu harus dibaca sebagai gagal, bukan sebagai bersih: psql menulis
+--         galat ke stderr dan tidak mencetak apa pun ke stdout, persis seperti dunia yang
+--         semuanya beres.
 --   FAIL  menghentikan rilis; ada orang atau uang muka nyata yang akan ditolak 409.
 --   WARN  dicetak saja; belum memutus apa pun hari ini.
 WITH
--- Kelayakan: siapa yang hari ini dapat mengajukan uang muka dinas. Runtime menuntut akun
--- pegawai aktif pada pegawai aktif yang belum dikeluarkan (loadEmployeeContext). MANAGED
--- ditambahkan karena pegawai di luar pengelolaan HCIS memang tidak ikut daftar, hitungan,
--- maupun kelayakan proses apa pun (EMP-005 S2B 8.7, migrasi 0107). Akun sengaja tidak ikut
--- disyaratkan: pegawai aktif yang akunnya baru diaktifkan besok tetap harus punya golongan.
+-- Kelayakan: siapa yang dapat mengajukan uang muka dinas. Runtime menuntut akun pegawai aktif
+-- pada pegawai aktif yang belum dikeluarkan (loadEmployeeContext). Gerbang sengaja TIDAK
+-- menyaring lebih jauh dari itu: ia harus menjadi superset dari runtime, bukan himpunan yang
+-- lebih sempit. Khususnya management_scope tidak diperiksa di sini, karena rutenya pun tidak
+-- memeriksanya, sehingga pegawai OUTSIDE_HCIS berakun aktif tetap akan ditolak 409 bila
+-- golongannya tidak ketemu. Akun juga tidak disyaratkan: pegawai aktif yang akunnya baru
+-- diaktifkan besok tetap harus sudah punya golongan hari ini.
 eligible AS (
   SELECT employee.id, employee.employee_number
     FROM employees employee
    WHERE employee.status = 'active'
      AND employee.removed_at IS NULL
-     AND employee.management_scope = 'MANAGED'
 ),
 -- Uang muka yang masih hidup: penyelesaiannya resolve pada tanggal berangkatnya sendiri, yang
 -- boleh berada di masa lalu dan boleh menyebut klasifikasi yang sejak itu sudah ditutup.
@@ -138,6 +143,11 @@ ranked AS (
          count(*) OVER (PARTITION BY finding.ord) AS total
     FROM finding
 )
+-- Baris sentinel. Tanpa ini, keluaran kosong karena kueri gagal tidak dapat dibedakan dari
+-- keluaran kosong karena semuanya beres, dan gerbang akan mencetak hijau justru ketika ia
+-- tidak tahu apa-apa.
+SELECT 'OK|GATE|kueri golongan TRIP-002 dijawab'
+UNION ALL
 SELECT ranked.severity || '|' || ranked.kind || '|' || ranked.detail
   FROM ranked WHERE ranked.seq <= 20
 UNION ALL

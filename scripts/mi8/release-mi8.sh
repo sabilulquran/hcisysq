@@ -282,11 +282,18 @@ trip_002_pre_migrate_verdict() {
 # $1 = output of sql/trip-002-golongan-gate.sql, one SEVERITY|KIND|DETAIL row per line.
 trip_002_mapped_verdict() {
   local fails warns junk
+  # The sentinel first. psql writes its errors to stderr and prints NOTHING to stdout, which is
+  # also exactly what a world with nothing to report looks like; without a row that is always
+  # emitted, a query that never ran would be read as "everyone resolves" and the release would
+  # cut over on no evidence at all. This is the same shape of defect the gate itself exists to
+  # close, one layer up.
+  printf '%s\n' "$1" | grep -qx 'OK|GATE|.*' \
+    || die "trip-002 gate: the golongan query did not answer (no sentinel row). Treat this as a failed check, not a clean one; read the error above."
   fails=$(printf '%s\n' "$1" | grep '^FAIL|' || true)
   warns=$(printf '%s\n' "$1" | grep '^WARN|' || true)
-  junk=$(printf '%s\n' "$1" | grep -v '^FAIL|' | grep -v '^WARN|' | grep -v '^[[:space:]]*$' || true)
-  # A psql error, or an output shape this function no longer understands, must stop the release;
-  # it must never read as "nothing to report".
+  junk=$(printf '%s\n' "$1" | grep -v '^FAIL|' | grep -v '^WARN|' | grep -v '^OK|' \
+    | grep -v '^[[:space:]]*$' || true)
+  # An output shape this function no longer understands must stop the release too.
   [[ -z "$junk" ]] || die "trip-002 gate: unreadable answer from the golongan query: $junk"
   if [[ -n "$warns" ]]; then
     say "trip-002 gate: klasifikasi jabatan berjadwal yang belum dipetakan (belum menghentikan rilis):"
@@ -316,10 +323,17 @@ gate_query() {
 }
 
 # Before migrate.
+#
+# The query's exit status is captured into a variable first, on purpose. Written as
+# `verdict "$(gate_query ...)"` the substitution sits in an argument position, where bash does
+# not apply errexit, so a failed query would arrive as an empty string and be judged on.
 trip_002_gate_pre_migrate() {
   trip_002_in_bundle || return 0
   grep -qx "$TRIP_002_MIGRATION" <<<"$PENDING" || return 0
-  trip_002_pre_migrate_verdict "$(gate_query trip-002-pre-migrate-gate.sql)"
+  local rates
+  rates=$(gate_query trip-002-pre-migrate-gate.sql) \
+    || die "trip-002 gate: could not read trip_per_diem_rates from the device; read the error above"
+  trip_002_pre_migrate_verdict "$rates"
 }
 
 # After migrate, before cutover. The query starts from the people who can actually submit a trip
@@ -329,7 +343,10 @@ trip_002_gate_pre_migrate() {
 # every employee).
 trip_002_gate_mapped() {
   trip_002_in_bundle || return 0
-  trip_002_mapped_verdict "$(gate_query trip-002-golongan-gate.sql)"
+  local report
+  report=$(gate_query trip-002-golongan-gate.sql) \
+    || die "trip-002 gate: the golongan query failed on the device; read the error above. In a dry run before migrate, trip_per_diem_golongan_map does not exist yet, and that is a failed check, not a clean one."
+  trip_002_mapped_verdict "$report"
 }
 
 # ---------------------------------------------------------------- release lock

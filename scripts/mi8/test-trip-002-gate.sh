@@ -80,46 +80,67 @@ run_verdict() { # run_verdict <query file> <verdict function>
   VERDICT_STATUS=$?
 }
 
-expect_stop() { # expect_stop NAME <query> <verdict fn> <substring>...
-  local name=$1 query=$2 verdict=$3; shift 3
-  run_verdict "$query" "$verdict"
+# Drive a verdict with a literal answer, for the answer shapes a query can produce that are not
+# rows at all: nothing (psql writes its errors to stderr) and text this gate does not understand.
+drive_verdict() { # drive_verdict <verdict fn> <answer>
+  VERDICT_OUTPUT=$( ( "$1" "$2" ) 2>&1 )
+  VERDICT_STATUS=$?
+}
+
+# Substrings the output must contain; one prefixed with ! must NOT appear.
+check_wanted() { # check_wanted NAME <substring>...
+  local name=$1 wrong="" ; shift
+  for want in "$@"; do
+    if [[ "$want" == '!'* ]]; then
+      [[ "$VERDICT_OUTPUT" != *"${want#!}"* ]] || wrong="$wrong [unwanted: ${want#!}]"
+    else
+      [[ "$VERDICT_OUTPUT" == *"$want"* ]] || wrong="$wrong [missing: $want]"
+    fi
+  done
+  printf '%s' "$wrong"
+}
+
+check_stop() { # check_stop NAME <substring>...
+  local name=$1; shift
   if [[ "$VERDICT_STATUS" == 0 ]]; then
     report fail "$name" "gate passed but should have stopped the release; output: $VERDICT_OUTPUT"
     return
   fi
-  if [[ "$VERDICT_STATUS" -gt 90 ]]; then
-    report fail "$name" "$VERDICT_OUTPUT"
-    return
-  fi
-  local missing=""
-  for want in "$@"; do
-    [[ "$VERDICT_OUTPUT" == *"$want"* ]] || missing="$missing [$want]"
-  done
-  if [[ -n "$missing" ]]; then
-    report fail "$name" "stopped, but did not name:$missing; output: $VERDICT_OUTPUT"
+  if [[ "$VERDICT_STATUS" -gt 90 ]]; then report fail "$name" "$VERDICT_OUTPUT"; return; fi
+  local wrong; wrong=$(check_wanted "$name" "$@")
+  if [[ -n "$wrong" ]]; then
+    report fail "$name" "stopped, but:$wrong; output: $VERDICT_OUTPUT"
   else
     report ok "$name" ""
     echo "ok   $name (stops, names what is missing)"
   fi
 }
 
-expect_pass() { # expect_pass NAME <query> <verdict fn> [substring]...
-  local name=$1 query=$2 verdict=$3; shift 3
-  run_verdict "$query" "$verdict"
+check_pass() { # check_pass NAME <substring>...
+  local name=$1; shift
   if [[ "$VERDICT_STATUS" != 0 ]]; then
     report fail "$name" "gate stopped the release but should have passed; output: $VERDICT_OUTPUT"
     return
   fi
-  local missing=""
-  for want in "$@"; do
-    [[ "$VERDICT_OUTPUT" == *"$want"* ]] || missing="$missing [$want]"
-  done
-  if [[ -n "$missing" ]]; then
-    report fail "$name" "passed, but did not report:$missing; output: $VERDICT_OUTPUT"
+  local wrong; wrong=$(check_wanted "$name" "$@")
+  if [[ -n "$wrong" ]]; then
+    report fail "$name" "passed, but:$wrong; output: $VERDICT_OUTPUT"
   else
     report ok "$name" ""
     echo "ok   $name (passes)"
   fi
+}
+
+expect_stop() { # expect_stop NAME <query> <verdict fn> <substring>...
+  local name=$1 query=$2 verdict=$3; shift 3
+  run_verdict "$query" "$verdict"
+  check_stop "$name" "$@"
+}
+
+expect_pass() { # expect_pass NAME <query> <verdict fn> [substring]...
+  local name=$1 query=$2 verdict=$3; shift 3
+  run_verdict "$query" "$verdict"
+  check_pass "$name" "$@"
 }
 
 # ------------------------------------------------------------------ fixture
@@ -243,14 +264,23 @@ sql_do "INSERT INTO job_classifications (id, code, name, family, effective_from)
 expect_stop "classification in force today without a mapping stops the release" \
   trip-002-golongan-gate.sql trip_002_mapped_verdict "CLASSIFICATION_UNMAPPED" "KEPALA_UNIT_BARU" "STOP:"
 
-# 5. Already covered: a live advance resolved on its own departure date, against a classification
-#    that has since been closed and never mapped.
+# 5. Already covered, and isolated to the departure-date arm: the employee resolves perfectly
+#    TODAY on their current placement, but the advance departed ten days ago, when they held a
+#    classification that has since been closed and was never mapped. Only ADVANCE_UNRESOLVED may
+#    fire — if EMPLOYEE_UNRESOLVED fired too, this case would not be testing the date at all.
 seed_complete
-sql_do "UPDATE employment_placements SET job_classification_code = 'GURU_LAMA'
+sql_do "UPDATE employment_placements SET effective_from = current_date - 5
          WHERE id = '00000000-0000-4000-8000-0000000000d1';
+        INSERT INTO employment_placements
+          (id, employment_id, kind, org_node_key, job_title_label, job_classification_code,
+           effective_from, effective_to, effective_from_basis, opened_by_action_id)
+        VALUES ('00000000-0000-4000-8000-0000000000d5', '00000000-0000-4000-8000-0000000000b1',
+                'PRIMARY', '00000000-0000-4000-8000-0000000000f1', 'Guru Kelas', 'GURU_LAMA',
+                DATE '2020-01-01', current_date - 6, 'RECORDED',
+                '00000000-0000-4000-8000-0000000000ad');
         INSERT INTO job_classifications (id, code, name, family, effective_from, effective_to)
         VALUES ('00000000-0000-4000-8000-0000000000c5', 'GURU_LAMA', 'Guru (lama)', 'FUNCTIONAL',
-                DATE '2020-01-01', current_date - 1);
+                DATE '2020-01-01', current_date - 6);
         INSERT INTO business_trip_requests
           (id, employee_id, destination, purpose, start_on, end_on, status, idempotency_key)
         VALUES ('00000000-0000-4000-8000-0000000000ba', '00000000-0000-4000-8000-0000000000e1',
@@ -262,8 +292,11 @@ sql_do "UPDATE employment_placements SET job_classification_code = 'GURU_LAMA'
                 '00000000-0000-4000-8000-0000000000ba', 'LUAR_DAERAH', 500000,
                 'Uang muka rapat koordinasi', 'IN_REVIEW',
                 '00000000-0000-4000-8000-0000000000cb')"
-expect_stop "live advance on a closed, unmapped classification stops the release" \
-  trip-002-golongan-gate.sql trip_002_mapped_verdict "ADVANCE_UNRESOLVED" "STOP:"
+# The unwanted substring carries the employee number: the advice line names the EMPLOYEE_UNRESOLVED
+# kind in prose whether or not that arm fired, and only a finding row is followed by one.
+expect_stop "live advance unresolved on its own departure date stops the release" \
+  trip-002-golongan-gate.sql trip_002_mapped_verdict \
+  "ADVANCE_UNRESOLVED" "STOP:" '!EMPLOYEE_UNRESOLVED E-'
 
 # 6. Already covered: the pre-migrate gate must still abort on a non-empty rate table.
 seed_complete
@@ -274,15 +307,45 @@ sql_do "INSERT INTO trip_per_diem_rates
 expect_stop "pre-migrate gate aborts on a non-empty rate table" \
   trip-002-pre-migrate-gate.sql trip_002_pre_migrate_verdict "DRAFT-zone rate rows" "STOP:"
 
+# 7. An employee outside HCIS management with no classification. The uang muka route does not
+#    test management_scope at all, so such a person with an active account is refused 409 at
+#    runtime; the gate must be a superset of the route, never narrower than it.
+#    (The separate question of whether they should be able to travel is not settled here.)
+seed_complete
+sql_do "INSERT INTO employees (id, employee_number, full_name, status, management_scope,
+          management_scope_reason, management_scope_note, management_scope_marked_at)
+        VALUES ('00000000-0000-4000-8000-0000000000e9', 'E-009', 'Pengurus Yayasan', 'active',
+                'OUTSIDE_HCIS', 'PENGURUS_YAYASAN', 'Pengurus yayasan, di luar pengelolaan HCIS',
+                now())"
+expect_stop "employee outside HCIS management without a golongan stops the release" \
+  trip-002-golongan-gate.sql trip_002_mapped_verdict "EMPLOYEE_UNRESOLVED" "E-009" "STOP:"
+
+# 8. The answer shapes that are not rows. psql writes its errors to stderr and prints nothing to
+#    stdout, which is byte for byte what "nothing to report" looks like; without the sentinel
+#    row the verdict would read a failed query as a clean one and let the cutover proceed on no
+#    evidence at all. This is the defect the gate itself exists to close, one layer up, so it is
+#    driven here directly rather than through psql, which this harness checks more carefully
+#    than the release script can.
+drive_verdict trip_002_mapped_verdict ""
+check_stop "an empty answer stops the release instead of reading as clean" \
+  "did not answer" "STOP:" '!resolves to a golongan'
+
+drive_verdict trip_002_mapped_verdict "ERROR:  relation \"trip_per_diem_golongan_map\" does not exist"
+check_stop "an answer the gate does not understand stops the release" \
+  "STOP:" '!resolves to a golongan'
+
+drive_verdict trip_002_pre_migrate_verdict ""
+check_stop "an empty rate count stops the release" "could not count" "STOP:"
+
 echo
 echo "-- passing cases"
 
-# 7. A complete catalogue and a complete mapping: the release may proceed.
+# 9. A complete catalogue and a complete mapping: the release may proceed.
 seed_complete
 expect_pass "complete catalogue and mapping let the release through" \
   trip-002-golongan-gate.sql trip_002_mapped_verdict "resolves to a golongan"
 
-# 8. A future-dated, unmapped classification is reported but does not stop the release: it breaks
+# 10. A future-dated, unmapped classification is reported but does not stop the release: it breaks
 #    nothing today, and HC can map it before it takes effect.
 seed_complete
 sql_do "INSERT INTO job_classifications (id, code, name, family, effective_from)
@@ -291,21 +354,18 @@ sql_do "INSERT INTO job_classifications (id, code, name, family, effective_from)
 expect_pass "future-dated unmapped classification warns without stopping" \
   trip-002-golongan-gate.sql trip_002_mapped_verdict "CLASSIFICATION_UNMAPPED_FUTURE" "GURU_BESAR"
 
-# 9. An empty rate table lets the migration run.
+# 11. An employee who left is not eligible and must not stop a release.
+seed_complete
+sql_do "INSERT INTO employees (id, employee_number, full_name, status, management_scope)
+        VALUES ('00000000-0000-4000-8000-0000000000ea', 'E-010', 'Pegawai Resign', 'resigned',
+                'MANAGED')"
+expect_pass "an employee who is no longer active does not stop the release" \
+  trip-002-golongan-gate.sql trip_002_mapped_verdict "resolves to a golongan"
+
+# 12. An empty rate table lets the migration run.
 seed_complete
 expect_pass "pre-migrate gate passes on an empty rate table" \
   trip-002-pre-migrate-gate.sql trip_002_pre_migrate_verdict "may run"
-
-# 10. People outside HCIS management are not part of any eligibility (EMP-005 S2B 8.7), so an
-#     unclassified OUTSIDE_HCIS record must not stop a release.
-seed_complete
-sql_do "INSERT INTO employees (id, employee_number, full_name, status, management_scope,
-          management_scope_reason, management_scope_note, management_scope_marked_at)
-        VALUES ('00000000-0000-4000-8000-0000000000e9', 'E-009', 'Pengurus Yayasan', 'active',
-                'OUTSIDE_HCIS', 'PENGURUS_YAYASAN', 'Pengurus yayasan, di luar pengelolaan HCIS',
-                now())"
-expect_pass "employee outside HCIS management does not stop the release" \
-  trip-002-golongan-gate.sql trip_002_mapped_verdict "resolves to a golongan"
 
 echo
 echo "trip-002 gate tests: $passed passed, $failed failed"

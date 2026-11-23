@@ -140,13 +140,17 @@ can never drift into two different queries.
    | `EMPLOYEE_UNRESOLVED <nomor pegawai>` | An **eligible employee** resolves to no golongan today — no classification bound, or none of the bound codes is mapped. Their estimate and their new advance answer 409. |
    | `ADVANCE_UNRESOLVED <id> berangkat <tanggal>` | A **live advance** (`status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')`) resolves to no golongan **on its own `start_on`**. `resolveGolongan` settles on the departure date, which may be in the past and may name a classification that has since been closed. |
 
-   **Eligible employee** (`DRAFT`, 2026-11-20): every employee whose `status` is `active`, whose
-   `removed_at` is null, and whose `management_scope` is `MANAGED`. People marked outside HCIS
-   management take part in no eligibility at all (EMP-005 S2B §8.7). An active account is
-   deliberately *not* required: an employee whose account is activated tomorrow must already have
-   a golongan today. The runtime check in `loadEmployeeContext` does not itself test
-   `management_scope`, so the gate's population is the one the foundation means, slightly narrower
-   than the route's own guard.
+   **Eligible employee** (`DRAFT`, 2026-11-23): every employee whose `status` is `active` and
+   whose `removed_at` is null — the population `loadEmployeeContext` lets through. Nothing
+   further is filtered, on purpose: **the gate must be a superset of the route, never narrower.**
+   In particular `management_scope` is *not* tested, because the uang muka route does not test it
+   either, so an `OUTSIDE_HCIS` person with an active account really is refused 409 and really
+   must appear here. An active account is likewise not required: an employee whose account is
+   activated tomorrow must already have a golongan today.
+
+   (Whether people outside HCIS management should be able to file a trip at all is a separate
+   question — the business-trip route checks `MANAGED` for approvers but not for the requester.
+   That is recorded as a follow-up, not decided here.)
 
    **Today, not the future.** The blocking questions are asked about today and about each live
    advance's own departure date. A classification that is published but takes effect later is
@@ -156,16 +160,26 @@ can never drift into two different queries.
 
    Long lists are cut at 20 rows per finding, with a `dan N lagi` line.
 
+   **An answer that does not arrive is a failure, not a pass.** `psql` writes its errors to
+   stderr and prints nothing at all to stdout — byte for byte what a world with nothing to report
+   looks like. The query therefore always emits a sentinel row (`OK|GATE|…`), the gate stops if
+   that row is absent, and the query's exit status is captured before it is judged. One practical
+   consequence: in a **dry run taken before `migrate`**, `trip_per_diem_golongan_map` does not
+   exist on the device yet, so this gate stops with that message instead of printing a green
+   line. That is correct — a dry run cannot answer this question — and the real answer comes from
+   the `candidate` phase of the apply run, after `migrate`.
+
 Until everything resolves, per diem estimates, new advances and settlements answer 409
 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED`; with an empty map that is every employee, from the minute of
 cutover.
 
 **There is no override.** The `--allow-unmapped-golongan` flag was withdrawn by the owner on
-2026-11-20 and removed from the script; passing it now stops the run with the usage text.
-Everything the gate reports is fixed by filling data in through the HCIS admin screens — the
-golongan map in Admin → Uang Muka Dinas → "Golongan uang saku per klasifikasi jabatan", and the
-ORG-011 placement of anyone listed as `EMPLOYEE_UNRESOLVED` — which takes minutes and needs no
-release. Fill it in, re-run `candidate`, and only then cut over.
+2026-11-20 and removed from the script; passing it now stops the run with the usage text. The
+fixes are data, not code, and none of them needs a release: the golongan map in Admin → Uang Muka
+Dinas → "Golongan uang saku per klasifikasi jabatan", and the ORG-011 placement of anyone listed
+as `EMPLOYEE_UNRESOLVED`. How long that takes depends on what is missing — a mapping row is a
+form entry, but an employee with no employment record at all needs an EMP-005 action first, which
+is not a two-minute job. Fix it, re-run `candidate`, and only then cut over.
 
 **Test.** `scripts/mi8/test-trip-002-gate.sh` runs both gates against a real PostgreSQL: it
 migrates `apps/api/migrations` into a disposable schema, builds fixtures for each failing and

@@ -6,6 +6,7 @@ import {
   OrganizationRolloutService,
   PostgresOrganizationRepository,
 } from "./index.js";
+import type { OrganizationWorkflowKey } from "./workflow-keys.js";
 
 // The line manager who rates or assesses an employee for one workflow: the same resolver as
 // APR-001 and overtime (ORG-002 data while the workflow is LEGACY, the ORG-004 structure when it
@@ -20,7 +21,7 @@ export interface ResolvedLineManager {
 
 export async function resolveLineManager(
   db: Pool | PoolClient,
-  input: { workflowKey: string; employeeId: string; effectiveDate: string },
+  input: { workflowKey: OrganizationWorkflowKey; employeeId: string; effectiveDate: string },
 ): Promise<ResolvedLineManager> {
   const { workflowKey, employeeId, effectiveDate } = input;
   const legacy = await db.query<{ directManagerEmployeeId: string | null }>(

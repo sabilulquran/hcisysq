@@ -52,6 +52,7 @@ import {
   governanceActorIsRequester,
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
+import { leaveWorkflowKey } from "../organization/workflow-keys.js";
 
 const annualRequestSchema = z.object({
   startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -393,7 +394,7 @@ export async function buildAnnualPreview(
     usedDaysByPeriod,
   });
   const authorityResolution = await resolveLeaveAuthorities(db, {
-    workflowKey: "leave.annual",
+    workflowKey: leaveWorkflowKey("annual"),
     requesterEmployeeId: employee.id,
     effectiveDate: authorityDate,
     legacy: {
@@ -1387,6 +1388,9 @@ export async function applyLeaveApprovalDecision(
   if (effectiveRequestStatus === "approved") {
     await enqueueFinalApprovalOversight(client, {
       requestId: current.requestId,
+      // Label saja: `enqueueFinalApprovalOversight` meneruskannya ke `resolveOversightAbove`,
+      // yang tidak memakai kunci ini untuk mencari mode rollout. `policy_key` di sini datang
+      // mentah dari basis data dan mencakup cuti khusus yang bukan kunci workflow ORG-004.
       workflowKey: `leave.${current.policyKey}`,
       effectiveDate: jakartaToday(),
       ...(current.approverEmployeeId

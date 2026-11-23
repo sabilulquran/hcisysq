@@ -10,6 +10,7 @@ import {
   OrganizationResolutionError,
   OrganizationRolloutService,
   PostgresOrganizationRepository,
+  type OrganizationWorkflowKey,
   type ResolvedAuthority,
   type RolloutAuthorityResult,
 } from "../organization/index.js";
@@ -55,11 +56,13 @@ export interface LeaveAuthorityResolution {
       incumbentKind: string;
     }>;
     shadow?: RolloutAuthorityResult["shadow"];
+    /** ORG-004 (DRAFT D-R2): baris rollout yang menentukan mode untuk pemohon ini. */
+    rolloutScope?: RolloutAuthorityResult["rolloutScope"];
   };
 }
 
 export interface ResolveLeaveAuthoritiesInput {
-  workflowKey: string;
+  workflowKey: OrganizationWorkflowKey;
   requesterEmployeeId: string;
   effectiveDate: string;
   legacy: {
@@ -215,6 +218,7 @@ export function snapshotLeaveRolloutAuthorities(
         incumbentKind: authority.incumbentKind,
       })),
       ...(result.shadow ? { shadow: result.shadow } : {}),
+      ...(result.rolloutScope ? { rolloutScope: result.rolloutScope } : {}),
     },
   };
 }

@@ -15,6 +15,11 @@ import {
   type AuthorityBindingType,
 } from "./domain.js";
 import {
+  authorityRequirementOf,
+  ORGANIZATION_WORKFLOW_KEYS,
+  type OrganizationWorkflowKey,
+} from "./workflow-keys.js";
+import {
   applyOrganizationCommand,
   OrganizationCommandError,
   type OrganizationCommand,
@@ -123,12 +128,16 @@ const overrideInput = z.object({
 });
 const resolutionInput = z.object({
   employeeId: uuid,
-  workflowKey: z.string().trim().min(1).max(100),
+  // ORG-004: hanya kunci yang benar-benar dicari runtime; lihat `workflow-keys.ts`.
+  workflowKey: z.enum(ORGANIZATION_WORKFLOW_KEYS),
   effectiveDate: date,
 });
 const rolloutInput = z.object({
   mode: z.enum(["LEGACY", "SHADOW", "STRUCTURE"]),
-  workflowKey: z.string().trim().min(1).max(100).default("LEAVE"),
+  // ORG-004: himpunan tertutup, tanpa default. Default `"LEAVE"` yang lama tidak pernah cocok
+  // dengan kunci mana pun yang dicari runtime, sehingga baris tersimpan tetapi mode jatuh diam-diam
+  // ke LEGACY. Default yang tidak bisa bekerja lebih buruk daripada tidak ada default.
+  workflowKey: z.enum(ORGANIZATION_WORKFLOW_KEYS),
   organizationalNodeKey: uuid.nullable().optional(),
   effectiveFrom: date.optional(),
   effectiveTo: date.nullable().optional(),
@@ -449,16 +458,35 @@ export async function registerOrganizationAdminRoutes(
   /**
    * ORG-008-2 approval check. Workflows the operator can pick, mapped to what the resolver needs.
    *
-   * Annual and unpaid leave use the capability Leave already requires. The overtime approver
-   * capability is set by ATT-011-6b and is not decided yet, so overtime resolves on the structural
-   * line without demanding a capability and is returned marked as a preview (spec 4.6, gap X-5).
-   * There is no second resolver here: this is the one approvals use.
+   * ORG-004 (DRAFT D-R3, 2026-11-20): pratinjau meminta persis apa yang diminta runtime, tidak
+   * lebih. Sebelumnya pratinjau mengirim `requiredCapability: "leave.approve"` padahal runtime cuti
+   * tidak pernah mengirimkannya — tidak saat menyusun rantai (`leave/organization-authority.ts`)
+   * dan tidak saat memutuskan (`POST /leave/approvals/:stepId/decision` hanya memeriksa bahwa
+   * aktornya adalah prinsipal yang tersimpan pada langkah itu). Karena belum ada pegawai yang
+   * memegang `leave.approve`, pratinjau akan menyebut rantai yang sebenarnya jalan sebagai rusak
+   * begitu akun diaktifkan, dan Human Capital mengejar masalah yang tidak ada. Yang tersisa hanya
+   * `accountCapability`, yang memang dikirim runtime untuk prinsipal akun organ.
+   *
+   * Kuncinya juga kunci runtime yang sebenarnya (`leave.annual`, `leave.unpaid`), bukan `"LEAVE"`.
+   * Requirement-nya tidak ditulis ulang di sini: ia dibaca dari
+   * `ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS`, satu tabel yang sama untuk setiap pratinjau.
+   *
+   * Kapabilitas approver lembur ditetapkan ATT-011-6b dan belum diputuskan, jadi lembur tetap
+   * ditandai sebagai pratinjau (spec 4.6, gap X-5). Tidak ada resolver kedua di sini: ini resolver
+   * yang dipakai approval.
    */
   const PREVIEW_WORKFLOWS = {
-    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
-    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    LEAVE_ANNUAL: { workflowKey: "leave.annual", requiredCapability: undefined, accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    // LEAVE-00x: Cuti Tanpa Gaji berjalan `UNIT_ONLY` di runtime (`planned-leave-routes.ts`);
+    // tabel requirement yang menyatakannya, bukan baris ini.
+    LEAVE_UNPAID: { workflowKey: "leave.unpaid", requiredCapability: undefined, accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
     OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, accountCapability: undefined, preview: true },
-  } as const;
+  } as const satisfies Record<string, {
+    workflowKey: OrganizationWorkflowKey;
+    requiredCapability: string | undefined;
+    accountCapability: string | undefined;
+    preview: boolean;
+  }>;
 
   async function resolutionPreview(input: {
     employeeId: string;
@@ -490,7 +518,9 @@ export async function registerOrganizationAdminRoutes(
 
     let line;
     try {
-      line = await resolver.resolveLineAuthorities(resolutionInputs);
+      line = await resolver.resolveLineAuthorities(
+        resolutionInputs, authorityRequirementOf(plan.workflowKey),
+      );
     } catch (error) {
       const item = error as { code?: string; message?: string; details?: Record<string, unknown> };
       return {
@@ -1729,13 +1759,31 @@ export async function registerOrganizationAdminRoutes(
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const params = draftParams.safeParse(request.params); const body = resolutionInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_RESOLUTION_PREVIEW", "Invalid resolution preview input.");
+    // ORG-004 (DRAFT D-R3, 2026-11-23): rantai kursi kasbon tidak bisa dipratinjau dari sebuah
+    // draft. Ia bergantung pada registry kursi yang hidup (`organization_approval_seats`) dan pada
+    // nominal pinjaman — ambang Pembina menentukan apakah ada langkah keenam — dan endpoint ini
+    // tidak punya keduanya. Meresolusinya tanpa daftar kursi akan memberi rantai satu langkah yang
+    // tampak sah, persis kebohongan yang D-R3 tutup. Menolak dengan jelas lebih baik.
+    const requirement = authorityRequirementOf(body.data.workflowKey);
+    if (requirement === "UNIT_AND_APPROVAL_SEATS") {
+      return reply.status(400).send({
+        code: "ORGANIZATION_PREVIEW_WORKFLOW_UNSUPPORTED",
+        message: "Rantai kursi persetujuan tidak dapat dipratinjau dari sebuah perubahan struktur; "
+          + "lihat Pengaturan > Kursi persetujuan.",
+      });
+    }
     const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
     const resolver = new OrganizationAuthorityResolver({ loadEffectiveSnapshot: async () => snapshot }, { eligibilityValidator: repository });
     try {
+      // ORG-004 (DRAFT D-R3): sama seperti PREVIEW_WORKFLOWS — tanpa `requiredCapability`, karena
+      // runtime tidak pernah memintanya; `accountCapability` hanya untuk workflow cuti; dan
+      // requirement-nya diteruskan, karena default `LINE_AND_UNIT` resolver akan menyusun rantai
+      // yang berbeda untuk `leave.unpaid`, bukan menolaknya.
       const result = await resolver.resolveLineAuthorities({ requesterEmployeeId: body.data.employeeId,
-        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey, requiredCapability: "leave.approve",
-        ...(body.data.workflowKey === "LEAVE" ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}) });
+        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey,
+        ...(body.data.workflowKey.startsWith("leave.") ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}) },
+      requirement);
       const ids = [...new Set([body.data.employeeId, ...result.authorities.flatMap((item) => item.employeeId ? [item.employeeId] : [])])];
       const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [ids]);
@@ -1842,7 +1890,9 @@ export async function registerOrganizationAdminRoutes(
     );
     const configuredRowCount = Number(total.rows[0]?.count ?? "0");
     return reply.send({
-      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null }),
+      // ORG-004: tanpa satu pun baris, tidak ada kunci workflow yang bisa disebut. `"LEAVE"` yang
+      // dulu dikembalikan di sini bukan kunci runtime mana pun dan menyesatkan layar.
+      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: null, organizationalNodeKey: null }),
       asOf: today,
       configuredRowCount,
       settings: effective.rows,
@@ -1856,17 +1906,114 @@ export async function registerOrganizationAdminRoutes(
     const item = { id: randomUUID(), ...body.data, organizationalNodeKey: body.data.organizationalNodeKey ?? null,
       effectiveFrom: body.data.effectiveFrom ?? jakartaBusinessDate(), effectiveTo: body.data.effectiveTo ?? null,
       reason: body.data.reason ?? "Organization Designer rollout update" };
-    await atomicOrganizationMutation(pool, principal, async (transaction) => {
-      await transaction.client.query(
-        `INSERT INTO organization_rollout_settings
-          (id, workflow_key, node_key, mode, effective_from, effective_to, reason, changed_by_account_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [item.id, item.workflowKey, item.organizationalNodeKey, item.mode, item.effectiveFrom, item.effectiveTo, item.reason, principal.id],
-      );
-      await transaction.audit("organization.rollout.changed", "organization_rollout_setting", item.id, null,
-        { workflowKey: item.workflowKey, organizationalNodeKey: item.organizationalNodeKey, mode: item.mode,
-          effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo, reason: item.reason });
-    });
+    try {
+      await atomicOrganizationMutation(pool, principal, async (transaction) => {
+        await transaction.client.query(
+          `INSERT INTO organization_rollout_settings
+            (id, workflow_key, node_key, mode, effective_from, effective_to, reason, changed_by_account_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [item.id, item.workflowKey, item.organizationalNodeKey, item.mode, item.effectiveFrom, item.effectiveTo, item.reason, principal.id],
+        );
+        await transaction.audit("organization.rollout.changed", "organization_rollout_setting", item.id, null,
+          { workflowKey: item.workflowKey, organizationalNodeKey: item.organizationalNodeKey, mode: item.mode,
+            effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo, reason: item.reason });
+      });
+    } catch (error) {
+      // ORG-004 (DRAFT D-R4, 2026-11-23): `enforce_organization_rollout_overlap` (migrasi 0019)
+      // menolak baris kedua yang periodenya bertindih untuk pasangan (kunci workflow, node) yang
+      // sama. Penolakan itu benar — dua baris yang berlaku pada satu tanggal membuat mode
+      // bergantung pada urutan baris, dan mode yang tidak deterministik pada sakelar kewenangan
+      // tidak boleh ada — tetapi sebelumnya ia keluar sebagai 500 telanjang. Operator yang ingin
+      // mengembalikan satu unit ke LEGACY akan menemui galat tanpa penjelasan dan tanpa jalan
+      // keluar. Sekarang ia 409 bernama yang menyebut jalannya: akhiri dulu baris yang terbuka.
+      if ((error as { code?: string }).code === "23P01") {
+        return reply.status(409).send({
+          code: "ORGANIZATION_ROLLOUT_PERIOD_OVERLAP",
+          message: `Sudah ada pengaturan rollout untuk ${item.workflowKey} pada lingkup itu yang `
+            + "berlaku pada rentang tanggal tersebut. Akhiri dulu pengaturan itu "
+            + "(POST /admin/organization/rollout/:id/end), lalu pasang yang baru.",
+        });
+      }
+      throw error;
+    }
     return reply.send({ ...item, updatedAt: new Date().toISOString() });
   });
+
+  /**
+   * ORG-004 (DRAFT D-R4, 2026-11-23): jalan mematikan sakelarnya kembali.
+   *
+   * Tanpa ini sakelar rollout hanya bisa dinyalakan: route di atas selalu INSERT, dan baris kedua
+   * untuk pasangan yang sama ditolak trigger overlap. Keputusan owner mensyaratkan jalur rollback
+   * yang jelas untuk setiap perubahan routing produksi, dan "hanya bisa dinyalakan" bukan jalur
+   * rollback. Bentuknya meniru `POST /admin/organization/approval-seats/:id/end` (LOAN-002 F1),
+   * termasuk alasan mengapa hari ini adalah akhir paling awal.
+   */
+  app.post("/admin/organization/rollout/:id/end", async (request, reply) => {
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    const params = z.object({ id: uuid }).safeParse(request.params);
+    const body = z.object({
+      /** Hari terakhir baris ini masih berlaku. Default: hari ini, atau sehari sebelum ia mulai. */
+      lastDay: date.optional(),
+      reason: z.string().trim().min(3).max(1000),
+    }).strict().safeParse(request.body);
+    if (!params.success || !body.success) {
+      return invalid(reply, "INVALID_ORGANIZATION_ROLLOUT_END", "Alasan mengakhiri pengaturan rollout wajib diisi.");
+    }
+    const today = jakartaBusinessDate();
+    // Wadah, bukan variabel biasa: penugasannya terjadi di dalam callback, dan `atomicOrganization
+    // Mutation` memakai nilai balik `false` untuk memutuskan ROLLBACK.
+    const outcome: { sent?: { code: number; payload: Record<string, unknown> } } = {};
+    await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const current = await transaction.client.query<{
+        workflowKey: string; nodeKey: string | null; mode: string;
+        effectiveFrom: string; effectiveTo: string | null;
+      }>(
+        `SELECT workflow_key AS "workflowKey", node_key::text AS "nodeKey", mode,
+                effective_from::text AS "effectiveFrom", effective_to::text AS "effectiveTo"
+           FROM organization_rollout_settings WHERE id = $1 FOR UPDATE`,
+        [params.data.id],
+      );
+      const row = current.rows[0];
+      if (!row) {
+        outcome.sent = { code: 404, payload: { code: "ORGANIZATION_ROLLOUT_NOT_FOUND", message: "Pengaturan rollout tidak ditemukan." } };
+        return false;
+      }
+      if (row.effectiveTo !== null) {
+        outcome.sent = { code: 409, payload: { code: "ORGANIZATION_ROLLOUT_ALREADY_ENDED", message: "Pengaturan rollout ini sudah diakhiri." } };
+        return false;
+      }
+      // Sama seperti kursi persetujuan: akhir paling awal adalah HARI INI, bukan kemarin. Baris
+      // yang berlaku hari ini sudah menjelaskan setiap rantai yang diselesaikan hari ini — sebuah
+      // pengajuan jam sembilan pagi diselesaikan di bawahnya — jadi mengakhirinya di `today - 1`
+      // membuat catatan mengatakan mode itu tidak berlaku pada hari yang jelas-jelas berlaku.
+      // Baris yang belum mulai tetap bisa dibatalkan utuh: `effectiveFrom - 1` masih >= hari ini.
+      const earliest = [addIsoDays(row.effectiveFrom, -1), today].sort().at(-1)!;
+      const lastDay = body.data.lastDay ?? earliest;
+      if (lastDay < earliest) {
+        outcome.sent = { code: 422, payload: { code: "ORGANIZATION_ROLLOUT_END_TOO_EARLY", message: `Tanggal terakhir paling awal ${earliest}.` } };
+        return false;
+      }
+      await transaction.client.query(
+        "UPDATE organization_rollout_settings SET effective_to = $2::date, updated_at = now() WHERE id = $1",
+        [params.data.id, lastDay],
+      );
+      await transaction.audit("organization.rollout.ended", "organization_rollout_setting", params.data.id, null,
+        { workflowKey: row.workflowKey, organizationalNodeKey: row.nodeKey, mode: row.mode,
+          effectiveFrom: row.effectiveFrom, lastDay, reason: body.data.reason });
+      outcome.sent = { code: 200, payload: {
+        id: params.data.id, workflowKey: row.workflowKey, organizationalNodeKey: row.nodeKey,
+        mode: row.mode, effectiveFrom: row.effectiveFrom, effectiveTo: lastDay,
+      } };
+      return true;
+    });
+    if (!outcome.sent) return reply.status(500).send({ code: "ORGANIZATION_ROLLOUT_END_FAILED" });
+    return reply.status(outcome.sent.code).send(outcome.sent.payload);
+  });
+}
+
+/** Tanggal ISO digeser `days` hari, tanpa menyentuh zona waktu. */
+function addIsoDays(isoDate: string, days: number): string {
+  const value = new Date(`${isoDate}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }

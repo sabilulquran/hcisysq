@@ -26,6 +26,7 @@ import {
 } from "../leave/domain/request-workflow.js";
 import { LeaveOrganizationAuthorityError, resolveLeaveAuthorities } from "../leave/organization-authority.js";
 import { notifyEmployee } from "../notifications/service.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import { jakartaWorkDate, materializeAttendanceResult, resolveSchedule } from "./engine.js";
 import {
   ARRANGEMENT_STATUSES,
@@ -46,7 +47,7 @@ import {
 type Queryable = Pool | PoolClient;
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
-const WORKFLOW_KEY = "WORK_ARRANGEMENT";
+const WORKFLOW_KEY: OrganizationWorkflowKey = "WORK_ARRANGEMENT";
 /** §11: the active shift list is configuration data; more than this is refused, never cut. */
 const MAX_SCHEDULE_OPTIONS = 200;
 const NOTIFY_HREF = "/app/attendance/arrangements";

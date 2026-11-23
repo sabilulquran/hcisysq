@@ -3096,16 +3096,25 @@ paths:
     patch:
       tags: [Organization]
       operationId: updateOrganizationRollout
+      description: >-
+        ORG-004 D-R1 (DRAFT): workflowKey is a closed set and has no default. The former default
+        LEAVE was not a key any runtime looks up, so a row carrying it was stored while mode
+        resolution fell silently back to LEGACY. The same set is enforced by the database
+        (organization_rollout_settings_workflow_key_known).
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [mode]
+              required: [mode, workflowKey]
               properties:
                 mode: { type: string, enum: [LEGACY, SHADOW, STRUCTURE] }
-                workflowKey: { type: string, default: LEAVE }
+                workflowKey:
+                  type: string
+                  enum: [leave.annual, leave.employee_marriage, leave.child_marriage,
+                         leave.child_circumcision, leave.hajj, leave.unpaid, LOAN, OVERTIME,
+                         PERF, REIMBURSEMENT, TRAINING, TRIP, WORK_ARRANGEMENT]
                 organizationalNodeKey: { type: [string, 'null'], format: uuid }
                 effectiveFrom: { type: string, format: date }
                 effectiveTo: { type: [string, 'null'], format: date }
@@ -3114,6 +3123,55 @@ paths:
         '200': { description: Additive effective rollout configuration created and audited }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: >-
+            ORGANIZATION_ROLLOUT_PERIOD_OVERLAP. A setting for this workflow and scope is already
+            in force over that period; end it first.
+
+  /admin/organization/rollout/{id}/end:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Organization]
+      operationId: endOrganizationRolloutSetting
+      summary: End one rollout setting, with a reason
+      description: >-
+        ORG-004 D-R4 (DRAFT). The rollout switch is only reversible through this route: PATCH
+        always inserts, and the overlap guard refuses a second row for the same workflow and
+        scope. A setting is ended, never edited or deleted. The earliest end is today, because a
+        setting in force today already explained every chain resolved today; a setting that has
+        not started yet can still be ended the day before it starts, which leaves its period empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                lastDay: { type: string, format: date }
+                reason: { type: string, minLength: 3, maxLength: 1000 }
+      responses:
+        '200':
+          description: Ended; the setting stops applying the day after lastDay
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  workflowKey: { type: string }
+                  organizationalNodeKey: { type: [string, 'null'], format: uuid }
+                  mode: { type: string, enum: [LEGACY, SHADOW, STRUCTURE] }
+                  effectiveFrom: { type: string, format: date }
+                  effectiveTo: { type: string, format: date }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Rollout setting not found }
+        '409': { description: Already ended }
+        '422': { description: lastDay earlier than the earliest allowed end }
 
   /attendance/me/workforce:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1workforce'

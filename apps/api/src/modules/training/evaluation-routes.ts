@@ -17,6 +17,7 @@ import type { AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
 import { resolveLineManager, type ResolvedLineManager } from "../organization/line-manager.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import {
   ANONYMOUS_COMMENT_THRESHOLD,
   anonymousAggregatesVisible,
@@ -46,7 +47,7 @@ import {
 } from "./evaluation-domain.js";
 import { audit, loadSelf, send, TrainingError, type Queryable, type TrainingRouteKit } from "./shared.js";
 
-const TRAINING_WORKFLOW_KEY = "TRAINING";
+const TRAINING_WORKFLOW_KEY: OrganizationWorkflowKey = "TRAINING";
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
 const idParams = z.object({ id: z.string().uuid() });

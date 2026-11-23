@@ -41,6 +41,7 @@ import {
   LeaveOrganizationAuthorityError,
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
+import { leaveWorkflowKey } from "../organization/workflow-keys.js";
 
 const plannedKeySchema = z.enum(SUPPORTED_PLANNED_LEAVE_KEYS);
 const previewSchema = z.object({
@@ -346,7 +347,7 @@ async function resolveApprovalChain(
   effectiveDate: string,
 ) {
   const resolution = await resolveLeaveAuthorities(db, {
-    workflowKey: `leave.${policyKey}`,
+    workflowKey: leaveWorkflowKey(policyKey),
     requesterEmployeeId: employee.id,
     effectiveDate,
     legacy: {
@@ -1181,7 +1182,7 @@ export async function registerPlannedLeaveRoutes(
         );
         await enqueueFinalApprovalOversight(client, {
           requestId: task.requestId,
-          workflowKey: `leave.${task.policyKey}`,
+          workflowKey: leaveWorkflowKey(task.policyKey),
           effectiveDate: jakartaToday(),
         });
         await client.query("COMMIT");
@@ -1298,7 +1299,7 @@ export async function registerPlannedLeaveRoutes(
         if (approved) {
           await enqueueFinalApprovalOversight(client, {
             requestId: task.requestId,
-            workflowKey: `leave.${task.policyKey}`,
+            workflowKey: leaveWorkflowKey(task.policyKey),
             effectiveDate: jakartaToday(),
           });
         }

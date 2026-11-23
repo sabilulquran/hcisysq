@@ -1099,7 +1099,9 @@ export function OrganizationDesignerWorkspace({
     if (!data?.draft || !previewEmployeeId) return;
     setPreviewLoading(true);
     setError(null);
-    try { setPreview(await previewOrganizationResolution(data.draft.id, { employeeId: previewEmployeeId, workflowKey: "LEAVE", effectiveDate: data.draft.effectiveOn })); }
+    // ORG-004 (DRAFT D-R1): kunci workflow adalah himpunan tertutup. `"LEAVE"` yang dikirim di
+    // sini bukan kunci yang dicari runtime mana pun; Cuti Tahunan adalah `leave.annual`.
+    try { setPreview(await previewOrganizationResolution(data.draft.id, { employeeId: previewEmployeeId, workflowKey: "leave.annual", effectiveDate: data.draft.effectiveOn })); }
     catch (cause) { setError(errorMessage(cause, "Jalur persetujuan tidak dapat ditampilkan.")); }
     finally { setPreviewLoading(false); }
   };

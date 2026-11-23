@@ -3,6 +3,7 @@ import {
   calendarDaysBetween,
   inclusiveCalendarDurationDays,
 } from "./calendar-duration.js";
+import type { LeaveWorkflowPolicyKey } from "../../organization/workflow-keys.js";
 import { getLeavePolicy, type LeavePolicyKey } from "./policy-catalog.js";
 
 export const SUPPORTED_PLANNED_LEAVE_KEYS = [
@@ -14,6 +15,17 @@ export const SUPPORTED_PLANNED_LEAVE_KEYS = [
 ] as const;
 
 export type SupportedPlannedLeaveKey = (typeof SUPPORTED_PLANNED_LEAVE_KEYS)[number];
+
+/**
+ * ORG-004: setiap kebijakan cuti terencana wajib punya kunci workflow `leave.<key>` pada daftar
+ * kanonik (`modules/organization/workflow-keys.ts`). Menambah kebijakan di sini tanpa menambah
+ * kuncinya di sana menghasilkan baris rollout yang tidak pernah cocok dengan apa pun, jadi
+ * penjaga waktu-kompilasi ini menggagalkan typecheck lebih dahulu.
+ */
+type _PlannedLeaveKeysAreWorkflowKeys =
+  SupportedPlannedLeaveKey extends LeaveWorkflowPolicyKey ? true : never;
+const _plannedLeaveKeysAreWorkflowKeys: _PlannedLeaveKeysAreWorkflowKeys = true;
+void _plannedLeaveKeysAreWorkflowKeys;
 
 export interface PlannedLeaveRequestInput {
   policyKey: SupportedPlannedLeaveKey;

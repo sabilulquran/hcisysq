@@ -19,12 +19,13 @@ export type SupportedPlannedLeaveKey = (typeof SUPPORTED_PLANNED_LEAVE_KEYS)[num
 /**
  * ORG-004: setiap kebijakan cuti terencana wajib punya kunci workflow `leave.<key>` pada daftar
  * kanonik (`modules/organization/workflow-keys.ts`). Menambah kebijakan di sini tanpa menambah
- * kuncinya di sana akan menghasilkan baris rollout yang tidak pernah cocok dengan apa pun, jadi
+ * kuncinya di sana menghasilkan baris rollout yang tidak pernah cocok dengan apa pun, jadi
  * penjaga waktu-kompilasi ini menggagalkan typecheck lebih dahulu.
  */
-const _everyPlannedLeaveKeyIsAWorkflowKey: readonly LeaveWorkflowPolicyKey[] =
-  SUPPORTED_PLANNED_LEAVE_KEYS;
-void _everyPlannedLeaveKeyIsAWorkflowKey;
+type _PlannedLeaveKeysAreWorkflowKeys =
+  SupportedPlannedLeaveKey extends LeaveWorkflowPolicyKey ? true : never;
+const _plannedLeaveKeysAreWorkflowKeys: _PlannedLeaveKeysAreWorkflowKeys = true;
+void _plannedLeaveKeysAreWorkflowKeys;
 
 export interface PlannedLeaveRequestInput {
   policyKey: SupportedPlannedLeaveKey;

@@ -495,7 +495,7 @@ describe("LOAN-002 rollout", () => {
   async function rollout(mode: "LEGACY" | "SHADOW" | "STRUCTURE") {
     const { subject } = resolver(structure());
     const service = new OrganizationRolloutService(
-      { getRolloutMode: async () => mode }, subject,
+      { resolveRolloutSetting: async () => ({ mode: mode, matchedNodeKey: null, requesterNodeKey: null, settingId: null }) }, subject,
     );
     return service.resolveAuthorities({
       ...chainInput(), legacy,

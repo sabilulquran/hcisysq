@@ -419,7 +419,7 @@ describe("ORG-004 authority resolver", () => {
 describe("ORG-004 rollout service", () => {
   function rollout(mode: OrganizationRolloutMode, structure = snapshot()) {
     return new OrganizationRolloutService(
-      { getRolloutMode: async () => mode },
+      { resolveRolloutSetting: async () => ({ mode: mode, matchedNodeKey: null, requesterNodeKey: null, settingId: null }) },
       resolver(structure),
     );
   }
@@ -537,7 +537,7 @@ describe("ORG-004 draft validation and impact", () => {
     };
     let accountReady = false;
     const subject = new OrganizationRolloutService(
-      { getRolloutMode: async () => "STRUCTURE" },
+      { resolveRolloutSetting: async () => ({ mode: "STRUCTURE", matchedNodeKey: null, requesterNodeKey: null, settingId: null }) },
       new OrganizationAuthorityResolver(
         { loadEffectiveSnapshot: async () => structure },
         {

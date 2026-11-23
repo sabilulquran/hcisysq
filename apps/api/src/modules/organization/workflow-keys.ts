@@ -58,8 +58,9 @@ export type OrganizationWorkflowKey = (typeof ORGANIZATION_WORKFLOW_KEYS)[number
  * Penjaga waktu-kompilasi: setiap kunci kebijakan cuti wajib punya kunci workflow `leave.<key>`
  * pada daftar di atas. Menambah kebijakan cuti tanpa menambah kuncinya gagal di sini.
  */
-const _everyLeavePolicyHasAWorkflowKey: readonly OrganizationWorkflowKey[] =
-  LEAVE_WORKFLOW_POLICY_KEYS.map((key) => `leave.${key}` as const);
+type _EveryLeavePolicyHasAWorkflowKey =
+  `leave.${LeaveWorkflowPolicyKey}` extends OrganizationWorkflowKey ? true : never;
+const _everyLeavePolicyHasAWorkflowKey: _EveryLeavePolicyHasAWorkflowKey = true;
 void _everyLeavePolicyHasAWorkflowKey;
 
 /** Kunci workflow untuk satu kebijakan cuti. Dipakai runtime cuti, bukan string literal. */

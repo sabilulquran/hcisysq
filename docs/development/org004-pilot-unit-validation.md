@@ -39,7 +39,7 @@ Complete outside Git with real identities; use synthetic identifiers in reposito
 For each participant/authority, verify:
 
 - employee is active where employee principal is required;
-- account is active — an approver whose account is not yet active now **refuses** the resolution instead of being passed over, whatever the seat's vacancy policy says (ORG-004 D-R5), and the refusal names the seat and the person (`409 APPROVER_ACCOUNT_NOT_READY`, the same code `LEGACY` answers);
+- account is active — an **employee** approver whose account is not yet active now **refuses** the resolution instead of being passed over, whatever the seat's vacancy policy says (ORG-004 D-R5), and the refusal names the seat and the person (`409 APPROVER_ACCOUNT_NOT_READY`, the same code `LEGACY` answers). This does **not** cover a seat held by an organ account: there an inactive account still follows the vacancy policy and is still passed over silently under `CLIMB_TO_PARENT` (see the residual risk below), so check those seats by reading the account status, not by waiting for a refusal;
 - the vacancy policy on the unit's `LEADER` and `UNIT_APPROVER` bindings is read and recorded before the rollout setting is written — it still decides what happens to a seat **nobody holds**, which on a published chart that uses `CLIMB_TO_PARENT` throughout means the chain climbs to the parent seat and the two steps may collapse into one person;
 - assignment/incumbency is effective for the test date;
 - authority binding is explicit and in scope;
@@ -119,6 +119,24 @@ fixed, because the fix is still on `main` and not in production, where `LEGACY` 
   whose incumbent is present but not account-ready is not a vacant seat and is no longer passed
   over, whatever the policy says. A seat **nobody holds** still climbs, so the vacancy policy on
   the pilot unit's bindings is still read and recorded before `STRUCTURE` is enabled.
+
+### Residual risk: an organ-account seat is still skipped silently
+
+D-R5 covers employee eligibility (`validate`) only. A seat held by an organ account keeps the
+ORG-013-1 behaviour: an account that is not `active`, or that lacks the governance capability,
+follows the vacancy policy and under `CLIMB_TO_PARENT` is **passed over silently**, exactly as the
+employee case used to be.
+
+This is **reachable, not theoretical**. Owner measurement, read-only against production on
+2026-11-23: **2 account-held positions, 2 account incumbencies, 1 `GOVERNANCE_APPROVER` binding**.
+
+The distinction is a **scope boundary, not a principle**. The argument for treating organ accounts
+differently — that an inactive organ account means a member who has left, rather than one who has
+not activated yet — does not hold up on inspection: an `invited` organ account is the same first-day
+state as an `invited` employee account, and `validateAccount` cannot tell "not yet activated" from
+"no longer serving" any better than `validate` can. Reopening ORG-013-1 is a change of its own, with
+its own decision and review; until then, read the account status of any organ seat in scope rather
+than relying on a refusal.
 
 ## Rollback
 

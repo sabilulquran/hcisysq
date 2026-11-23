@@ -410,11 +410,23 @@ export class OrganizationAuthorityResolver {
     const seen = new Set<string>();
     const path = [...initialPath];
     let lastIneligibility: string | null = null;
-    let lastIneligible: IneligibleIncumbent | null = null;
 
     for (let depth = 0; positionKey !== null; depth += 1) {
-      /** Ketidaklayakan yang menolak pendakian, bila ditemukan pada kursi yang sedang dibaca. */
-      let refusedHere: IneligibleIncumbent | null = null;
+      /**
+       * Ketidaklayakan yang ditemukan pada kursi yang **sedang dibaca**, dan hanya kursi itu.
+       *
+       * Sengaja di dalam loop kedalaman, bukan di luarnya. Kalau ia bertahan antar kursi, penolakan
+       * yang akhirnya terjadi di atas akan membawa kursi dan orang dari bawah — dan kalimatnya
+       * berkata rantai "berhenti di kursi itu" padahal ia justru memanjat melewatinya. Pada kursi
+       * yang alasannya memang memanjat (`EMPLOYEE_NOT_ACTIVE`) itu bukan sekadar tidak membantu:
+       * ia instruksi yang keliru kepada petugas yang menjadi alasan seluruh D-R5 ada.
+       *
+       * `lastIneligibility` di luar loop adalah hal lain dan tidak diubah: ia hanya memilih antara
+       * kode `AUTHORITY_INELIGIBLE` dan `AUTHORITY_VACANT`, seperti sebelum D-R5.
+       */
+      let ineligibleHere: IneligibleIncumbent | null = null;
+      /** Benar bila alasan pada kursi ini menolak pendakian (D-R5). */
+      let refusesHere = false;
       if (depth >= this.maxTraversalDepth) {
         throw new OrganizationResolutionError(
           "AUTHORITY_TRAVERSAL_LIMIT",
@@ -486,7 +498,7 @@ export class OrganizationAuthorityResolver {
             // memanjat. Catatannya hanya direkam supaya penolakan `BLOCK` tetap dapat menyebut
             // kursinya.
             lastIneligibility = account.reason;
-            lastIneligible = {
+            ineligibleHere = {
               reason: account.reason,
               positionKey,
               positionTitle: position.title,
@@ -513,14 +525,14 @@ export class OrganizationAuthorityResolver {
           if (!linked.eligible) {
             lastIneligibility = linked.reason;
             if (linked.reason) {
-              lastIneligible = {
+              ineligibleHere = {
                 reason: linked.reason,
                 positionKey,
                 positionTitle: position.title,
                 employeeId: account.employeeId,
                 accountId: candidate.accountId,
               };
-              if (INELIGIBILITY_REFUSES_CLIMB.has(linked.reason)) refusedHere ??= lastIneligible;
+              if (INELIGIBILITY_REFUSES_CLIMB.has(linked.reason)) refusesHere = true;
             }
             continue;
           }
@@ -548,14 +560,14 @@ export class OrganizationAuthorityResolver {
         if (!eligibility.eligible) {
           lastIneligibility = eligibility.reason;
           if (eligibility.reason) {
-            lastIneligible = {
+            ineligibleHere = {
               reason: eligibility.reason,
               positionKey,
               positionTitle: position.title,
               employeeId: candidate.employeeId,
               accountId: null,
             };
-            if (INELIGIBILITY_REFUSES_CLIMB.has(eligibility.reason)) refusedHere ??= lastIneligible;
+            if (INELIGIBILITY_REFUSES_CLIMB.has(eligibility.reason)) refusesHere = true;
           }
           continue;
         }
@@ -573,24 +585,21 @@ export class OrganizationAuthorityResolver {
         throw new OrganizationResolutionError(
           "ACTING_AUTHORITY_REQUIRED",
           "The position requires an effective acting incumbent before authority can resolve.",
-          { positionKey, lastIneligibility, source, ...ineligibleDetails(lastIneligible) },
+          { positionKey, lastIneligibility, source, ...ineligibleDetails(ineligibleHere) },
         );
       }
-      // ORG-004 (DRAFT D-R5): `refusedHere` adalah satu-satunya tambahan pada baris ini. Kursi
+      // ORG-004 (DRAFT D-R5): `refusesHere` adalah satu-satunya tambahan pada baris ini. Kursi
       // yang pejabatnya ada tetapi belum layak karena keadaan akunnya menolak sekalipun
       // kebijakannya `CLIMB_TO_PARENT`; kursi yang benar-benar kosong tetap memanjat seperti dulu.
-      if (policy === "BLOCK" || refusedHere) {
+      if (policy === "BLOCK" || refusesHere) {
         throw new OrganizationResolutionError(
           lastIneligibility ? "AUTHORITY_INELIGIBLE" : "AUTHORITY_VACANT",
           lastIneligibility
             ? "The configured incumbent is not eligible for this authority."
             : "The configured authority position is vacant.",
-          {
-            positionKey,
-            lastIneligibility,
-            source,
-            ...ineligibleDetails(refusedHere ?? lastIneligible),
-          },
+          // Hanya kursi ini yang boleh disebut: kursi di bawahnya sudah dilewati, dan menyebutnya
+          // akan mengirim petugas membereskan kursi yang bukan penyebab berhentinya rantai.
+          { positionKey, lastIneligibility, source, ...ineligibleDetails(ineligibleHere) },
         );
       }
 
@@ -600,10 +609,13 @@ export class OrganizationAuthorityResolver {
       positionKey = parentBinding?.targetPositionKey ?? position.parentPositionKey;
       policy = parentBinding?.vacancyPolicy ?? position.vacancyPolicy;
     }
+    // Pendakiannya sampai ke puncak bagan tanpa satu kursi pun yang menolak, jadi tidak ada kursi
+    // yang boleh disebut: setiap kursi di sepanjang jalan sudah dilewati, dengan sengaja.
+    // `lastIneligibility` tetap dibawa sebagai diagnostik, seperti sebelum D-R5.
     throw new OrganizationResolutionError(
       lastIneligibility ? "AUTHORITY_INELIGIBLE" : "AUTHORITY_VACANT",
       "No eligible incumbent was found before the organization root.",
-      { path, lastIneligibility, source, ...ineligibleDetails(lastIneligible) },
+      { path, lastIneligibility, source },
     );
   }
 

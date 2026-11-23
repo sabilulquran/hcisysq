@@ -792,7 +792,8 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
     });
     expect(refused.statusCode, refused.body).toBe(409);
     expect(refused.json()).toMatchObject({ code: "APPROVER_ACCOUNT_NOT_READY" });
-    // Pesannya menyebut siapa yang akunnya belum aktif; versi `STRUCTURE` tidak.
-    expect(refused.json().message).toContain("Pegawai penyetujuUnit");
+    // Pesannya menyebut siapa yang akunnya belum aktif. Sejak D-R5 versi `STRUCTURE` juga, dengan
+    // kursinya sekalian; yang diperiksa di sini adalah bahwa kalimat `LEGACY` tidak ikut berubah.
+    expect(refused.json().message).toBe("Akun approver Pegawai penyetujuUnit belum aktif.");
   });
 });

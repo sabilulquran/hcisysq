@@ -292,11 +292,44 @@ describe("ORG-004 authority resolver", () => {
         });
 
       // Dan yang penting: pendakiannya tidak terjadi, jadi atasan di atasnya tidak diam-diam
-      // menggantikan langkah yang hilang.
+      // menggantikan langkah yang hilang. Diperiksa sebagai penolakan yang benar-benar terjadi,
+      // bukan sebagai `not.toMatchObject` atas galat — bentuk itu lulus apa pun isinya.
+      const climbed = await resolverWithReason(structure, {})
+        .resolveDirectManager(request);
+      expect(climbed.employeeId).toBe(employeeIds.head);
       await expect(resolverWithReason(structure, { [employeeIds.head]: "ACCOUNT_NOT_ACTIVE" })
-        .resolveDirectManager(request)).rejects.not.toMatchObject({
-          employeeId: employeeIds.director,
-        });
+        .resolveDirectManager(request)).rejects.toBeInstanceOf(OrganizationResolutionError);
+    });
+
+    /**
+     * Temuan review independen 2026-11-23. Pendakian yang **benar** melewati kursi kepala
+     * (`EMPLOYEE_NOT_ACTIVE`) lalu gagal di kursi induk yang benar-benar kosong: penolakannya
+     * tidak boleh menyebut kursi dan orang yang sudah dilewati. Menyebutnya akan mengirim petugas
+     * membereskan kursi yang bukan penyebab berhentinya rantai — dan dengan kalimat yang percaya
+     * diri, bukan yang kabur.
+     */
+    it("never names a seat the climb walked past", async () => {
+      // Binding node tetap `CLIMB_TO_PARENT`, jadi kursi kepala memang dilewati. Kebijakan kursi
+      // kepala-lah yang menentukan apa yang terjadi setelah pendakian, dan di sini ia `BLOCK`,
+      // sehingga kursi induk yang kosong menghentikan rantai.
+      const structure = snapshot({
+        positions: [
+          position("position-director", "node-root", null),
+          { ...position("position-head", "node-team", "position-director"), vacancyPolicy: "BLOCK" as const },
+        ],
+        incumbencies: [incumbency("incumbency-head", "position-head", employeeIds.head, "PRIMARY")],
+      });
+
+      const error = await resolverWithReason(structure, { [employeeIds.head]: "EMPLOYEE_NOT_ACTIVE" })
+        .resolveDirectManager(request).then(() => null, (reason: unknown) => reason);
+      expect(error).toBeInstanceOf(OrganizationResolutionError);
+      const details = (error as OrganizationResolutionError).details;
+      // Berhentinya di kursi induk yang kosong, bukan di kursi kepala yang dilewati.
+      expect(details.positionKey).toBe("position-director");
+      // Kursi yang dilewati tidak ikut disebut, dalam bentuk apa pun.
+      expect(Object.keys(details).filter((key) => key.startsWith("ineligible"))).toEqual([]);
+      // Diagnostiknya tetap ada, seperti sebelum D-R5.
+      expect(details.lastIneligibility).toBe("EMPLOYEE_NOT_ACTIVE");
     });
 
     it("refuses an incumbent who lacks the required capability", async () => {

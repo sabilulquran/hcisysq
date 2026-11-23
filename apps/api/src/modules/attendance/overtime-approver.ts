@@ -7,6 +7,7 @@ import {
   PostgresOrganizationRepository,
 } from "../organization/index.js";
 import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
+import { legibleAuthorityError } from "../leave/organization-authority.js";
 
 const OVERTIME_WORKFLOW_KEY: OrganizationWorkflowKey = "OVERTIME";
 
@@ -18,7 +19,12 @@ const OVERTIME_WORKFLOW_KEY: OrganizationWorkflowKey = "OVERTIME";
 type Db = Pool | PoolClient;
 
 export class OvertimeApproverError extends Error {
-  constructor(readonly code: "OVERTIME_APPROVER_UNRESOLVED", message: string) {
+  /**
+   * ORG-004 D-R5: `code` bukan lagi satu nilai. Galat resolver diteruskan apa adanya — terutama
+   * `APPROVER_ACCOUNT_NOT_READY`, yang berarti akun atasannya belum aktif, bukan bagannya kurang.
+   * `OVERTIME_APPROVER_UNRESOLVED` tetap kode untuk keadaan yang memang "atasannya belum tercatat".
+   */
+  constructor(readonly code: string, message: string) {
     super(message);
   }
 }
@@ -47,7 +53,20 @@ export async function resolveOvertimeApprover(db: Db, employeeId: string, workDa
       authorityRequirement: "LINE_AND_UNIT",
     });
   } catch (error) {
-    if (error instanceof OrganizationResolutionError) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
+    // ORG-004 D-R5: dulu setiap galat resolver diganti "Atasan Anda belum tercatat. Hubungi HC."
+    // Sejak kursi yang pejabatnya ada tetapi akunnya belum aktif menolak alih-alih dilewati, kalimat
+    // itu menjadi keliru untuk keadaan yang paling sering terjadi: pegawainya disuruh membereskan
+    // bagan padahal yang kurang adalah aktivasi akun atasannya. Jadi kode dan kalimat resolver
+    // diteruskan apa adanya, dan kalimat lama hanya dipakai untuk galat yang tidak punya kalimat
+    // sendiri untuk dibaca pegawai.
+    if (error instanceof OrganizationResolutionError) {
+      const legible = await legibleAuthorityError(db, error);
+      // Kalimat yang tidak ditulis ulang masih berbahasa Inggris dan untuk operator, bukan untuk
+      // pegawai, jadi untuk itu kalimat lama tetap dipakai.
+      throw legible.message === error.message
+        ? new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED)
+        : new OvertimeApproverError(legible.code, legible.message);
+    }
     throw error;
   }
   const sourcesOf = (authority: (typeof result.authorities)[number]) => authority.sources ?? [authority.source];

@@ -120,7 +120,7 @@ function organizationServices(db: Queryable) {
  * Yang ditulis ulang di sini hanyalah kalimat dan kodenya. Kapan resolusi menolak sama sekali
  * tetap keputusan resolver (D-R5), dan untuk kursi akun organ ORG-013 keputusan itu tidak berubah.
  */
-async function legibleAuthorityError(
+export async function legibleAuthorityError(
   db: Queryable,
   error: OrganizationResolutionError,
 ): Promise<LeaveOrganizationAuthorityError> {
@@ -139,7 +139,7 @@ async function legibleAuthorityError(
   const name = employeeId ? await incumbentName(db, employeeId) : null;
   // Seorang principal akun organ tidak disebut namanya maupun surelnya, mengikuti
   // `hydrateApprovalChain` yang menyebutnya "Penyetuju Pengurus Yayasan".
-  const who = name ?? (details.ineligibleAccountId ? "Penyetuju Pengurus Yayasan" : "Approver");
+  const who = name ?? (details.ineligibleAccountId ? "Penyetuju Pengurus Yayasan" : "Penyetuju");
   const at = seat ? `${who} pada kursi ${seat}` : who;
 
   if (reason === "ACCOUNT_NOT_ACTIVE") {
@@ -167,12 +167,22 @@ async function legibleAuthorityError(
   );
 }
 
+/**
+ * Pencarian nama tidak boleh menjatuhkan penolakannya. Kalau kueri ini gagal — koneksi putus,
+ * transaksi sudah batal karena sebab lain — kalimatnya cukup kehilangan nama orangnya; menggagalkan
+ * seluruh penanganan galat akan mengubah `409` yang benar menjadi `500` yang tidak menjelaskan apa
+ * pun. Kursinya tetap disebut, karena itu datang dari resolver, bukan dari basis data.
+ */
 async function incumbentName(db: Queryable, employeeId: string): Promise<string | null> {
-  const result = await db.query<{ fullName: string }>(
-    "SELECT full_name AS \"fullName\" FROM employees WHERE id = $1",
-    [employeeId],
-  );
-  return result.rows[0]?.fullName ?? null;
+  try {
+    const result = await db.query<{ fullName: string }>(
+      "SELECT full_name AS \"fullName\" FROM employees WHERE id = $1",
+      [employeeId],
+    );
+    return result.rows[0]?.fullName ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveLeaveAuthorities(

@@ -33,6 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import type { ApiConfig } from "../src/config/env.js";
 import { AuthService } from "../src/modules/auth/service.js";
+import { resolveOvertimeApprover } from "../src/modules/attendance/overtime-approver.js";
 import { registerEmployeeLeaveRoutes } from "../src/modules/leave/employee-routes.js";
 import { encodeWorkingWeekdays } from "../src/modules/leave/domain/working-calendar.js";
 import { leaveWorkflowKey } from "../src/modules/organization/workflow-keys.js";
@@ -72,6 +73,7 @@ type Person = (typeof PEOPLE)[number];
 
 /** Senin 5 Januari 2099, 08:00 Jakarta. Cutinya jatuh jauh melewati pemberitahuan H-7. */
 const NOW = new Date("2099-01-05T01:00:00.000Z");
+const TODAY = "2099-01-05";
 const LEAVE = { startOn: "2099-02-02", endOn: "2099-02-03" };
 const ANNUAL = leaveWorkflowKey("annual");
 
@@ -371,6 +373,52 @@ describe.skipIf(!allowed)("ORG-004 penyetuju yang belum layak dalam mode STRUCTU
     expect((await storedSteps(body.id)).map((step) => step.approver)).toEqual([
       people.kepalaUnit.employeeId, people.penyetujuUnit.employeeId,
     ]);
+  });
+
+  /**
+   * Modul lembur memakai resolver yang sama, dan dulu menelan setiap galatnya menjadi satu kalimat:
+   * "Atasan Anda belum tercatat. Hubungi HC." Sejak kursi yang pejabatnya ada tetapi akunnya belum
+   * aktif menolak alih-alih dilewati, kalimat itu menjadi keliru untuk keadaan yang paling sering
+   * terjadi — pegawainya disuruh membereskan bagan padahal yang kurang adalah aktivasi akun
+   * atasannya. Itu persis kebingungan yang D-R5 ada untuk mengakhiri.
+   */
+  describe("modul lembur meneruskan penolakannya", () => {
+    beforeEach(async () => {
+      await client.query(
+        `INSERT INTO organization_rollout_settings
+           (id, workflow_key, node_key, mode, effective_from, reason, changed_by_account_id)
+         VALUES ($1,'OVERTIME',$2,'STRUCTURE','2020-01-01','Uji ketidaklayakan ORG-004 sintetis',$3)`,
+        [randomUUID(), nodes.unit, people.penyetujuUnit.accountId],
+      );
+    });
+
+    it("mengatakan akun atasannya yang belum aktif, bukan bagannya yang kurang", async () => {
+      await setAccountStatus("kepalaUnit", "invited");
+      const failure = await resolveOvertimeApprover(client, people.guru.employeeId, TODAY)
+        .then(() => null, (error: unknown) => error as { code: string; message: string });
+
+      expect(failure?.code).toBe("APPROVER_ACCOUNT_NOT_READY");
+      expect(failure?.message).toContain("Pegawai kepalaUnit");
+      expect(failure?.message).toContain("Kepala Taman Tahfizh Sintetis");
+      expect(failure?.message).not.toContain("Atasan Anda belum tercatat");
+    });
+
+    it("tetap mengatakan atasannya belum tercatat ketika memang begitu", async () => {
+      await client.query(
+        "DELETE FROM organization_memberships WHERE change_set_id = $1 AND employee_id = $2",
+        [changeSet, people.guru.employeeId],
+      );
+      const failure = await resolveOvertimeApprover(client, people.guru.employeeId, TODAY)
+        .then(() => null, (error: unknown) => error as { code: string; message: string });
+
+      expect(failure?.code).toBe("OVERTIME_APPROVER_UNRESOLVED");
+      expect(failure?.message).toBe("Atasan Anda belum tercatat. Hubungi HC.");
+    });
+
+    it("merutekan ke kepala unit ketika akunnya sudah aktif", async () => {
+      const resolved = await resolveOvertimeApprover(client, people.guru.employeeId, TODAY);
+      expect(resolved.supervisorEmployeeId).toBe(people.kepalaUnit.employeeId);
+    });
   });
 
   /**

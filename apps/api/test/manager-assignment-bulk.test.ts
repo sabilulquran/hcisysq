@@ -383,6 +383,26 @@ describe("ORG-001 dry-run penetapan atasan langsung massal", () => {
     expect(rowFor(preview, staf.employeeNumber).code).toBe("EMPLOYEE_OUTSIDE_HCIS_READ_ONLY");
   });
 
+  it("membaca berkas yang setiap selnya dikutip, seperti unduhan usulan bagan", async () => {
+    // Unduhan usulan bagan di layar HC mengutip setiap sel (RFC 4180) supaya
+    // aman dibuka di Excel. Berkas itu dibuat untuk diunggah lagi ke sini, jadi
+    // jalur unggahnya harus benar-benar membacanya.
+    const atasan = employee(1);
+    const staf = employee(2);
+    const { pool } = createPool([atasan, staf]);
+
+    const response = await withApp(pool, (app) =>
+      app.inject(previewRequest(
+        ["NIP,NIP ATASAN", `"${staf.employeeNumber}","${atasan.employeeNumber}"`].join("\r\n"),
+      )));
+
+    expect(response.statusCode).toBe(200);
+    expect(rowFor(response.json(), staf.employeeNumber)).toMatchObject({
+      outcome: "change",
+      toManager: { employeeNumber: atasan.employeeNumber },
+    });
+  });
+
   it("menolak berkas tanpa kolom wajib", async () => {
     const { pool } = createPool([employee(1)]);
     const response = await withApp(pool, (app) =>

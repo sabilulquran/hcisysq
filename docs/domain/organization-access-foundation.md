@@ -128,7 +128,13 @@ Known follow-ups, not addressed here:
 - the unlocked reporting-line read described above;
 - the empty-cell rule is *stricter* than EMP-004's, not the same: the employee import treats a blank
   optional cell as "no value", while a blank `NIP ATASAN` here is a blocking error. Only the meaning
-  of `-` is shared.
+  of `-` is shared;
+- the dry-run calls the ORG-004 resolver once per employee the file names, on an endpoint with no
+  rate limit of its own. At 97 employees this is nothing, and it is never paid during apply; it is
+  worth watching if the 2000-row cap is ever raised;
+- the dry-run response now also carries the chart's answer. That widens nothing in practice — the
+  holder of `approvals.policy.manage` already reads the same resolution through the organization
+  routes under the same permission — but it is a second surface for the same data.
 
 ENG-LIST-001 exception, written down on purpose: the dry-run table is not paged. It is not a stored
 list but one request's answer about one file, bounded at 2000 rows, and HC confirms the whole file

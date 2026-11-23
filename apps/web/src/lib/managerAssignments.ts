@@ -133,6 +133,31 @@ export function managerAssignmentPersonLabel(person: ManagerAssignmentPersonRef 
 export function managerAssignmentChartCsv(rows: readonly ManagerAssignmentPreviewRow[]): string {
   return [
     "NIP,NIP ATASAN",
-    ...rows.map((row) => `${row.employeeNumber},${row.chartManager?.employeeNumber ?? ""}`),
+    ...rows.map((row) => [row.employeeNumber, row.chartManager?.employeeNumber ?? ""].map(csvCell).join(",")),
   ].join("\r\n");
+}
+
+/**
+ * Satu sel CSV yang aman dibuka di spreadsheet.
+ *
+ * Dua hal yang dijaga, dan keduanya soal berkas ini memang dibuka orang di
+ * Excel atau Sheets:
+ *
+ * 1. **Bentuk berkasnya.** `employees.employee_number` bertipe `text` tanpa
+ *    CHECK, jadi NIP yang memuat koma, kutip, atau newline akan memecah baris
+ *    bila ditulis telanjang. Setiap sel karena itu selalu dikutip dan kutip di
+ *    dalamnya digandakan, sesuai RFC 4180.
+ * 2. **Formula injection.** Sel yang dimulai `=`, `+`, `@`, atau `-` dieksekusi
+ *    sebagai formula oleh Excel dan Sheets. Sel seperti itu diberi awalan `'`
+ *    supaya dibaca sebagai teks. `-` ikut dijaga meskipun fungsi di atas tidak
+ *    pernah memancarkannya sendiri: yang dijaga adalah selnya, bukan asumsi
+ *    tentang pemanggilnya.
+ *
+ * Dengan format NIP yang dipakai hari ini keduanya praktis mustahil. Berkas
+ * yang dibuat untuk dibuka di spreadsheet sebaiknya tidak punya lubang itu
+ * sejak awal.
+ */
+function csvCell(value: string): string {
+  const guarded = /^[=+@-]/.test(value) ? `'${value}` : value;
+  return `"${guarded.replace(/"/g, '""')}"`;
 }

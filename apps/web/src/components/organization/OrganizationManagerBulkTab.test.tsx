@@ -104,9 +104,32 @@ describe("ORG-001 tabel hasil dry-run atasan langsung", () => {
 });
 
 describe("ORG-001 berkas usulan dari bagan", () => {
+  function row(employeeNumber: string, chartManagerNumber: string | null): ManagerAssignmentPreviewRow {
+    return {
+      ...rows[0]!,
+      employeeNumber,
+      chartManager: chartManagerNumber
+        ? { employeeNumber: chartManagerNumber, fullName: "Pegawai Sintetis" }
+        : null,
+    };
+  }
+
   it("menuliskan usulan bagan sebagai CSV yang dapat diunggah ulang HC", () => {
     expect(managerAssignmentChartCsv(rows)).toBe(
-      ["NIP,NIP ATASAN", "SYN-002,SYN-009", "SYN-003,SYN-001", "SYN-004,"].join("\r\n"),
+      ['NIP,NIP ATASAN', '"SYN-002","SYN-009"', '"SYN-003","SYN-001"', '"SYN-004",""'].join("\r\n"),
+    );
+  });
+
+  it("mengutip sel yang memuat koma sehingga barisnya tidak pecah", () => {
+    // employee_number bertipe text tanpa CHECK: sel seperti ini tidak merusak berkas.
+    expect(managerAssignmentChartCsv([row('SYN,005', 'SYN"006')])).toBe(
+      ['NIP,NIP ATASAN', '"SYN,005","SYN""006"'].join("\r\n"),
+    );
+  });
+
+  it("menjinakkan sel yang dimulai dengan = agar tidak dieksekusi sebagai formula", () => {
+    expect(managerAssignmentChartCsv([row("=cmd()", "+1")])).toBe(
+      ['NIP,NIP ATASAN', `"'=cmd()","'+1"`].join("\r\n"),
     );
   });
 });

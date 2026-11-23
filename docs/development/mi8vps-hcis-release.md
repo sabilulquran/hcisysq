@@ -134,6 +134,13 @@ when the bundle carries `0172_trip_per_diem_decree.sql`.
 
    The screen shows the first list too ("Belum dipetakan: …"), so HC does not need the queries.
 
+**Dry run.** A dry run never runs `migrate`, so while `0172` is still pending the map table does not
+exist yet and check 2 cannot be evaluated. The dry run then says so (and whether
+`--allow-unmapped-golongan` was given) instead of failing on `relation "trip_per_diem_golongan_map"
+does not exist`; the real check runs in the `--apply` candidate phase after `migrate`. Observed on
+2026-11-23 against `e1d898f5`, where the dry run stopped on that error before the override could
+take effect.
+
 Until the map covers them, every per diem estimate, every new advance and every settlement
 answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee: a module-wide outage from the
 minute of cutover. There is therefore no "carry on and tell people afterwards" path in prose. The

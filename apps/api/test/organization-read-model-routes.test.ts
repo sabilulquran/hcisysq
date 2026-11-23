@@ -156,16 +156,18 @@ describe("ORG-008-2 rollout answers what the banner needs (acceptance ORG-008-K)
     const { response } = await call("SUPER_ADMIN", "GET", "/admin/organization/rollout");
 
     expect(response.statusCode).toBe(200);
+    // ORG-004 (DRAFT D-R1): tanpa satu pun baris tidak ada kunci workflow yang bisa disebut.
+    // `"LEAVE"` yang dulu dikembalikan bukan kunci yang dicari runtime mana pun.
     expect(response.json()).toMatchObject({
-      mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null,
+      mode: "LEGACY", workflowKey: null, organizationalNodeKey: null,
       configuredRowCount: 0, settings: [],
     });
   });
 
   it("returns the rows effective today once rollout is configured, not just the newest one", async () => {
     const rows = [
-      { workflowKey: "LEAVE", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null },
-      { workflowKey: "LEAVE", organizationalNodeKey: "00000000-0000-4000-8000-000000000031", mode: "SHADOW", effectiveFrom: "2026-10-01", effectiveTo: null },
+      { workflowKey: "leave.annual", organizationalNodeKey: null, mode: "LEGACY", effectiveFrom: "2026-01-01", effectiveTo: null },
+      { workflowKey: "leave.annual", organizationalNodeKey: "00000000-0000-4000-8000-000000000031", mode: "SHADOW", effectiveFrom: "2026-10-01", effectiveTo: null },
     ];
     const { response } = await call("SUPER_ADMIN", "GET", "/admin/organization/rollout", { rolloutRows: rows });
 

@@ -1,3 +1,5 @@
+import type { OrganizationWorkflowKey } from "./workflow-keys.js";
+
 export type OrganizationChangeSetStatus = "DRAFT" | "VALIDATED" | "PUBLISHED" | "DISCARDED";
 export type VacancyPolicy = "CLIMB_TO_PARENT" | "REQUIRE_ACTING_OR_BLOCK" | "BLOCK";
 export type IncumbencyKind = "PRIMARY" | "ACTING";
@@ -254,11 +256,28 @@ export interface LegacyAuthorityInput {
 }
 
 export interface RolloutAuthorityInput extends AuthorityResolutionInput {
-  workflowKey: string;
+  /** ORG-004: hanya kunci yang dikenal; lihat `workflow-keys.ts`. */
+  workflowKey: OrganizationWorkflowKey;
   legacy: LegacyAuthorityInput;
   authorityRequirement?: AuthorityRequirement | undefined;
   /** LOAN-002: required by `UNIT_AND_APPROVAL_SEATS`, ignored by every other requirement. */
   approvalSeats?: readonly ApprovalSeatTarget[] | undefined;
+}
+
+/**
+ * ORG-004 (DRAFT D-R2, 2026-11-20): baris rollout mana yang benar-benar dipakai untuk satu
+ * pemohon. Lingkup rollout memanjat dari node keanggotaan utama pemohon ke leluhur terdekat yang
+ * punya baris, persis seperti `findNodeBinding` memanjat mencari binding. Tanpa catatan ini
+ * diagnostik tidak dapat menyebut baris mana yang berlaku, dan operator kembali menebak.
+ */
+export interface OrganizationRolloutDecision {
+  mode: OrganizationRolloutMode;
+  /** Node pada baris yang cocok. `null` berarti baris global, atau tidak ada baris sama sekali. */
+  matchedNodeKey: string | null;
+  /** Node keanggotaan utama pemohon; `null` bila pemohon belum punya keanggotaan efektif. */
+  requesterNodeKey: string | null;
+  /** Id baris `organization_rollout_settings` yang dipakai; `null` bila tidak ada. */
+  settingId: string | null;
 }
 
 export interface StructuralResolutionDiagnostic {
@@ -274,6 +293,8 @@ export interface RolloutAuthorityResult {
   authorities: ResolvedAuthority[];
   structure?: ResolvedLineAuthorities | undefined;
   shadow?: StructuralResolutionDiagnostic | undefined;
+  /** ORG-004 (DRAFT D-R2): baris rollout yang menentukan `mode`, untuk diagnostik. */
+  rolloutScope?: Omit<OrganizationRolloutDecision, "mode"> | undefined;
 }
 
 export interface OrganizationValidationIssue {

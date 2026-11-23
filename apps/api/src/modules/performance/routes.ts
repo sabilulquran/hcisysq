@@ -24,6 +24,7 @@ import { notifyEmployee } from "../notifications/service.js";
 // resolver beside it drops SUPPORT, and an office boy's rubric is exactly what must not be lost.
 import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { resolveLineManager } from "../organization/line-manager.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import {
   ACTIVE_REVIEW_STATUSES,
   canFinalize,
@@ -54,7 +55,7 @@ import {
 type Queryable = Pool | PoolClient;
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
-const PERFORMANCE_WORKFLOW_KEY = "PERF";
+const PERFORMANCE_WORKFLOW_KEY: OrganizationWorkflowKey = "PERF";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const code = z.string().trim().min(1).max(40);

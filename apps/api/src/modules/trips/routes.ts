@@ -34,6 +34,7 @@ import {
 } from "../leave/domain/request-workflow.js";
 import { LeaveOrganizationAuthorityError, resolveLeaveAuthorities } from "../leave/organization-authority.js";
 import { notifyEmployee } from "../notifications/service.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
 import {
   approvalRequestStatus,
   canCancelTrip,
@@ -52,7 +53,7 @@ type Queryable = Pool | PoolClient;
 type Recompute = { employeeId: string; dates: string[] };
 
 /** D-01 DRAFT: ORG-004 rollout key; without a rollout row the mode is LEGACY. */
-const TRIP_WORKFLOW_KEY = "TRIP";
+const TRIP_WORKFLOW_KEY: OrganizationWorkflowKey = "TRIP";
 /** D-06 DRAFT: register code for the surat tugas, `001/ST/YSQ/XI/2026`. */
 const ASSIGNMENT_NUMBER_CODE = "ST";
 const ASSIGNMENT_DOCUMENT_CODE = "SURAT_TUGAS";

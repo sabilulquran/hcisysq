@@ -93,6 +93,49 @@ Leave is the first consumer. Annual and Planned Leave preserve Direct Manager th
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
+### Kunci workflow rollout (D-R1 `DRAFT`, 2026-11-20)
+
+`organization_rollout_settings.workflow_key` is a closed set, not free text. One list — `apps/api/src/modules/organization/workflow-keys.ts` — is read by the admin route (`z.enum`), by every runtime module (as a type annotation, so a typo fails typecheck), and by the database (`organization_rollout_settings_workflow_key_known`, migration `0182`). Adding a workflow means adding one entry there **and** one migration that updates the constraint; a test compares the two.
+
+The keys are the ones the runtime actually looks up: `leave.annual`, `leave.employee_marriage`, `leave.child_marriage`, `leave.child_circumcision`, `leave.hajj`, `leave.unpaid`, `LOAN`, `OVERTIME`, `PERF`, `REIMBURSEMENT`, `TRAINING`, `TRIP`, `WORK_ARRANGEMENT`.
+
+`PATCH /admin/organization/rollout` no longer defaults `workflowKey` to `"LEAVE"`. No runtime ever looked that key up, so a row carrying it was stored without complaint while mode resolution fell silently back to `LEGACY`: the operator believed a unit had been moved to `STRUCTURE` when it had not. A silent failure on an authority switch is the worst shape this defect can take, so the database refuses such a row too, and every other write path — psql, scripts, data corrections — is refused with it. For the same reason `GET /admin/organization/rollout` now answers `workflowKey: null` when no row exists at all, instead of naming a key that means nothing.
+
+### Rollout scope climbs (D-R2 `DRAFT`, 2026-11-20, revised 2026-11-23)
+
+A rollout row is matched against the requester's primary membership node **and its ancestors**, nearest first, with a global row (`node_key IS NULL`) as the last resort — the same climb `findNodeBinding` performs for authority bindings. No match still yields `LEGACY`.
+
+People rarely sit on a unit node itself; they sit in its children. Exact matching therefore demanded one row per node where people actually are, multiplied by every workflow key, entered one at a time through the API with no screen — and any row that was forgotten failed silently to `LEGACY`. Climbing closes that: one row on a unit covers the unit.
+
+**A row on any ancestor covers that ancestor's whole subtree, at any depth.** A row on the root node therefore moves the entire foundation at once, in one write. That is the point of climbing, and it is also the risk it carries: whoever sets a row must know which node they picked. Scope is chosen by picking the node, nothing narrows it afterwards.
+
+Nearest wins, so climbing only adds reach. A child can still be pinned to `LEGACY` while its parent is `STRUCTURE`, by giving that child its own explicit `LEGACY` row.
+
+A node that is not effective or not active on the date is **not part of the scope at all**, and the climb stops there — so a row on a retired node does not apply, and nothing above that node is reached either. The climb also stops on a cycle and at the resolver's depth limit, and never throws: resolving a rollout mode must not fail a submission. Every one of these stops leaves the requester with no node scope, where only a global row can still match and the result is otherwise `LEGACY`. A requester with no effective primary membership is the same case. On an authority switch, every difference falls to `LEGACY`, which is what production runs.
+
+Determinism of the mode rests on the overlap guard `enforce_organization_rollout_overlap` (migration `0019`), which refuses a second row whose period overlaps an existing one for the same workflow key and scope. Without it two rows could be in force on one date for the same pair and the mode would depend on row order. The guard is therefore part of this decision, not an unrelated constraint: it is why "nearest wins" picks exactly one row.
+
+The row that decided the mode travels with the result (`rolloutScope`: matched node, requester node, row id), so diagnostics can name which row applied instead of leaving the operator to guess. This travels with **every** mode, `LEGACY` included, and is persisted in the request's stored resolution context and submit event: for a `LEGACY` submission it says there was no row, or which row said `LEGACY`. Routing is unchanged by it; the stored context gains three diagnostic fields. Nothing reads them yet, and that is deliberate — the question an operator asks first is "why is this still `LEGACY`", and before this there was no stored answer.
+
+### Turning the switch back off (D-R4 `DRAFT`, 2026-11-23)
+
+`PATCH /admin/organization/rollout` only ever inserts, and the overlap guard refuses a second row for the same workflow key and scope. Without a way to close an open row the switch could only be turned on, which is not a rollback path — and the owner's rule requires a clear one for any change to production routing.
+
+- `POST /admin/organization/rollout/:id/end` (`approvals.policy.manage`, reason required, audited as `organization.rollout.ended`) sets `effective_to`. A setting is ended, never edited or deleted.
+- The earliest end is **today**, not yesterday: a setting in force today has already explained every chain resolved today, so ending it in the past would make the record deny a day it demonstrably governed. A setting that has not started yet is ended the day before it starts, which leaves its period empty.
+- A rejected overlap is now `409 ORGANIZATION_ROLLOUT_PERIOD_OVERLAP` naming the way out, not a bare `23P01` surfacing as `500`.
+
+### The preview asks what the runtime asks (D-R3 `DRAFT`, 2026-11-20, extended 2026-11-23)
+
+The ORG-008-2 approval preview and the change-set resolution preview both resolve with exactly the inputs the runtime resolves with, and nothing more.
+
+- No `requiredCapability`. The Leave runtime never sends one — not when building the chain, and not when deciding, where the check is that the actor is the principal stored on the step. Since no employee holds `leave.approve`, the old preview would have called a chain that genuinely works broken as soon as accounts are activated, and Human Capital would have chased a problem that does not exist. `accountCapability` stays, because the runtime does send it for organ account principals.
+- The real runtime keys, `leave.annual` and `leave.unpaid`, not `"LEAVE"`.
+- The runtime's own `AuthorityRequirement` per workflow, from one table beside the key list (`ORGANIZATION_WORKFLOW_AUTHORITY_REQUIREMENTS`), complete over the key set so a new key cannot be added without naming its chain. The resolver defaults that argument to `LINE_AND_UNIT`, so a caller that omits it does not fail — it quietly builds a different chain. This caught Unpaid Leave, which runs `UNIT_ONLY` at runtime and was being previewed as `LINE_AND_UNIT`: two steps where the runtime has one.
+- The change-set preview refuses `UNIT_AND_APPROVAL_SEATS` workflows (`LOAN`) with `400 ORGANIZATION_PREVIEW_WORKFLOW_UNSUPPORTED`. That chain depends on the live approval-seat registry and on the loan amount, neither of which that endpoint has; resolving without the seats would answer a short chain that looks valid, which is the same lie in a different place.
+
+Overtime remains marked as a preview: its approver capability belongs to ATT-011-6b and is not decided (§4.6, gap X-5).
+
 ### Synthetic implementation evidence
 
 Focused synthetic ORG-004 browser UAT established these implementation invariants:
@@ -102,6 +145,12 @@ Focused synthetic ORG-004 browser UAT established these implementation invariant
 - impact comparison is based on stable structural/authority content rather than per-snapshot physical row IDs, so a visual-rank-only future draft is reported as **no approval-routing impact**.
 
 Automated regression coverage accompanies each invariant. The browser UAT used only a disposable loopback PostgreSQL cluster and synthetic personas; it did not validate or alter production employee configuration.
+
+The five questions asked of the rollout switch before any unit is considered for `STRUCTURE` are answered by tests, against the real schema where the SQL and the migration are what is being asked about (`apps/api/test/org004-rollout-switch.postgres.test.ts`, `apps/api/test/org004-workflow-keys.test.ts`, and the ORG-004 rollout block of `apps/api/test/organization-resolver.test.ts`): an officer replaced in one place in the chart moves new requests and nothing else; a request already submitted keeps the approvers recorded on it; a unit outside the covered scope does not switch, while a child of a covered unit is covered by its parent's single row and a child with its own `LEGACY` row stays `LEGACY`; one person holding two roles produces one step carrying both sources; and a requester whose `employees.direct_manager_employee_id` is NULL resolves a complete chain under `STRUCTURE` while the same requester is refused under `LEGACY`. `LEGACY` routing for everyone outside that scope is asserted unchanged, with and without a rollout row present elsewhere.
+
+These five state what ORG-004 does; most of them are not regression tests for D-R1 to D-R4 and should not be cited as such. Only the scope cases — a child covered by its parent's row, a row at the root reaching two levels down, an inactive ancestor, a requester with no primary membership — depend on the climb; the rest place the row on the requester's own node and resolve identically under the exact matching that preceded it. The decisions themselves are covered separately: refusal of an unknown workflow key by the API and by the database, the canonical list against the migration constraint, the two previews against the chain the runtime actually builds, and the overlap refusal and the end route that make the switch reversible.
+
+All of it is synthetic data in a rolled-back transaction; no production row, mode or account is read or written, and none of this activates anything.
 
 ### Deployment and deferred operational work
 

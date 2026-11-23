@@ -6,6 +6,9 @@ import {
   OrganizationRolloutService,
   PostgresOrganizationRepository,
 } from "../organization/index.js";
+import type { OrganizationWorkflowKey } from "../organization/workflow-keys.js";
+
+const OVERTIME_WORKFLOW_KEY: OrganizationWorkflowKey = "OVERTIME";
 
 // ATT-011-6b-1 §7.3: who is an employee's direct supervisor for overtime. The same resolver as leave
 // (APR-001) with one DIRECT_MANAGER step: ORG-002 data while the OVERTIME workflow is LEGACY, the
@@ -37,7 +40,7 @@ export async function resolveOvertimeApprover(db: Db, employeeId: string, workDa
   let result;
   try {
     result = await rollout.resolveAuthorities({
-      workflowKey: "OVERTIME",
+      workflowKey: OVERTIME_WORKFLOW_KEY,
       requesterEmployeeId: employeeId,
       effectiveDate: workDate,
       legacy: { directManagerEmployeeId: legacy.rows[0]?.directManagerEmployeeId ?? null, unitApproverEmployeeId: null },

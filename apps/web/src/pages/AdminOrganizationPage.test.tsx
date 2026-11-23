@@ -26,7 +26,7 @@ const employees: OrganizationEmployeeOption[] = [
 /** No rollout row configured: `GET /rollout` answers with its default object and no updatedAt. */
 const legacyRollout: OrganizationRolloutConfiguration = {
   mode: "LEGACY",
-  workflowKey: "LEAVE",
+  workflowKey: null,
   organizationalNodeKey: null,
 };
 

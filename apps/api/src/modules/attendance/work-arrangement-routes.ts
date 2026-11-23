@@ -18,7 +18,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import type { WorkArrangementPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -667,7 +667,7 @@ export async function registerWorkArrangementRoutes(
     if (!body.success) return send(reply, 400, { code: "INVALID_ARRANGEMENT_REQUEST", message: "Data pengajuan tidak valid." });
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
-      await assertManagedByHcis(pool, employee.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const { days, schedule, chain } = await validateRequest(pool, employee, body.data);
       const meetings = body.data.type === "SCHEDULE_CHANGE" ? [] : await meetingWarnings(pool, employee.id, body.data.startOn, body.data.endOn);
       return send(reply, 200, {
@@ -703,7 +703,7 @@ export async function registerWorkArrangementRoutes(
 
       // After the replay (as LEAVE-001 does): a retry of a submission that already went
       // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
-      await assertManagedByHcis(client, employee.id);
+      await assertSelfServiceManagedByHcis(client, employee.id);
 
       const { days, schedule, chain, context } = await validateRequest(client, employee, body.data);
       const id = randomUUID();

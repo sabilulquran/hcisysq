@@ -78,6 +78,17 @@ Before submission the API validates:
 
 Concurrency is serialized by locking the requester employee row during submission. An idempotency key prevents duplicate requests.
 
+**Di luar pengelolaan HCIS (EMP-005 S2B §8.7; keputusan owner D-20, 23 November 2026).**
+Data pegawai yang ditandai di luar pengelolaan HCIS — staf BUMY dan Pengurus Yayasan — hanya dapat dibaca. Ia
+**tidak dapat mengajukan cuti tahunan baru, termasuk pratinjaunya**: pengajuan baru dijawab `409
+EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat.
+Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru." — pesannya menyebut apa yang masih
+berjalan dan langkah berikutnya, dan tidak pernah mengatakan akunnya tidak aktif. Ia juga tidak pernah dipilih
+sebagai approver. Yang tetap jalan: seluruh pembacaan, riwayat sebelum penandaan, dan pembatalan pengajuan
+yang sudah berjalan. Aturan ini mulanya hanya ditetapkan untuk cuti (S2B-b, 11 November 2026); keputusan owner
+D-20 pada 23 November 2026 memperluasnya ke seluruh layanan mandiri. Rinciannya, termasuk yang masih `DRAFT`,
+ada di `employment-administration-package1.md` §8.7.
+
 ## Approval snapshot
 
 At submission HCIS stores all concrete approval steps in order.

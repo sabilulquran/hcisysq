@@ -22,7 +22,7 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { LoanPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -840,7 +840,7 @@ export async function registerLoanRoutes(
     }
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
-      await assertManagedByHcis(pool, employee.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const submittedOn = today();
       const principalAmount = toRupiah(body.data.principal);
       validateLoanTerms({ principal: principalAmount, tenorMonths: body.data.tenorMonths });
@@ -882,7 +882,7 @@ export async function registerLoanRoutes(
       }
       // After the replay (as LEAVE-001 does): a retry of a submission that already went
       // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
-      await assertManagedByHcis(client, employee.id);
+      await assertSelfServiceManagedByHcis(client, employee.id);
 
       const submittedOn = today();
       const principalAmount = toRupiah(body.data.principal);

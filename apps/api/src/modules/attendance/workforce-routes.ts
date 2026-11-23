@@ -10,7 +10,7 @@ import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePr
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
-  assertManagedByHcis,
+  assertSelfServiceManagedByHcis,
   OUTSIDE_HCIS_CODE,
   OUTSIDE_HCIS_MESSAGE,
   OutsideHcisError,
@@ -1094,7 +1094,7 @@ export async function registerAttendanceWorkforceRoutes(
         if (windowError) throw new WorkforceAttendanceError(422, windowError, manualCorrectionWindowMessages[windowError]);
       }
       const employee = await employeeForAccount(pool, principal.id);
-      await assertManagedByHcis(pool, employee.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const id = randomUUID();
       const client = await pool.connect();
       try {
@@ -2195,7 +2195,7 @@ export async function registerAttendanceWorkforceRoutes(
     if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
     try {
       const employee = await employeeForAccount(pool, principal.id);
-      await assertManagedByHcis(pool, employee.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const client = await pool.connect();
       let submitted: Awaited<ReturnType<typeof submitOvertimeForApproval>>;
       try {
@@ -2543,6 +2543,23 @@ export async function registerAttendanceWorkforceRoutes(
         if (invalid.length) {
           await client.query("ROLLBACK");
           return reply.status(403).send({ code: "OVERTIME_NOT_SUBORDINATE", message: "Sebagian pegawai bukan bawahan langsung Anda.", employees: invalid });
+        }
+        // EMP-005 S2B §8.7: a supervisor orders no overtime for a record outside HCIS management.
+        // Both HC routes that act for someone else already refuse it, and since owner D-20 the
+        // person cannot file it themselves either; without this the supervisor would be the only
+        // way to create a row that attendance calculation then discards.
+        const outside = await client.query<{ employeeId: string }>(
+          `SELECT id AS "employeeId" FROM employees
+            WHERE id = ANY($1::uuid[]) AND management_scope = 'OUTSIDE_HCIS'`,
+          [employeeIds],
+        );
+        if (outside.rows.length) {
+          await client.query("ROLLBACK");
+          return reply.status(409).send({
+            code: OUTSIDE_HCIS_CODE,
+            message: OUTSIDE_HCIS_MESSAGE,
+            employees: outside.rows,
+          });
         }
         // ATT-011-6b-3 D-10: the whole batch is refused when overtime does not apply to someone in it.
         const excluded: Array<{ employeeId: string; reasonLabel: string }> = [];

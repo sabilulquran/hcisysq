@@ -24,7 +24,12 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
+import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_MESSAGE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+  isOutsideHcis,
+} from "./management-scope.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
   DATA_CHANGE_TARGETS,
@@ -239,7 +244,8 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
     // S2B §8.7: the decision on such a proposal can only ever be a refusal,
     // so the queue does not collect proposals HC would have to reject by hand.
     if (await isOutsideHcis(pool, me.employeeId)) {
-      return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
+      // EMP-005 S2B §8.7: the employee is the one filing, so they get the self-service wording.
+      return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_SELF_SERVICE_MESSAGE });
     }
 
     const client = await pool.connect();

@@ -14,6 +14,11 @@ import type { ApiConfig } from "../../config/env.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import type { DocumentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
+import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+  isOutsideHcis,
+} from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
   DEFAULT_DISCIPLINARY_MONTHS,
@@ -249,6 +254,13 @@ export async function registerDocumentRoutes(
   app.post("/documents/me/requests", async (request, reply) => {
     const self = await requireSelf(request, reply);
     if (!self) return;
+    // EMP-005 S2B §8.7 (owner D-20): a record outside HCIS management asks for no new letter.
+    // This one matters more than most: the request ends in a numbered letter issued in the
+    // foundation's name — Surat Keterangan Kerja, Keterangan Penghasilan — about someone HCIS
+    // says it does not manage. Letters already issued stay readable and are not withdrawn.
+    if (await isOutsideHcis(pool, self.employeeId)) {
+      return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_SELF_SERVICE_MESSAGE });
+    }
     const body = requestBody.safeParse(request.body);
     if (!body.success) {
       return send(reply, 400, { code: "INVALID_DOCUMENT_REQUEST", message: "Jenis surat atau keperluan tidak valid (keperluan minimal 5 karakter)." });

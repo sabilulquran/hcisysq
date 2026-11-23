@@ -28,13 +28,22 @@ export type ManagementScopeReason = (typeof MANAGEMENT_SCOPE_REASONS)[number];
 export const OUTSIDE_HCIS_CODE = "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY";
 export const OUTSIDE_HCIS_MESSAGE = "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca.";
 
+/**
+ * What the person filing for themselves is told. Same code and same status as the message above;
+ * only the wording differs, because the reader does. It says what is still true (the history stays
+ * readable) and where to go next, so the refusal is not read as a broken account — which would send
+ * the person to account support instead of to Human Capital.
+ */
+export const OUTSIDE_HCIS_SELF_SERVICE_MESSAGE =
+  "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru.";
+
 /** Thrown by a write path that found the record marked; answered as 409. */
 export class OutsideHcisError extends Error {
   readonly statusCode = 409;
   readonly code = OUTSIDE_HCIS_CODE;
 
-  constructor(public readonly employeeId: string) {
-    super(OUTSIDE_HCIS_MESSAGE);
+  constructor(public readonly employeeId: string, message: string = OUTSIDE_HCIS_MESSAGE) {
+    super(message);
     this.name = "OutsideHcisError";
   }
 }
@@ -56,6 +65,16 @@ export async function isOutsideHcis(db: Db, employeeId: string): Promise<boolean
 /** Refuses the write when the record is marked; does nothing otherwise. */
 export async function assertManagedByHcis(db: Db, employeeId: string): Promise<void> {
   if (await isOutsideHcis(db, employeeId)) throw new OutsideHcisError(employeeId);
+}
+
+/**
+ * The same guard on a path where the marked person is the one filing: same code, same status,
+ * the wording of OUTSIDE_HCIS_SELF_SERVICE_MESSAGE.
+ */
+export async function assertSelfServiceManagedByHcis(db: Db, employeeId: string): Promise<void> {
+  if (await isOutsideHcis(db, employeeId)) {
+    throw new OutsideHcisError(employeeId, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
+  }
 }
 
 /**

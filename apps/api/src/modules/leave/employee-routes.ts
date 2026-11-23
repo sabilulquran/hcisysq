@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
@@ -216,7 +216,7 @@ export async function loadEmployeeContext(
  */
 export async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
   if (await isOutsideHcis(db, employeeId)) {
-    throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+    throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
   }
 }
 

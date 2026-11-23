@@ -18,7 +18,7 @@ import { decryptSecret, encryptSecret } from "../auth/crypto.js";
 import type { TrainingPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 import { EvaluationPolicyError } from "./evaluation-domain.js";
 import { assignSupervisorAssessors, registerTrainingEvaluationRoutes } from "./evaluation-routes.js";
@@ -619,7 +619,7 @@ export async function registerTrainingRoutes(
       if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
       // After the replay (as LEAVE-001 does): a retry of a submission that already went
       // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
-      await assertManagedByHcis(client, self.id);
+      await assertSelfServiceManagedByHcis(client, self.id);
       validateExternalRecord({ ...body.data, today: jakartaDate(new Date()) });
       const id = randomUUID();
       await client.query(

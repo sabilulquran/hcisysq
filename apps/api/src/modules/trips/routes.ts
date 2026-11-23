@@ -26,7 +26,7 @@ import {
 } from "../documents/service.js";
 import { materializeAttendanceResult } from "../attendance/engine.js";
 import { datesToRecompute } from "../attendance/work-arrangements.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -529,7 +529,7 @@ export async function registerTripRoutes(
     if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_REQUEST", message: "Tanggal perjalanan tidak valid." });
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
-      await assertManagedByHcis(pool, employee.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const submittedOn = today();
       const { days } = validateTripDates({ ...body.data, today: submittedOn });
       await assertNoOverlap(pool, employee.id, body.data.startOn, body.data.endOn);
@@ -560,7 +560,7 @@ export async function registerTripRoutes(
 
       // After the replay (as LEAVE-001 does): a retry of a submission that already went
       // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
-      await assertManagedByHcis(client, employee.id);
+      await assertSelfServiceManagedByHcis(client, employee.id);
 
       const submittedOn = today();
       const { days } = validateTripDates({ ...body.data, today: submittedOn });

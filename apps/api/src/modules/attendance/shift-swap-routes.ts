@@ -8,7 +8,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
   jakartaWorkDate,
@@ -585,7 +585,7 @@ export async function registerAttendanceShiftSwapRoutes(
         throw new ShiftSwapError(409, "SHIFT_SWAP_DATE_PAST", "Tukar shift tidak dapat diajukan untuk tanggal yang sudah lewat.");
       }
       const requester = await employeeForAccount(pool, principal.id);
-      await assertManagedByHcis(pool, requester.id);
+      await assertSelfServiceManagedByHcis(pool, requester.id);
       if (requester.id === body.data.counterpartEmployeeId) {
         throw new ShiftSwapError(400, "SHIFT_SWAP_SELF", "Pegawai tidak dapat menukar shift dengan dirinya sendiri.");
       }

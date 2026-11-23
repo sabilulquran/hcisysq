@@ -6,7 +6,9 @@ info:
     EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
     409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /attendance/overtime,
     POST /attendance/clarifications and POST /attendance/shift-swaps, as the HC routes acting on
-    their behalf already do; reads and cancelling are unaffected.
+    their behalf already do; reads and cancelling are unaffected. POST
+    /attendance/team-overtime/orders refuses the whole batch for the same reason when any subject
+    is marked.
 paths:
   /attendance/me/workforce:
     get:
@@ -1192,6 +1194,10 @@ paths:
         '200': { description: '`{ dryRun: true, orders[{ employeeId, warnings[] }] }` (dryRun only)' }
         '201': { description: '`{ ids[], orders[{ employeeId, id, warnings[] }], status: submitted, awaiting: employee }`' }
         '403': { description: OVERTIME_NOT_SUBORDINATE }
+        '409':
+          description: >-
+            EMPLOYEE_OUTSIDE_HCIS_READ_ONLY with `employees[{ employeeId }]` — the whole batch is
+            refused when any subject is outside HCIS management (EMP-005 S2B §8.7)
         '422':
           description: >-
             OVERTIME_DATE_OUT_OF_RANGE, OVERTIME_DAY_TOTAL_INVALID, or OVERTIME_NOT_APPLICABLE with

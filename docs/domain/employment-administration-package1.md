@@ -500,15 +500,27 @@ Implementation notes (S2B-b, 2026-11-11):
 
 Implementation notes (S2B-c, 2026-11-23) — the requester side:
 
-- `DRAFT` (2026-11-23, pending owner confirmation): "no new leave" in S2B-b is the rule for **every**
-  self-service module, not only leave. A marked record may not file a new request for itself in
-  business travel (TRIP-001), trip advances (TRIP-002), employee loans (LOAN-001), reimbursements
-  (REIMB-001), overtime and attendance clarification (ATT-011), shift swaps, work arrangements,
-  performance self-assessment (PERF-001), or external training records (TRAIN-001). Preview and
-  submission are both refused, with the same `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` / "Data ini di luar
-  pengelolaan HCIS dan hanya dapat dibaca." answer and HTTP 409 that the leave modules already give.
-  The refusal says the record is read-only; it does not say the account is inactive, which would be
-  untrue and would send the person to account support instead of to HC.
+- **Owner decision, 23 November 2026 (D-20): a record outside HCIS management files nothing new in
+  any self-service module.** Until that date the rule had only ever been set for leave — S2B-b
+  (2026-11-11) worded it as "no new leave", and only the leave modules, EMP-003 and EMP-011 enforced
+  it. From 23 November 2026 the same rule covers **every** module in which an employee files
+  something for themselves: business travel (TRIP-001), trip advances (TRIP-002), employee loans
+  (LOAN-001), reimbursements (REIMB-001), overtime and attendance clarification (ATT-011), shift
+  swaps, work arrangements, performance self-assessment (PERF-001), external training records
+  (TRAIN-001) and HR letter requests (DOC-001). Preview and submission are both refused, with the
+  same HTTP 409 and the same
+  `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` code the leave modules already use. The person filing is told
+  "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap
+  terbaca. Hubungi Human Capital bila ini keliru." — the same code and status as the admin-facing
+  wording, worded for the person in front of it: what is refused, what still works, and the next
+  step. It never says the account is inactive, which would be untrue and would send the person to
+  account support instead of to HC. `DOC-001` is in that list for a reason of its own: the request
+  ends in a numbered letter issued in the foundation's name (Surat Keterangan Kerja, Keterangan
+  Penghasilan) about someone HCIS states it does not manage. Letters already issued stay readable
+  and are not withdrawn.
+- **What the owner decided, and what the owner did not.** D-20 answers *who may file for
+  themselves*. It says nothing about what HC or a line manager may do **to** a marked person, and
+  nothing about the three `DRAFT` points below; none of them may be read as settled by it.
 - **Why it was missing:** the approver side was built first and reads a marked record as not active,
   while the requester side of those modules only checked an active account, `principal_type =
   'EMPLOYEE'`, `status = 'active'` and `removed_at IS NULL`. Found by an independent review on
@@ -522,19 +534,55 @@ Implementation notes (S2B-c, 2026-11-23) — the requester side:
   record whose holder still had an active HCIS account — which is precisely the situation the
   consistency report line `ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD` exists to flag, so it was a
   realistic future state rather than an impossible one.
-- **What stays open on purpose.** A marked record keeps every closing move on something already in
-  flight, so a mark never traps a request or an obligation: cancelling or withdrawing a request,
-  settling a trip advance already disbursed, editing or removing receipts on a draft created before
-  the mark, acknowledging or objecting to a performance review already written, and progress on
-  e-learning already assigned. Reads are untouched. The approver's own closing decisions are
-  unchanged by this note.
-- **What is not the requester side, and was left alone.** When an HC officer or a supervisor files
-  *for someone else*, the subject is checked where that route already does it (`POST
-  /admin/attendance/overtime`, `POST /admin/attendance/manual-corrections`). Three on-behalf routes
-  still check only `status = 'active'` on the subject and not `management_scope`: supervisor overtime
-  orders (`POST /attendance/team-overtime/orders`), performance cycle participants, and training
-  participants. They are listed here for a separate decision rather than changed silently, because
-  blocking them changes HC's and a supervisor's work, not the marked person's.
+- `DRAFT` **(2026-11-23) — where the line falls: a new submission is refused, a closing move is
+  not.** A marked record keeps every closing move on something already in flight, so a mark never
+  traps a request or an obligation: cancelling or withdrawing a request, settling a trip advance
+  already disbursed, editing or removing receipts on a draft created before the mark, acknowledging
+  or objecting to a performance review already written, and progress on e-learning already assigned.
+  Reads are untouched, and the approver's own closing decisions are unchanged by this note. This
+  follows the leave precedent, where cancelling is not refused; the owner has not been asked to
+  confirm it.
+- `DRAFT` **(2026-11-23) — performance self-assessment of someone already in an open cycle.** The
+  refusal applies even when HC enrolled the person before the mark; taking them out of the cycle is
+  HC's move, not the employee's. Acknowledging and objecting to a review already written stay open
+  so the cycle is not left stuck. The owner has not been asked about this case.
+- **The on-behalf routes.** When an HC officer or a line manager files *for someone else*, the
+  subject is checked where that route already does it (`POST /admin/attendance/overtime`,
+  `POST /admin/attendance/manual-corrections`). **Supervisor overtime orders
+  (`POST /attendance/team-overtime/orders`) were closed on 2026-11-23 as well** — not as a new rule
+  but to remove an accident: both HC siblings already refused a marked subject and, under D-20, the
+  person can no longer file it themselves, so the supervisor would have been the only remaining way
+  to create a row that attendance calculation then discards. The whole batch is refused, as D-10
+  already refuses a batch containing someone overtime does not apply to.
+- `DRAFT` **(2026-11-23) — the two on-behalf routes still open.** Performance cycle participants
+  (`performance/routes.ts`) and training participants (`training/routes.ts`) still check only
+  `status = 'active'` on the people HC picks. Neither has a sibling route that checks, so neither is
+  inconsistent with itself; closing them would set new policy about HC's work rather than tidy an
+  accident, so they wait for an owner decision. A marked person can therefore still be enrolled in a
+  cycle or a programme.
+
+- **Left open on purpose, each for its own reason** — written down rather than dropped from the
+  list, so the next reader can tell a decision from an oversight:
+  - *Meetings* (`meetings/routes.ts:478`, `:518`, `:597`): a marked person may still propose,
+    create and edit a meeting. Sitting in a meeting with BUMY colleagues is not HCIS managing them,
+    and a calendar entry records no employment fact.
+  - *Mobile clock-in* (`workforce-routes.ts:882`): the same shape as the overtime order above, but
+    the stake is one attendance scan rather than a payable record, and the route is already behind
+    the `MOBILE_ATTENDANCE_ENABLED` switch. Attendance calculation ignores a marked person's days
+    in any case (S2B-b), so the scan reaches nothing.
+  - *Reporting a lost employee card* (`employee-cards/routes.ts:465`): a card already issued can be
+    reported lost. Refusing would leave a live card in circulation, which is worse than recording
+    that it is gone; issuing a new card is HC's move and is already refused.
+  - *Secretariat letter numbers* (`documents/letter-routes.ts:430`): the number is taken by the
+    office holder acting for a unit, not by an employee asking something for themselves, and the
+    right to take one comes from an explicit grant (`admin/letters/grants`), not from employment.
+  - *Editing a reimbursement draft that already exists* (`PUT /reimbursements/me/:id`, receipts):
+    the draft can no longer be submitted, and taking editing away would leave the person unable to
+    tidy or empty it.
+  - *Performance, in detail*: a marked participant cannot send a self-assessment, but the rater can
+    still rate them once the self-assessment date has passed (`canRaterReview`), and closing the
+    cycle sweeps anything unfinished to `UNRATED` (`statusOnClose`). So no cycle is ever stuck on a
+    marked person — while enrolment, as noted above, will still put one in.
 
 ## 9. Permissions and visibility
 
@@ -622,7 +670,7 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `IDEMPOTENCY_KEY_CONFLICT` | 409 | The key already recorded an action for another employee. (Added with S5.) | "Kunci idempotensi ini sudah dipakai untuk pegawai lain." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
 | `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
-| `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." |
+| `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | To an administrator: "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." To the person filing for themselves (§8.7, S2B-c): "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru." |
 | `REACTIVATION_EXPIRY_REQUIRED` | 400 | Temporary reactivation without expiry or beyond maximum. | "Tentukan tanggal berakhir akses (maksimal 30 hari)." |
 | `REACTIVATION_SELF_FORBIDDEN` | 403 | Admin targets own account. | "Anda tidak dapat mengaktifkan kembali akun Anda sendiri." |
 | `REACTIVATION_NOT_APPLICABLE` | 409 | Employment still active or account suspended. | "Akun ini tidak memerlukan aktivasi sementara." |
@@ -727,7 +775,7 @@ Cross-cutting:
 
 ## 15. Owner decisions (recorded 2026-10-16)
 
-Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisions and their sub-items are accepted as of 2026-10-16; no owner decision remains open for Package 1.
+Status: **Accepted** = owner accepted (as proposed or as amended). D-01 to D-19 and their sub-items are accepted as of 2026-10-16; D-20 was asked and answered later, on 2026-11-23. No owner decision remains open for Package 1.
 
 | ID | Decision | Status | Outcome |
 |---|---|---|---|
@@ -750,6 +798,7 @@ Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisi
 | D-17 | Employee sees own employment history. | Accepted | Yes, without reasons/internal notes. |
 | D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | Accepted | No automatic ORG-004 seat update; mismatch warning and report only. |
 | D-19 | Workbook role after AUTHORITATIVE. | Accepted | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only; transitional baseline for new NIPs allowed. |
+| D-20 | Does "no new leave" for a record outside HCIS management (§8.7) cover the other self-service modules too? | Accepted 2026-11-23 | Yes. Before this date the rule had only been set for leave (S2B-b, 2026-11-11). From 2026-11-23 a marked record files nothing new in any module where an employee submits for themselves — business travel, trip advances, loans, reimbursements, overtime, attendance clarification, shift swaps, work arrangements, performance self-assessment and external training records — answered with the existing 409 `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. The decision is about who may file **for themselves**; what HC or a line manager may do for a marked person is not settled by it (§8.7, `DRAFT`). |
 
 ## 16. Remaining implementation-time checks (no owner decision needed)
 

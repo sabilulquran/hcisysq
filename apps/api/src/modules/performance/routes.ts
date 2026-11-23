@@ -19,7 +19,7 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { PerformancePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
-import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 // ORG-011: the classification codes bound to an employment, SUPPORT ones included. The two-slot
 // resolver beside it drops SUPPORT, and an office boy's rubric is exactly what must not be lost.
@@ -664,7 +664,7 @@ export async function registerPerformanceRoutes(
     if (!params.success || !body.success) return invalid(reply, "Nilai penilaian diri atau catatan tidak valid.");
     return transact(reply, async (client) => {
       const employee = await loadEmployee(client, principal.id);
-      await assertManagedByHcis(client, employee.id);
+      await assertSelfServiceManagedByHcis(client, employee.id);
       const { review, cycle } = await lockReview(client, params.data.id, { employeeId: employee.id });
       if (review.status === "REMOVED") throw NOT_FOUND();
       if (cycle.status !== "OPEN") throw CYCLE_NOT_OPEN();

@@ -19,7 +19,11 @@ import { registerAttendanceShiftSwapRoutes } from "../src/modules/attendance/shi
 import { registerWorkArrangementRoutes } from "../src/modules/attendance/work-arrangement-routes.js";
 import { registerAttendanceWorkforceRoutes } from "../src/modules/attendance/workforce-routes.js";
 import { AuthService, type AuthPrincipal } from "../src/modules/auth/service.js";
-import { OUTSIDE_HCIS_CODE } from "../src/modules/employees/management-scope.js";
+import { registerDocumentRoutes } from "../src/modules/documents/routes.js";
+import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+} from "../src/modules/employees/management-scope.js";
 import { registerLoanRoutes } from "../src/modules/loans/routes.js";
 import { registerPerformanceRoutes } from "../src/modules/performance/routes.js";
 import { registerReimbursementRoutes } from "../src/modules/reimbursements/routes.js";
@@ -68,6 +72,10 @@ function inDays(days: number): string {
   base.setUTCDate(base.getUTCDate() + days);
   return base.toISOString().slice(0, 10);
 }
+
+/** The person filing is told the record is read-only and where to go next, never that the account is broken. */
+const OUTSIDE_SELF_SERVICE_MESSAGE_EXPECTED =
+  "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru.";
 
 interface Submission {
   /** Module label for the test name. */
@@ -145,6 +153,7 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: a requester outside HCIS managemen
     await registerWorkArrangementRoutes(app, transactionPool, config, auth);
     await registerPerformanceRoutes(app, transactionPool, config, auth);
     await registerTrainingRoutes(app, transactionPool, config, auth);
+    await registerDocumentRoutes(app, transactionPool, config, auth);
   });
 
   afterEach(async () => {
@@ -237,6 +246,13 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: a requester outside HCIS managemen
       managedSucceeds: false,
     },
     {
+      // The one that ends in a numbered letter issued in the foundation's name.
+      module: "permintaan surat (DOC-001)",
+      url: "/documents/me/requests",
+      payload: () => ({ documentCode: "KETERANGAN_KERJA", purpose: "Untuk keperluan pengajuan kredit." }),
+      managedSucceeds: true,
+    },
+    {
       module: "catatan pelatihan eksternal",
       url: "/training/me/records",
       payload: () => ({
@@ -263,7 +279,7 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: a requester outside HCIS managemen
       expect(refused.statusCode, refused.body).toBe(409);
       expect(refused.json()).toMatchObject({
         code: OUTSIDE_HCIS_CODE,
-        message: "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca.",
+        message: OUTSIDE_SELF_SERVICE_MESSAGE_EXPECTED,
       });
     });
   }
@@ -311,6 +327,28 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: a requester outside HCIS managemen
     });
     expect(fresh.statusCode, fresh.body).toBe(409);
     expect(fresh.json().code).toBe(OUTSIDE_HCIS_CODE);
+  });
+
+  it("permintaan surat: pesannya menyebut langkah berikutnya, bukan akun yang rusak", async () => {
+    // Pinned here rather than compared to itself: the wording is the point of this test, so a
+    // change to the shared constant has to be a deliberate change to this line too.
+    expect(OUTSIDE_HCIS_SELF_SERVICE_MESSAGE).toBe(OUTSIDE_SELF_SERVICE_MESSAGE_EXPECTED);
+
+    await mark();
+    const refused = await app.inject({
+      method: "POST",
+      url: "/documents/me/requests",
+      payload: { documentCode: "KETERANGAN_KERJA", purpose: "Untuk keperluan pengajuan kredit." },
+    });
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json().message).toBe(OUTSIDE_SELF_SERVICE_MESSAGE_EXPECTED);
+    expect(refused.json().message).toContain("Hubungi Human Capital");
+    // The refusal never claims the account is inactive.
+    expect(refused.json().message).not.toContain("tidak aktif");
+
+    // Reading the letters and requests already there is untouched.
+    const list = await app.inject({ method: "GET", url: "/documents/me/requests" });
+    expect(list.statusCode, list.body).toBe(200);
   });
 
   it("perjalanan dinas: riwayat sebelum penandaan tetap terbaca", async () => {
@@ -381,6 +419,12 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: attendance self-service refuses a 
       ids.push(id);
     }
     [employeeId, counterpartEmployeeId] = ids as [string, string];
+    // The counterpart reports to the session's employee, so a supervisor overtime order for them
+    // passes the subordinate check and reaches the EMP-005 check behind it.
+    await client.query(
+      "UPDATE employees SET direct_manager_employee_id = $2 WHERE id = $1",
+      [counterpartEmployeeId, employeeId],
+    );
 
     app = Fastify({ logger: false });
     await registerAttendanceWorkforceRoutes(app, transactionPool, config);
@@ -393,15 +437,17 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: attendance self-service refuses a 
     }
   });
 
-  async function mark() {
+  async function markEmployee(id: string) {
     await client.query(
       `UPDATE employees
           SET management_scope = 'OUTSIDE_HCIS', management_scope_reason = 'BUMY',
               management_scope_note = 'Dikonfirmasi HC (sintetis)', management_scope_marked_at = now()
         WHERE id = $1`,
-      [employeeId],
+      [id],
     );
   }
+
+  const mark = () => markEmployee(employeeId);
 
   function post(url: string, payload: object) {
     return app.inject({ method: "POST", url, headers: { cookie }, payload });
@@ -432,6 +478,27 @@ describe.skipIf(!allowed)("EMP-005 S2B §8.7: attendance self-service refuses a 
     const refused = await post("/attendance/overtime", body);
     expect(refused.statusCode, refused.body).toBe(409);
     expect(refused.json().code).toBe(OUTSIDE_HCIS_CODE);
+  });
+
+  // The reviewer's second finding: both HC routes acting for someone else already refuse a marked
+  // subject, and since owner D-20 the person cannot file it themselves — so without this the
+  // supervisor was the only way left to create the row.
+  it("perintah lembur atasan: ditolak untuk bawahan yang ditandai", async () => {
+    const body = {
+      employeeIds: [counterpartEmployeeId],
+      workDate: jakartaToday(),
+      requestedMinutes: 60,
+      note: "Menyelesaikan laporan bulanan unit.",
+    };
+    const managed = await post("/attendance/team-overtime/orders", body);
+    // No schedule is seeded, so a MANAGED subordinate is stopped by an overtime rule, never by EMP-005.
+    expect(managed.json().code, managed.body).not.toBe(OUTSIDE_HCIS_CODE);
+
+    await markEmployee(counterpartEmployeeId);
+    const refused = await post("/attendance/team-overtime/orders", body);
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json().code).toBe(OUTSIDE_HCIS_CODE);
+    expect(refused.json().employees).toEqual([{ employeeId: counterpartEmployeeId }]);
   });
 
   it("tukar shift: pengajuan ditolak setelah ditandai", async () => {

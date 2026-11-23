@@ -75,7 +75,16 @@ Termasuk (Paket 1):
 | HC dengan `attendance.arrangements.manage` | Menerapkan ubah jadwal (D-09), membatalkan (D-10) |
 | Sistem | Snapshot rantai, transisi, audit, notifikasi, hitung ulang kehadiran |
 
-- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat membuat pengajuan baru di sini — pratinjau dan pengiriman ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. Riwayatnya tetap terbaca dan langkah penutup atas pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+**Di luar pengelolaan HCIS (EMP-005 S2B §8.7; keputusan owner D-20, 23 November 2026).**
+Data pegawai yang ditandai di luar pengelolaan HCIS — staf BUMY dan Pengurus Yayasan — hanya dapat dibaca. Ia
+**tidak dapat mengajukan pengaturan kerja baru, termasuk pratinjaunya**: pengajuan baru dijawab `409
+EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat.
+Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru." — pesannya menyebut apa yang masih
+berjalan dan langkah berikutnya, dan tidak pernah mengatakan akunnya tidak aktif. Ia juga tidak pernah dipilih
+sebagai approver. Yang tetap jalan: seluruh pembacaan, riwayat sebelum penandaan, dan pembatalan pengajuan
+yang sudah berjalan. Aturan ini mulanya hanya ditetapkan untuk cuti (S2B-b, 11 November 2026); keputusan owner
+D-20 pada 23 November 2026 memperluasnya ke seluruh layanan mandiri, termasuk modul ini. Rinciannya, termasuk
+yang masih `DRAFT`, ada di `employment-administration-package1.md` §8.7.
 
 ## 5. Alur dan state
 

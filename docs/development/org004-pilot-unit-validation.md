@@ -81,6 +81,37 @@ Requires explicit operational approval. Start with one ordinary leave path; veri
 **Pass:** actual route equals reviewed SHADOW expectation, backend authorization accepts only intended actor/scope, snapshot stays immutable, audit complete.  
 **Stop:** silent fallback to LEGACY, wrong/cross-unit approver, self-approval, missing authority, snapshot mutation, unauthorized access, or notification side effect outside approved plan.
 
+## Automated end-to-end evidence (CI, synthetic)
+
+`apps/api/test/org004-structure-leave-flow.postgres.test.ts` runs a complete annual-leave flow in
+`STRUCTURE` mode through the real API — submit, each decision, final state, stored chain — on a
+fixture shaped like one real unit (unit node with a `LEADER` binding to a seat on the same node, a
+`UNIT_APPROVER` binding to a seat on a different node, two child nodes with no bindings of their
+own, and every requester's `direct_manager_employee_id` left NULL). Synthetic names and ids only;
+one rolled-back transaction per test. It covers the happy path from both child nodes, the unit
+head's own request, rejection at either step, cancellation while in review, an officer replaced
+while a request already sits in someone's queue, and approver account readiness.
+
+It is CI evidence about code behaviour. It is **not** pilot closure evidence: it selects no unit,
+activates nothing, and changes no rollout mode. Closure evidence is still what the section below
+requires.
+
+Two results from it belong in the pilot checklist, because neither matches what the `LEGACY`
+behaviour would lead an operator to expect:
+
+- **An approver whose account is not `active` is refused as `409 AUTHORITY_INELIGIBLE`, not
+  `409 APPROVER_ACCOUNT_NOT_READY`.** Under `STRUCTURE` the resolver already treats a non-active
+  account as an ineligible incumbent (`validate`, reason `ACCOUNT_NOT_ACTIVE`), so the chain fails
+  before `hydrateApprovalChain`, where the Indonesian message naming the approver lives. The
+  resolver's reason stays in the error's `details`, which `mapKnownError` does not forward, so
+  neither the requester nor Human Capital is told that the cause is an un-activated account rather
+  than a wrong chart. Plan for this when reading refusals during a pilot.
+- **Vacancy policy decides whether a non-active approver blocks or is skipped.** With `BLOCK` the
+  submission is refused. With `CLIMB_TO_PARENT` — the column default in migration 0019 — the unit
+  head's seat is passed over silently and the chain climbs to the parent seat: the request goes
+  through, the head never sees it, and nothing says so. Verify the vacancy policy on the pilot
+  unit's bindings before enabling `STRUCTURE`; it is not a detail that can be left as found.
+
 ## Rollback
 
 Operational rollback is a reviewed future-effective `LEGACY` rollout setting for the affected scope/date. Do not delete organization history or rewrite requests already submitted under STRUCTURE; those requests keep their stored mode and concrete approval snapshot. If rollback itself cannot be performed safely, stop the pilot and escalate rather than editing database rows ad hoc.

@@ -39,7 +39,8 @@ Complete outside Git with real identities; use synthetic identifiers in reposito
 For each participant/authority, verify:
 
 - employee is active where employee principal is required;
-- account is active;
+- account is active — an **employee** approver whose account is not yet active now **refuses** the resolution instead of being passed over, whatever the seat's vacancy policy says (ORG-004 D-R5), and the refusal names the seat and the person (`409 APPROVER_ACCOUNT_NOT_READY`, the same code `LEGACY` answers). This does **not** cover a seat held by an organ account: there an inactive account still follows the vacancy policy and is still passed over silently under `CLIMB_TO_PARENT` (see the residual risk below), so check those seats by reading the account status, not by waiting for a refusal;
+- the vacancy policy on the unit's `LEADER` and `UNIT_APPROVER` bindings is read and recorded before the rollout setting is written — it still decides what happens to a seat **nobody holds**, which on a published chart that uses `CLIMB_TO_PARENT` throughout means the chain climbs to the parent seat and the two steps may collapse into one person;
 - assignment/incumbency is effective for the test date;
 - authority binding is explicit and in scope;
 - acting assignment has effective dates and reason;
@@ -96,21 +97,46 @@ It is CI evidence about code behaviour. It is **not** pilot closure evidence: it
 activates nothing, and changes no rollout mode. Closure evidence is still what the section below
 requires.
 
-Two results from it belong in the pilot checklist, because neither matches what the `LEGACY`
-behaviour would lead an operator to expect:
+Two results from it did not match what the `LEGACY` behaviour would lead an operator to expect.
+**Both were fixed the same day by ORG-004 D-R5**; they are recorded here as found and then as
+fixed, because the fix is still on `main` and not in production, where `LEGACY` is unchanged.
 
-- **An approver whose account is not `active` is refused as `409 AUTHORITY_INELIGIBLE`, not
+- **An approver whose account is not `active` was refused as `409 AUTHORITY_INELIGIBLE`, not
   `409 APPROVER_ACCOUNT_NOT_READY`.** Under `STRUCTURE` the resolver already treats a non-active
-  account as an ineligible incumbent (`validate`, reason `ACCOUNT_NOT_ACTIVE`), so the chain fails
+  account as an ineligible incumbent (`validate`, reason `ACCOUNT_NOT_ACTIVE`), so the chain failed
   before `hydrateApprovalChain`, where the Indonesian message naming the approver lives. The
-  resolver's reason stays in the error's `details`, which `mapKnownError` does not forward, so
-  neither the requester nor Human Capital is told that the cause is an un-activated account rather
-  than a wrong chart. Plan for this when reading refusals during a pilot.
-- **Vacancy policy decides whether a non-active approver blocks or is skipped.** With `BLOCK` the
-  submission is refused. With `CLIMB_TO_PARENT` — the column default in migration 0019 — the unit
-  head's seat is passed over silently and the chain climbs to the parent seat: the request goes
-  through, the head never sees it, and nothing says so. Verify the vacancy policy on the pilot
-  unit's bindings before enabling `STRUCTURE`; it is not a detail that can be left as found.
+  resolver's reason stayed in the error's `details`, which `mapKnownError` does not forward, so
+  neither the requester nor Human Capital was told that the cause was an un-activated account
+  rather than a wrong chart. **Fixed:** account readiness now answers `409
+  APPROVER_ACCOUNT_NOT_READY` in both modes, with an Indonesian message naming the seat, the
+  person, and what has to happen. `AUTHORITY_INELIGIBLE` is kept for the case where the chart or
+  the employment record really is what needs fixing, so the codes tell the two apart.
+- **Vacancy policy decided whether a non-active approver blocked or was skipped.** With `BLOCK`
+  the submission was refused. With `CLIMB_TO_PARENT` — which the owner measured on 2026-11-23 as
+  the policy on **all 63 authority bindings and all 29 positions** of the published chart, with no
+  exception — the unit head's seat was passed over silently and the chain climbed to the parent
+  seat: the request went through, the head never saw it, and nothing said so. **Fixed:** a seat
+  whose incumbent is present but not account-ready is not a vacant seat and is no longer passed
+  over, whatever the policy says. A seat **nobody holds** still climbs, so the vacancy policy on
+  the pilot unit's bindings is still read and recorded before `STRUCTURE` is enabled.
+
+### Residual risk: an organ-account seat is still skipped silently
+
+D-R5 covers employee eligibility (`validate`) only. A seat held by an organ account keeps the
+ORG-013-1 behaviour: an account that is not `active`, or that lacks the governance capability,
+follows the vacancy policy and under `CLIMB_TO_PARENT` is **passed over silently**, exactly as the
+employee case used to be.
+
+This is **reachable, not theoretical**. Owner measurement, read-only against production on
+2026-11-23: **2 account-held positions, 2 account incumbencies, 1 `GOVERNANCE_APPROVER` binding**.
+
+The distinction is a **scope boundary, not a principle**. The argument for treating organ accounts
+differently — that an inactive organ account means a member who has left, rather than one who has
+not activated yet — does not hold up on inspection: an `invited` organ account is the same first-day
+state as an `invited` employee account, and `validateAccount` cannot tell "not yet activated" from
+"no longer serving" any better than `validate` can. Reopening ORG-013-1 is a change of its own, with
+its own decision and review; until then, read the account status of any organ seat in scope rather
+than relying on a refusal.
 
 ## Rollback
 

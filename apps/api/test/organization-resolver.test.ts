@@ -249,6 +249,125 @@ describe("ORG-004 authority resolver", () => {
     })).rejects.toMatchObject({ code: "AUTHORITY_INELIGIBLE" });
   });
 
+  /**
+   * ORG-004 (DRAFT D-R5, 2026-11-23). `CLIMB_TO_PARENT` berarti "kursi ini kosong, naik ke
+   * induknya". Kursi yang pejabatnya tertulis dan orangnya ada — hanya akunnya yang belum aktif —
+   * bukan kursi kosong, dan melewatinya diam-diam menghapus satu langkah persetujuan yang memang
+   * dikonfigurasikan. Berkas ini memeriksa kedua sisi garis itu dengan satu-satunya perbedaan di
+   * antara keduanya: alasan ketidaklayakannya.
+   */
+  describe("ineligible incumbent versus vacant seat", () => {
+    function resolverWithReason(
+      structure: OrganizationSnapshot,
+      ineligible: Record<string, AuthorityEligibilityResult["reason"]>,
+    ) {
+      return new OrganizationAuthorityResolver(
+        { loadEffectiveSnapshot: async () => structure },
+        {
+          eligibilityValidator: {
+            validate: async (employeeId): Promise<AuthorityEligibilityResult> => {
+              const reason = ineligible[employeeId];
+              return reason ? { eligible: false, reason } : { eligible: true, reason: null };
+            },
+          },
+        },
+      );
+    }
+
+    const request = { requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" };
+
+    it("refuses an incumbent whose account is not active, although the seat climbs", async () => {
+      const structure = snapshot();
+      expect(structure.positions[1]!.vacancyPolicy).toBe("CLIMB_TO_PARENT");
+
+      await expect(resolverWithReason(structure, { [employeeIds.head]: "ACCOUNT_NOT_ACTIVE" })
+        .resolveDirectManager(request)).rejects.toMatchObject({
+          code: "AUTHORITY_INELIGIBLE",
+          details: expect.objectContaining({
+            ineligibleReason: "ACCOUNT_NOT_ACTIVE",
+            ineligibleEmployeeId: employeeIds.head,
+            ineligiblePositionTitle: "position-head",
+            source: "DIRECT_MANAGER",
+          }),
+        });
+
+      // Dan yang penting: pendakiannya tidak terjadi, jadi atasan di atasnya tidak diam-diam
+      // menggantikan langkah yang hilang. Diperiksa sebagai penolakan yang benar-benar terjadi,
+      // bukan sebagai `not.toMatchObject` atas galat — bentuk itu lulus apa pun isinya.
+      const climbed = await resolverWithReason(structure, {})
+        .resolveDirectManager(request);
+      expect(climbed.employeeId).toBe(employeeIds.head);
+      await expect(resolverWithReason(structure, { [employeeIds.head]: "ACCOUNT_NOT_ACTIVE" })
+        .resolveDirectManager(request)).rejects.toBeInstanceOf(OrganizationResolutionError);
+    });
+
+    /**
+     * Temuan review independen 2026-11-23. Pendakian yang **benar** melewati kursi kepala
+     * (`EMPLOYEE_NOT_ACTIVE`) lalu gagal di kursi induk yang benar-benar kosong: penolakannya
+     * tidak boleh menyebut kursi dan orang yang sudah dilewati. Menyebutnya akan mengirim petugas
+     * membereskan kursi yang bukan penyebab berhentinya rantai — dan dengan kalimat yang percaya
+     * diri, bukan yang kabur.
+     */
+    it("never names a seat the climb walked past", async () => {
+      // Binding node tetap `CLIMB_TO_PARENT`, jadi kursi kepala memang dilewati. Kebijakan kursi
+      // kepala-lah yang menentukan apa yang terjadi setelah pendakian, dan di sini ia `BLOCK`,
+      // sehingga kursi induk yang kosong menghentikan rantai.
+      const structure = snapshot({
+        positions: [
+          position("position-director", "node-root", null),
+          { ...position("position-head", "node-team", "position-director"), vacancyPolicy: "BLOCK" as const },
+        ],
+        incumbencies: [incumbency("incumbency-head", "position-head", employeeIds.head, "PRIMARY")],
+      });
+
+      const error = await resolverWithReason(structure, { [employeeIds.head]: "EMPLOYEE_NOT_ACTIVE" })
+        .resolveDirectManager(request).then(() => null, (reason: unknown) => reason);
+      expect(error).toBeInstanceOf(OrganizationResolutionError);
+      const details = (error as OrganizationResolutionError).details;
+      // Berhentinya di kursi induk yang kosong, bukan di kursi kepala yang dilewati.
+      expect(details.positionKey).toBe("position-director");
+      // Kursi yang dilewati tidak ikut disebut, dalam bentuk apa pun.
+      expect(Object.keys(details).filter((key) => key.startsWith("ineligible"))).toEqual([]);
+      // Diagnostiknya tetap ada, seperti sebelum D-R5.
+      expect(details.lastIneligibility).toBe("EMPLOYEE_NOT_ACTIVE");
+    });
+
+    it("refuses an incumbent who lacks the required capability", async () => {
+      await expect(resolverWithReason(snapshot(), { [employeeIds.head]: "CAPABILITY_MISSING" })
+        .resolveDirectManager(request)).rejects.toMatchObject({
+          code: "AUTHORITY_INELIGIBLE",
+          details: expect.objectContaining({ ineligibleReason: "CAPABILITY_MISSING" }),
+        });
+    });
+
+    it("still climbs past a seat nobody holds, and past an incumbent who has left", async () => {
+      const vacant = snapshot({
+        incumbencies: [incumbency("director", "position-director", employeeIds.director, "PRIMARY")],
+      });
+      await expect(resolverWithReason(vacant, {}).resolveDirectManager(request))
+        .resolves.toMatchObject({ employeeId: employeeIds.director });
+
+      // EMP-005 S2B §8.7 tidak berubah: orang yang sudah keluar, atau berada di luar pengelolaan
+      // HCIS, tetap dilewati — menunggunya tidak akan pernah selesai.
+      await expect(resolverWithReason(snapshot(), { [employeeIds.head]: "EMPLOYEE_NOT_ACTIVE" })
+        .resolveDirectManager(request))
+        .resolves.toMatchObject({ employeeId: employeeIds.director });
+    });
+
+    it("lets an effective acting incumbent rescue a seat whose primary has no active account", async () => {
+      const structure = snapshot({
+        incumbencies: [
+          incumbency("incumbency-head", "position-head", employeeIds.head, "PRIMARY"),
+          incumbency("incumbency-acting", "position-head", employeeIds.acting, "ACTING"),
+          incumbency("incumbency-director", "position-director", employeeIds.director, "PRIMARY"),
+        ],
+      });
+      await expect(resolverWithReason(structure, { [employeeIds.head]: "ACCOUNT_NOT_ACTIVE" })
+        .resolveDirectManager(request))
+        .resolves.toMatchObject({ employeeId: employeeIds.acting, incumbentKind: "ACTING" });
+    });
+  });
+
   it("deduplicates a concrete approver while preserving both semantic sources", async () => {
     const structure = snapshot({
       authorityBindings: [

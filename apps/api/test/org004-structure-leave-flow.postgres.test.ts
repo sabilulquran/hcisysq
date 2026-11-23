@@ -650,20 +650,15 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
    * "akunnya belum aktif". Di sini bagannya lengkap dan benar — terbukti karena satu-satunya
    * yang berubah di antara penolakan dan penerimaan adalah status akun, di basis data uji.
    *
-   * **Yang ditemukan, dan berbeda dari dugaan.** Dalam mode `STRUCTURE`, penolakannya bukan
-   * `409 APPROVER_ACCOUNT_NOT_READY` seperti pada `LEGACY`, melainkan
-   * `409 AUTHORITY_INELIGIBLE` dengan pesan berbahasa Inggris yang tidak menyebut siapa pun:
-   * "The configured incumbent is not eligible for this authority." Penyebabnya, resolver sudah
-   * menyaring akun yang bukan `active` sebagai incumbent yang tidak layak
-   * (`PostgresOrganizationAuthorityEligibilityValidator.validate`, alasan `ACCOUNT_NOT_ACTIVE`),
-   * jadi rantainya gagal sebelum `hydrateApprovalChain` — tempat pesan `Akun approver <nama>
-   * belum aktif.` berada. Alasan `ACCOUNT_NOT_ACTIVE` itu ada di `details` galat resolver, tetapi
-   * `mapKnownError` hanya meneruskan `code` dan `message`, sehingga tidak pernah sampai ke
-   * pemohon maupun ke Human Capital.
-   *
-   * Konsekuensinya untuk pilot: pada unit yang penyetujunya masih `invited`, `STRUCTURE`
-   * menolak dengan kode yang terbaca seperti "bagan/kursinya bermasalah". Keduanya diuji
-   * berdampingan di bawah supaya selisihnya tercatat, bukan supaya salah satunya diklaim benar.
+   * **Catatan revisi, 2026-11-23 (ORG-004 D-R5).** Versi pertama berkas ini mencatat bahwa
+   * `STRUCTURE` menolak dengan `409 AUTHORITY_INELIGIBLE` berpesan bahasa Inggris yang tidak
+   * menyebut siapa pun, karena resolver menyaring akun yang bukan `active` sebagai incumbent yang
+   * tidak layak (alasan `ACCOUNT_NOT_ACTIVE`) sebelum `hydrateApprovalChain`, dan `mapKnownError`
+   * tidak meneruskan `details`. Temuan itu benar dan sudah diperbaiki: keadaan akun kini dijawab
+   * dengan kode yang sama seperti `LEGACY`, `409 APPROVER_ACCOUNT_NOT_READY`, dengan kalimat
+   * berbahasa Indonesia yang menyebut kursinya, orangnya, dan bahwa yang perlu diselesaikan
+   * adalah aktivasi akunnya. Jadi pembedaan "bagannya salah" versus "akunnya belum aktif" kembali
+   * terbaca dari kodenya saja, pada kedua mode.
    */
   it("kasus 6: akun penyetuju unit yang belum aktif menolak pengajuan, dan hanya itu yang berubah", async () => {
     // Bagannya terbukti sanggup: rantainya resolve sebelum akunnya disentuh.
@@ -680,9 +675,10 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
       ...FIRST_LEAVE, reason: "Acara keluarga sintetis", idempotencyKey: randomUUID(),
     });
     expect(refused.statusCode, refused.body).toBe(409);
-    // Yang betul-betul dijawab API hari ini. Bukan `APPROVER_ACCOUNT_NOT_READY`.
-    expect(refused.json()).toMatchObject({ code: "AUTHORITY_INELIGIBLE" });
-    expect(refused.json().code).not.toBe("APPROVER_ACCOUNT_NOT_READY");
+    // Kode yang sama dengan `LEGACY`, dan pesannya menyebut kursi serta orangnya (D-R5).
+    expect(refused.json()).toMatchObject({ code: "APPROVER_ACCOUNT_NOT_READY" });
+    expect(refused.json().message).toContain("Pegawai penyetujuUnit");
+    expect(refused.json().message).toContain("Kepala Bidang Sintetis");
     // Dan tidak ada apa pun yang tersimpan separuh jalan.
     const nothing = await client.query(
       "SELECT 1 FROM leave_requests WHERE employee_id = $1", [people.guru1.employeeId],
@@ -708,7 +704,8 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
       ...FIRST_LEAVE, reason: "Acara keluarga sintetis", idempotencyKey: randomUUID(),
     });
     expect(refused.statusCode, refused.body).toBe(409);
-    expect(refused.json()).toMatchObject({ code: "AUTHORITY_INELIGIBLE" });
+    expect(refused.json()).toMatchObject({ code: "APPROVER_ACCOUNT_NOT_READY" });
+    expect(refused.json().message).toContain("Pegawai kepala");
 
     await client.query(
       "UPDATE accounts SET status = 'active' WHERE id = $1", [people.kepala.accountId],
@@ -722,16 +719,19 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
   /**
    * Kasus 6, sisi yang paling perlu diketahui sebelum memilih unit pilot.
    *
-   * Fixture di atas memakai `BLOCK`, dan `BLOCK` memang menolak. Tetapi **default basis data
-   * untuk `vacancy_policy` adalah `CLIMB_TO_PARENT`** (migrasi 0019), dan dengan kebijakan itu
-   * kepala unit yang akunnya belum aktif tidak menolak apa pun: kursinya dilewati diam-diam dan
-   * rantainya naik ke `Kepala Bidang`. Pengajuannya tetap berjalan, tetapi kepala unit tidak
-   * pernah melihatnya dan tidak ada satu pun pesan yang mengatakan demikian.
+   * Versi pertama berkas ini menemukan bahwa fixture di atas menolak hanya karena memakai
+   * `BLOCK`. Dengan `CLIMB_TO_PARENT` — kebijakan yang dipakai **seluruh** 63 ikatan wewenang dan
+   * seluruh 29 jabatan pada bagan terbit production, tanpa satu pun pengecualian — kepala unit
+   * yang akunnya belum aktif tidak menolak apa pun: kursinya dilewati diam-diam dan rantainya
+   * naik ke `Kepala Bidang`, yang di unit ini orangnya sama dengan penyetuju unit. Dua langkah
+   * menyusut menjadi satu, cutinya tetap disetujui, dan kepala unit tidak pernah melihatnya.
    *
-   * Jadi kebijakan kekosongan pada binding unit pilot adalah hal yang harus diperiksa sebelum
-   * `STRUCTURE` dinyalakan, bukan rincian konfigurasi yang bisa dibiarkan apa adanya.
+   * Itu sudah diperbaiki (ORG-004 D-R5): kursi yang pejabatnya ada tetapi akunnya belum siap
+   * bukan kursi kosong, dan tidak lagi dilewati, apa pun kebijakan kekosongannya. Uji ini kini
+   * memeriksa perbaikannya, dan khususnya memeriksa bahwa **tidak ada rantai tersimpan yang
+   * kehilangan kepala unit tanpa suara**.
    */
-  it("kasus 6: dengan CLIMB_TO_PARENT, kepala unit yang akunnya belum aktif dilewati diam-diam", async () => {
+  it("kasus 6: dengan CLIMB_TO_PARENT, kepala unit yang akunnya belum aktif tetap menolak", async () => {
     await client.query(
       `UPDATE organization_authority_bindings SET vacancy_policy = 'CLIMB_TO_PARENT'
         WHERE change_set_id = $1 AND subject_key = $2 AND binding_type = 'LEADER'`,
@@ -741,21 +741,32 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
       "UPDATE accounts SET status = 'invited' WHERE id = $1", [people.kepala.accountId],
     );
 
+    const refused = await call("guru1", "POST", "/leave/me/annual/submit", {
+      ...FIRST_LEAVE, reason: "Acara keluarga sintetis", idempotencyKey: randomUUID(),
+    });
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect(refused.json()).toMatchObject({ code: "APPROVER_ACCOUNT_NOT_READY" });
+    expect(refused.json().message).toContain("Pegawai kepala");
+    expect(refused.json().message).toContain("Kepala Sintetis");
+
+    // Dan tidak ada rantai yang tersimpan tanpa kepala unit di dalamnya: pengajuannya tidak jadi
+    // sama sekali, bukan jadi dengan satu langkah lebih sedikit.
+    const stored = await client.query(
+      "SELECT 1 FROM leave_requests WHERE employee_id = $1", [people.guru1.employeeId],
+    );
+    expect(stored.rowCount).toBe(0);
+    expect(await inboxOf("penyetujuUnit")).toEqual([]);
+
+    // Kursi yang benar-benar kosong tetap memanjat: yang berubah hanya kelayakan pejabatnya.
+    await client.query(
+      "DELETE FROM organization_incumbencies WHERE id = $1", [kepalaIncumbency],
+    );
     const request = await submitAnnual("guru1", FIRST_LEAVE);
-    // Dua langkah menjadi satu, dan kepala unit hilang dari rantai tanpa peringatan apa pun.
     expect(request.approvalChain.map((step) => step.employeeId))
       .toEqual([people.penyetujuUnit.employeeId]);
-
     const steps = await storedSteps(request.id);
-    // Antreannya dibaca dari basis data, bukan lewat `/leave/approvals`: akun yang belum aktif
-    // tidak punya sesi yang sah, jadi route itu akan menjawab 403 dan menutupi yang ingin
-    // dilihat — bahwa namanya memang tidak ada pada satu langkah pun.
-    expect(steps.map((step) => step.approver)).not.toContain(people.kepala.employeeId);
     expect(steps).toHaveLength(1);
     expect(steps[0]!.sources).toEqual(["DIRECT_MANAGER", "UNIT_APPROVER"]);
-    const inbox = await inboxOf("penyetujuUnit");
-    expect((await decide("penyetujuUnit", inbox[0]!.stepId, "approve")).statusCode).toBe(200);
-    expect((await requestStatus(request.id)).status).toBe("approved");
   });
 
   /**
@@ -781,7 +792,8 @@ describe.skipIf(!allowed)("ORG-004 alur cuti penuh dalam mode STRUCTURE (Postgre
     });
     expect(refused.statusCode, refused.body).toBe(409);
     expect(refused.json()).toMatchObject({ code: "APPROVER_ACCOUNT_NOT_READY" });
-    // Pesannya menyebut siapa yang akunnya belum aktif; versi `STRUCTURE` tidak.
-    expect(refused.json().message).toContain("Pegawai penyetujuUnit");
+    // Pesannya menyebut siapa yang akunnya belum aktif. Sejak D-R5 versi `STRUCTURE` juga, dengan
+    // kursinya sekalian; yang diperiksa di sini adalah bahwa kalimat `LEGACY` tidak ikut berubah.
+    expect(refused.json().message).toBe("Akun approver Pegawai penyetujuUnit belum aktif.");
   });
 });

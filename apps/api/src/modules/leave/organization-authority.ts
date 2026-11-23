@@ -95,6 +95,96 @@ function organizationServices(db: Queryable) {
   };
 }
 
+/**
+ * ORG-004 (DRAFT D-R5, 2026-11-23): penolakan yang bisa dibaca petugas Human Capital.
+ *
+ * `AUTHORITY_INELIGIBLE` apa adanya berbunyi "The configured incumbent is not eligible for this
+ * authority" dan tidak menyebut siapa pun; alasannya ada di `details`, tetapi `mapKnownError`
+ * hanya meneruskan `code` dan `message`, jadi alasan itu tidak pernah sampai ke layar. Selama
+ * pilot, pembedaan yang paling sering harus dijelaskan adalah "bagannya salah" versus "akunnya
+ * belum siap" — dan justru itu yang hilang.
+ *
+ * Jadi penolakan yang sebabnya keadaan akun memakai kode yang sudah ada,
+ * `APPROVER_ACCOUNT_NOT_READY`, yakni kode yang dijawab `LEGACY` pada keadaan yang sama
+ * (`employee-routes.ts`, `hydrateApprovalChain`) dan yang sudah dikenal setiap modul lain serta
+ * tercatat di `docs/api/leave.openapi.yaml`. Tidak ada kode baru yang ditambahkan: kode baru akan
+ * berarti dua kode untuk satu keadaan, satu untuk `LEGACY` dan satu untuk `STRUCTURE`, padahal
+ * yang dicari petugas justru kesamaannya. Izin yang belum diberikan memakai kode yang sama —
+ * akunnya memang belum siap menyetujui — dengan kalimat yang berbeda, karena jalan keluarnya
+ * berbeda.
+ *
+ * Ketidaklayakan yang lain (`EMPLOYEE_NOT_ACTIVE`) tetap `AUTHORITY_INELIGIBLE`: itu memang
+ * "bagannya yang harus diperbaiki", dan kode yang berbeda menjaga pembedaan itu tetap terlihat.
+ * Hanya kalimatnya yang kini berbahasa Indonesia dan menyebut kursi serta orangnya.
+ *
+ * Yang ditulis ulang di sini hanyalah kalimat dan kodenya. Kapan resolusi menolak sama sekali
+ * tetap keputusan resolver (D-R5), dan untuk kursi akun organ ORG-013 keputusan itu tidak berubah.
+ */
+export async function legibleAuthorityError(
+  db: Queryable,
+  error: OrganizationResolutionError,
+): Promise<LeaveOrganizationAuthorityError> {
+  const details = error.details;
+  const reason = typeof details.ineligibleReason === "string" ? details.ineligibleReason : null;
+  if (error.code !== "AUTHORITY_INELIGIBLE" || !reason) {
+    return new LeaveOrganizationAuthorityError(error.code, error.message, details);
+  }
+
+  const seat = typeof details.ineligiblePositionTitle === "string"
+    ? details.ineligiblePositionTitle
+    : null;
+  const employeeId = typeof details.ineligibleEmployeeId === "string"
+    ? details.ineligibleEmployeeId
+    : null;
+  const name = employeeId ? await incumbentName(db, employeeId) : null;
+  // Seorang principal akun organ tidak disebut namanya maupun surelnya, mengikuti
+  // `hydrateApprovalChain` yang menyebutnya "Penyetuju Pengurus Yayasan".
+  const who = name ?? (details.ineligibleAccountId ? "Penyetuju Pengurus Yayasan" : "Penyetuju");
+  const at = seat ? `${who} pada kursi ${seat}` : who;
+
+  if (reason === "ACCOUNT_NOT_ACTIVE") {
+    return new LeaveOrganizationAuthorityError(
+      "APPROVER_ACCOUNT_NOT_READY",
+      `Akun ${at} belum aktif, sehingga rantai persetujuan berhenti di kursi itu. `
+      + "Selesaikan aktivasi akunnya lebih dulu; bagan organisasi tidak perlu diubah.",
+      details,
+    );
+  }
+  if (reason === "CAPABILITY_MISSING") {
+    return new LeaveOrganizationAuthorityError(
+      "APPROVER_ACCOUNT_NOT_READY",
+      `Akun ${at} belum memiliki izin yang diperlukan untuk langkah persetujuan ini, `
+      + "sehingga rantai persetujuan berhenti di kursi itu. Berikan izin itu lewat peran akunnya; "
+      + "bagan organisasi tidak perlu diubah.",
+      details,
+    );
+  }
+  return new LeaveOrganizationAuthorityError(
+    error.code,
+    `${at} tidak lagi dapat menjadi penyetuju, sehingga rantai persetujuan berhenti di kursi itu. `
+    + "Perbarui bagan organisasi atau data kepegawaiannya lebih dulu.",
+    details,
+  );
+}
+
+/**
+ * Pencarian nama tidak boleh menjatuhkan penolakannya. Kalau kueri ini gagal — koneksi putus,
+ * transaksi sudah batal karena sebab lain — kalimatnya cukup kehilangan nama orangnya; menggagalkan
+ * seluruh penanganan galat akan mengubah `409` yang benar menjadi `500` yang tidak menjelaskan apa
+ * pun. Kursinya tetap disebut, karena itu datang dari resolver, bukan dari basis data.
+ */
+async function incumbentName(db: Queryable, employeeId: string): Promise<string | null> {
+  try {
+    const result = await db.query<{ fullName: string }>(
+      "SELECT full_name AS \"fullName\" FROM employees WHERE id = $1",
+      [employeeId],
+    );
+    return result.rows[0]?.fullName ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveLeaveAuthorities(
   db: Queryable,
   input: ResolveLeaveAuthoritiesInput,
@@ -115,7 +205,7 @@ export async function resolveLeaveAuthorities(
     });
   } catch (error) {
     if (error instanceof OrganizationResolutionError) {
-      throw new LeaveOrganizationAuthorityError(error.code, error.message, error.details);
+      throw await legibleAuthorityError(db, error);
     }
     throw error;
   }

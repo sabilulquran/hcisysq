@@ -191,7 +191,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
     // 475 on main + 4 PAY-003 §7.4 routes (annual recap, 1721-A1, tax identity GET/PUT).
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(527); // + 13 TRAIN-001 R4 HC routes, + 14 TRIP-002 admin routes, + 13 REWARD-001 admin routes, + 4 LOAN-002 approval-seat routes, + 2 PERF-001 D-19 rubric version routes, + 2 PERF-001 D-17 objection decision routes
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(529); // + 13 TRAIN-001 R4 HC routes, + 14 TRIP-002 admin routes, + 13 REWARD-001 admin routes, + 4 LOAN-002 approval-seat routes, + 2 PERF-001 D-19 rubric version routes, + 2 PERF-001 D-17 objection decision routes, + 2 ORG-001 bulk direct-manager routes (dry-run and apply)
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     // LEAVE-009 D-12 (2026-11-18): the two /leave/hc/critical-reviews routes were removed with the stage.
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);

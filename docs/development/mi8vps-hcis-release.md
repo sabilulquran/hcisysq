@@ -118,8 +118,8 @@ It stops first if another operator holds the release lock (§4.10).
 
 Two **release-stopping** checks in the script, not steps anyone has to remember. They run only
 when the bundle carries `0172_trip_per_diem_decree.sql`. Both read their SQL from
-`scripts/mi8/sql/`, which is also what the test in the table below runs, so the gate and its test
-can never drift into two different queries.
+`scripts/mi8/sql/`, which is also what the test described at the end of this section runs, so the
+gate and its test can never drift into two different queries.
 
 1. **`trip_per_diem_rates` must be empty** — in `preflight`, while `0172` is still pending. A
    DRAFT-zone rate row has no golongan and no one may guess one, so the migration itself aborts;

@@ -91,6 +91,8 @@ Termasuk (Paket 1 = R1 + inti R2 discovery):
 | Narasumber internal | Pegawai biasa; waktunya ikut diblokir dan ia mendapat catatan peran Narasumber (D-08) |
 | Sistem | Cek bentrok, transisi, catatan otomatis, audit, notifikasi |
 
+- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat membuat pengajuan baru di sini — pratinjau dan pengiriman ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. Riwayatnya tetap terbaca dan langkah penutup atas pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+
 ## 6. Alur dan state
 
 ### 6.1 Program

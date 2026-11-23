@@ -33,6 +33,7 @@ import {
   type FileContentType,
 } from "../employee-documents/domain.js";
 import { fileDownloadHeaders } from "../employee-documents/file-store.js";
+import { assertManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -186,6 +187,8 @@ const UNIQUE_CONFLICTS: Record<string, [string, string]> = {
 
 function knownError(error: unknown): ReimbursementError | null {
   if (error instanceof ReimbursementError) return error;
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) return new ReimbursementError(error.statusCode, error.code, error.message);
   if (error instanceof ReimbursementPolicyError
     || error instanceof LeaveApprovalConfigurationError
     || error instanceof LeaveOrganizationAuthorityError
@@ -762,6 +765,9 @@ export async function registerReimbursementRoutes(
         [employee.id, body.data.idempotencyKey],
       );
       if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
+      // After the replay (as LEAVE-001 does): a retry of a submission that already went
+      // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
+      await assertManagedByHcis(client, employee.id);
       const drafts = await client.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM reimbursement_claims WHERE employee_id = $1 AND status = 'DRAFT'`,
         [employee.id],
@@ -910,6 +916,7 @@ export async function registerReimbursementRoutes(
     if (!params.success) return send(reply, 400, { code: "INVALID_REIMBURSEMENT_ID", message: "Klaim tidak valid." });
     return transact(reply, async (client) => {
       const employee = await loadEmployeeContext(client, principal.id, true);
+      await assertManagedByHcis(client, employee.id);
       const claim = await lockClaim(client, params.data.id, employee.id);
       if (claim.status !== "DRAFT") {
         throw new ReimbursementError(409, "REIMBURSEMENT_NOT_SUBMITTABLE", "Hanya draf yang dapat dikirim.");

@@ -21,6 +21,11 @@ info:
     drafts never appear in the register; an approver opens a claim only through a step of
     theirs that is pending or decided; reimbursements.read opens the register, receipts,
     summary and export; reimbursements.manage verifies, rejects and pays.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /reimbursements/me and
+    POST /reimbursements/me/{id}/submit; reads, editing a draft made before the mark, and
+    cancelling are unaffected.
 paths:
   /reimbursements/me:
     get:

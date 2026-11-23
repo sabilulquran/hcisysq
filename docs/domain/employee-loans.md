@@ -74,6 +74,8 @@ Termasuk (Paket 1):
 | Pemegang `loans.manage` (Keuangan) | Mencairkan, mencatat pembayaran dan pelunasan, mengoreksi pembayaran, membatalkan sebelum cair — kecuali pinjamannya sendiri (D-14) |
 | Sistem | Snapshot rantai, transisi, jadwal, invarian uang, audit, notifikasi |
 
+- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat membuat pengajuan baru di sini — pratinjau dan pengiriman ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. Riwayatnya tetap terbaca dan langkah penutup atas pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+
 ## 5. Alur dan state
 
 ### 5.1 Pengajuan

@@ -9,7 +9,8 @@ import { pageQuerySchema } from "../../lib/pagination.js";
 import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
+import { assertManagedByHcis, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, OutsideHcisError }
+  from "../employees/management-scope.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import {
   haversineDistanceMeters,
@@ -645,6 +646,11 @@ async function insertAudit(
 }
 
 async function sendError(reply: FastifyReply, error: unknown) {
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) {
+    reply.header("Cache-Control", "no-store");
+    return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+  }
   if (!(error instanceof WorkforceAttendanceError)) throw error;
   reply.header("Cache-Control", "no-store");
   return reply.status(error.statusCode).send({ ...error.details, code: error.code, message: error.message });
@@ -1084,6 +1090,7 @@ export async function registerAttendanceWorkforceRoutes(
         if (windowError) throw new WorkforceAttendanceError(422, windowError, manualCorrectionWindowMessages[windowError]);
       }
       const employee = await employeeForAccount(pool, principal.id);
+      await assertManagedByHcis(pool, employee.id);
       const id = randomUUID();
       const client = await pool.connect();
       try {
@@ -2184,6 +2191,7 @@ export async function registerAttendanceWorkforceRoutes(
     if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
     try {
       const employee = await employeeForAccount(pool, principal.id);
+      await assertManagedByHcis(pool, employee.id);
       const client = await pool.connect();
       let submitted: Awaited<ReturnType<typeof submitOvertimeForApproval>>;
       try {

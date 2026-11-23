@@ -498,6 +498,44 @@ Implementation notes (S2B-b, 2026-11-11):
 - Attendance history stays readable: the HC calculation rows and attendance reports include a marked person's days that already have a stored result; a calculation run never adds new ones.
 - `DRAFT`: the ORG-013 board-account conflict check still treats a marked record's e-mail as an employee's; see the implementation plan, S2B.
 
+Implementation notes (S2B-c, 2026-11-23) — the requester side:
+
+- `DRAFT` (2026-11-23, pending owner confirmation): "no new leave" in S2B-b is the rule for **every**
+  self-service module, not only leave. A marked record may not file a new request for itself in
+  business travel (TRIP-001), trip advances (TRIP-002), employee loans (LOAN-001), reimbursements
+  (REIMB-001), overtime and attendance clarification (ATT-011), shift swaps, work arrangements,
+  performance self-assessment (PERF-001), or external training records (TRAIN-001). Preview and
+  submission are both refused, with the same `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` / "Data ini di luar
+  pengelolaan HCIS dan hanya dapat dibaca." answer and HTTP 409 that the leave modules already give.
+  The refusal says the record is read-only; it does not say the account is inactive, which would be
+  untrue and would send the person to account support instead of to HC.
+- **Why it was missing:** the approver side was built first and reads a marked record as not active,
+  while the requester side of those modules only checked an active account, `principal_type =
+  'EMPLOYEE'`, `status = 'active'` and `removed_at IS NULL`. Found by an independent review on
+  2026-11-20 in TRIP-001 and TRIP-002; the audit that followed found the same shape in the other
+  modules above. Leave (annual, planned, special, postponement), employee data changes (EMP-003) and
+  employee documents (EMP-011) already had the check.
+- **Was it reachable in production?** No — it was latent, not live. Checked read-only on the Mi8VPS
+  production database on 2026-11-23: 328 of 328 `employees` rows are `MANAGED` (no row has ever been
+  marked), exactly one `EMPLOYEE` account is active, and the TRIP-001 tables are not even deployed
+  (production schema is at migration 0167). The gap could only have been reached once HC marked a
+  record whose holder still had an active HCIS account — which is precisely the situation the
+  consistency report line `ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD` exists to flag, so it was a
+  realistic future state rather than an impossible one.
+- **What stays open on purpose.** A marked record keeps every closing move on something already in
+  flight, so a mark never traps a request or an obligation: cancelling or withdrawing a request,
+  settling a trip advance already disbursed, editing or removing receipts on a draft created before
+  the mark, acknowledging or objecting to a performance review already written, and progress on
+  e-learning already assigned. Reads are untouched. The approver's own closing decisions are
+  unchanged by this note.
+- **What is not the requester side, and was left alone.** When an HC officer or a supervisor files
+  *for someone else*, the subject is checked where that route already does it (`POST
+  /admin/attendance/overtime`, `POST /admin/attendance/manual-corrections`). Three on-behalf routes
+  still check only `status = 'active'` on the subject and not `management_scope`: supervisor overtime
+  orders (`POST /attendance/team-overtime/orders`), performance cycle participants, and training
+  participants. They are listed here for a separate decision rather than changed silently, because
+  blocking them changes HC's and a supervisor's work, not the marked person's.
+
 ## 9. Permissions and visibility
 
 New permission keys (additive migration, assigned explicitly — never inferred from job title or ORG-004 position):

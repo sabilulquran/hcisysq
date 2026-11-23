@@ -11,6 +11,10 @@ info:
     `conflicts` (409 TRAINING_CONFLICT). /training/me/* is EMPLOYEE ownership;
     /admin/training/* needs training.read (reads) or training.manage (writes).
     No field holds money.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /training/me/records; reads, withdrawing,
+    and progress on e-learning already assigned are unaffected.
 paths:
   /training/me/summary:
     get:

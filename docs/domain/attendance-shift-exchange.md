@@ -51,6 +51,8 @@ Tidak ada arbitrary 24-hour cutoff pada v1. Cutoff fail-closed adalah **sebelum 
 
 Jika roster/jadwal berubah setelah submission sehingga snapshot tidak lagi cocok, HC approval harus gagal dengan conflict dan request baru diperlukan.
 
+- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat membuat pengajuan baru di sini — pratinjau dan pengiriman ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. Riwayatnya tetap terbaca dan langkah penutup atas pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+
 ## Counterpart consent
 
 Counterpart yang disnapshot saat submission adalah satu-satunya pegawai yang boleh menerima/menolak tahap counterpart.

@@ -501,6 +501,8 @@ Halaman **Kehadiran Saya** (`/app/attendance`):
 
 Link anchor mati (`#`) diganti tab nyata. Semua bagian dirancang mobile-first (pegawai kebanyakan memakai HP).
 
+- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat mengajukan lembur, klarifikasi kehadiran, atau tukar shift — ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, sama seperti jalur HC atas namanya. Riwayatnya tetap terbaca dan pembatalan pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+
 ## 9. Ringkasan permission
 
 | Aksi | Permission | Perubahan |

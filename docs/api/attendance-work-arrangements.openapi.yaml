@@ -10,6 +10,10 @@ info:
     All routes use the session cookie and answer with Cache-Control: no-store.
     Errors use { code, message }. Nothing here writes a punch: an approved tugas luar or WFH/WFA is an
     attendance disposition (result status field_assignment or remote_work), never an attendance event.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /attendance/arrangements/me and its preview;
+    reads and cancelling are unaffected.
 paths:
   /attendance/arrangements/me:
     get:

@@ -96,6 +96,8 @@ Termasuk: tarif berversi; pengajuan uang muka (boleh Rp0 bila pegawai hanya meng
 | `trip_per_diem.manage` (HC, Keuangan) | Mencatat versi tarif baru; memetakan klasifikasi jabatan ke golongan (D-20) |
 | Sistem | Snapshot rantai, transisi, invarian uang, audit, notifikasi, pengingat |
 
+- EMP-005 S2B §8.7: data pegawai yang ditandai **di luar pengelolaan HCIS** tidak dapat membuat pengajuan baru di sini — pratinjau dan pengiriman ditolak dengan `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`. Riwayatnya tetap terbaca dan langkah penutup atas pengajuan yang sudah berjalan tetap terbuka. Aturan dan catatan `DRAFT` 2026-11-23 ada di `employment-administration-package1.md` §8.7.
+
 ## 5. State
 
 ```text

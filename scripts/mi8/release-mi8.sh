@@ -267,6 +267,21 @@ EOF
 # date, which may be in the past and may name a classification that has since been closed.
 trip_002_gate_mapped() {
   trip_002_in_bundle || return 0
+  # A dry run never runs migrate, so while 0172 is still pending trip_per_diem_golongan_map does not
+  # exist yet and the gate cannot be evaluated. Say so instead of failing on "relation does not
+  # exist": the real gate runs in the --apply candidate phase, after migrate has created the table.
+  if [[ "$APPLY" != 1 ]]; then
+    pending_migrations
+    if grep -qx "$TRIP_002_MIGRATION" <<<"$PENDING"; then
+      say "dry-run: trip-002 golongan gate is evaluated after migrate ($TRIP_002_MIGRATION creates trip_per_diem_golongan_map); the --apply candidate phase runs it"
+      if [[ "$ALLOW_UNMAPPED_GOLONGAN" == 1 ]]; then
+        say "dry-run: --allow-unmapped-golongan given; if the map is incomplete after migrate, --apply prints OPERATOR OVERRIDE and cuts over"
+      else
+        say "dry-run: without --allow-unmapped-golongan, --apply stops here if the map is incomplete after migrate"
+      fi
+      return 0
+    fi
+  fi
   local report
   report=$(remote_ro <<'EOF' | tr -d '\r'
 as_termux "psql -U postgres -d $DB -Atc \"

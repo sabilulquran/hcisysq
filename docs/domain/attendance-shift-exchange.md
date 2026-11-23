@@ -51,6 +51,19 @@ Tidak ada arbitrary 24-hour cutoff pada v1. Cutoff fail-closed adalah **sebelum 
 
 Jika roster/jadwal berubah setelah submission sehingga snapshot tidak lagi cocok, HC approval harus gagal dengan conflict dan request baru diperlukan.
 
+**Di luar pengelolaan HCIS (EMP-005 S2B §8.7; keputusan owner D-20, 23 November 2026).**
+Data pegawai yang ditandai di luar pengelolaan HCIS — staf BUMY dan Pengurus Yayasan — hanya dapat dibaca. Ia
+**tidak dapat mengajukan tukar shift**: pengajuan baru dijawab `409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, "Data
+Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap terbaca. Hubungi
+Human Capital bila ini keliru." — pesannya menyebut apa yang masih berjalan dan langkah berikutnya, dan tidak
+pernah mengatakan akunnya tidak aktif. Sebelum 23 November 2026 ia memang sudah tertolak di sini, lewat syarat
+`MANAGED` pada kedua pihak di `currentSameUnitEmployees`, tetapi dengan kode dan pesan yang keliru ("Salah
+satu pegawai sudah tidak aktif"). Ia juga tidak pernah dipilih sebagai approver. Yang tetap jalan: seluruh
+pembacaan, riwayat sebelum penandaan, dan pembatalan pengajuan yang sudah berjalan. Aturan ini mulanya hanya
+ditetapkan untuk cuti (S2B-b, 11 November 2026); keputusan owner D-20 pada 23 November 2026 memperluasnya ke
+seluruh layanan mandiri, termasuk modul ini. Rinciannya, termasuk yang masih `DRAFT`, ada di
+`employment-administration-package1.md` §8.7.
+
 ## Counterpart consent
 
 Counterpart yang disnapshot saat submission adalah satu-satunya pegawai yang boleh menerima/menolak tahap counterpart.

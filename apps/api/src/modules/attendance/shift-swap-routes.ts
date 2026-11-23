@@ -8,6 +8,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
   jakartaWorkDate,
@@ -237,6 +238,11 @@ async function insertAudit(
 }
 
 async function sendError(reply: FastifyReply, error: unknown) {
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) {
+    reply.header("Cache-Control", "no-store");
+    return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+  }
   if (!(error instanceof ShiftSwapError)) throw error;
   reply.header("Cache-Control", "no-store");
   return reply.status(error.statusCode).send({ code: error.code, message: error.message });
@@ -579,6 +585,7 @@ export async function registerAttendanceShiftSwapRoutes(
         throw new ShiftSwapError(409, "SHIFT_SWAP_DATE_PAST", "Tukar shift tidak dapat diajukan untuk tanggal yang sudah lewat.");
       }
       const requester = await employeeForAccount(pool, principal.id);
+      await assertSelfServiceManagedByHcis(pool, requester.id);
       if (requester.id === body.data.counterpartEmployeeId) {
         throw new ShiftSwapError(400, "SHIFT_SWAP_SELF", "Pegawai tidak dapat menukar shift dengan dirinya sendiri.");
       }

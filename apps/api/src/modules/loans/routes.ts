@@ -22,6 +22,7 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { LoanPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -168,6 +169,8 @@ const UNIQUE_CONFLICTS: Record<string, [string, string]> = {
 
 function knownError(error: unknown): LoanError | null {
   if (error instanceof LoanError) return error;
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) return new LoanError(error.statusCode, error.code, error.message);
   if (error instanceof ApprovalSeatError) {
     return new LoanError(409, "LOAN_APPROVAL_SEAT_UNMAPPED", error.message);
   }
@@ -837,6 +840,7 @@ export async function registerLoanRoutes(
     }
     return handle(reply, async () => {
       const employee = await loadEmployeeContext(pool, principal.id);
+      await assertSelfServiceManagedByHcis(pool, employee.id);
       const submittedOn = today();
       const principalAmount = toRupiah(body.data.principal);
       validateLoanTerms({ principal: principalAmount, tenorMonths: body.data.tenorMonths });
@@ -876,6 +880,9 @@ export async function registerLoanRoutes(
         }
         return [200, { id: previous.id, status: previous.status, idempotentReplay: true }];
       }
+      // After the replay (as LEAVE-001 does): a retry of a submission that already went
+      // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
+      await assertSelfServiceManagedByHcis(client, employee.id);
 
       const submittedOn = today();
       const principalAmount = toRupiah(body.data.principal);

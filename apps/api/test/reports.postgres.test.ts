@@ -278,11 +278,17 @@ describe.skipIf(!allowed)("RPT-001 HR reports", () => {
     const events = await exportEvents();
     expect(events).toHaveLength(2);
     expect(events.every((event) => event.actor === people.unitLeader.accountId)).toBe(true);
-    expect(events[0]!.payload).toEqual({
+    // `occurred_at` defaults to now(), which is the transaction timestamp, so both rows written by
+    // this test carry the same instant and `ORDER BY occurred_at` cannot separate them. The audit
+    // table records no order between them, so neither does this assertion: the rows are matched by
+    // which report they are about.
+    const byReport = new Map(events.map((event) => [event.payload.report as string, event.payload]));
+    expect([...byReport.keys()].sort()).toEqual(["employees", "trips"]);
+    expect(byReport.get("employees")).toEqual({
       report: "employees", format: "csv", filters: { unitId: null, status: "all", employmentType: null },
       scope: "unit", unitCount: 1, rows: 2,
     });
-    expect(events[1]!.payload).toMatchObject({ report: "trips", format: "xlsx", filters: { unitId: null, from: "2026-10-01", to: "2026-10-31" }, rows: 1 });
+    expect(byReport.get("trips")).toMatchObject({ report: "trips", format: "xlsx", filters: { unitId: null, from: "2026-10-01", to: "2026-10-31" }, rows: 1 });
     expect(JSON.stringify(events)).not.toContain(tag);
 
     // An export never widens past the read scope, and free-text search is refused.

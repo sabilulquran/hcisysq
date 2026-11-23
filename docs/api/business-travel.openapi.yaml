@@ -12,6 +12,10 @@ info:
     Package 2 (business-travel.md §9.2): an ISSUED or COMPLETED trip is the attendance disposition
     business_trip. Issuing a letter, and HC cancelling an issued trip, recalculate the trip's dates
     already begun after COMMIT; recalculatedDates counts the dates that succeeded.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /trips/me and POST /trips/me/preview;
+    reads, and cancelling a trip already submitted, are unaffected.
 paths:
   /trips/me:
     get:

@@ -22,6 +22,7 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { TripAdvancePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { decideLeaveApprovalStep, LeaveWorkflowError, type LeaveApprovalStepState } from "../leave/domain/request-workflow.js";
 import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { notifyEmployee } from "../notifications/service.js";
@@ -171,6 +172,8 @@ const UNIQUE_CONFLICTS: Record<string, [string, string]> = {
 
 function knownError(error: unknown): TripAdvanceError | null {
   if (error instanceof TripAdvanceError) return error;
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) return new TripAdvanceError(error.statusCode, error.code, error.message);
   if (error instanceof TripAdvancePolicyError || error instanceof LeaveWorkflowError) {
     return new TripAdvanceError(409, error.code, error.message);
   }
@@ -781,6 +784,9 @@ export async function registerTripAdvanceRoutes(
         }
         return [200, { id: previous.id, status: previous.status, idempotentReplay: true }];
       }
+      // After the replay (as LEAVE-001 does): a retry of a submission that already went
+      // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
+      await assertSelfServiceManagedByHcis(client, employee.id);
       const trip = await eligibleTrip(client, body.data.businessTripId, employee.id, "FOR SHARE");
       const live = await client.query(
         `SELECT 1 FROM trip_advances WHERE business_trip_id = $1 AND status NOT IN ('REJECTED', 'CANCELLED')`,

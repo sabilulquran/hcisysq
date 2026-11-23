@@ -9,6 +9,10 @@ info:
     All routes use the session cookie and answer with Cache-Control: no-store. Errors use
     { code, message }. No field holds a percentage or money: the tunjangan kinerja link to PAY-003
     is a later package (spec §11). Every list is ENG-LIST-001 paged.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /performance/me/{id}/self-assessment;
+    reads, acknowledging and objecting on a review already written are unaffected.
 paths:
   /performance/me:
     get:

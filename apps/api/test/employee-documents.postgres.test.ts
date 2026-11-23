@@ -361,4 +361,39 @@ describe.skipIf(!allowed)("EMP-011 employee documents", () => {
     ]);
     expect(JSON.stringify(audit.rows)).not.toContain(tag);
   });
+
+  // EMP-005 S2B §8.7 (S2B-c): one code, two wordings. `lockManagedEmployee` serves both the
+  // employee's own upload and the HC upload, so this pins which answer each audience gets —
+  // without it the two are a parameter away from being swapped.
+  it("di luar pengelolaan HCIS: pegawai membaca kalimatnya sendiri, HC membaca kalimat administrator", async () => {
+    const TO_ADMIN = "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca.";
+    const TO_SELF = "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. "
+      + "Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru.";
+    const OUTSIDE = "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY";
+
+    // Unmarked, both uploads work.
+    actAs("aisyah");
+    expect((await call("POST", "/me/employee-documents", { documentType: "KK", file: file(PDF) })).statusCode).toBe(201);
+    expect((await hcUpload("aisyah", { documentType: "NPWP", file: file(PDF) })).statusCode).toBe(201);
+
+    await client.query(
+      `UPDATE employees
+          SET management_scope = 'OUTSIDE_HCIS', management_scope_reason = 'BUMY',
+              management_scope_note = 'Dikonfirmasi HC (sintetis)',
+              management_scope_marked_at = now(), management_scope_marked_by_account_id = $2
+        WHERE id = $1`,
+      [people.aisyah.employeeId, people.hc.accountId],
+    );
+
+    actAs("aisyah");
+    const self = await call("POST", "/me/employee-documents", { documentType: "KTP", file: file(PDF) });
+    expect(self.statusCode, self.body).toBe(409);
+    expect(self.json().code).toBe(OUTSIDE);
+    expect(self.json().message).toBe(TO_SELF);
+
+    const admin = await hcUpload("aisyah", { documentType: "KTP", file: file(PDF) });
+    expect(admin.statusCode, admin.body).toBe(409);
+    expect(admin.json().code).toBe(OUTSIDE);
+    expect(admin.json().message).toBe(TO_ADMIN);
+  });
 });

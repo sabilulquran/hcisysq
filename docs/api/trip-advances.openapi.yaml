@@ -28,6 +28,10 @@ info:
     Visibility: an employee sees only their own advances (another employee's is 404);
     trip_advances.read opens the register, detail and export; trip_advances.manage rejects,
     disburses, settles, pays top-ups and records refunds; trip_per_diem.manage records rates.
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /trip-advances/me; reads, cancelling, and
+    settling an advance already disbursed are unaffected.
 paths:
   /trip-advances/me:
     get:

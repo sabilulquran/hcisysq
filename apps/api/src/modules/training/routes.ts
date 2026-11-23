@@ -18,6 +18,7 @@ import { decryptSecret, encryptSecret } from "../auth/crypto.js";
 import type { TrainingPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
+import { assertSelfServiceManagedByHcis, OutsideHcisError } from "../employees/management-scope.js";
 import { notifyEmployee } from "../notifications/service.js";
 import { EvaluationPolicyError } from "./evaluation-domain.js";
 import { assignSupervisorAssessors, registerTrainingEvaluationRoutes } from "./evaluation-routes.js";
@@ -146,6 +147,8 @@ function currentYear(): number {
 
 function knownError(error: unknown): TrainingError | null {
   if (error instanceof TrainingError) return error;
+  // EMP-005 S2B §8.7: the shared refusal, answered with this module's envelope.
+  if (error instanceof OutsideHcisError) return new TrainingError(error.statusCode, error.code, error.message);
   if (error instanceof TrainingPolicyError || error instanceof CertificateError || error instanceof EvaluationPolicyError) {
     return new TrainingError(error.statusCode, error.code, error.message);
   }
@@ -614,6 +617,9 @@ export async function registerTrainingRoutes(
         [self.id, body.data.idempotencyKey],
       );
       if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
+      // After the replay (as LEAVE-001 does): a retry of a submission that already went
+      // through is not a new one, and EMP-005 S2B §8.7 only refuses what is new.
+      await assertSelfServiceManagedByHcis(client, self.id);
       validateExternalRecord({ ...body.data, today: jakartaDate(new Date()) });
       const id = randomUUID();
       await client.query(

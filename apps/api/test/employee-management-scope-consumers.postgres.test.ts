@@ -22,6 +22,7 @@ import { loadBoardAggregates } from "../src/modules/board/aggregates.js";
 import { registerEmploymentAdminRoutes } from "../src/modules/employment/admin-routes.js";
 import { registerLeaveAdminRoutes } from "../src/modules/leave/admin-routes.js";
 import { encodeWorkingWeekdays } from "../src/modules/leave/domain/working-calendar.js";
+import { registerAttendanceResolutionRoutes } from "../src/modules/leave/attendance-resolution-routes.js";
 import { registerEmployeeLeaveRoutes } from "../src/modules/leave/employee-routes.js";
 import { registerPlannedLeaveRoutes } from "../src/modules/leave/planned-leave-routes.js";
 import { registerLeavePostponementRoutes } from "../src/modules/leave/postponement-routes.js";
@@ -68,6 +69,10 @@ type Person = "requester" | "manager" | "unitApprover" | "hc";
 const NOW = new Date("2099-01-05T01:00:00Z");
 const LEAVE = { startOn: "2099-02-02", endOn: "2099-02-03" };
 const OUTSIDE = "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY";
+// One code, two wordings (§8.7 S2B-c). Which one comes back depends on who reads the answer,
+// so these are pinned as literals: a helper reused across audiences flips them silently.
+const TO_ADMIN = "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca.";
+const TO_SELF = "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat. Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru.";
 const LATER = { startOn: "2099-02-09", endOn: "2099-02-10" };
 const PDF = Buffer.from("%PDF-1.4\n% synthetic S2B-b evidence\n").toString("base64");
 
@@ -221,6 +226,7 @@ describe.skipIf(!allowed)("EMP-005 S2B-b: consumers leave a record outside HCIS 
     await registerEmploymentAdminRoutes(app, transactionPool, config);
     await registerLeaveAdminRoutes(app, transactionPool, config);
     await registerLeavePostponementRoutes(app, transactionPool, config);
+    await registerAttendanceResolutionRoutes(app, transactionPool, config);
     await registerAttendanceWorkforceRoutes(app, transactionPool, config);
     unitIdRef = unitId;
   });
@@ -443,6 +449,8 @@ describe.skipIf(!allowed)("EMP-005 S2B-b: consumers leave a record outside HCIS 
     const accept = await call("requester", "POST", `/leave/me/postponements/${proposalId}/accept`, { idempotencyKey: randomUUID() });
     expect(accept.statusCode).toBe(409);
     expect(accept.json().code).toBe(OUTSIDE);
+    // The marked employee is the one reading this refusal.
+    expect(accept.json().message).toBe(TO_SELF);
     const replacements = await client.query("SELECT count(*)::int AS n FROM leave_requests WHERE employee_id = $1", [people.requester.employeeId]);
     expect(replacements.rows[0]?.n).toBe(1);
 
@@ -453,6 +461,59 @@ describe.skipIf(!allowed)("EMP-005 S2B-b: consumers leave a record outside HCIS 
     expect(accepted.json()).toMatchObject({ status: "accepted", replacementStatus: "in_review" });
   });
 
+  it("LEAVE-008: a marked employee accepts no annual conversion, but may still reject it", async () => {
+    // The conversion offer hangs off a leave request, so one is submitted first and a case is
+    // opened on it, as HC would.
+    const submitted = await call("requester", "POST", "/leave/me/annual/submit", { ...LEAVE, reason: null, idempotencyKey: randomUUID() });
+    expect(submitted.statusCode, submitted.body).toBe(201);
+    const openCase = async () => {
+      const caseId = randomUUID();
+      // One case per source request, so the previous one goes before the next is opened.
+      await client.query("DELETE FROM attendance_resolution_cases WHERE source_leave_request_id = $1", [submitted.json().id]);
+      await client.query(
+        `INSERT INTO attendance_resolution_cases
+           (id, employee_id, source_leave_request_id, status, proposed_resolution, proposed_by_account_id)
+         VALUES ($1, $2, $3, 'awaiting_employee', 'annual_conversion', $4)`,
+        [caseId, people.requester.employeeId, submitted.json().id, people.hc.accountId],
+      );
+      // The case loader inner-joins its unresolved days, so a case without one is invisible.
+      await client.query(
+        `INSERT INTO attendance_resolution_days (attendance_resolution_case_id, calendar_date)
+         VALUES ($1, $2::date)`,
+        [caseId, LEAVE.startOn],
+      );
+      return caseId;
+    };
+    const caseId = await openCase();
+
+    await mark("requester");
+    const before = await client.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM leave_requests WHERE employee_id = $1",
+      [people.requester.employeeId],
+    );
+    const accept = await call("requester", "POST", `/attendance/resolutions/me/${caseId}/annual-conversion-decision`, { decision: "accept" });
+    expect(accept.statusCode, accept.body).toBe(409);
+    expect(accept.json().code).toBe(OUTSIDE);
+    expect(accept.json().message).toBe(TO_SELF);
+    // The point of the guard: no new leave row was written for the marked person.
+    const after = await client.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM leave_requests WHERE employee_id = $1",
+      [people.requester.employeeId],
+    );
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+
+    // Rejecting closes a case opened before the mark, so it stays open to them.
+    const reject = await call("requester", "POST", `/attendance/resolutions/me/${caseId}/annual-conversion-decision`, { decision: "reject", note: "Tidak jadi" });
+    expect(reject.statusCode, reject.body).toBe(200);
+    expect(reject.json()).toMatchObject({ decision: "reject", status: "open" });
+
+    // Unmarked, accepting is no longer refused for this reason.
+    await unmark("requester");
+    const reopened = await openCase();
+    const allowed = await call("requester", "POST", `/attendance/resolutions/me/${reopened}/annual-conversion-decision`, { decision: "accept" });
+    expect(allowed.json().code, allowed.body).not.toBe(OUTSIDE);
+  });
+
   it("LEAVE-008: an approver cannot propose other dates to a marked requester", async () => {
     const submitted = await call("requester", "POST", "/leave/me/annual/submit", { ...LEAVE, reason: null, idempotencyKey: randomUUID() });
     const stepId = submitted.json().approvalChain[0].id as string;
@@ -461,9 +522,12 @@ describe.skipIf(!allowed)("EMP-005 S2B-b: consumers leave a record outside HCIS 
     await mark("requester");
     const refusedPreview = await call("manager", "POST", `/leave/approvals/${stepId}/postponement/preview`, LATER);
     expect(refusedPreview.json().code).toBe(OUTSIDE);
+    // The approver is reading, and the marked person is someone else: the admin wording, not "Anda".
+    expect(refusedPreview.json().message).toBe(TO_ADMIN);
     const refused = await call("manager", "POST", `/leave/approvals/${stepId}/postpone`, { ...LATER, note: "Ada ujian minggu itu" });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().code).toBe(OUTSIDE);
+    expect(refused.json().message).toBe(TO_ADMIN);
     const status = await client.query("SELECT status FROM leave_requests WHERE id = $1", [submitted.json().id]);
     expect(status.rows[0]?.status).toBe("in_review");
   });

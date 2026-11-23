@@ -13,6 +13,10 @@ info:
     string is refused with 400, never rounded. The database caps every amount at
     1,000,000,000, far below 2^53. No interest field exists (D-02). Payroll is not touched:
     automatic deduction through PAY-003 is Package 2 (spec §9).
+
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /loans/me and POST /loans/me/preview;
+    reads and cancelling are unaffected.
 paths:
   /loans/me:
     get:

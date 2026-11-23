@@ -77,6 +77,18 @@ Termasuk (Paket 1):
 | Pemegang `reimbursements.manage` (Keuangan) | Memverifikasi, menolak, mencatat pembayaran — kecuali klaim sendiri; approver klaim itu tidak dapat memverifikasi atau membayarnya, tetapi boleh menolaknya karena penolakan tidak mengeluarkan uang (D-13) |
 | Sistem | Snapshot rantai, transisi, invarian uang, audit, notifikasi, pengingat |
 
+**Di luar pengelolaan HCIS (EMP-005 S2B §8.7; keputusan owner D-20, 23 November 2026).**
+Data pegawai yang ditandai di luar pengelolaan HCIS — staf BUMY dan Pengurus Yayasan — hanya dapat dibaca. Ia
+**tidak dapat membuat draf baru maupun mengirim draf menjadi klaim**: pengajuan baru dijawab `409
+EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat.
+Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru." — pesannya menyebut apa yang masih
+berjalan dan langkah berikutnya, dan tidak pernah mengatakan akunnya tidak aktif. Ia juga tidak pernah dipilih
+sebagai approver. Yang tetap jalan: seluruh pembacaan, riwayat sebelum penandaan, dan penyuntingan dan
+penghapusan bukti pada draf yang dibuat sebelum penandaan, serta pembatalan. Aturan ini mulanya hanya
+ditetapkan untuk cuti (S2B-b, 11 November 2026); keputusan owner D-20 pada 23 November 2026 memperluasnya ke
+seluruh layanan mandiri, termasuk modul ini. Rinciannya, termasuk yang masih `DRAFT`, ada di
+`employment-administration-package1.md` §8.7.
+
 ## 5. Alur dan state
 
 ### 5.1 Draf

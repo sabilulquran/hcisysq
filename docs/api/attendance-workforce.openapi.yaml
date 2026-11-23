@@ -2,6 +2,13 @@ openapi: 3.1.0
 info:
   title: HCIS Attendance Workforce API Fragment
   version: 0.0.1
+  description: |
+    EMP-005 S2B §8.7: an employee whose record is marked "di luar pengelolaan HCIS" gets
+    409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY from POST /attendance/overtime,
+    POST /attendance/clarifications and POST /attendance/shift-swaps, as the HC routes acting on
+    their behalf already do; reads and cancelling are unaffected. POST
+    /attendance/team-overtime/orders refuses the whole batch for the same reason when any subject
+    is marked.
 paths:
   /attendance/me/workforce:
     get:
@@ -206,6 +213,7 @@ paths:
       responses:
         '201': { description: Clarification submitted }
         '400': { description: INVALID_CLARIFICATION }
+        '409': { description: EMPLOYEE_OUTSIDE_HCIS_READ_ONLY (EMP-005 S2B §8.7) }
         '422': { description: CLARIFICATION_DATE_OUT_OF_RANGE, CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /attendance/clarifications/me:
@@ -1062,6 +1070,7 @@ paths:
       responses:
         '200': { description: '`{ dryRun: true, warnings[] }` (dryRun only)' }
         '201': { description: '`{ id, status: submitted, awaiting: supervisor, warnings[] }`' }
+        '409': { description: 'EMPLOYEE_OUTSIDE_HCIS_READ_ONLY (EMP-005 S2B §8.7)' }
         '422': { description: 'OVERTIME_APPROVER_UNRESOLVED, OVERTIME_DATE_OUT_OF_RANGE, OVERTIME_DAY_TOTAL_INVALID or OVERTIME_NOT_APPLICABLE' }
 
   /attendance/overtime/{overtimeId}/cancel:
@@ -1185,6 +1194,10 @@ paths:
         '200': { description: '`{ dryRun: true, orders[{ employeeId, warnings[] }] }` (dryRun only)' }
         '201': { description: '`{ ids[], orders[{ employeeId, id, warnings[] }], status: submitted, awaiting: employee }`' }
         '403': { description: OVERTIME_NOT_SUBORDINATE }
+        '409':
+          description: >-
+            EMPLOYEE_OUTSIDE_HCIS_READ_ONLY with `employees[{ employeeId }]` — the whole batch is
+            refused when any subject is outside HCIS management (EMP-005 S2B §8.7)
         '422':
           description: >-
             OVERTIME_DATE_OUT_OF_RANGE, OVERTIME_DAY_TOTAL_INVALID, or OVERTIME_NOT_APPLICABLE with
@@ -1524,7 +1537,7 @@ paths:
                 note: { type: [string, 'null'], maxLength: 2000 }
       responses:
         '201': { description: Immutable requester/counterpart schedule snapshot created; waiting for counterpart }
-        '409': { description: Eligibility, cutoff, same-unit, schedule, or active-conflict failure }
+        '409': { description: Eligibility, cutoff, same-unit, schedule, active-conflict failure, or EMPLOYEE_OUTSIDE_HCIS_READ_ONLY (EMP-005 S2B §8.7) }
 
   /attendance/shift-swaps/{shiftSwapId}/counterpart-decision:
     post:

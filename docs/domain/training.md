@@ -91,6 +91,18 @@ Termasuk (Paket 1 = R1 + inti R2 discovery):
 | Narasumber internal | Pegawai biasa; waktunya ikut diblokir dan ia mendapat catatan peran Narasumber (D-08) |
 | Sistem | Cek bentrok, transisi, catatan otomatis, audit, notifikasi |
 
+**Di luar pengelolaan HCIS (EMP-005 S2B §8.7; keputusan owner D-20, 23 November 2026).**
+Data pegawai yang ditandai di luar pengelolaan HCIS — staf BUMY dan Pengurus Yayasan — hanya dapat dibaca. Ia
+**tidak dapat mengajukan catatan pelatihan eksternal baru**: pengajuan baru dijawab `409
+EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`, "Data Anda di luar pengelolaan HCIS, jadi pengajuan baru tidak dapat dibuat.
+Riwayat Anda tetap terbaca. Hubungi Human Capital bila ini keliru." — pesannya menyebut apa yang masih
+berjalan dan langkah berikutnya, dan tidak pernah mengatakan akunnya tidak aktif. Ia juga tidak pernah dipilih
+sebagai approver. Yang tetap jalan: seluruh pembacaan, riwayat sebelum penandaan, dan penarikan catatan yang
+sudah diajukan dan kemajuan e-learning yang sudah ditugaskan. Aturan ini mulanya hanya ditetapkan untuk cuti
+(S2B-b, 11 November 2026); keputusan owner D-20 pada 23 November 2026 memperluasnya ke seluruh layanan
+mandiri, termasuk modul ini. Rinciannya, termasuk yang masih `DRAFT`, ada di
+`employment-administration-package1.md` §8.7.
+
 ## 6. Alur dan state
 
 ### 6.1 Program

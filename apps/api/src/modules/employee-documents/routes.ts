@@ -21,7 +21,11 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import { decryptSecret, encryptSecret } from "../auth/crypto.js";
 import type { EmployeeDocumentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
-import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
+import {
+  OUTSIDE_HCIS_CODE,
+  OUTSIDE_HCIS_MESSAGE,
+  OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
+} from "../employees/management-scope.js";
 import {
   addDays,
   assertTransition,
@@ -174,7 +178,15 @@ async function writeAudit(
 }
 
 const notFound = () => new EmployeeDocumentError(404, "EMPLOYEE_DOCUMENT_NOT_FOUND", "Dokumen tidak ditemukan.");
-const outside = () => new EmployeeDocumentError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+/**
+ * EMP-005 S2B §8.7, one code and two wordings: `outsideToAdmin` for the HC routes, where the
+ * marked person is the subject, and `outsideToSelf` for the employee's own upload, where the
+ * marked person is the reader. `lockManagedEmployee` serves both, so it is told which to throw
+ * rather than guessing.
+ */
+const outsideToAdmin = () => new EmployeeDocumentError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+const outsideToSelf = () =>
+  new EmployeeDocumentError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
 
 export async function registerEmployeeDocumentRoutes(
   app: FastifyInstance,
@@ -261,7 +273,11 @@ export async function registerEmployeeDocumentRoutes(
    * Locks the employee row so uploads for one person serialize (D-06 limit). NO KEY UPDATE does not
    * conflict with the FOR KEY SHARE locks foreign-key checks take elsewhere.
    */
-  async function lockManagedEmployee(db: Db, employeeId: string) {
+  async function lockManagedEmployee(
+    db: Db,
+    employeeId: string,
+    refusal: () => EmployeeDocumentError = outsideToAdmin,
+  ) {
     const found = await db.query<{ managementScope: string }>(
       `SELECT management_scope AS "managementScope" FROM employees
         WHERE id = $1 AND removed_at IS NULL FOR NO KEY UPDATE`,
@@ -269,7 +285,7 @@ export async function registerEmployeeDocumentRoutes(
     );
     const employee = found.rows[0];
     if (!employee) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Pegawai tidak ditemukan.");
-    if (employee.managementScope === "OUTSIDE_HCIS") throw outside();
+    if (employee.managementScope === "OUTSIDE_HCIS") throw refusal();
   }
 
   async function loadDocument(db: Db, documentId: string, options: { lock?: boolean; employeeId?: string } = {}) {
@@ -287,7 +303,8 @@ export async function registerEmployeeDocumentRoutes(
       `SELECT management_scope AS "managementScope" FROM employees WHERE id = $1`,
       [employeeId],
     );
-    if (found.rows[0]?.managementScope === "OUTSIDE_HCIS") throw outside();
+    // Only the HC routes call this one.
+    if (found.rows[0]?.managementScope === "OUTSIDE_HCIS") throw outsideToAdmin();
   }
 
   function encryptNumber(value: string | null) {
@@ -453,7 +470,7 @@ export async function registerEmployeeDocumentRoutes(
     try {
       const self = await selfEmployee(pool, principal.id);
       if (!self || !self.active) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Akun tidak terhubung ke data pegawai aktif.");
-      if (self.managementScope === "OUTSIDE_HCIS") throw outside();
+      if (self.managementScope === "OUTSIDE_HCIS") throw outsideToSelf();
       await assertProposalAllowed(pool, self.id);
       bytes = decodeDocumentFile(body.data.file.contentType, body.data.file.contentBase64);
     } catch (error) {
@@ -462,7 +479,7 @@ export async function registerEmployeeDocumentRoutes(
     return inTransaction(reply, 201, async (client) => {
       const self = await selfEmployee(client, principal.id);
       if (!self || !self.active) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Akun tidak terhubung ke data pegawai aktif.");
-      await lockManagedEmployee(client, self.id);
+      await lockManagedEmployee(client, self.id, outsideToSelf);
       await assertProposalAllowed(client, self.id);
       return createDocument(client, {
         employeeId: self.id, actorAccountId: principal.id, source: "EMPLOYEE", bytes, body: { ...body.data, notes: null },

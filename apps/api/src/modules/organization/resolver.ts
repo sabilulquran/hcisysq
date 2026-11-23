@@ -40,8 +40,11 @@ export interface OrganizationSnapshotReader {
  *   memanjat adalah kesinambungan yang benar. Ini juga keputusan EMP-005 S2B §8.7 yang sudah
  *   diterima, dan tidak diubah di sini.
  *
- * `INVALID` dan `CONFLICT` dari `validateAccount` tidak pernah lewat jalan ini: keduanya sudah
- * gagal tertutup sebelum kebijakan kekosongan sempat dibaca.
+ * Daftar ini hanya berlaku untuk hasil `validate`, yaitu kelayakan seorang **pegawai**. `INELIGIBLE`
+ * dari `validateAccount` (kursi akun organ ORG-013) tetap mengikuti kebijakan kekosongan sesuai
+ * keputusan ORG-013-1 yang sudah diterima; D-R5 tidak membukanya kembali. `INVALID` dan `CONFLICT`
+ * tidak pernah lewat jalan ini sama sekali: keduanya sudah gagal tertutup sebelum kebijakan
+ * kekosongan sempat dibaca.
  */
 const INELIGIBILITY_REFUSES_CLIMB: ReadonlySet<string> = new Set([
   "ACCOUNT_NOT_ACTIVE",
@@ -476,6 +479,12 @@ export class OrganizationAuthorityResolver {
             );
           }
           if (account.kind === "INELIGIBLE") {
+            // ORG-013-1 tidak dibuka kembali oleh D-R5: `INELIGIBLE` dari `validateAccount` tetap
+            // mengikuti kebijakan kekosongan. Kursi akun organ tidak memuat cerita "orangnya ada
+            // dan bekerja, akunnya saja yang belum diaktifkan" — akun organ yang bukan `active`
+            // lebih dekat ke anggota organ yang sudah tidak menjabat, yaitu sisi yang memang
+            // memanjat. Catatannya hanya direkam supaya penolakan `BLOCK` tetap dapat menyebut
+            // kursinya.
             lastIneligibility = account.reason;
             lastIneligible = {
               reason: account.reason,
@@ -484,7 +493,6 @@ export class OrganizationAuthorityResolver {
               employeeId: null,
               accountId: candidate.accountId,
             };
-            if (INELIGIBILITY_REFUSES_CLIMB.has(account.reason)) refusedHere ??= lastIneligible;
             continue;
           }
           if (account.kind === "ACCOUNT") {

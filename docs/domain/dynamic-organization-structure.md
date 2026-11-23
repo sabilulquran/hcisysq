@@ -129,7 +129,9 @@ The row that decided the mode travels with the result (`rolloutScope`: matched n
 
 `vacancy_policy` menjawab satu pertanyaan: apa yang dilakukan ketika sebuah kursi **tidak ada yang menduduki**. `CLIMB_TO_PARENT` menjawab "naik ke kursi induknya", dan untuk kursi yang memang kosong itu benar.
 
-Resolver sebelumnya memakai jawaban yang sama untuk keadaan yang berbeda. Kursi yang pejabatnya tertulis di bagan, orangnya ada dan bekerja, tetapi akun HCIS-nya belum aktif, dinilai sebagai incumbent yang tidak layak (`ACCOUNT_NOT_ACTIVE`), lalu diperlakukan persis seperti kursi kosong: dilewati, dan rantainya naik satu tingkat. Tidak ada galat, tidak ada catatan, tidak ada apa pun di layar. Pada bagan terbit yang berjalan hari ini **setiap binding dan setiap kursi memakai `CLIMB_TO_PARENT`**, dan 74 akun pegawai masih `invited`, sehingga menyalakan `STRUCTURE` pada unit pilot berarti langkah kepala unit **hilang diam-diam** dan — untuk bentuk unit itu — dua langkah menyusut menjadi satu orang. Cutinya tetap disetujui. Kepala unitnya tidak pernah melihatnya.
+Resolver sebelumnya memakai jawaban yang sama untuk keadaan yang berbeda. Kursi yang pejabatnya tertulis di bagan, orangnya ada dan bekerja, tetapi akun HCIS-nya belum aktif, dinilai sebagai incumbent yang tidak layak (`ACCOUNT_NOT_ACTIVE`), lalu diperlakukan persis seperti kursi kosong: dilewati, dan rantainya naik satu tingkat. Tidak ada galat, tidak ada catatan, tidak ada apa pun di layar.
+
+Ini bukan konfigurasi sudut yang jarang; ia bentuk seluruh bagan. Pengukuran owner, baca saja terhadap bagan terbit production **2026-11-23: seluruh 63 ikatan wewenang dan seluruh 29 jabatan memakai `CLIMB_TO_PARENT`, tanpa satu pun pengecualian**, sementara 74 akun pegawai masih `invited` dan hanya 4 yang `active`. Menyalakan `STRUCTURE` pada unit pilot karena itu berarti langkah kepala unit **hilang diam-diam** dan — untuk bentuk unit itu — dua langkah menyusut menjadi satu orang. Cutinya tetap disetujui. Kepala unitnya tidak pernah melihatnya. Tidak ada satu pun kursi pada bagan yang kebijakannya akan menahan keadaan itu, jadi perbaikannya tidak dapat ditunda sampai pilot berjalan dan "dilihat dulu".
 
 Itu bukan yang yayasan konfigurasikan. Jadi garisnya ditarik ulang:
 
@@ -138,15 +140,17 @@ Itu bukan yang yayasan konfigurasikan. Jadi garisnya ditarik ulang:
 
 Penolakannya baru terjadi setelah kedua jenis pejabat dicoba, jadi pelaksana harian (`ACTING`) yang akunnya aktif tetap menyelamatkan kursi yang pejabat tetapnya belum siap — jalan keluar yang memang disediakan bagan tidak ikut tertutup.
 
-**Setiap alasan ketidaklayakan diputuskan satu per satu**, bukan disamaratakan (`AuthorityEligibilityResult.reason`, `apps/api/src/modules/organization/repository.ts`):
+**Setiap alasan ketidaklayakan diputuskan satu per satu**, bukan disamaratakan. Garis ini berlaku untuk kelayakan seorang **pegawai** (`AuthorityEligibilityResult.reason`, `apps/api/src/modules/organization/repository.ts`):
 
 | Alasan | Artinya | Sisi garis | Mengapa |
 |---|---|---|---|
-| `ACCOUNT_NOT_ACTIVE` | pegawainya aktif dan dikelola HCIS, atau akun organnya terdaftar, tetapi akun HCIS-nya belum `active` | **menolak** | orangnya ada dan memang pejabatnya; keadaan ini selesai dengan mengaktifkan akun, dan diam-diam menghapus langkahnya menghilangkan persetujuan yang dikonfigurasikan |
-| `CAPABILITY_MISSING` | akunnya aktif tetapi belum memegang izin yang diminta workflow (hari ini hanya kursi akun organ ORG-013 yang memintanya) | **menolak** | sama: orangnya ada, jalan keluarnya memberikan izin lewat peran akun. Memanjat diam-diam justru menyembunyikan satu-satunya petunjuk bahwa izin itu kurang |
+| `ACCOUNT_NOT_ACTIVE` | pegawainya aktif dan dikelola HCIS, tetapi akun HCIS-nya belum `active` | **menolak** | orangnya ada dan memang pejabatnya; keadaan ini selesai dengan mengaktifkan akun, dan diam-diam menghapus langkahnya menghilangkan persetujuan yang dikonfigurasikan. Inilah keadaan 74 akun `invited` hari ini |
+| `CAPABILITY_MISSING` | pegawainya aktif dan akunnya aktif, tetapi belum memegang izin yang diminta pemanggil | **menolak** | sama: orangnya ada, jalan keluarnya memberikan izin lewat peran akun. Memanjat diam-diam justru menyembunyikan satu-satunya petunjuk bahwa izin itu kurang. Hari ini **belum ada pemanggil yang mengirim `requiredCapability`** (D-R3 menghapusnya dari pratinjau), jadi arah ini belum pernah terpakai; ia diputuskan sekarang supaya tidak menjadi lubang pada hari pertama seseorang memakainya |
 | `EMPLOYEE_NOT_ACTIVE` | orangnya sudah tidak menjadi pegawai (keluar, `removed_at`), atau berada di luar pengelolaan HCIS (`management_scope <> 'MANAGED'`) | **memanjat**, tidak berubah | kursinya memang tidak lagi berpenghuni dalam arti yang sebenarnya, dan menunggu orang itu tidak akan pernah selesai. Ini juga keputusan EMP-005 S2B §8.7 yang sudah diterima, dan tidak dibuka kembali di sini |
 
-`INVALID` dan `CONFLICT` dari `validateAccount` (ORG-013) tidak lewat garis ini sama sekali: keduanya sudah gagal tertutup sebelum `vacancy_policy` sempat dibaca, dan tetap begitu.
+**Kursi akun organ (ORG-013) tidak ikut berubah.** `INELIGIBLE` dari `validateAccount` — `ACCOUNT_NOT_ACTIVE` maupun `CAPABILITY_MISSING` — tetap mengikuti kebijakan kekosongan, seperti yang ORG-013-1 tetapkan dan ujinya kunci. Dua alasan: keputusan itu sudah diterima dan membukanya kembali adalah perubahan tersendiri, bukan efek samping perbaikan ini; dan kursi akun organ tidak memuat cerita yang menjadi dasar D-R5 — tidak ada "orangnya ada dan bekerja, akunnya saja yang belum diaktifkan", karena akun organ yang bukan `active` lebih dekat ke anggota organ yang sudah tidak menjabat, yaitu sisi yang memang memanjat. Yang berubah untuk kursi organ hanyalah kalimat penolakannya ketika kebijakannya `BLOCK`.
+
+`INVALID` dan `CONFLICT` dari `validateAccount` tidak lewat garis ini sama sekali: keduanya sudah gagal tertutup sebelum `vacancy_policy` sempat dibaca, dan tetap begitu.
 
 **Penolakannya kini terbaca.** `AUTHORITY_INELIGIBLE` apa adanya berbunyi "The configured incumbent is not eligible for this authority" dan tidak menyebut siapa pun; alasannya ada di `details`, yang `mapKnownError` tidak teruskan. Yang membaca penolakan itu adalah petugas Human Capital selama pilot, dan pembedaan yang ia butuhkan adalah "bagannya salah" versus "akunnya belum siap". Jadi:
 

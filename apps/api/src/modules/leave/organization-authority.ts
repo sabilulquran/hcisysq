@@ -116,6 +116,9 @@ function organizationServices(db: Queryable) {
  * Ketidaklayakan yang lain (`EMPLOYEE_NOT_ACTIVE`) tetap `AUTHORITY_INELIGIBLE`: itu memang
  * "bagannya yang harus diperbaiki", dan kode yang berbeda menjaga pembedaan itu tetap terlihat.
  * Hanya kalimatnya yang kini berbahasa Indonesia dan menyebut kursi serta orangnya.
+ *
+ * Yang ditulis ulang di sini hanyalah kalimat dan kodenya. Kapan resolusi menolak sama sekali
+ * tetap keputusan resolver (D-R5), dan untuk kursi akun organ ORG-013 keputusan itu tidak berubah.
  */
 async function legibleAuthorityError(
   db: Queryable,

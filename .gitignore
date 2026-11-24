@@ -22,6 +22,9 @@
 *.zip
 *.tar
 *.tar.gz
+*.tar.gz.sha256
+# OPS-MI8-REL-001: tempat operator mengunduh bundel rilis (gh run download).
+rel-build/
 backups/
 exports/
 

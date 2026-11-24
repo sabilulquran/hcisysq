@@ -200,6 +200,27 @@ export function claimOidcRetry(storage: RetryStorage | undefined, now: number): 
   }
 }
 
+export type OidcRetryStep = "wait" | "retry" | "decline";
+
+/**
+ * AUTH-012 Rev 2: what the login entry does about a callback failure once per mount.
+ * `wait` while the mode loads, `retry` only in OIDC mode when the one retry is claimed,
+ * `decline` otherwise (local mode, a non-retryable category, or no claim): the page then
+ * shows the message and the button. `claim` is called at most once, and only in OIDC mode.
+ */
+export function oidcRetryStep(
+  mode: AuthMode | null,
+  modeError: boolean,
+  search: LoginSearch,
+  claim: () => boolean,
+): OidcRetryStep {
+  if (!isOidcRetryCandidate(search)) return "decline";
+  if (modeError) return "decline";
+  if (mode === null) return "wait";
+  if (mode !== "oidc") return "decline";
+  return claim() ? "retry" : "decline";
+}
+
 /** `window.sessionStorage` throws in some privacy modes; treat that as no storage. */
 export function sessionRetryStorage(): RetryStorage | undefined {
   try {

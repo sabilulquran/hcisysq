@@ -9,6 +9,7 @@ import {
   isOidcRetryCandidate,
   loginSearch,
   oidcLoginFailureMessage,
+  oidcRetryStep,
   oidcStartHref,
   sessionRetryStorage,
   shouldStartOidcAutomatically,
@@ -50,14 +51,16 @@ export function LoginPage() {
   const [retryDeclined, setRetryDeclined] = useState(false);
   const retryClaimed = useRef(false);
   useEffect(() => {
-    if (!retryCandidate || retryDeclined || retryClaimed.current || mode === null) return;
-    if (mode === "oidc" && claimOidcRetry(sessionRetryStorage(), Date.now())) {
+    if (!retryCandidate || retryDeclined || retryClaimed.current) return;
+    const step = oidcRetryStep(mode, modeError, search, () => claimOidcRetry(sessionRetryStorage(), Date.now()));
+    if (step === "wait") return;
+    if (step === "retry") {
       retryClaimed.current = true;
       window.location.replace(oidcStartHref(search.returnTo));
       return;
     }
     setRetryDeclined(true);
-  }, [mode, retryCandidate, retryDeclined, search.returnTo]);
+  }, [mode, modeError, retryCandidate, retryDeclined, search]);
   const retrying = retryCandidate && !retryDeclined && !modeError && mode !== "local";
 
   return <LoginPageView mode={mode} modeError={modeError} search={search} retrying={retrying} />;

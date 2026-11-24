@@ -13,15 +13,25 @@
 -- menerima migrasi ini mulai dalam keadaan terkunci tanpa perlu menulis satu baris pun, dan
 -- setiap penyalaan maupun pematian meninggalkan jejak dengan alasannya.
 --
--- Down:
+-- Down (satu transaksi; `trip_advance_events` punya trigger `trip_advance_events_immutable`
+-- yang menolak UPDATE dan DELETE, jadi baris jejaknya tidak dapat dihapus dengan cara biasa —
+-- dan CHECK yang lama tidak dapat dipasang kembali selama baris itu masih ada):
+--   BEGIN;
 --   DROP TABLE IF EXISTS trip_per_diem_activation;
+--   SET LOCAL session_replication_role = 'replica';   -- melewati trigger immutability
+--   DELETE FROM trip_advance_events
+--    WHERE advance_id IS NULL
+--      AND event_type IN ('trip_advance.per_diem.activated', 'trip_advance.per_diem.deactivated');
+--   SET LOCAL session_replication_role = 'origin';
 --   ALTER TABLE trip_advance_events DROP CONSTRAINT IF EXISTS trip_advance_events_global_check;
 --   ALTER TABLE trip_advance_events ADD CONSTRAINT trip_advance_events_global_check
 --     CHECK (advance_id IS NOT NULL OR event_type IN (
 --       'trip_advance.register.exported', 'trip_advance.rate.created',
 --       'trip_advance.golongan.mapped', 'trip_advance.golongan.unmapped'));
---   -- (hapus dulu baris trip_advance.per_diem.* bila ada, atau CHECK itu tidak dapat dipasang)
 --   DELETE FROM schema_migrations WHERE name = '0183_trip_per_diem_activation.sql';
+--   COMMIT;
+-- Jejak penyalaan/pematian memang hilang karena itu. Bila jejaknya ingin disimpan, ekspor dulu
+-- kedua jenis event tersebut sebelum menjalankan Down ini.
 
 CREATE TABLE IF NOT EXISTS trip_per_diem_activation (
   id uuid PRIMARY KEY,
@@ -44,7 +54,23 @@ CREATE INDEX IF NOT EXISTS trip_per_diem_activation_latest_idx
 -- Penyalaan dan pematian ikut jejak audit TRIP-002 yang sudah ada. Keduanya tidak melekat pada
 -- satu uang muka, jadi daftar event yang boleh ber-advance_id NULL harus ikut diperluas; tanpa
 -- ini INSERT-nya ditolak CHECK dan rutenya gagal 500.
-ALTER TABLE trip_advance_events DROP CONSTRAINT IF EXISTS trip_advance_events_global_check;
+-- Dibuang berdasarkan definisinya, bukan berdasarkan namanya: pembatas aslinya dibuat inline
+-- tanpa nama pada 0160 dan baru diberi nama oleh 0172. Pada database mana pun yang 0172-nya
+-- belum sempat menamainya, DROP ... IF EXISTS by name akan diam-diam tidak melakukan apa-apa,
+-- CHECK dua-nilai yang lama bertahan, dan penyalaan pertama gagal 500. Pola ini mengikuti 0172.
+DO $$
+DECLARE
+  doomed record;
+BEGIN
+  FOR doomed IN
+    SELECT conname FROM pg_constraint
+     WHERE contype = 'c' AND conrelid = 'trip_advance_events'::regclass
+       AND pg_get_constraintdef(oid) LIKE '%trip_advance.register.exported%'
+  LOOP
+    EXECUTE format('ALTER TABLE trip_advance_events DROP CONSTRAINT %I', doomed.conname);
+  END LOOP;
+END;
+$$;
 ALTER TABLE trip_advance_events ADD CONSTRAINT trip_advance_events_global_check
   CHECK (advance_id IS NOT NULL OR event_type IN (
     'trip_advance.register.exported', 'trip_advance.rate.created',

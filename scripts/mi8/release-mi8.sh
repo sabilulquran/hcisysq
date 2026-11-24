@@ -318,43 +318,78 @@ trip_002_mapped_verdict() {
   die "golongan map incomplete while uang saku is ON; cutting over would leave it unusable. Fill it in, re-run this phase, and only then cut over. There is no override flag."
 }
 
-# $1 = output of sql/trip-002-activation-present.sql, $2 = of sql/trip-002-activation-state.sql
-# (empty when the table is absent). Prints the state and echoes ACTIVE or INACTIVE on stdout.
+# $1 = output of sql/trip-002-tables-present.sql. Echoes "<map>|<switch>" on stdout, each
+# ABSENT or PRESENT, and dies on anything it does not recognise.
+trip_002_tables_present() {
+  local answer=${1//[[:space:]]/}
+  case "$answer" in
+    'OK|TABLES|ABSENT|ABSENT') printf 'ABSENT|ABSENT' ;;
+    'OK|TABLES|ABSENT|PRESENT') printf 'ABSENT|PRESENT' ;;
+    'OK|TABLES|PRESENT|ABSENT') printf 'PRESENT|ABSENT' ;;
+    'OK|TABLES|PRESENT|PRESENT') printf 'PRESENT|PRESENT' ;;
+    *) die "trip-002 gate: could not tell which uang saku tables exist (got: $1). Treat this as a failed check, not a clean one." ;;
+  esac
+}
+
+# $1 = the switch half of trip_002_tables_present, $2 = output of
+# sql/trip-002-activation-state.sql (empty when the switch table is absent).
+# Echoes ACTIVE or INACTIVE on stdout.
 #
 # D-22 (owner, 2026-11-24): the catalogue check belongs to the feature's own switch, not to the
 # release. A release that does not turn uang saku on is not held up by an empty golongan map,
-# because with the feature off nobody can reach the per diem path at all; the API refuses every
-# activation attempt whose readiness check fails, the first time and every time after. What is
-# left for the release to guard is the other direction: a release must not walk away from a
-# feature that IS on with data that no longer resolves.
+# because while the feature is off its two doors - the per diem estimate and a new advance -
+# are shut, and the API refuses every attempt to open it whose readiness check fails, the first
+# time and every time after.
 trip_002_activation_state() {
-  local present=${1//[[:space:]]/}
-  case "$present" in
-    'OK|TABLE|ABSENT')
-      # 0183 has not run here yet, so there is no switch and the feature cannot be on.
-      printf 'INACTIVE' ;;
-    'OK|TABLE|PRESENT')
+  case "$1" in
+    ABSENT)
+      # 0183 has not run here yet, so there is no switch to read. On such a device the feature
+      # was never lockable, so treat it as ON and ask the full question: that is exactly what
+      # this gate did before the switch existed.
+      printf 'ACTIVE' ;;
+    PRESENT)
       local state=${2//[[:space:]]/}
       case "$state" in
         'OK|STATE|ACTIVE') printf 'ACTIVE' ;;
         'OK|STATE|INACTIVE') printf 'INACTIVE' ;;
         *) die "trip-002 gate: could not read the uang saku switch (got: $2). Treat this as a failed check, not a clean one." ;;
       esac ;;
-    *)
-      die "trip-002 gate: could not tell whether the uang saku switch exists (got: $1). Treat this as a failed check, not a clean one." ;;
+    *) die "trip-002 gate: unreadable switch-table answer: $1" ;;
   esac
 }
 
-# $1 = ACTIVE or INACTIVE, $2 = output of sql/trip-002-golongan-gate.sql (only read when ACTIVE).
+# $1 = ACTIVE or INACTIVE, $2 = output of sql/trip-002-golongan-gate.sql.
 #
-# The decision itself, kept free of ssh so the test can drive both halves: a golongan map that
-# would stop a release while uang saku is ON must let the same release through while it is OFF.
+# The decision itself, kept free of ssh so the test can drive every branch.
+#
+# ON  - the whole question. Everyone who can ask for an advance must resolve to a golongan, and
+#       so must every advance still in flight.
+# OFF - only the advances still in flight. This is not symmetry for its own sake: switching the
+#       feature off deliberately leaves approval, disbursement and settlement open, so money
+#       that is already out can still be closed. POST /admin/trip-advances/:id/settle prices the
+#       per diem from the map as it stands at settlement time, so an advance that stops
+#       resolving is stranded with the money out whether the switch is on or off. Everything
+#       else - an empty catalogue, an unmapped classification, an employee with no golongan -
+#       breaks nobody while the doors are shut, and is exactly what HC fills in before opening
+#       them.
 trip_002_gate_verdict() {
-  if [[ "$1" != ACTIVE ]]; then
-    say "trip-002 gate: uang saku dinas is OFF on the device, so this release cannot break it; the golongan map is checked when someone turns it on (TRIP-002 D-22)"
-    return 0
+  if [[ "$1" == ACTIVE ]]; then
+    trip_002_mapped_verdict "$2"
+    return
   fi
-  trip_002_mapped_verdict "$2"
+  # The sentinel still has to be there: an answer that never arrived must not read as "no
+  # stranded advances", which is the same defect shape one layer up.
+  printf '%s\n' "$2" | grep -qx 'OK|GATE|.*' \
+    || die "trip-002 gate: the golongan query did not answer (no sentinel row). Treat this as a failed check, not a clean one; read the error above."
+  local stranded
+  stranded=$(printf '%s\n' "$2" | grep '^FAIL|ADVANCE_UNRESOLVED|' || true)
+  if [[ -n "$stranded" ]]; then
+    say "TRIP-002: uang saku is OFF, but these advances are already out and no longer resolve to a golongan:"
+    printf '%s\n' "$stranded" | sed 's/^FAIL|/    /; s/|/ /'
+    say "Settlement prices the per diem from the golongan map at settlement time, so each of these would answer 409 with the money already disbursed."
+    die "live advances no longer resolve; fix the golongan map or the ORG-011 placement behind them, re-run this phase, and only then cut over. There is no override flag."
+  fi
+  say "trip-002 gate: uang saku dinas is OFF on the device and no advance is left stranded; the golongan map is checked in full when someone turns it on (TRIP-002 D-22)"
 }
 # END trip-002-gate
 
@@ -365,7 +400,10 @@ trip_002_in_bundle() {
 # Run one gate query on the device. Read-only, so it runs in dry run too.
 gate_query() {
   local sql script
-  sql=$(gate_sql "$1")
+  # gate_sql dies on a missing or unusable query file, but a die() inside a command
+  # substitution only ends that subshell, and this function is always called on the left of a
+  # `|| die`, where errexit does not apply either. So its status is looked at right here.
+  sql=$(gate_sql "$1") || return 1
   script=$(printf 'as_termux "psql -U postgres -d $DB -Atc \\"%s\\""\n' "$sql")
   remote_ro <<<"$script" | tr -d '\r'
 }
@@ -393,23 +431,28 @@ trip_002_gate_pre_migrate() {
 # it starts from the people who can actually submit a trip advance and from the advances already
 # in flight, because that is what resolveGolongan() is asked about at runtime.
 trip_002_gate_mapped() {
-  local present state
-  present=$(gate_query trip-002-activation-present.sql) \
-    || die "trip-002 gate: could not ask the device whether the uang saku switch exists; read the error above"
+  local answer tables map switch state verdict report
+  answer=$(gate_query trip-002-tables-present.sql) \
+    || die "trip-002 gate: could not ask the device which uang saku tables exist; read the error above"
+  # Each helper is called as an assignment, not inside an argument: a die() inside a command
+  # substitution only ends that subshell, so its status has to be looked at here.
+  tables=$(trip_002_tables_present "$answer") || exit 1
+  map=${tables%%|*}
+  switch=${tables##*|}
+  if [[ "$map" != PRESENT ]]; then
+    # 0172 has not run here yet, so there is no golongan map to ask about and no advance can
+    # have been priced from one. A dry run taken before migrate lands here.
+    say "trip-002 gate: trip_per_diem_golongan_map does not exist on the device yet ($TRIP_002_MIGRATION has not run), so there is nothing to check"
+    return 0
+  fi
   state=
-  if [[ "${present//[[:space:]]/}" == 'OK|TABLE|PRESENT' ]]; then
+  if [[ "$switch" == PRESENT ]]; then
     state=$(gate_query trip-002-activation-state.sql) \
       || die "trip-002 gate: could not read the uang saku switch from the device; read the error above"
   fi
-  local verdict report
-  # Written as an assignment, not inside an argument, so a die() inside the helper really stops
-  # the release instead of arriving as an empty string.
-  verdict=$(trip_002_activation_state "$present" "$state") || exit 1
-  report=
-  if [[ "$verdict" == ACTIVE ]]; then
-    report=$(gate_query trip-002-golongan-gate.sql) \
-      || die "trip-002 gate: uang saku is ON but the golongan query failed on the device; read the error above. That is a failed check, not a clean one."
-  fi
+  verdict=$(trip_002_activation_state "$switch" "$state") || exit 1
+  report=$(gate_query trip-002-golongan-gate.sql) \
+    || die "trip-002 gate: the golongan query failed on the device; read the error above. That is a failed check, not a clean one."
   trip_002_gate_verdict "$verdict" "$report"
 }
 

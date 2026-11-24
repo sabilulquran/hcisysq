@@ -287,11 +287,16 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
   const writeActivation = (state: "ACTIVE" | "INACTIVE", reason = "Keputusan HC sintetis untuk uji") =>
     app.inject({ method: "POST", url: "/admin/trip-per-diem-activation", payload: { state, reason } });
 
+  /**
+   * The last row written, or "NONE" when nothing has been written at all. The distinction
+   * matters: the feature is locked in both cases, so returning "INACTIVE" for an empty table
+   * would let a bug that writes a spurious INACTIVE row on a refused activation pass unnoticed.
+   */
   async function storedState(): Promise<string> {
     const row = await client.query<{ state: string }>(
       "SELECT state FROM trip_per_diem_activation ORDER BY recorded_seq DESC LIMIT 1",
     );
-    return row.rows[0]?.state ?? "INACTIVE";
+    return row.rows[0]?.state ?? "NONE";
   }
 
   /** Turn it on from a healthy world, and fail loudly if the world was not healthy. */
@@ -329,7 +334,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json().code).toBe("TRIP_PER_DIEM_NOT_READY");
     expect(kinds(response.body)).toContain("CATALOGUE_EMPTY");
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
   });
 
   it("a classification in force that nobody mapped holds activation, and is named", async () => {
@@ -339,7 +344,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
     expect(response.statusCode, response.body).toBe(409);
     const blockers = (response.json() as { blockers: Finding[] }).blockers;
     expect(blockers.some((finding) => finding.kind === "CLASSIFICATION_UNMAPPED" && finding.detail === CODE)).toBe(true);
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
   });
 
   it("an eligible employee who resolves to no golongan holds activation, and is named", async () => {
@@ -356,7 +361,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
     expect(response.statusCode, response.body).toBe(409);
     const blockers = (response.json() as { blockers: Finding[] }).blockers;
     expect(blockers.some((finding) => finding.kind === "EMPLOYEE_UNRESOLVED" && finding.detail === strandedNumber)).toBe(true);
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
   });
 
   it("a golongan somebody resolves to without a rate holds activation", async () => {
@@ -369,7 +374,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
     expect(response.statusCode, response.body).toBe(409);
     const blockers = (response.json() as { blockers: Finding[] }).blockers;
     expect(blockers.some((finding) => finding.kind === "RATE_MISSING" && finding.detail === "STAF LUAR_DAERAH")).toBe(true);
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
   });
 
   it("a classification published for a future date only warns, and lets activation through", async () => {
@@ -465,7 +470,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
       method: "POST", url: "/admin/trip-per-diem-activation", payload: { state: "ACTIVE", reason: "singkat" },
     });
     expect(response.statusCode, response.body).toBe(400);
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
   });
 
   it("reading the lock needs only read access; opening it needs trip_per_diem.manage", async () => {
@@ -542,6 +547,16 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
     expect(leave.statusCode, leave.body).toBe(201);
     const stored = await client.query("SELECT 1 FROM leave_requests WHERE employee_id = $1", [employeeId]);
     expect(stored.rowCount).toBe(1);
-    expect(await storedState()).toBe("INACTIVE");
+    expect(await storedState()).toBe("NONE");
+  });
+
+  it("a readiness check that cannot run is not a clean one: activation fails, it does not pass", async () => {
+    // The API mirror of the shell gate's sentinel case. An answer that never arrived must never
+    // be read as "nothing to report": here the map table is renamed away underneath the query.
+    await client.query("ALTER TABLE trip_per_diem_golongan_map RENAME TO trip_per_diem_golongan_map_gone");
+    asAdmin();
+    const response = await writeActivation("ACTIVE", "Mencoba menyalakan saat kueri rusak");
+    expect(response.statusCode, response.body).toBe(500);
+    expect(await storedState()).toBe("NONE");
   });
 });

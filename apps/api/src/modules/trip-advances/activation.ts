@@ -8,9 +8,26 @@
 // back by a gate that blocked *every* release, including ones that never touch trip advances.
 // The check belongs to the feature's own switch, not to the release.
 //
+// What the lock does and does not shut. The two doors INTO the feature are shut while it is off:
+// the per diem estimate and a new advance. Approval, disbursement and settlement are left open
+// on purpose, so switching the feature off never strands money that is already out — but that
+// also means `POST /admin/trip-advances/:id/settle` still prices a live advance from the
+// golongan map as it stands at settlement time. An advance already out therefore depends on its
+// golongan whether the switch is on or off, which is why the release gate keeps checking live
+// advances even while the feature is off (scripts/mi8/release-mi8.sh, trip_002_gate_verdict).
+//
 // The readiness query below asks the same question as scripts/mi8/sql/trip-002-golongan-gate.sql,
-// which the release script runs on the device: both mirror resolveGolongan() and bindingsOn().
-// Change one and change the other; scripts/mi8/test-trip-002-gate.sh and
+// which the release script runs on the device: both mirror resolveGolongan() and bindingsOn(),
+// and both anchor on the Asia/Jakarta date (the Mi8 database runs in Asia/Jakarta, verified
+// read-only on 2026-11-24, so its current_date and today() here are the same day). They are not
+// identical, and the differences are deliberate:
+//
+//   * only this one has RATE_MISSING. The release gate has no equivalent arm, because 0172 seeds
+//     all six decree rates and trip_per_diem_rates is append-only, so a release cannot take a
+//     rate away. Activation can still meet a world where someone never added one.
+//   * this one is asked of the date the API computes; the release gate asks the device.
+//
+// Change the shared part of one and change the other; scripts/mi8/test-trip-002-gate.sh and
 // apps/api/test/trip-per-diem-activation.postgres.test.ts cover the same scenarios on purpose.
 
 import type { Pool, PoolClient } from "pg";
@@ -33,6 +50,8 @@ export interface ReadinessFinding {
   severity: ReadinessSeverity;
   kind: ReadinessKind;
   detail: string;
+  /** How many findings of this kind there are in all, before the list was cut to `SAMPLE`. */
+  total: number;
 }
 
 export interface ActivationRecord {
@@ -191,10 +210,11 @@ export async function perDiemReadiness(db: Queryable, on: string): Promise<Readi
               count(*) OVER (PARTITION BY finding.ord) AS total
          FROM finding
      )
-     SELECT ranked.severity, ranked.kind, ranked.detail
+     SELECT ranked.severity, ranked.kind, ranked.detail, ranked.total::int AS total
        FROM ranked WHERE ranked.seq <= $2::int
      UNION ALL
-     SELECT ranked.severity, ranked.kind, 'dan ' || (ranked.total - $2::int)::text || ' lagi'
+     SELECT ranked.severity, ranked.kind, 'dan ' || (ranked.total - $2::int)::text || ' lagi',
+            ranked.total::int
        FROM ranked WHERE ranked.seq = $2::int AND ranked.total > $2::int
      ORDER BY 1, 2, 3`,
     [on, SAMPLE],
@@ -206,9 +226,14 @@ export function readinessBlockers(findings: ReadinessFinding[]): ReadinessFindin
   return findings.filter((finding) => finding.severity === "FAIL");
 }
 
-/** What goes into the audit row: counts, never the list of people (D-17). */
+/**
+ * What goes into the audit row: counts, never the list of people (D-17).
+ *
+ * The count is `total`, not the number of rows that survived the cut to `SAMPLE`. Counting rows
+ * would cap every kind at 21 and quietly understate what the decision was taken against.
+ */
 export function readinessSummary(findings: ReadinessFinding[]): Record<string, number> {
   const summary: Record<string, number> = {};
-  for (const finding of findings) summary[finding.kind] = (summary[finding.kind] ?? 0) + 1;
+  for (const finding of findings) summary[finding.kind] = finding.total;
   return summary;
 }

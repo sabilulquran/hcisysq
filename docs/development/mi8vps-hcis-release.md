@@ -127,9 +127,13 @@ the leave fix of this week goes out with uang saku still locked.
 What is left here are two **release-stopping** checks, and both are about this release:
 
 * the first runs only when the bundle carries `0172_trip_per_diem_decree.sql`;
-* the second runs on every release, and stops it only when uang saku is **switched on** on the
-  device with data that no longer resolves. With the feature off it costs two trivial queries
-  and says so in one line.
+* the second runs on every release. With uang saku **on** it asks the whole question. With uang
+  saku **off** it asks only one part of it: whether an advance that is already out has stopped
+  resolving. That is not symmetry for its own sake — switching the feature off deliberately
+  leaves approval, disbursement and settlement open so money already out can still be closed,
+  and settlement prices the per diem from the golongan map **at settlement time**. Everything
+  else (an empty catalogue, an unmapped classification, an employee with no golongan) breaks
+  nobody while the two doors are shut, and is exactly what HC fills in before opening them.
 
 All of them read their SQL from `scripts/mi8/sql/`, which is also what the test described at the
 end of this section runs, so the gate and its test can never drift into two different queries.
@@ -141,11 +145,16 @@ end of this section runs, so the gate and its test can never drift into two diff
 
 2. **If uang saku is switched on, everyone who can ask for an advance must resolve to a
    golongan** — in `candidate`, after `migrate` and before `cutover`, beside the HTTP checks.
-   The check is `trip_002_gate_mapped`. It first reads the switch, over
-   `sql/trip-002-activation-present.sql` and `sql/trip-002-activation-state.sql`: a device
-   without the switch table (one that has not had `0183` yet) and a switch that is off both read
-   as OFF, and the release goes through. Only when it reads ACTIVE does the gate run
-   `sql/trip-002-golongan-gate.sql`. That query asks the question **from the people**, the way
+   The check is `trip_002_gate_mapped`. It first asks which tables exist, over
+   `sql/trip-002-tables-present.sql`. No `trip_per_diem_golongan_map` means `0172` has not run
+   here yet, there is nothing to ask about, and the gate says so and returns — that is where a
+   **dry run taken before `migrate`** lands, and it is why this gate no longer has an awkward
+   corner there. With the map present it reads the switch over
+   `sql/trip-002-activation-state.sql`; a device that has the map but **no** switch table (one
+   that has not had `0183` yet) is treated as **ON**, because on such a device the feature was
+   never lockable — exactly what this gate did before the switch existed. Then it runs
+   `sql/trip-002-golongan-gate.sql` and judges the findings according to the switch. That query
+   asks the question **from the people**, the way
    `resolveGolongan` is asked it at runtime, and not from the catalogue; a catalogue-only check
    is satisfied by an empty catalogue and never sees someone who holds no classification at all.
    It stops the release (`FAIL`) on any of:
@@ -181,18 +190,19 @@ end of this section runs, so the gate and its test can never drift into two diff
    stderr and prints nothing at all to stdout — byte for byte what a world with nothing to report
    looks like. The query therefore always emits a sentinel row (`OK|GATE|…`), the gate stops if
    that row is absent, and the query's exit status is captured before it is judged. The switch
-   queries carry sentinels of their own (`OK|TABLE|…`, `OK|STATE|…`) for the same reason: an
-   answer that never arrived must not read as "the feature is off", which would be a silent pass.
-   This also removes what used to be an awkward corner — a dry run taken before `migrate` could
-   not see `trip_per_diem_golongan_map` and had to stop. A device that has never switched uang
-   saku on answers that in one query, whether or not the map table exists yet.
+   queries carry sentinels of their own (`OK|TABLES|…`, `OK|STATE|…`) for the same reason: an
+   answer that never arrived must not read as "the feature is off", which would be a silent
+   pass. The same holds inside the off branch, which checks for the sentinel before concluding
+   that no advance is stranded.
 
 While uang saku is **on** and something does not resolve, per diem estimates, new advances and
 settlements answer 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED`; with an empty map that is every
 employee. That is what this gate exists to prevent a release from leaving behind. While uang
-saku is **off** the same gaps are harmless, because the two doors into the feature are shut and
-answer 409 `TRIP_PER_DIEM_NOT_ACTIVE` instead — and they are exactly what HC fills in before
-switching it on.
+saku is **off** those gaps are harmless for everyone who has not yet asked for an
+advance, because the two doors into the feature are shut and answer 409
+`TRIP_PER_DIEM_NOT_ACTIVE` instead — they are exactly what HC fills in before switching it on.
+They are **not** harmless for an advance already out, which is why `ADVANCE_UNRESOLVED` keeps
+stopping the release either way.
 
 **There is no override.** The `--allow-unmapped-golongan` flag was withdrawn by the owner on
 2026-11-20 and removed from the script; passing it now stops the run with the usage text. The

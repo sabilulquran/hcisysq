@@ -665,9 +665,13 @@ export async function registerTripAdvanceRoutes(
 
   /**
    * D-22: the two doors into the per diem feature — the estimate and a new advance — are shut
-   * while it is locked. Everything downstream (approval, disbursement, settlement) is left alone
-   * on purpose: an advance can only exist if it was created while the feature was on, and
-   * switching the feature off must not strand money that is already out.
+   * while it is locked. Everything downstream (approval, disbursement, settlement) is left open
+   * on purpose: switching the feature off must not strand money that is already out.
+   *
+   * The price of that choice is that settlement still resolves a golongan at settlement time, so
+   * an advance already disbursed keeps depending on its golongan while the switch is off. The
+   * release gate therefore keeps checking live advances even then (OPS-MI8-REL-001,
+   * `trip_002_gate_verdict`), and unmapping a classification still warns about exactly this.
    */
   async function requirePerDiemActive(db: Queryable) {
     const activation = await perDiemActivation(db);
@@ -1700,6 +1704,10 @@ export async function registerTripAdvanceRoutes(
     }
     return transact(reply, async (client) => {
       const on = today();
+      // D-22: read-then-insert is a decision, not a counter. Without this lock two admins who
+      // both see INACTIVE both write ACTIVE, and a concurrent unmap committing between the
+      // readiness check and the insert is never seen. The key is this feature's switch alone.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('trip_per_diem_activation'))");
       const current = await perDiemActivation(client);
       if (current.state === body.data.state) {
         throw new TripAdvanceError(

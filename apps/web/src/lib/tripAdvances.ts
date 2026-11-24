@@ -336,6 +336,8 @@ export interface PerDiemReadinessFinding {
   severity: "FAIL" | "WARN";
   kind: string;
   detail: string;
+  /** How many findings of this kind there are in all; the list itself is cut at 20 per kind. */
+  total: number;
 }
 
 export interface PerDiemActivation {

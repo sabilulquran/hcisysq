@@ -39,8 +39,10 @@ export interface LeaveEmployeeConfiguration {
   directManagerName: string | null;
   leaveEntitlementGroup: LeaveEntitlementGroup | null;
   /**
-   * ORG-004 D-R6: sumber yang benar-benar dibaca runtime untuk orang ini. `STRUCTURE` berarti
-   * penyetujunya datang dari bagan, sehingga kolom atasan di baris ini tidak dibaca siapa pun.
+   * ORG-004 D-R6: sumber yang benar-benar dibaca runtime untuk orang ini **pada Cuti Tahunan**.
+   * `STRUCTURE` berarti penyetujunya datang dari bagan, sehingga kolom atasan di baris ini tidak
+   * dibaca alur itu. Mode rollout disimpan per kunci workflow, jadi alur lain (cuti terencana,
+   * lembur, perjalanan dinas) dapat tetap `LEGACY` pada orang yang sama dan masih membacanya.
    */
   approvalSource?: "LEGACY" | "SHADOW" | "STRUCTURE";
 }

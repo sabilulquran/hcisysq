@@ -1244,6 +1244,11 @@
       "reason": "Typeahead pegawai aktif berdasarkan nama: minimal 2 huruf, maksimal 20 hasil, tanpa kontak atau NIP."
     },
     {
+      "url": "/me/services",
+      "list": "bounded",
+      "reason": "Satu baris per layanan pegawai yang punya gerbang server; jumlahnya tetap dan hari ini di bawah sepuluh."
+    },
+    {
       "url": "/notifications/me",
       "list": "debt",
       "reason": "limit maks 100 tanpa offset/kursor; notifikasi lama tidak terjangkau.",

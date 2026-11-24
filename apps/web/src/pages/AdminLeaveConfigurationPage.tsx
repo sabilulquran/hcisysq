@@ -216,6 +216,16 @@ export function AdminLeaveConfigurationPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             {summary?.directManagerConfigured ?? 0} dari {summary?.activeEmployees ?? 0} pegawai aktif.
           </p>
+          {/*
+            ORG-004 D-R6: unit yang sudah berjalan di atas bagan tidak membaca kolom atasan lama,
+            jadi angka ini menghitungnya sebagai siap dan mengatakan dari mana asalnya. Tanpa
+            kalimat ini, layar menyuruh HC mengisi kolom yang tidak akan dibaca siapa pun.
+          */}
+          {summary?.structureRouted ? (
+            <p className="mt-1 text-xs font-semibold text-brand-primary-deep">
+              {summary.structureRouted} di antaranya mengikuti bagan Struktur Organisasi, jadi kolom atasannya tidak perlu diisi.
+            </p>
+          ) : null}
         </article>
         <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />

@@ -38,6 +38,11 @@ export interface LeaveEmployeeConfiguration {
   directManagerEmployeeId: string | null;
   directManagerName: string | null;
   leaveEntitlementGroup: LeaveEntitlementGroup | null;
+  /**
+   * ORG-004 D-R6: sumber yang benar-benar dibaca runtime untuk orang ini. `STRUCTURE` berarti
+   * penyetujunya datang dari bagan, sehingga kolom atasan di baris ini tidak dibaca siapa pun.
+   */
+  approvalSource?: "LEGACY" | "SHADOW" | "STRUCTURE";
 }
 
 export interface LeaveConfigurationResponse {
@@ -49,6 +54,8 @@ export interface LeaveConfigurationResponse {
     unitApproverConfigured: number;
     activeEmployees: number;
     directManagerConfigured: number;
+    /** Bagian dari `directManagerConfigured` yang terpenuhi bagan, bukan kolom atasan lama. */
+    structureRouted?: number;
     entitlementGroupConfigured: number;
   };
 }

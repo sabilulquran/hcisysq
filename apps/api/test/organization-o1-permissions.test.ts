@@ -177,6 +177,10 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
       // read, and keeping both calls on one permission is what stops a half-authorized apply.
       "POST /admin/employees/manager-assignments/apply",
       "POST /admin/employees/manager-assignments/preview",
+      // APR-001 "Reassignment" (2026-11-24): moving one stored approval step decides who signs a
+      // request that is already in flight, which is the same kind of authority as naming the unit
+      // approver above. It carries the same permission and no new one.
+      "POST /admin/leave/approvals/:stepId/reassign",
       "POST /admin/organization/designer/drafts/:draftId/publish",
       // ORG-004 (DRAFT D-R4): mematikan sakelar sama beratnya dengan menyalakannya.
       "POST /admin/organization/rollout/:id/end",

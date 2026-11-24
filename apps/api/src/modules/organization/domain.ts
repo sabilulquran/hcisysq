@@ -248,6 +248,15 @@ export interface ResolvedLineAuthorities {
   changeSetId: string;
   governanceApplied: boolean;
   authorities: ResolvedAuthority[];
+  /**
+   * ORG-004 (D-R6, 2026-11-24): kursi penyetuju unit ada dan terisi, tetapi yang duduk di sana
+   * adalah pemohon sendiri, sehingga rungnya dibuang (APR-001 "No self-approval").
+   *
+   * Tanpa keterangan ini pemanggil hanya melihat rantai tanpa rung `UNIT_APPROVER` dan tidak dapat
+   * membedakannya dari kursi yang memang belum dikonfigurasi — dua keadaan yang menuntut jawaban
+   * berbeda: yang pertama sah dan diteruskan ke atasan langsung, yang kedua salah konfigurasi.
+   */
+  unitApproverIsRequester?: boolean | undefined;
 }
 
 export interface LegacyAuthorityInput {
@@ -295,6 +304,12 @@ export interface RolloutAuthorityResult {
   shadow?: StructuralResolutionDiagnostic | undefined;
   /** ORG-004 (DRAFT D-R2): baris rollout yang menentukan `mode`, untuk diagnostik. */
   rolloutScope?: Omit<OrganizationRolloutDecision, "mode"> | undefined;
+  /**
+   * ORG-004 (D-R6): penyetuju unit yang **sumber otoritatifnya** sebut adalah pemohon sendiri,
+   * sehingga rungnya dibuang. Dibaca dari kolom lama pada `LEGACY`/`SHADOW` dan dari bagan pada
+   * `STRUCTURE`, supaya pemanggil melihat satu keterangan yang sama di kedua mode.
+   */
+  unitApproverIsRequester?: boolean | undefined;
 }
 
 export interface OrganizationValidationIssue {

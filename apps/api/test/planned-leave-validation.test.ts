@@ -18,7 +18,9 @@ const TASK = "00000000-0000-4000-8000-000000000110";
 const EMPLOYEE = "00000000-0000-4000-8000-000000000010";
 
 function createPool() {
+  const statements: Array<{ sql: string; values?: unknown[] }> = [];
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
+    statements.push({ sql, values });
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
       return { rows: [], rowCount: null };
     }
@@ -63,10 +65,28 @@ function createPool() {
     if (sql.includes("SELECT count(*)::int AS count") && sql.includes("leave_request_evidence")) {
       return { rows: [{ count: 1 }], rowCount: 1 };
     }
+    // LEAVE-010-F: HC validation is where a planned leave is finally decided, so it is also where
+    // the requester is told. These three rows are that notification's reads and its write.
+    if (sql.includes("FROM leave_requests request") && sql.includes("JOIN employees requester")) {
+      return {
+        rows: [{
+          requesterName: "Pegawai Uji",
+          policyKey: "employee_marriage",
+          startOn: "2099-02-02",
+          endOn: "2099-02-03",
+          workingDays: 2,
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM accounts account")) {
+      return { rows: [{ accountId: "00000000-0000-4000-8000-000000000002" }], rowCount: 1 };
+    }
     if (
       sql.includes("UPDATE leave_request_hc_tasks") ||
       sql.includes("UPDATE leave_requests") ||
       sql.includes("INSERT INTO leave_request_events") ||
+      sql.includes("INSERT INTO in_app_notifications") ||
       sql.includes("INSERT INTO leave_notification_outbox")
     ) {
       return { rows: [], rowCount: 1 };
@@ -75,6 +95,7 @@ function createPool() {
   });
   const client = { query, release: vi.fn() };
   return {
+    statements,
     pool: {
       query,
       connect: vi.fn(async () => client),
@@ -84,7 +105,7 @@ function createPool() {
 
 describe("planned leave HC validation completion", () => {
   it("finalizes a planned leave only when HC validation succeeds", async () => {
-    const { pool } = createPool();
+    const { pool, statements } = createPool();
     const app = Fastify({ logger: false });
     await registerPlannedLeaveRoutes(app, pool, config);
 
@@ -101,6 +122,13 @@ describe("planned leave HC validation completion", () => {
       requestStatus: "approved",
       taskStatus: "validated",
     });
+
+    // LEAVE-010-F: exactly one requester notification, keyed by the request so a replay adds none.
+    const notifications = statements.filter((statement) =>
+      statement.sql.includes("INSERT INTO in_app_notifications"));
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]!.values).toContain(`leave.request.decided.${REQUEST}`);
+    expect(notifications[0]!.values).toContain("Pengajuan cuti Anda disetujui");
 
     await app.close();
   });

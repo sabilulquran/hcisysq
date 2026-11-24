@@ -248,8 +248,13 @@ export function AkunSqActivationNotice() {
         halaman login. Bila lupa kata sandi, pilih <span className="font-semibold">Lupa kata sandi?</span> di halaman
         Akun SQ. Bila email aktivasi tidak datang, hubungi Human Capital.
       </p>
+      {/*
+        AUTH-002: halaman masuk adalah rute akar SPA ini; `/login` tidak pernah ada dan menjawab
+        "404 Halaman tidak tersedia". Ini satu-satunya tombol yang dilihat pegawai yang membuka
+        link aktivasi lama, jadi tombol itu tidak boleh membuangnya ke halaman kosong.
+      */}
       <a
-        href="/login"
+        href="/"
         className="mt-4 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
       >
         Masuk dengan Akun SQ

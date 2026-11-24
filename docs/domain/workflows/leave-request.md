@@ -173,6 +173,43 @@ Added 2026-11-03 (HELP-001 finding): a line approver learned of a new request on
 
 HC queues (validation, HC approval, critical review) keep their existing role-targeted outbox intents; in-app notification for HC is out of scope of LEAVE-010.
 
+### Requester decision notification (NOTIF-004) — added 2026-11-24
+
+Found by the opening-readiness audit of 2026-11-24 (scenario B27): every approver learned that a step had reached them, while the person who asked for the leave learned nothing at all and had to keep reopening **Cuti & Izin**. The intent was never missing — `annual-leave-vertical-slice.md` has always said "requester receives final approved/rejected intent", and the row was written to `leave_notification_outbox`. What was missing is a reader: nothing delivers that outbox. This adds the in-app delivery beside the intent, and leaves the intent untouched.
+
+| Element | Rule |
+| --- | --- |
+| Actor | System, inside the transaction that gives the request its final status. |
+| Trigger | The request reaches `approved` or `rejected`: a line decision that ends the chain (`employee-routes.ts`), or the HC task that completes planned or special leave. A line approval that merely activates the next step or hands over to HC is **not** a final decision and notifies nobody. |
+| Recipient | The requester's active `EMPLOYEE` account. No account, no row — the outbox intent stays the record. |
+| Content | Category `system`; title "Pengajuan cuti Anda disetujui" / "Pengajuan cuti Anda ditolak"; body names the leave type, dates, and working days; link `/app/leave`. The **decision note is never copied**: a rejection reason belongs on the Cuti & Izin screen the requester opens, not in a bell summary that is read over their shoulder. |
+| Idempotency | `event_key = leave.request.decided.<requestId>`: exactly one row per request, whichever path decides it and however often it is replayed. |
+| Failure | Same transaction as the status change; no external call. |
+
+Acceptance:
+
+- LEAVE-010-F: a request that reaches `approved` or `rejected` creates exactly one in-app notification for the requester, carrying the outcome and not the decision note; an intermediate line approval creates none; approvers receive no copy of it.
+
+## APR-001 reassignment of a stuck step — added 2026-11-24
+
+`approval-engine.md` "Reassignment" has always allowed an authorized administrator to move a single stored step when its approver can no longer act. Leave never had the route. The readiness audit of 2026-11-24 (scenario C15) showed what that costs: once a unit head's account is suspended or the person leaves, every request already on their desk stops for good — the requester can only cancel, which throws away a first approval that was already given.
+
+| Element | Rule |
+| --- | --- |
+| Route | `POST /admin/leave/approvals/:stepId/reassign`, permission `approvals.policy.manage`. |
+| Input | `newApproverEmployeeId`, and a `reason` of at least 5 characters. |
+| Precondition | The step is `pending` and its request is `in_review`. A decided step is history and answers 409 `APPROVAL_STEP_NOT_PENDING`. |
+| Replacement | An active, HCIS-managed employee whose account is `active`, and never the requester: otherwise 409 `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`, or `APPROVAL_REASSIGNMENT_SELF`. Moving a step to the approver it already has answers 409 `APPROVAL_REASSIGNMENT_UNCHANGED`. |
+| Scope | **One step.** `sources`, step order, and every other step are untouched, so the snapshot stays a snapshot and the chain is never recomputed from today's structure. |
+| Record | `leave_request_events` row `leave.approval.reassigned` and an `access_audit_events` row of the same name, both carrying the step, the previous approver, the new approver, the acting administrator, and the reason. |
+| Notification | The new approver receives the ordinary step notification (`leave.approval.requested.<stepId>`). |
+
+Acceptance:
+
+- LEAVE-010-G: an administrator moves a `pending` step to another eligible approver; the new approver sees it in **Persetujuan**, decides it, and the remaining steps keep their stored approvers.
+- LEAVE-010-H: reassignment refuses a decided step, the requester, an inactive employee, an account that is not active, and any actor without `approvals.policy.manage`; each refusal changes nothing.
+- LEAVE-010-I: every reassignment is readable afterwards from both the request history and the access audit, with previous approver, new approver, actor, and reason.
+
 ### Employee cancellation
 
 | Element | Rule |

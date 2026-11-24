@@ -34,7 +34,11 @@ import {
 } from "./domain/approval-chain.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
 import { loadApplicableCriticalPeriods } from "./critical-period-store.js";
-import { notifyApprovalCancelled, notifyApprovalRequested } from "./approver-notifications.js";
+import {
+  notifyApprovalCancelled,
+  notifyApprovalRequested,
+  notifyRequesterDecision,
+} from "./approver-notifications.js";
 import { postponementColumns, postponementJoin, type PostponementView } from "./postponement-store.js";
 import {
   assertLeaveRequestCancellable,
@@ -1382,6 +1386,12 @@ export async function applyLeaveApprovalDecision(
       "employee",
       current.requesterEmployeeId,
     );
+    // LEAVE-010-F: intent di atas tetap, dan ini pengirimannya ke Pusat Notifikasi.
+    await notifyRequesterDecision(client, {
+      requestId: current.requestId,
+      requesterEmployeeId: current.requesterEmployeeId,
+      decision: "approved",
+    });
     if (current.hcHandling === "notify") {
       await enqueueNotification(
         client,
@@ -1399,6 +1409,11 @@ export async function applyLeaveApprovalDecision(
       "employee",
       current.requesterEmployeeId,
     );
+    await notifyRequesterDecision(client, {
+      requestId: current.requestId,
+      requesterEmployeeId: current.requesterEmployeeId,
+      decision: "rejected",
+    });
   }
 
   if (effectiveRequestStatus === "approved") {

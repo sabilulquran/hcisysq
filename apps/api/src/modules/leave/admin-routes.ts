@@ -22,6 +22,11 @@ import {
   resolveLeaveLineApprovalChain,
 } from "./domain/approval-chain.js";
 import { LEAVE_POLICY_CATALOG } from "./domain/policy-catalog.js";
+import { addEvent } from "./employee-routes.js";
+import { notifyApprovalRequested } from "./approver-notifications.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
+import { PostgresOrganizationRepository } from "../organization/index.js";
+import { leaveWorkflowKey } from "../organization/workflow-keys.js";
 
 const unitIdSchema = z.object({ unitId: z.string().uuid() });
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
@@ -171,26 +176,51 @@ export async function registerLeaveAdminRoutes(
       ),
     ]);
 
+    /**
+     * ORG-004 (D-R6, 2026-11-24): pegawai yang Cuti Tahunannya sudah dirutekan lewat bagan.
+     *
+     * Sebelum ini layar menghitung kolom atasan lama untuk setiap pegawai aktif tanpa kecuali,
+     * sehingga unit yang sudah pindah ke bagan tetap terbaca "belum siap" — padahal rute berbasis
+     * bagan tidak membaca kolom itu sama sekali, dan mengisinya hanya menambah sumber kedua untuk
+     * hubungan yang sama. Angka kesiapan kini memakai sumber yang benar-benar dibaca runtime untuk
+     * tiap orang: bagan bila modenya `STRUCTURE`, kolom lama bila `LEGACY`.
+     */
+    const modes = await new PostgresOrganizationRepository(pool).resolveRolloutModes(
+      leaveWorkflowKey("annual"),
+      employees.rows.map((employee) => employee.id),
+      jakartaBusinessDate(),
+    );
+    const employeeRows = employees.rows.map((employee) => ({
+      ...employee,
+      /** `STRUCTURE` berarti penyetujunya datang dari bagan, bukan dari kolom di baris ini. */
+      approvalSource: modes.get(employee.id) ?? "LEGACY",
+    }));
+
     const unitApproverConfigured = units.rows.filter(
       (unit) => unit.approverEmployeeId !== null,
     ).length;
     const entitlementGroupConfigured = employees.rows.filter(
       (employee) => employee.leaveEntitlementGroup !== null,
     ).length;
-    const directManagerConfigured = employees.rows.filter(
-      (employee) => employee.directManagerEmployeeId !== null,
+    const structureRouted = employeeRows.filter(
+      (employee) => employee.approvalSource === "STRUCTURE",
+    ).length;
+    const directManagerConfigured = employeeRows.filter(
+      (employee) => employee.approvalSource === "STRUCTURE" || employee.directManagerEmployeeId !== null,
     ).length;
 
     reply.header("Cache-Control", "no-store");
     return reply.send({
       policies: LEAVE_POLICY_CATALOG,
       units: units.rows,
-      employees: employees.rows,
+      employees: employeeRows,
       summary: {
         activeUnits: units.rows.filter((unit) => unit.activeEmployeeCount > 0).length,
         unitApproverConfigured,
         activeEmployees: employees.rows.length,
         directManagerConfigured,
+        /** Bagian dari `directManagerConfigured` yang terpenuhi oleh bagan, bukan oleh kolom lama. */
+        structureRouted,
         entitlementGroupConfigured,
       },
     });
@@ -396,5 +426,159 @@ export async function registerLeaveAdminRoutes(
       annualLeave,
       warnings,
     });
+  });
+
+  /**
+   * APR-001 "Reassignment" (2026-11-24): memindahkan satu langkah persetujuan yang tersangkut.
+   *
+   * Spesifikasi sudah memintanya sejak awal — "If an approver already stored in the snapshot can
+   * no longer act, an authorized administrator may reassign the specific step" — tetapi cuti tidak
+   * pernah punya jalurnya. Akibatnya nyata: begitu akun kepala unit ditangguhkan atau orangnya
+   * berhenti, setiap pengajuan yang sudah ada di mejanya berhenti selamanya. Pemohon memang masih
+   * dapat membatalkan, tetapi itu membuang persetujuan langkah pertama yang sudah diberikan dan
+   * memaksanya mengajukan ulang; dan pada rilis yang berjalan tidak ada lagi jalan lain selain
+   * menyunting basis data.
+   *
+   * Tiga batas yang dijaga di sini, sesuai APR-001:
+   * - **Hanya langkah yang sedang aktif.** Langkah yang sudah diputuskan adalah sejarah.
+   * - **Rantainya tidak dihitung ulang.** Hanya satu langkah yang berpindah; `sources` dan urutan
+   *   langkah tidak disentuh, sehingga snapshot tetap snapshot.
+   * - **Penggantinya harus benar-benar dapat memutuskan**, dan tidak boleh pemohon sendiri.
+   */
+  app.post("/admin/leave/approvals/:stepId/reassign", async (request, reply) => {
+    const principal = await authenticateAdmin(request, reply, "approvals.policy.manage");
+    if (!principal) return;
+    const params = z.object({ stepId: z.string().uuid() }).safeParse(request.params);
+    const body = z.object({
+      newApproverEmployeeId: z.string().uuid(),
+      reason: z.string().trim().min(5).max(500),
+    }).strict().safeParse(request.body);
+    reply.header("Cache-Control", "no-store");
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_APPROVAL_REASSIGNMENT",
+        message: "Langkah persetujuan dan alasan pengalihan wajib diisi (alasan minimal 5 karakter).",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const step = await client.query<{
+        id: string; requestId: string; status: string; stepOrder: number;
+        approverEmployeeId: string | null; approverAccountId: string | null;
+        requesterEmployeeId: string; requestStatus: string;
+      }>(
+        `SELECT s.id, s.leave_request_id AS "requestId", s.status, s.step_order AS "stepOrder",
+                s.approver_employee_id AS "approverEmployeeId",
+                s.approver_account_id AS "approverAccountId",
+                r.employee_id AS "requesterEmployeeId", r.status AS "requestStatus"
+           FROM leave_request_approval_steps s
+           JOIN leave_requests r ON r.id = s.leave_request_id
+          WHERE s.id = $1
+          FOR UPDATE OF s`,
+        [params.data.stepId],
+      );
+      const current = step.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "APPROVAL_STEP_NOT_FOUND",
+          message: "Tahap approval tidak ditemukan.",
+        });
+      }
+      if (current.status !== "pending" || current.requestStatus !== "in_review") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVAL_STEP_NOT_PENDING",
+          message: "Hanya tahap approval yang sedang menunggu keputusan yang dapat dialihkan.",
+        });
+      }
+      if (current.approverEmployeeId === body.data.newApproverEmployeeId) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVAL_REASSIGNMENT_UNCHANGED",
+          message: "Tahap ini sudah menjadi milik pegawai tersebut.",
+        });
+      }
+      if (current.requesterEmployeeId === body.data.newApproverEmployeeId) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVAL_REASSIGNMENT_SELF",
+          message: "Pemohon tidak dapat menjadi penyetuju pengajuannya sendiri.",
+        });
+      }
+      // Penggantinya harus memenuhi syarat yang sama dengan penyetuju mana pun: pegawai aktif yang
+      // dikelola HCIS, dan akunnya sudah aktif. Tanpa ini pengalihan hanya memindahkan kemacetan.
+      const replacement = await client.query<{ fullName: string; accountStatus: string | null }>(
+        `SELECT e.full_name AS "fullName",
+                (SELECT a.status FROM accounts a
+                  WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+                  ORDER BY a.id LIMIT 1) AS "accountStatus"
+           FROM employees e
+          WHERE e.id = $1 AND e.status = 'active' AND e.removed_at IS NULL
+            AND e.management_scope = 'MANAGED'`,
+        [body.data.newApproverEmployeeId],
+      );
+      const candidate = replacement.rows[0];
+      if (!candidate) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVER_NOT_ACTIVE",
+          message: "Penyetuju pengganti harus pegawai aktif yang dikelola HCIS.",
+        });
+      }
+      if (candidate.accountStatus !== "active") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVER_ACCOUNT_NOT_READY",
+          message: `Akun ${candidate.fullName} belum aktif, sehingga ia belum dapat memutuskan `
+            + "pengajuan. Selesaikan aktivasi akunnya lebih dulu.",
+        });
+      }
+
+      await client.query(
+        `UPDATE leave_request_approval_steps
+            SET approver_employee_id = $2, approver_account_id = NULL
+          WHERE id = $1`,
+        [current.id, body.data.newApproverEmployeeId],
+      );
+      // Jejaknya ditulis dua kali dengan sengaja: pada riwayat pengajuan, yang dibaca pemohon dan
+      // HC, dan pada audit akses, yang dibaca pemeriksa.
+      await addEvent(client, current.requestId, principal.id, "leave.approval.reassigned", {
+        stepId: current.id,
+        stepOrder: current.stepOrder,
+        previousApproverEmployeeId: current.approverEmployeeId,
+        previousApproverAccountId: current.approverAccountId,
+        newApproverEmployeeId: body.data.newApproverEmployeeId,
+        reason: body.data.reason,
+      });
+      await notifyApprovalRequested(client, {
+        requestId: current.requestId,
+        stepId: current.id,
+        approverEmployeeId: body.data.newApproverEmployeeId,
+        approverAccountId: null,
+      });
+      await client.query("COMMIT");
+      await audit(pool, principal, "leave.approval.reassigned", "leave_request_approval_step", current.id, {
+        leaveRequestId: current.requestId,
+        stepOrder: current.stepOrder,
+        previousApproverEmployeeId: current.approverEmployeeId,
+        previousApproverAccountId: current.approverAccountId,
+        newApproverEmployeeId: body.data.newApproverEmployeeId,
+        reason: body.data.reason,
+      });
+      return reply.send({
+        stepId: current.id,
+        requestId: current.requestId,
+        approverEmployeeId: body.data.newApproverEmployeeId,
+        approverName: candidate.fullName,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 }

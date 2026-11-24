@@ -36,12 +36,17 @@ export class OrganizationRolloutService {
       effectiveDate,
     );
     const legacy = this.legacyAuthorities(input);
+    // ORG-004 (D-R6): pada kolom lama, "penyetuju unit adalah pemohon" terbaca langsung dari
+    // kolomnya. `legacyAuthorities` membuang rungnya, jadi keterangan ini harus diambil sebelum itu.
+    const legacyUnitApproverIsRequester = Boolean(input.legacy.unitApproverEmployeeId)
+      && input.legacy.unitApproverEmployeeId === input.requesterEmployeeId;
     if (mode === "LEGACY") {
       return {
         mode,
         authoritativeSource: "LEGACY",
         authorities: legacy,
         rolloutScope,
+        unitApproverIsRequester: legacyUnitApproverIsRequester,
       };
     }
 
@@ -53,6 +58,7 @@ export class OrganizationRolloutService {
         authorities: structure.authorities,
         structure,
         rolloutScope,
+        unitApproverIsRequester: structure.unitApproverIsRequester === true,
       };
     }
 
@@ -70,6 +76,8 @@ export class OrganizationRolloutService {
           structural: structure,
         },
         rolloutScope,
+        // SHADOW memutuskan dari kolom lama, jadi keterangannya pun dari sana.
+        unitApproverIsRequester: legacyUnitApproverIsRequester,
       };
     } catch (error) {
       const diagnostic = error instanceof OrganizationResolutionError
@@ -85,6 +93,7 @@ export class OrganizationRolloutService {
           error: diagnostic,
         },
         rolloutScope,
+        unitApproverIsRequester: legacyUnitApproverIsRequester,
       };
     }
   }

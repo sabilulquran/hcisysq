@@ -1073,6 +1073,14 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/leave/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/leave/approvals/:stepId/reassign",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/leave/calendar-admin-routes.ts",
     "method": "DELETE",
     "url": "/admin/leave/calendar/exceptions/:date",
@@ -2508,6 +2516,18 @@
     "access": "self-service",
     "principals": [
       "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/services/employee-service-routes.ts",
+    "method": "GET",
+    "url": "/me/services",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD",
+      "SUPER_ADMIN"
     ],
     "permissions": []
   },

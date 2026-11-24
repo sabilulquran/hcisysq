@@ -1,4 +1,5 @@
-// LEAVE-010: in-app notifications (NOTIF-004) for the line approver whose step is active.
+// LEAVE-010: in-app notifications (NOTIF-004) for the line approver whose step is active, and
+// LEAVE-010-F for the requester once the request is finally decided.
 // Spec: docs/domain/workflows/leave-request.md "LEAVE-010".
 //
 // Written in the caller's transaction, next to the existing outbox intent. The text names the
@@ -25,6 +26,7 @@ interface RequestFacts {
 }
 
 const APPROVALS_HREF = "/app/approvals";
+const LEAVE_HREF = "/app/leave";
 
 async function loadRequestFacts(db: QueryTarget, requestId: string): Promise<RequestFacts | null> {
   const result = await db.query<RequestFacts>(
@@ -85,6 +87,40 @@ export async function notifyApprovalRequested(
     title: "Pengajuan cuti menunggu persetujuan Anda",
     body: `${facts.requesterName} mengajukan ${describeLeave(facts)}.`,
     metadata: { leaveRequestId: input.requestId, stepId: input.stepId, policyKey: facts.policyKey },
+  });
+}
+
+/**
+ * LEAVE-010-F (2026-11-24): the requester learns the final decision, exactly once.
+ *
+ * `annual-leave-vertical-slice.md` has always said "requester receives final approved/rejected
+ * intent", and the intent has always been written — to `leave_notification_outbox`, which nothing
+ * reads. So every approver saw their step arrive while the person who asked for the leave saw
+ * nothing at all and had to keep reopening Cuti & Izin. The outbox row stays: it is the
+ * provider-agnostic intent, and this is the in-app delivery beside it.
+ *
+ * `event_key` carries the request id, so the unique index on (recipient, event_key) makes this
+ * exactly one row per request however many times a decision path is replayed — and a request is
+ * only ever decided once.
+ */
+export async function notifyRequesterDecision(
+  db: QueryTarget,
+  input: { requestId: string; requesterEmployeeId: string; decision: "approved" | "rejected" },
+) {
+  const facts = await loadRequestFacts(db, input.requestId);
+  if (!facts) return false;
+  const approved = input.decision === "approved";
+  return notifyEmployee(db, input.requesterEmployeeId, {
+    eventKey: `leave.request.decided.${input.requestId}`,
+    category: "system",
+    href: LEAVE_HREF,
+    title: approved ? "Pengajuan cuti Anda disetujui" : "Pengajuan cuti Anda ditolak",
+    // Catatan penolakan tidak ikut: ia ditulis untuk pemohon di layar Cuti & Izin, bukan untuk
+    // ringkasan yang muncul di lonceng dan dapat terbaca orang lain dari balik bahu.
+    body: approved
+      ? `${describeLeave(facts)} sudah disetujui.`
+      : `${describeLeave(facts)} tidak disetujui. Buka Cuti & Izin untuk melihat alasannya.`,
+    metadata: { leaveRequestId: input.requestId, policyKey: facts.policyKey, decision: input.decision },
   });
 }
 

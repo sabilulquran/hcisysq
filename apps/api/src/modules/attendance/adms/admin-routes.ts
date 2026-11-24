@@ -18,6 +18,7 @@ import {
   revertMappingAlignment,
   summarizeAlignment,
 } from "./mapping-alignment.js";
+import { applyMappingReassign, planMappingReassign, type MappingReassignStatus } from "./mapping-reassign.js";
 
 const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
 const mappingIdSchema = z.object({ mappingId: z.string().uuid() });
@@ -50,6 +51,32 @@ const alignMappingsSchema = z
   })
   .refine((value) => !value.apply || Boolean(value.reason), { message: "Alasan wajib diisi." });
 const revertAlignmentSchema = z.object({ reason: z.string().trim().min(1).max(500) });
+const reassignMappingSchema = z
+  .object({
+    employeeId: z.string().uuid(),
+    apply: z.boolean().default(false),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .refine((value) => !value.apply || Boolean(value.reason), { message: "Alasan wajib diisi." });
+
+// ADMS-R2d: a plan that cannot be applied answers with the same code in preview and apply.
+const reassignRefusals: Record<Exclude<MappingReassignStatus, "change">, [number, string, string]> = {
+  not_found: [404, "ADMS_MAPPING_NOT_FOUND", "Mapping tidak ditemukan."],
+  same_employee: [409, "ADMS_MAPPING_SAME_EMPLOYEE", "PIN ini sudah terpetakan ke pegawai tersebut."],
+  employee_not_found: [404, "EMPLOYEE_NOT_FOUND", "Pegawai tidak ditemukan."],
+  employee_not_active: [409, "EMPLOYEE_NOT_ACTIVE", "Mapping hanya dapat dibuat ke pegawai aktif."],
+  missing_start_date: [
+    409,
+    "EMPLOYEE_START_DATE_MISSING",
+    "Isi TMT pegawai lebih dulu di data pegawai; mapping PIN berlaku sejak TMT.",
+  ],
+  invalid_range: [
+    409,
+    "ADMS_MAPPING_INVALID_RANGE",
+    "TMT pegawai pengganti jatuh setelah mapping ini berakhir, jadi mapping ini tidak bisa dipindahkan kepadanya.",
+  ],
+  overlap: [409, "ADMS_MAPPING_OVERLAP", "Rentang berlaku baru bertumpuk dengan mapping lain untuk PIN ini."],
+};
 
 export class AdmsAdminError extends Error {
   constructor(
@@ -708,6 +735,50 @@ export async function registerAdmsAdminRoutes(
       queueReprojection(pool, targets, request.log);
       reply.header("Cache-Control", "no-store");
       return reply.send({ mappingId: params.data.mappingId, effectiveFrom: outcome.effectiveFrom, scansMoved: outcome.scansMoved, reprojectionQueued: targets.length });
+    } catch (error) {
+      return sendAdminError(reply, error);
+    }
+  });
+
+  app.post("/admin/attendance/adms/mappings/:mappingId/reassign", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
+    if (!principal) return;
+    const params = mappingIdSchema.safeParse(request.params);
+    const body = reassignMappingSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_MAPPING_REASSIGN", message: "Permintaan ganti pegawai tidak valid." });
+    }
+    reply.header("Cache-Control", "no-store");
+    try {
+      if (!body.data.apply) {
+        const plan = await planMappingReassign(pool, params.data.mappingId, body.data.employeeId);
+        if (plan.status === "not_found") throw new AdmsAdminError(...reassignRefusals.not_found);
+        return reply.send({ applied: false, plan });
+      }
+      const client = await pool.connect();
+      let outcome;
+      let targets: Array<{ employeeId: string; attendanceDate: string }> = [];
+      try {
+        await client.query("BEGIN");
+        outcome = await applyMappingReassign(
+          client,
+          params.data.mappingId,
+          body.data.employeeId,
+          principal.id,
+          body.data.reason!,
+        );
+        if (outcome.plan.status !== "change") throw new AdmsAdminError(...reassignRefusals[outcome.plan.status]);
+        targets = await alignmentProjectionTargets(client, outcome.spans);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      // The wrong employee's days are cleared and the right one's filled after the reply.
+      queueReprojection(pool, targets, request.log);
+      return reply.send({ applied: true, plan: outcome.plan, reprojectionQueued: targets.length });
     } catch (error) {
       return sendAdminError(reply, error);
     }

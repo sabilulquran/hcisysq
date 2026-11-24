@@ -47,6 +47,8 @@ UI menampilkan PIN yang benar-benar pernah terlihat pada raw ATTLOG. Super Admin
 
 **Sesuaikan dengan TMT** (`POST /admin/attendance/adms/mappings/align-to-start-date`, `attendance.devices.operate`) memindahkan awal mapping yang sudah ada ke TMT dengan aturan yang sama. Tanpa `apply` hanya pratinjau (jumlah scan yang berpindah pemilik). Dengan `apply` dan alasan, setiap perubahan diaudit `mapping_aligned_to_start_date` berisi awal lama; `POST /admin/attendance/adms/mappings/:mappingId/revert-alignment` memulihkannya. Hasil kehadiran baru berubah setelah Kalkulasi dijalankan lagi.
 
+**Ganti pegawai (salah petakan), ADMS-R2d (ATT-014 §20.13):** `POST /admin/attendance/adms/mappings/:mappingId/reassign` (`attendance.devices.operate`) memindahkan mapping yang terlanjur dihubungkan ke pegawai yang salah. Lihat §20.13 di `attendance-report-calculation.md`.
+
 Setelah mapping berhasil dibuat, HCIS melakukan bounded re-projection untuk raw event yang termasuk effective window tersebut. Ini adalah aksi eksplisit akibat mapping admin, bukan auto-guess `PIN = employee_number`.
 
 Mengakhiri mapping berarti menutup mapping aktif pada waktu server saat aksi dilakukan; row mapping tidak dihapus.
@@ -60,6 +62,7 @@ Mengakhiri mapping berarti menutup mapping aktif pada waktu server saat aksi dil
 - `POST /admin/attendance/adms/devices/:deviceId/mappings`
 - `POST /admin/attendance/adms/mappings/align-to-start-date`
 - `POST /admin/attendance/adms/mappings/:mappingId/revert-alignment`
+- `POST /admin/attendance/adms/mappings/:mappingId/reassign`
 - `DELETE /admin/attendance/adms/mappings/:mappingId`
 
 Semua response operasional menggunakan `Cache-Control: no-store`.

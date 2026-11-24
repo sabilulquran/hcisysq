@@ -1698,6 +1698,43 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment that is not reverted yet" }
 
+  /admin/attendance/adms/mappings/{mappingId}/reassign:
+    post:
+      tags: [Attendance]
+      operationId: reassignAdmsEmployeeMapping
+      summary: Move a PIN mapped to the wrong employee to the right one (ADMS-R2d)
+      description: >
+        Without apply only previews. The mapping keeps its id, device, PIN and end; the employee changes and the start
+        becomes the new employee's TMT (never before an earlier holder of the PIN let go). Every scan in the old range
+        leaves the previous employee. Applied changes are audited as mapping_reassigned; the legacy daily projection of
+        both employees is refreshed after the reply.
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeId]
+              properties:
+                employeeId: { type: string, format: uuid }
+                apply: { type: boolean, default: false }
+                reason: { type: string, maxLength: 500, description: Required when apply is true }
+      responses:
+        '200':
+          description: >
+            Preview or applied change. plan.status is change, same_employee, employee_not_found, employee_not_active,
+            missing_start_date, invalid_range or overlap; a preview returns any of them, apply only succeeds on change.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ADMS_MAPPING_SAME_EMPLOYEE, EMPLOYEE_NOT_ACTIVE, EMPLOYEE_START_DATE_MISSING, ADMS_MAPPING_INVALID_RANGE or ADMS_MAPPING_OVERLAP on apply" }
+
   /admin/attendance/adms/mappings/{mappingId}:
     delete:
       tags: [Attendance]

@@ -22,7 +22,13 @@ import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperatio
 import { capabilityByKey, operatorCapabilityLabel } from "@/lib/admsOperator";
 import { pushUserProfile, setUserEnabled } from "@/lib/admsPhysicalParity";
 import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
-import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
+import {
+  createAdmsMapping,
+  endAdmsMapping,
+  reassignAdmsMapping,
+  type AdmsMappingReassignPlan,
+  type AdmsMappingReassignStatus,
+} from "@/lib/attendance";
 
 type UserRow = {
   pin: string;
@@ -47,6 +53,21 @@ function fmt(value: string | null) {
     timeZone: "Asia/Jakarta",
   }).format(new Date(value));
 }
+
+function fmtDate(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeZone: "Asia/Jakarta" }).format(new Date(value));
+}
+
+const reassignRefusal: Record<Exclude<AdmsMappingReassignStatus, "change">, string> = {
+  not_found: "Mapping ini sudah tidak ada. Muat ulang halaman.",
+  same_employee: "PIN ini sudah terpetakan ke pegawai tersebut.",
+  employee_not_found: "Pegawai tidak ditemukan.",
+  employee_not_active: "Pegawai ini tidak aktif. Mapping hanya dapat dipindahkan ke pegawai aktif.",
+  missing_start_date: "Pegawai ini belum punya TMT. Isi TMT di data pegawai lebih dulu.",
+  invalid_range: "TMT pegawai ini jatuh setelah mapping berakhir, jadi mapping tidak bisa dipindahkan kepadanya.",
+  overlap: "Rentang berlaku baru bertumpuk dengan mapping lain untuk PIN ini.",
+};
 
 function candidateLabel(kind: string) {
   if (kind === "exact_name") return "Nama sama";
@@ -81,6 +102,9 @@ export function AdminAdmsDeviceUsersPage() {
   const [employeeLoading, setEmployeeLoading] = useState(false);
   const [correctionTarget, setCorrectionTarget] = useState<UserRow | null>(null);
   const [intendedPin, setIntendedPin] = useState("");
+  const [reassignTarget, setReassignTarget] = useState<UserRow | null>(null);
+  const [reassignPlan, setReassignPlan] = useState<AdmsMappingReassignPlan | null>(null);
+  const [reassignReason, setReassignReason] = useState("");
 
   const load = useCallback(async () => {
     const [rosterResult, assistantResult, correctionResult, operations, biometricInventory] = await Promise.all([
@@ -367,6 +391,64 @@ export function AdminAdmsDeviceUsersPage() {
     }
   }, [refreshAll]);
 
+  const openReassign = useCallback((row: UserRow) => {
+    setReassignTarget(row);
+    setReassignPlan(null);
+    setReassignReason("");
+    setEmployeeQuery("");
+    setEmployeeResults([]);
+    setError(null);
+  }, []);
+
+  const closeReassign = useCallback(() => {
+    setReassignTarget(null);
+    setReassignPlan(null);
+    setReassignReason("");
+    setEmployeeQuery("");
+    setEmployeeResults([]);
+  }, []);
+
+  const previewReassign = useCallback(async (row: UserRow, employee: Pick<AdminEmployeeListItem, "id">) => {
+    if (!row.mappingId) return;
+    setBusyKey(`reassign:${row.pin}`);
+    try {
+      const result = await reassignAdmsMapping(row.mappingId, { employeeId: employee.id, apply: false });
+      setReassignPlan(result.plan);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pratinjau ganti pegawai tidak dapat dimuat.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, []);
+
+  const applyReassign = useCallback(async () => {
+    if (!reassignTarget?.mappingId || !reassignPlan?.next || reassignPlan.status !== "change") return;
+    const reason = reassignReason.trim();
+    if (!reason) {
+      setError("Alasan koreksi wajib diisi.");
+      return;
+    }
+    setBusyKey(`reassign:${reassignTarget.pin}`);
+    try {
+      await reassignAdmsMapping(reassignTarget.mappingId, {
+        employeeId: reassignPlan.next.employeeId,
+        apply: true,
+        reason,
+      });
+      setNotice(
+        `PIN ${reassignTarget.pin} sekarang milik ${reassignPlan.next.employeeName}. Scan PIN ini dilepas dari ${reassignPlan.previous?.employeeName ?? "pegawai sebelumnya"}; jalankan Kalkulasi untuk memperbarui laporan.`,
+      );
+      closeReassign();
+      setError(null);
+      await refreshAll();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ganti pegawai tidak dapat disimpan.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [closeReassign, reassignPlan, reassignReason, reassignTarget, refreshAll]);
+
   const saveCorrection = useCallback(async () => {
     if (!correctionTarget || !correctionTarget.rosterObserved || mappedEmployeeNeedsReview(correctionTarget)) return;
     const target = intendedPin.trim();
@@ -613,6 +695,14 @@ export function AdminAdmsDeviceUsersPage() {
                                   <button
                                     type="button"
                                     disabled={busyKey !== null}
+                                    onClick={() => openReassign(row)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Ganti pegawai (salah petakan)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null}
                                     onClick={() => void disconnectMapping(row)}
                                     className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-danger-ink hover:bg-danger-soft disabled:opacity-50"
                                   >
@@ -745,6 +835,152 @@ export function AdminAdmsDeviceUsersPage() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {canOperate && reassignTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="reassign-dialog-title">
+          <div className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-surface-raised p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="reassign-dialog-title" className="text-base font-bold text-brand-heading">
+                  Ganti pegawai PIN {reassignTarget.pin}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {reassignPlan ? "Langkah 2 dari 2 · Periksa lalu simpan" : "Langkah 1 dari 2 · Pilih pegawai yang benar"}
+                </p>
+              </div>
+              <button type="button" onClick={closeReassign} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {error ? (
+              <div role="alert" className="mt-3 rounded-xl bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div>
+            ) : null}
+
+            {!reassignPlan ? (
+              <>
+                <div className="mt-4 rounded-xl border border-border/70 bg-surface p-3 text-xs leading-5">
+                  <div className="text-muted-foreground">Sekarang terpetakan ke</div>
+                  <div className="mt-1 text-sm font-semibold text-brand-heading">
+                    {reassignTarget.employeeName ?? "—"}{reassignTarget.employeeNumber ? ` · ${reassignTarget.employeeNumber}` : ""}
+                  </div>
+                  <div className="mt-2 text-muted-foreground">
+                    Pakai ini bila PIN dihubungkan ke pegawai yang salah. Semua scan PIN ini dilepas dari pegawai itu dan dipindahkan ke pegawai yang benar sejak TMT-nya. Untuk pegawai yang berhenti memakai PIN, pakai Akhiri hubungan.
+                  </div>
+                </div>
+                {canSearchEmployees ? (
+                  <form
+                    className="mt-4 flex gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void searchEmployees();
+                    }}
+                  >
+                    <input
+                      value={employeeQuery}
+                      onChange={(event) => setEmployeeQuery(event.target.value)}
+                      placeholder="Nama atau nomor pegawai yang benar"
+                      aria-label="Cari pegawai yang benar"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-border px-3 text-sm outline-none focus:border-brand-primary"
+                    />
+                    <button
+                      type="submit"
+                      disabled={employeeLoading || !employeeQuery.trim()}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50"
+                    >
+                      {employeeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Cari
+                    </button>
+                  </form>
+                ) : (
+                  <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">
+                    Mencari pegawai memerlukan izin pengelolaan pegawai.
+                  </div>
+                )}
+                <div className="mt-2 space-y-2">
+                  {employeeResults.map((employee) => (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      disabled={busyKey !== null}
+                      onClick={() => void previewReassign(reassignTarget, employee)}
+                      className="flex w-full items-center justify-between rounded-xl border border-border/70 p-3 text-left hover:bg-surface disabled:opacity-50"
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
+                        <span className="mt-1 block text-[11px] text-muted-foreground">{employee.employeeNumber}{employee.unitName ? ` · ${employee.unitName}` : ""}</span>
+                      </span>
+                      <span className="text-xs font-semibold text-brand-primary-deep">Lanjutkan</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <dl className="mt-4 grid gap-3 rounded-xl border border-border/70 bg-surface p-3 text-xs leading-5 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">Dari (salah)</dt>
+                    <dd className="font-semibold text-brand-heading">{reassignPlan.previous?.employeeName ?? "—"}</dd>
+                    <dd className="text-muted-foreground">{reassignPlan.previous?.employeeNumber}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Ke (benar)</dt>
+                    <dd className="font-semibold text-brand-heading">{reassignPlan.next?.employeeName ?? "—"}</dd>
+                    <dd className="text-muted-foreground">{reassignPlan.next?.employeeNumber}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Berlaku sejak</dt>
+                    <dd className="font-semibold text-brand-heading">{fmtDate(reassignPlan.next?.effectiveFrom ?? null)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Scan berpindah</dt>
+                    <dd className="font-semibold text-brand-heading">
+                      {reassignPlan.scansFromPrevious} dilepas · {reassignPlan.scansToNext} masuk
+                    </dd>
+                  </div>
+                </dl>
+                {reassignPlan.status !== "change" ? (
+                  <div className="mt-3 flex gap-2 rounded-xl bg-warning-soft p-3 text-xs leading-5 text-warning-ink">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {reassignRefusal[reassignPlan.status]}
+                  </div>
+                ) : (
+                  <label className="mt-4 block text-xs font-semibold text-brand-heading">
+                    Alasan koreksi
+                    <textarea
+                      value={reassignReason}
+                      onChange={(event) => setReassignReason(event.target.value)}
+                      maxLength={500}
+                      rows={2}
+                      placeholder="Contoh: salah pilih pegawai saat menghubungkan PIN"
+                      className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm font-normal outline-none focus:border-brand-primary"
+                    />
+                  </label>
+                )}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={busyKey !== null}
+                    onClick={() => setReassignPlan(null)}
+                    className="h-10 rounded-xl border border-border px-4 text-xs font-semibold disabled:opacity-50"
+                  >
+                    Kembali
+                  </button>
+                  {reassignPlan.status === "change" ? (
+                    <button
+                      type="button"
+                      disabled={busyKey !== null || !reassignReason.trim()}
+                      onClick={() => void applyReassign()}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-semibold text-brand-foreground disabled:opacity-50"
+                    >
+                      {busyKey?.startsWith("reassign:") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Ganti pegawai
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}

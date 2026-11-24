@@ -1291,6 +1291,29 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
   diakhiri lewat aksi Akhiri yang ada. Pemetaan hanya bisa dibuat untuk pegawai aktif.
 - Manifest AUTH-011 +2 route (209). Tidak ada permission baru.
 
+### 20.13 Ganti pegawai pada PIN yang salah petakan, ADMS-R2d (2026-11-24)
+
+- **Masalah:** Admin menghubungkan PIN ke pegawai yang salah. "Akhiri hubungan" bukan koreksi: scan lama tetap
+  milik pegawai yang salah, dan pemetaan untuk pegawai yang benar hanya bisa mulai sejak pemetaan diakhiri.
+- **Aksi Ganti pegawai (salah petakan)** di menu Aksi baris PIN (halaman Pengguna mesin), izin
+  `attendance.devices.operate`. Langkah 1 memilih pegawai yang benar, langkah 2 menampilkan pratinjau (dari, ke,
+  awal berlaku, jumlah scan dilepas dan masuk) dan meminta alasan. Langkah 2 menggantikan langkah 1 di dialog
+  yang sama; langkah tidak disimpan di `?langkah=` karena PIN yang dipilih hanya ada di dialog ini.
+- **Aturan:** mapping tetap memakai id, mesin, PIN, dan akhir berlaku yang sama. Pegawainya diganti, dan awal
+  berlakunya menjadi TMT pegawai yang benar, atau akhir pemegang PIN sebelumnya bila lebih akhir (aturan §20.11).
+  Pegawai tujuan harus aktif dan punya TMT. Ditolak bila sama dengan pegawai sekarang, TMT jatuh setelah mapping
+  berakhir, atau rentang barunya bertumpuk dengan mapping lain untuk PIN itu.
+- **Akibat:** seluruh scan di rentang lama lepas dari pegawai yang salah. Scan sebelum TMT pegawai yang benar
+  tidak menjadi milik siapa pun. Audit `mapping_reassigned` menyimpan pegawai dan awal lama, pegawai dan awal
+  baru, jumlah scan, dan alasan. Jalur pemulihan: jalankan Ganti pegawai lagi ke pegawai semula.
+- **Proyeksi harian lama** diperbarui sesudah respons untuk hari-hari kedua pegawai. Hari yang kehilangan semua
+  scan menghapus baris yang dibuat ADMS (`source = 'integration'`, `source_reference` berawalan `adms:`), diaudit
+  `cleared` di `attendance_adms_projection_audit_events`. Baris manual dan integrasi lain tidak disentuh. Engine
+  membaca scan mentah, jadi laporan baru berubah setelah Kalkulasi.
+- **Migration `0184`** (aditif) menambah aksi `mapping_reassigned` dan `cleared` ke constraint audit. Rilis lama
+  tidak menulis keduanya. Rollback: pasang kembali daftar `0067` dan `0022` setelah tidak ada baris beraksi baru.
+- Manifest AUTH-011 +1 route. Tidak ada permission baru.
+
 ### 20.12 Catatan implementasi ATT-014-R2b (2026-10-27)
 
 - **Satu jendela "Laporan dan Kalkulasi"** (D-14-17): satu bar kontrol (Unit, Pegawai, Dari–Sampai,

@@ -38,7 +38,14 @@ type ProjectionTargetRow = {
 export type AdmsProjectionResult = {
   employeeId: string;
   attendanceDate: string;
-  status: "created" | "updated" | "unchanged" | "manual_conflict" | "foreign_integration_conflict" | "no_events";
+  status:
+    | "created"
+    | "updated"
+    | "unchanged"
+    | "manual_conflict"
+    | "foreign_integration_conflict"
+    | "no_events"
+    | "cleared";
 };
 
 export function resolveAdmsPunchWindow(
@@ -146,7 +153,7 @@ async function writeProjectionAudit(
   input: {
     employeeId: string;
     attendanceDate: string;
-    action: "created" | "updated" | "skipped_manual_conflict" | "skipped_foreign_integration";
+    action: "created" | "updated" | "skipped_manual_conflict" | "skipped_foreign_integration" | "cleared";
     mappingIds: string[];
     sourceEventIds: string[];
     before: AttendanceRow | null;
@@ -266,6 +273,27 @@ export async function projectAdmsAttendanceDay(
     const punches = await loadMappedPunches(client, employeeId, attendanceDate);
     const window = resolveAdmsPunchWindow(punches);
     if (!window) {
+      // ADMS-R2d: a day whose scans all left this employee (a corrected wrong mapping) still holds the
+      // row ADMS projected earlier. Only that row is removed; manual and foreign rows stay untouched.
+      const stale = await loadAttendanceForUpdate(client, employeeId, attendanceDate);
+      if (stale?.source === "integration" && stale.sourceReference?.startsWith("adms:")) {
+        await client.query(
+          `DELETE FROM attendance_daily_records
+           WHERE employee_id = $1 AND attendance_date = $2::date AND source = 'integration'`,
+          [employeeId, attendanceDate],
+        );
+        await writeProjectionAudit(client, {
+          employeeId,
+          attendanceDate,
+          action: "cleared",
+          mappingIds: [],
+          sourceEventIds: [],
+          before: stale,
+          after: null,
+        });
+        await client.query("COMMIT");
+        return { employeeId, attendanceDate, status: "cleared" };
+      }
       await client.query("COMMIT");
       return { employeeId, attendanceDate, status: "no_events" };
     }

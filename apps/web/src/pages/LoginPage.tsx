@@ -1,13 +1,17 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { LoginForm } from "@/components/hcis/LoginForm";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import {
+  claimOidcRetry,
   getAuthMode,
+  isOidcRetryCandidate,
   loginSearch,
   oidcLoginFailureMessage,
+  oidcRetryStep,
   oidcStartHref,
+  sessionRetryStorage,
   shouldStartOidcAutomatically,
   type AuthMode,
   type LoginSearch,
@@ -42,21 +46,42 @@ export function LoginPage() {
     if (autoStart) window.location.replace(oidcStartHref(search.returnTo));
   }, [autoStart, search.returnTo]);
 
-  return <LoginPageView mode={mode} modeError={modeError} search={search} />;
+  // AUTH-012 Rev 2: one automatic retry after a generic callback failure, then the button.
+  const retryCandidate = isOidcRetryCandidate(search);
+  const [retryDeclined, setRetryDeclined] = useState(false);
+  const retryClaimed = useRef(false);
+  useEffect(() => {
+    if (!retryCandidate || retryDeclined || retryClaimed.current) return;
+    const step = oidcRetryStep(mode, modeError, search, () => claimOidcRetry(sessionRetryStorage(), Date.now()));
+    if (step === "wait") return;
+    if (step === "retry") {
+      retryClaimed.current = true;
+      window.location.replace(oidcStartHref(search.returnTo));
+      return;
+    }
+    setRetryDeclined(true);
+  }, [mode, modeError, retryCandidate, retryDeclined, search]);
+  const retrying = retryCandidate && !retryDeclined && !modeError && mode !== "local";
+
+  return <LoginPageView mode={mode} modeError={modeError} search={search} retrying={retrying} />;
 }
 
 export function LoginPageView({
   mode,
   modeError,
   search,
+  retrying = false,
 }: {
   mode: AuthMode | null;
   modeError: boolean;
   search: LoginSearch;
+  /** AUTH-012 Rev 2: an automatic retry after `oidc_failed` is pending or under way. */
+  retrying?: boolean;
 }) {
   // Without a callback failure the visitor is most likely on the way to Akun SQ, so the
   // full login page is held back until the mode says otherwise. This avoids a hero flash.
-  if (!modeError && mode !== "local" && search.authError === undefined) {
+  // The same holds while the one automatic retry after a callback failure is decided or runs.
+  if (!modeError && mode !== "local" && (search.authError === undefined || retrying)) {
     return <LoginHandOff label={mode === "oidc" ? "Membuka Akun SQ…" : "Memeriksa metode masuk..."} />;
   }
 

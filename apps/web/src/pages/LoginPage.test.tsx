@@ -27,6 +27,19 @@ describe("AUTH-012 login entry hand-off to Akun SQ", () => {
     expect(html).not.toContain("Membuka Akun SQ");
   });
 
+  it("shows only the neutral hand-off while the one automatic retry runs (AUTH-012 Rev 2)", () => {
+    const html = render({ mode: "oidc", modeError: false, search: { authError: "oidc_failed" }, retrying: true });
+    expect(html).toContain("Membuka Akun SQ…");
+    expect(html).not.toContain("belum berhasil");
+    expect(html).not.toContain("Selamat datang kembali");
+  });
+
+  it("does not flash the error page while the mode for a retry is still loading", () => {
+    const html = render({ mode: null, modeError: false, search: { authError: "oidc_failed" }, retrying: true });
+    expect(html).toContain("Memeriksa metode masuk");
+    expect(html).not.toContain("Selamat datang kembali");
+  });
+
   it("still offers the retry button for an unknown authError value without showing it", () => {
     const html = render({ mode: "oidc", modeError: false, search: { authError: "token=secret" } });
     expect(html).toContain('href="/api/auth/oidc/start"');

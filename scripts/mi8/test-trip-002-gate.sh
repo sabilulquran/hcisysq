@@ -148,7 +148,7 @@ expect_pass() { # expect_pass NAME <query> <verdict fn> [substring]...
 FIXTURE_TABLES="employees, employments, employment_actions, employment_placements,
   job_classifications, trip_per_diem_golongan_map, trip_per_diem_rates, trip_advances,
   business_trip_requests, accounts, organization_change_sets, organization_positions,
-  organization_nodes"
+  organization_nodes, trip_per_diem_activation"
 
 # employments, placements and trip advances are append-only in production: triggers refuse
 # DELETE and TRUNCATE. A fixture must still be able to reset between cases, so the writes below
@@ -366,6 +366,65 @@ expect_pass "an employee who is no longer active does not stop the release" \
 seed_complete
 expect_pass "pre-migrate gate passes on an empty rate table" \
   trip-002-pre-migrate-gate.sql trip_002_pre_migrate_verdict "may run"
+
+# ------------------------------------------------- the switch itself (D-22)
+#
+# The owner's decision of 2026-11-24 moved the catalogue check off the release and onto the
+# feature's own switch. Two things have to be true for that to be safe, and both are asserted
+# here: a release must sail past a broken golongan map while uang saku is OFF, and must still be
+# stopped by the very same map while it is ON.
+
+echo
+echo "-- the uang saku switch"
+
+# 13. No switch table at all (a device that has not had 0183 yet): the feature cannot be on.
+VERDICT_OUTPUT=$( ( trip_002_activation_state "OK|TABLE|ABSENT" "" ) 2>&1 ); VERDICT_STATUS=$?
+check_pass "a device without the switch table reads as OFF" "INACTIVE"
+
+# 14. The switch exists and is off, and is on.
+VERDICT_OUTPUT=$( ( trip_002_activation_state "OK|TABLE|PRESENT" "OK|STATE|INACTIVE" ) 2>&1 ); VERDICT_STATUS=$?
+check_pass "a switch that is off reads as OFF" "INACTIVE"
+VERDICT_OUTPUT=$( ( trip_002_activation_state "OK|TABLE|PRESENT" "OK|STATE|ACTIVE" ) 2>&1 ); VERDICT_STATUS=$?
+check_pass "a switch that is on reads as ON" "ACTIVE"
+
+# 15. An answer that never arrived must not read as "off", which would be a silent pass — the
+#     same defect shape the sentinel rows exist to close.
+VERDICT_OUTPUT=$( ( trip_002_activation_state "" "" ) 2>&1 ); VERDICT_STATUS=$?
+check_stop "an empty answer about the switch stops the release" "could not tell" "STOP:"
+VERDICT_OUTPUT=$( ( trip_002_activation_state "OK|TABLE|PRESENT" "" ) 2>&1 ); VERDICT_STATUS=$?
+check_stop "an empty answer about the switch state stops the release" "could not read" "STOP:"
+
+# 16. THE DECISION. The identical empty-map report stops the release with the feature on and
+#     lets it through with the feature off. This is what lets a leave release go out today.
+seed_complete
+sql_do "DELETE FROM trip_per_diem_golongan_map"
+broken=$(psql -d "$URL" -v ON_ERROR_STOP=1 -At -c "$(gate_sql trip-002-golongan-gate.sql)") || exit 1
+VERDICT_OUTPUT=$( ( trip_002_gate_verdict ACTIVE "$broken" ) 2>&1 ); VERDICT_STATUS=$?
+check_stop "an empty golongan map stops the release while uang saku is ON" \
+  "EMPLOYEE_UNRESOLVED" "STOP:"
+VERDICT_OUTPUT=$( ( trip_002_gate_verdict INACTIVE "$broken" ) 2>&1 ); VERDICT_STATUS=$?
+check_pass "the same empty golongan map lets the release through while uang saku is OFF" \
+  "uang saku dinas is OFF" '!STOP:'
+
+# 17. The switch queries themselves, against the real schema: empty table means never switched
+#     on, and the last row written is the one in force.
+seed_complete
+VERDICT_OUTPUT=$(psql -d "$URL" -v ON_ERROR_STOP=1 -At -c "$(gate_sql trip-002-activation-present.sql)" 2>&1); VERDICT_STATUS=$?
+check_pass "the switch table exists after the migrations" "OK|TABLE|PRESENT"
+VERDICT_OUTPUT=$(psql -d "$URL" -v ON_ERROR_STOP=1 -At -c "$(gate_sql trip-002-activation-state.sql)" 2>&1); VERDICT_STATUS=$?
+check_pass "an empty switch table reads as INACTIVE" "OK|STATE|INACTIVE"
+
+sql_do "INSERT INTO trip_per_diem_activation (id, state, reason, changed_by_account_id, changed_at)
+        VALUES ('00000000-0000-4000-8000-00000000aa01', 'ACTIVE', 'uji gerbang',
+                '00000000-0000-4000-8000-00000000a001', now() - interval '2 hours')"
+VERDICT_OUTPUT=$(psql -d "$URL" -v ON_ERROR_STOP=1 -At -c "$(gate_sql trip-002-activation-state.sql)" 2>&1); VERDICT_STATUS=$?
+check_pass "a switch that was turned on reads as ACTIVE" "OK|STATE|ACTIVE"
+
+sql_do "INSERT INTO trip_per_diem_activation (id, state, reason, changed_by_account_id, changed_at)
+        VALUES ('00000000-0000-4000-8000-00000000aa02', 'INACTIVE', 'dimatikan lagi',
+                '00000000-0000-4000-8000-00000000a001', now())"
+VERDICT_OUTPUT=$(psql -d "$URL" -v ON_ERROR_STOP=1 -At -c "$(gate_sql trip-002-activation-state.sql)" 2>&1); VERDICT_STATUS=$?
+check_pass "the last row written is the state in force" "OK|STATE|INACTIVE"
 
 echo
 echo "trip-002 gate tests: $passed passed, $failed failed"

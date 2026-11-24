@@ -408,6 +408,37 @@ paths:
         '201': { description: Stored }
         '400': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/trip-per-diem-activation:
+    get:
+      tags: [Trip Advances]
+      operationId: getTripPerDiemActivation
+      summary: Whether uang saku is switched on, and everything that currently holds it shut (TRIP-002 D-22)
+      responses:
+        '200': { description: State in force, who changed it and why, plus ready/blockers/warnings }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Trip Advances]
+      operationId: setTripPerDiemActivation
+      summary: >-
+        Switch uang saku on or off (trip_per_diem.manage). Every switch-on runs the readiness
+        check first, the first time and every time after, and is refused 409
+        TRIP_PER_DIEM_NOT_READY with the findings while anything still holds it. There is no
+        override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state, reason]
+              properties:
+                state: { type: string, enum: [ACTIVE, INACTIVE] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { description: Switched; warnings that did not hold it are returned }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /admin/trip-per-diem-golongan:
     get:
       tags: [Trip Advances]

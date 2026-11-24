@@ -30,7 +30,10 @@ import {
   searchAdvanceClaimants,
   settleAdvance,
   getGolonganMap,
+  getPerDiemActivation,
   mapGolongan,
+  READINESS_LABELS,
+  setPerDiemActivation,
   unmapGolongan,
   todayInJakarta,
   TripAdvanceApiError,
@@ -44,6 +47,7 @@ import {
   type WilayahKey,
   type GolonganKey,
   type GolonganMapping,
+  type PerDiemActivation,
 } from "@/lib/tripAdvances";
 import type { AuthSession } from "@/types/hcis";
 
@@ -97,6 +101,8 @@ export function AdminTripAdvancesPage() {
   const [golonganMap, setGolonganMap] = useState<GolonganMapping[]>([]);
   const [unmappedCodes, setUnmappedCodes] = useState<Array<{ code: string; name: string }>>([]);
   const [mapForm, setMapForm] = useState({ jobClassificationCode: "", golongan: "STAF" as GolonganKey, note: "" });
+  const [activation, setActivation] = useState<PerDiemActivation | null>(null);
+  const [activationReason, setActivationReason] = useState("");
   const [organizerPaid, setOrganizerPaid] = useState(false);
   const [waiveReason, setWaiveReason] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -166,6 +172,35 @@ export function AdminTripAdvancesPage() {
       .finally(() => setBusy(false));
   };
 
+  // D-22: the lock and everything that stands between it and being opened.
+  const loadActivation = async () => {
+    try {
+      setActivation(await getPerDiemActivation());
+    } catch {
+      setActivation(null);
+    }
+  };
+
+  const changeActivation = (state: "ACTIVE" | "INACTIVE") => {
+    const reason = activationReason.trim();
+    if (reason.length < 10) {
+      setError("Tulis alasan menyalakan atau mematikan uang saku (10–500 karakter).");
+      return;
+    }
+    setBusy(true);
+    void setPerDiemActivation({ state, reason })
+      .then(async () => {
+        setNotice(state === "ACTIVE"
+          ? "Uang saku perjalanan dinas dinyalakan. Pegawai dapat mengajukan uang muka."
+          : "Uang saku perjalanan dinas dimatikan. Pengajuan baru ditutup; uang muka yang sudah berjalan tetap dapat diselesaikan.");
+        setError(null);
+        setActivationReason("");
+        await loadActivation();
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Status uang saku tidak dapat diubah."))
+      .finally(() => setBusy(false));
+  };
+
   useEffect(() => {
     void getCurrentSession().then(setSession).catch(() => {
       setSession(null);
@@ -173,6 +208,7 @@ export function AdminTripAdvancesPage() {
     });
     void loadRates(1);
     void loadGolonganMap();
+    void loadActivation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -332,6 +368,81 @@ export function AdminTripAdvancesPage() {
     <AdminShell active="services" title="Uang Muka Dinas" description="Register uang muka perjalanan dinas, pertanggungjawaban, dan tarif uang harian.">
       {error && !advanceId ? <div role="alert" className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice && !advanceId ? <div role="status" className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+
+      {activation ? (
+        <section className="mb-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+          <h2 className="text-sm font-bold text-brand-heading">Status uang saku perjalanan dinas</h2>
+          <p className="text-xs text-muted-foreground">
+            Uang saku terkunci sampai dinyalakan, dan hanya dapat dinyalakan bila katalog klasifikasi jabatan,
+            pemetaan golongan, dan tarifnya sudah lengkap. Pemeriksaan ini diulang pada setiap penyalaan.
+          </p>
+          <div className={`mt-3 ${box}`}>
+            <p className="text-sm font-bold text-brand-heading">
+              {activation.state === "ACTIVE" ? "Aktif" : "Belum aktif (terkunci)"}
+            </p>
+            {activation.changedAt ? (
+              <p className="text-xs text-muted-foreground">
+                Diubah {activation.changedAt.slice(0, 10)}
+                {activation.changedByName ? ` oleh ${activation.changedByName}` : ""}
+                {activation.reason ? ` — ${activation.reason}` : ""}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Belum pernah dinyalakan sejak fitur ini terpasang.</p>
+            )}
+          </div>
+          {activation.blockers.length > 0 ? (
+            <div className={`mt-3 ${box}`}>
+              <p className="text-xs font-semibold text-danger-ink">Belum dapat dinyalakan:</p>
+              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                {activation.blockers.map((finding, index) => (
+                  <li key={`${finding.kind}-${index}`}>
+                    <span className="font-semibold">{READINESS_LABELS[finding.kind] ?? finding.kind}</span>
+                    {` — ${finding.detail}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {activation.warnings.length > 0 ? (
+            <div className={`mt-3 ${box}`}>
+              <p className="text-xs font-semibold text-muted-foreground">Peringatan (tidak menahan penyalaan):</p>
+              <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                {activation.warnings.map((finding, index) => (
+                  <li key={`${finding.kind}-${index}`}>
+                    {(READINESS_LABELS[finding.kind] ?? finding.kind)}{` — ${finding.detail}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {canManageRates ? (
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-muted-foreground">Alasan (10–500 karakter)
+                <input
+                  maxLength={500}
+                  value={activationReason}
+                  className={field}
+                  onChange={(event) => setActivationReason(event.target.value)}
+                />
+              </label>
+              {activation.state === "ACTIVE" ? (
+                <button type="button" className={primary} disabled={busy} onClick={() => changeActivation("INACTIVE")}>
+                  Matikan uang saku
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={primary}
+                  disabled={busy || !activation.ready}
+                  onClick={() => changeActivation("ACTIVE")}
+                >
+                  Nyalakan uang saku
+                </button>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="mb-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-sm font-bold text-brand-heading">Tarif uang harian</h2>

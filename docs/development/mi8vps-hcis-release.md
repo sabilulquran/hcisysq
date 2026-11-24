@@ -116,19 +116,36 @@ It stops first if another operator holds the release lock (§4.10).
 
 #### 4.2.1 Release gate: TRIP-002 uang saku (migration `0172`, SK 01.111/YSQ/VII/2026)
 
-Two **release-stopping** checks in the script, not steps anyone has to remember. They run only
-when the bundle carries `0172_trip_per_diem_decree.sql`. Both read their SQL from
-`scripts/mi8/sql/`, which is also what the test described at the end of this section runs, so the
-gate and its test can never drift into two different queries.
+**Where this check lives, since 24 November 2026.** The owner decided (TRIP-002 D-22) that the
+catalogue check belongs to the launch of uang saku dinas, not to every release. Migration `0183`
+gives the feature a switch of its own that ships **off**; while it is off nobody can reach the
+per diem path at all, and the API refuses every attempt to switch it on whose readiness check
+fails — the first attempt and every one after, a switch-on that follows a switch-off included.
+So an empty golongan map no longer holds back a release that has nothing to do with uang saku:
+the leave fix of this week goes out with uang saku still locked.
+
+What is left here are two **release-stopping** checks, and both are about this release:
+
+* the first runs only when the bundle carries `0172_trip_per_diem_decree.sql`;
+* the second runs on every release, and stops it only when uang saku is **switched on** on the
+  device with data that no longer resolves. With the feature off it costs two trivial queries
+  and says so in one line.
+
+All of them read their SQL from `scripts/mi8/sql/`, which is also what the test described at the
+end of this section runs, so the gate and its test can never drift into two different queries.
 
 1. **`trip_per_diem_rates` must be empty** — in `preflight`, while `0172` is still pending. A
    DRAFT-zone rate row has no golongan and no one may guess one, so the migration itself aborts;
    the gate stops the release before it gets that far. The check is `trip_002_gate_pre_migrate`,
    over `sql/trip-002-pre-migrate-gate.sql`.
 
-2. **Everyone who can ask for an advance must resolve to a golongan** — in `candidate`, after
-   `migrate` and before `cutover`, beside the HTTP checks. The check is `trip_002_gate_mapped`,
-   over `sql/trip-002-golongan-gate.sql`. It asks the question **from the people**, the way
+2. **If uang saku is switched on, everyone who can ask for an advance must resolve to a
+   golongan** — in `candidate`, after `migrate` and before `cutover`, beside the HTTP checks.
+   The check is `trip_002_gate_mapped`. It first reads the switch, over
+   `sql/trip-002-activation-present.sql` and `sql/trip-002-activation-state.sql`: a device
+   without the switch table (one that has not had `0183` yet) and a switch that is off both read
+   as OFF, and the release goes through. Only when it reads ACTIVE does the gate run
+   `sql/trip-002-golongan-gate.sql`. That query asks the question **from the people**, the way
    `resolveGolongan` is asked it at runtime, and not from the catalogue; a catalogue-only check
    is satisfied by an empty catalogue and never sees someone who holds no classification at all.
    It stops the release (`FAIL`) on any of:
@@ -163,15 +180,19 @@ gate and its test can never drift into two different queries.
    **An answer that does not arrive is a failure, not a pass.** `psql` writes its errors to
    stderr and prints nothing at all to stdout — byte for byte what a world with nothing to report
    looks like. The query therefore always emits a sentinel row (`OK|GATE|…`), the gate stops if
-   that row is absent, and the query's exit status is captured before it is judged. One practical
-   consequence: in a **dry run taken before `migrate`**, `trip_per_diem_golongan_map` does not
-   exist on the device yet, so this gate stops with that message instead of printing a green
-   line. That is correct — a dry run cannot answer this question — and the real answer comes from
-   the `candidate` phase of the apply run, after `migrate`.
+   that row is absent, and the query's exit status is captured before it is judged. The switch
+   queries carry sentinels of their own (`OK|TABLE|…`, `OK|STATE|…`) for the same reason: an
+   answer that never arrived must not read as "the feature is off", which would be a silent pass.
+   This also removes what used to be an awkward corner — a dry run taken before `migrate` could
+   not see `trip_per_diem_golongan_map` and had to stop. A device that has never switched uang
+   saku on answers that in one query, whether or not the map table exists yet.
 
-Until everything resolves, per diem estimates, new advances and settlements answer 409
-`TRIP_PER_DIEM_GOLONGAN_UNMAPPED`; with an empty map that is every employee, from the minute of
-cutover.
+While uang saku is **on** and something does not resolve, per diem estimates, new advances and
+settlements answer 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED`; with an empty map that is every
+employee. That is what this gate exists to prevent a release from leaving behind. While uang
+saku is **off** the same gaps are harmless, because the two doors into the feature are shut and
+answer 409 `TRIP_PER_DIEM_NOT_ACTIVE` instead — and they are exactly what HC fills in before
+switching it on.
 
 **There is no override.** The `--allow-unmapped-golongan` flag was withdrawn by the owner on
 2026-11-20 and removed from the script; passing it now stops the run with the usage text. The
@@ -181,11 +202,15 @@ as `EMPLOYEE_UNRESOLVED`. How long that takes depends on what is missing — a m
 form entry, but an employee with no employment record at all needs an EMP-005 action first, which
 is not a two-minute job. Fix it, re-run `candidate`, and only then cut over.
 
-**Test.** `scripts/mi8/test-trip-002-gate.sh` runs both gates against a real PostgreSQL: it
+**Test.** `scripts/mi8/test-trip-002-gate.sh` runs these gates against a real PostgreSQL: it
 migrates `apps/api/migrations` into a disposable schema, builds fixtures for each failing and
 passing case, and drives the script's own `BEGIN trip-002-gate` block, the same way
-`test-release-lock.sh` drives the release-lock block. It never contacts the device. CI runs it on
-every pull request; locally it needs an empty loopback database it may create schemas in:
+`test-release-lock.sh` drives the release-lock block. It never contacts the device. Among its
+cases is the decision itself: one and the same empty golongan map stops the release while uang
+saku is on and lets it through while uang saku is off. The other half — what holds a switch-on,
+and what the lock shuts — is `apps/api/test/trip-per-diem-activation.postgres.test.ts`. CI runs
+both on every pull request; locally the gate test needs an empty loopback database it may create
+schemas in:
 
 ```sh
 HCIS_GATE_TEST_DATABASE_URL=postgres://hcis@127.0.0.1:5432/hcis_mi8_gate_test \

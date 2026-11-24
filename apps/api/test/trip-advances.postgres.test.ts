@@ -262,6 +262,14 @@ describe.skipIf(!allowed)("TRIP-002 trip advances and per diem", () => {
       [classification, people.hc.accountId],
     );
     for (const key of ["requester", "other"] as const) await giveClassification(people[key].employeeId, classification, unitId);
+    // D-22: uang saku ships locked, so this file's world has to switch it on before anything
+    // here can reach the per diem path at all. What holds that switch, and what the lock shuts,
+    // belongs to `trip-per-diem-activation.postgres.test.ts`.
+    await client.query(
+      `INSERT INTO trip_per_diem_activation (id, state, reason, changed_by_account_id)
+       VALUES ($1, 'ACTIVE', 'Fixture TRIP-002: uang saku dinyalakan untuk uji', $2)`,
+      [randomUUID(), people.hc.accountId],
+    );
     for (const key of ["requester", "finance", "hc", "other"] as const) {
       await client.query("UPDATE employees SET direct_manager_employee_id = $2 WHERE id = $1", [people[key].employeeId, people.manager.employeeId]);
     }

@@ -27,6 +27,12 @@ import { decideLeaveApprovalStep, LeaveWorkflowError, type LeaveApprovalStepStat
 import { bindingsOn } from "../organization/job-classification-resolver.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
+  perDiemActivation,
+  perDiemReadiness,
+  readinessBlockers,
+  readinessSummary,
+} from "./activation.js";
+import {
   ACTIVE_TRIP_STATUSES,
   ADVANCE_STATUSES,
   ADVANCEABLE_TRIP_STATUSES,
@@ -89,6 +95,9 @@ const golonganMapBody = z.object({
   note: z.string().trim().max(500).nullable().optional(),
 });
 const golonganUnmapParams = z.object({ code: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/) });
+// D-22: turning the per diem feature on or off. A reason is required either way, because both
+// directions are decisions somebody will have to explain later.
+const activationBody = z.object({ state: z.enum(["ACTIVE", "INACTIVE"]), reason: text(10, 500) });
 const idParams = z.object({ id: z.string().uuid() });
 const stepParams = z.object({ stepId: z.string().uuid() });
 const decisionBody = z.discriminatedUnion("decision", [
@@ -655,11 +664,28 @@ export async function registerTripAdvanceRoutes(
   }
 
   /**
+   * D-22: the two doors into the per diem feature — the estimate and a new advance — are shut
+   * while it is locked. Everything downstream (approval, disbursement, settlement) is left alone
+   * on purpose: an advance can only exist if it was created while the feature was on, and
+   * switching the feature off must not strand money that is already out.
+   */
+  async function requirePerDiemActive(db: Queryable) {
+    const activation = await perDiemActivation(db);
+    if (activation.state === "ACTIVE") return;
+    throw new TripAdvanceError(
+      409,
+      "TRIP_PER_DIEM_NOT_ACTIVE",
+      "Uang saku perjalanan dinas belum diaktifkan. Minta HC/Keuangan melengkapi katalog klasifikasi jabatan dan pemetaan golongannya, lalu menyalakannya di Admin → Uang Muka Dinas.",
+    );
+  }
+
+  /**
    * D-04 / D-20: the per diem estimate. The golongan comes from the employee's ORG-011
    * classifications on the departure date; an unmapped classification stops the estimate with a
    * configuration error instead of quietly costing the cheapest tier.
    */
   async function estimate(db: Queryable, trip: TripRow, wilayah: WilayahKey, employeeId: string) {
+    await requirePerDiemActive(db);
     const days = tripDays(trip.startOn, trip.endOn);
     const resolved = await resolveGolongan(db, employeeId, trip.startOn);
     if (resolved.golongan === null) throw golonganMissing(resolved.codes);
@@ -1630,6 +1656,85 @@ export async function registerTripAdvanceRoutes(
    * job-title string. The map is current-state (a remap applies from the next resolution on), and
    * every change is audited.
    */
+  // ------------------------------------------------------- activation (D-22)
+
+  /**
+   * The lock's own screen: the state in force and everything that currently stands between the
+   * foundation and turning it on. Readable by anyone who may read uang muka, so Keuangan can
+   * see why it is still shut without holding the permission that opens it.
+   */
+  app.get("/admin/trip-per-diem-activation", async (request, reply) => {
+    if (!(await requirePermission(request, reply, "trip_advances.read", "trip_per_diem.manage"))) return;
+    return handle(reply, async () => {
+      const on = today();
+      const [activation, findings] = await Promise.all([perDiemActivation(pool), perDiemReadiness(pool, on)]);
+      const blockers = readinessBlockers(findings);
+      return send(reply, 200, {
+        state: activation.state,
+        changedAt: activation.changedAt,
+        changedByName: activation.changedByName,
+        reason: activation.reason,
+        ready: blockers.length === 0,
+        blockers,
+        warnings: findings.filter((finding) => finding.severity === "WARN"),
+        checkedOn: on,
+      });
+    });
+  });
+
+  /**
+   * D-22: every attempt to switch the feature on runs the readiness check first — the first
+   * time and every time after, including a switch-on that follows a switch-off. There is no
+   * flag, no override and no "force": what the check reports is data HC fills in through the
+   * screens next to this one, and none of it needs a release.
+   */
+  app.post("/admin/trip-per-diem-activation", async (request, reply) => {
+    const principal = await requirePermission(request, reply, "trip_per_diem.manage");
+    if (!principal) return;
+    const body = activationBody.safeParse(request.body);
+    if (!body.success) {
+      return send(reply, 400, {
+        code: "INVALID_TRIP_PER_DIEM_ACTIVATION",
+        message: "Pilih status (aktif atau nonaktif) dan tulis alasannya (10–500 karakter).",
+      });
+    }
+    return transact(reply, async (client) => {
+      const on = today();
+      const current = await perDiemActivation(client);
+      if (current.state === body.data.state) {
+        throw new TripAdvanceError(
+          409,
+          "TRIP_PER_DIEM_ACTIVATION_UNCHANGED",
+          body.data.state === "ACTIVE" ? "Uang saku perjalanan dinas sudah aktif." : "Uang saku perjalanan dinas sudah nonaktif.",
+        );
+      }
+      const findings = body.data.state === "ACTIVE" ? await perDiemReadiness(client, on) : [];
+      const blockers = readinessBlockers(findings);
+      if (blockers.length > 0) {
+        // Returned rather than thrown, so the list can travel with the refusal and the screen
+        // does not need a second call. It is classification codes, employee numbers and advance
+        // ids — no names and no amounts (D-17). Nothing was written, so the commit is a no-op.
+        return [409, {
+          code: "TRIP_PER_DIEM_NOT_READY",
+          message: "Uang saku perjalanan dinas belum dapat diaktifkan: pemeriksaan kesiapannya belum lulus.",
+          blockers,
+          checkedOn: on,
+        }];
+      }
+      await client.query(
+        `INSERT INTO trip_per_diem_activation (id, state, reason, readiness, changed_by_account_id)
+         VALUES ($1, $2, $3, $4::jsonb, $5)`,
+        [randomUUID(), body.data.state, body.data.reason, JSON.stringify(readinessSummary(findings)), principal.id],
+      );
+      await addEvent(
+        client, null, principal.id,
+        body.data.state === "ACTIVE" ? "trip_advance.per_diem.activated" : "trip_advance.per_diem.deactivated",
+        body.data.reason, { checkedOn: on, readiness: readinessSummary(findings) },
+      );
+      return [200, { state: body.data.state, checkedOn: on, warnings: findings.filter((finding) => finding.severity === "WARN") }];
+    });
+  });
+
   app.get("/admin/trip-per-diem-golongan", async (request, reply) => {
     if (!(await requirePermission(request, reply, "trip_advances.read", "trip_per_diem.manage"))) return;
     const query = pageQuerySchema.safeParse(request.query);

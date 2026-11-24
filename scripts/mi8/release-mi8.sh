@@ -234,8 +234,17 @@ pending_migrations() {
 # counts as Pimpinan/Kepala Unit/Staf is the foundation's call, not a migration's guess. Until
 # trip_per_diem_golongan_map resolves a golongan for the people who can actually ask for an
 # advance, their per diem estimate, their new advance and their settlement all answer 409
-# TRIP_PER_DIEM_GOLONGAN_UNMAPPED. With an empty map that is every employee, from the minute of
-# cutover, so it is a release-stopping check here rather than a paragraph someone must remember.
+# TRIP_PER_DIEM_GOLONGAN_UNMAPPED.
+#
+# D-22 (owner, 2026-11-24) decided where that check belongs: on the feature's own switch, not on
+# the release. Migration 0183 ships uang saku OFF, the API refuses every attempt to switch it on
+# whose readiness check fails (first time and every time after), and with it off nobody can reach
+# the per diem path at all. So a release that does not touch uang saku — a leave fix, say — is no
+# longer held behind a golongan map. Two gates remain here, and both are about this release:
+#
+#   * before migrate, that 0172 itself will not abort (DRAFT-zone rates), and
+#   * after migrate, that a release does not walk away from a feature that IS switched on with
+#     data that no longer resolves.
 #
 # There is no override. Everything the gate stops on is fixed by filling in data through the
 # HCIS admin screens, in minutes, without a release; cutting over regardless only buys an
@@ -303,10 +312,49 @@ trip_002_mapped_verdict() {
     say "trip-002 gate: every eligible employee, every live advance and every classification in force today resolves to a golongan"
     return 0
   fi
-  say "TRIP-002 GOLONGAN MAP INCOMPLETE - uang muka dinas answers 409 for these:"
+  say "TRIP-002 GOLONGAN MAP INCOMPLETE - uang saku dinas is ON and answers 409 for these:"
   printf '%s\n' "$fails" | sed 's/^FAIL|/    /; s/|/ /'
   say "Fix: HC fills Admin -> Uang Muka Dinas -> \"Golongan uang saku per klasifikasi jabatan\", and the ORG-011 placement of anyone listed as EMPLOYEE_UNRESOLVED (TRIP-002 D-20)."
-  die "golongan map incomplete; cutting over would leave uang muka dinas unusable. Fill it in, re-run this phase, and only then cut over. There is no override flag."
+  die "golongan map incomplete while uang saku is ON; cutting over would leave it unusable. Fill it in, re-run this phase, and only then cut over. There is no override flag."
+}
+
+# $1 = output of sql/trip-002-activation-present.sql, $2 = of sql/trip-002-activation-state.sql
+# (empty when the table is absent). Prints the state and echoes ACTIVE or INACTIVE on stdout.
+#
+# D-22 (owner, 2026-11-24): the catalogue check belongs to the feature's own switch, not to the
+# release. A release that does not turn uang saku on is not held up by an empty golongan map,
+# because with the feature off nobody can reach the per diem path at all; the API refuses every
+# activation attempt whose readiness check fails, the first time and every time after. What is
+# left for the release to guard is the other direction: a release must not walk away from a
+# feature that IS on with data that no longer resolves.
+trip_002_activation_state() {
+  local present=${1//[[:space:]]/}
+  case "$present" in
+    'OK|TABLE|ABSENT')
+      # 0183 has not run here yet, so there is no switch and the feature cannot be on.
+      printf 'INACTIVE' ;;
+    'OK|TABLE|PRESENT')
+      local state=${2//[[:space:]]/}
+      case "$state" in
+        'OK|STATE|ACTIVE') printf 'ACTIVE' ;;
+        'OK|STATE|INACTIVE') printf 'INACTIVE' ;;
+        *) die "trip-002 gate: could not read the uang saku switch (got: $2). Treat this as a failed check, not a clean one." ;;
+      esac ;;
+    *)
+      die "trip-002 gate: could not tell whether the uang saku switch exists (got: $1). Treat this as a failed check, not a clean one." ;;
+  esac
+}
+
+# $1 = ACTIVE or INACTIVE, $2 = output of sql/trip-002-golongan-gate.sql (only read when ACTIVE).
+#
+# The decision itself, kept free of ssh so the test can drive both halves: a golongan map that
+# would stop a release while uang saku is ON must let the same release through while it is OFF.
+trip_002_gate_verdict() {
+  if [[ "$1" != ACTIVE ]]; then
+    say "trip-002 gate: uang saku dinas is OFF on the device, so this release cannot break it; the golongan map is checked when someone turns it on (TRIP-002 D-22)"
+    return 0
+  fi
+  trip_002_mapped_verdict "$2"
 }
 # END trip-002-gate
 
@@ -336,32 +384,33 @@ trip_002_gate_pre_migrate() {
   trip_002_pre_migrate_verdict "$rates"
 }
 
-# After migrate, before cutover. The query starts from the people who can actually submit a trip
-# advance, and from the advances already in flight, because that is what resolveGolongan() is
-# asked about at runtime; the classification catalogue is checked as well, but it can never stand
-# in for the people (an empty catalogue used to satisfy a catalogue-only check while refusing
-# every employee).
+# After migrate, before cutover.
+#
+# This runs on every release, not only on the one carrying 0172, because the question is about
+# the state of the feature on the device, not about this bundle. With uang saku off it costs two
+# trivial queries and lets the release through — that is the normal case today, and it is why a
+# leave fix no longer waits for a golongan map. With uang saku on, the full question is asked:
+# it starts from the people who can actually submit a trip advance and from the advances already
+# in flight, because that is what resolveGolongan() is asked about at runtime.
 trip_002_gate_mapped() {
-  trip_002_in_bundle || return 0
-  # A dry run never runs migrate, so while 0172 is still pending trip_per_diem_golongan_map does not
-  # exist yet and the gate cannot be evaluated. Say so instead of failing on "relation does not
-  # exist": the real gate runs in the --apply candidate phase, after migrate has created the table.
-  if [[ "$APPLY" != 1 ]]; then
-    pending_migrations
-    if grep -qx "$TRIP_002_MIGRATION" <<<"$PENDING"; then
-      say "dry-run: trip-002 golongan gate is evaluated after migrate ($TRIP_002_MIGRATION creates trip_per_diem_golongan_map); the --apply candidate phase runs it"
-      if [[ "$ALLOW_UNMAPPED_GOLONGAN" == 1 ]]; then
-        say "dry-run: --allow-unmapped-golongan given; if the map is incomplete after migrate, --apply prints OPERATOR OVERRIDE and cuts over"
-      else
-        say "dry-run: without --allow-unmapped-golongan, --apply stops here if the map is incomplete after migrate"
-      fi
-      return 0
-    fi
+  local present state
+  present=$(gate_query trip-002-activation-present.sql) \
+    || die "trip-002 gate: could not ask the device whether the uang saku switch exists; read the error above"
+  state=
+  if [[ "${present//[[:space:]]/}" == 'OK|TABLE|PRESENT' ]]; then
+    state=$(gate_query trip-002-activation-state.sql) \
+      || die "trip-002 gate: could not read the uang saku switch from the device; read the error above"
   fi
-  local report
-  report=$(gate_query trip-002-golongan-gate.sql) \
-    || die "trip-002 gate: the golongan query failed on the device; read the error above. In a dry run before migrate, trip_per_diem_golongan_map does not exist yet, and that is a failed check, not a clean one."
-  trip_002_mapped_verdict "$report"
+  local verdict report
+  # Written as an assignment, not inside an argument, so a die() inside the helper really stops
+  # the release instead of arriving as an empty string.
+  verdict=$(trip_002_activation_state "$present" "$state") || exit 1
+  report=
+  if [[ "$verdict" == ACTIVE ]]; then
+    report=$(gate_query trip-002-golongan-gate.sql) \
+      || die "trip-002 gate: uang saku is ON but the golongan query failed on the device; read the error above. That is a failed check, not a clean one."
+  fi
+  trip_002_gate_verdict "$verdict" "$report"
 }
 
 # ---------------------------------------------------------------- release lock

@@ -233,6 +233,12 @@ export async function revertMappingAlignment(
          WHERE reverted.mapping_id = $1 AND reverted.action = 'mapping_alignment_reverted'
            AND reverted.after_state->>'revertedAuditId' = aligned.id::text
        )
+       -- ADMS-R2d: an alignment made for the employee before a reassign is not this employee's to undo.
+       AND NOT EXISTS (
+         SELECT 1 FROM attendance_adms_admin_audit_events reassigned
+         WHERE reassigned.mapping_id = $1 AND reassigned.action = 'mapping_reassigned'
+           AND reassigned.created_at >= aligned.created_at
+       )
      ORDER BY aligned.created_at DESC, aligned.id DESC
      LIMIT 1`,
     [mappingId, mapping.effectiveFrom],

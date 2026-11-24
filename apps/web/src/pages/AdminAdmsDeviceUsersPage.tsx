@@ -397,12 +397,15 @@ export function AdminAdmsDeviceUsersPage() {
     setReassignReason("");
     setEmployeeQuery("");
     setEmployeeResults([]);
+    setError(null);
   }, []);
 
   const closeReassign = useCallback(() => {
     setReassignTarget(null);
     setReassignPlan(null);
     setReassignReason("");
+    setEmployeeQuery("");
+    setEmployeeResults([]);
   }, []);
 
   const previewReassign = useCallback(async (row: UserRow, employee: Pick<AdminEmployeeListItem, "id">) => {

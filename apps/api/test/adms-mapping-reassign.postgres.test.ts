@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { alignmentProjectionTargets } from "../src/modules/attendance/adms/mapping-alignment.js";
+import {
+  alignmentProjectionTargets,
+  applyMappingAlignment,
+  revertMappingAlignment,
+} from "../src/modules/attendance/adms/mapping-alignment.js";
 import { applyMappingReassign, planMappingReassign } from "../src/modules/attendance/adms/mapping-reassign.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -153,6 +157,20 @@ describe.skipIf(!allowed)("ADMS-R2d PIN mapped to the wrong employee (PostgreSQL
     expect(ended.plan.status).toBe("invalid_range");
     const stored = await client.query("SELECT employee_id FROM attendance_adms_employee_mappings WHERE id = $1", [mapping]);
     expect(stored.rows[0].employee_id).toBe(wrong);
+  });
+
+  it("does not let a reassigned mapping undo the previous employee's TMT alignment", async () => {
+    // The wrong employee's mapping was first aligned to their TMT, then reassigned.
+    await client.query(
+      "UPDATE attendance_adms_employee_mappings SET effective_from = '2026-11-24T14:32:00+07:00' WHERE id = $1",
+      [mapping],
+    );
+    const aligned = await applyMappingAlignment(client, [mapping], accountId, "Sejak TMT");
+    expect(aligned[0]!.status).toBe("change");
+    await applyMappingReassign(client, mapping, right, accountId, "Salah pilih pegawai");
+    await client.query("UPDATE attendance_adms_employee_mappings SET effective_from = '2015-08-31T17:00:00Z' WHERE id = $1", [mapping]);
+    const reverted = await revertMappingAlignment(client, mapping, accountId, "Coba pulihkan");
+    expect(reverted.status).toBe("not_aligned");
   });
 
   it("starts after an earlier holder of a recycled PIN", async () => {

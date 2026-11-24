@@ -17,6 +17,13 @@ import {
 
 export const TRANSACTION_TTL_MINUTES = 10;
 
+/** AUTH-012 Rev 2: the audit `reason_code` of `auth.oidc.callback.invalid`. */
+export type OidcCallbackRefusal =
+  | "MISSING_STATE"
+  | "UNBOUND_BROWSER"
+  | "TRANSACTION_NOT_FOUND"
+  | "PROVIDER_REJECTED";
+
 interface OidcTransactionRow {
   codeVerifier: string;
   nonce: string;
@@ -79,19 +86,21 @@ export class OidcLoginService {
   }> {
     const state = callbackUrl.searchParams.get("state");
     if (!state) {
-      await this.audit("auth.oidc.callback.invalid", context, null, null);
+      await this.audit("auth.oidc.callback.invalid", context, null, null, "MISSING_STATE");
       throw new AuthError(401, "OIDC_CALLBACK_INVALID", "Respons Akun SQ tidak valid.");
     }
 
     if (!isBoundToBrowser(this.hashState(state))) {
       // The transaction is left to expire so the browser that started it can still finish.
-      await this.audit("auth.oidc.callback.invalid", context, null, null);
+      await this.audit("auth.oidc.callback.invalid", context, null, null, "UNBOUND_BROWSER");
       throw new AuthError(401, "OIDC_CALLBACK_UNBOUND", "Login Akun SQ harus diselesaikan di browser yang memulainya.");
     }
 
     const transaction = await this.consumeTransaction(state);
     if (!transaction) {
-      await this.audit("auth.oidc.callback.invalid", context, null, null);
+      // Expired (older than TRANSACTION_TTL_MINUTES), already used, or purged by a later start.
+      // The usual cause is an Akun SQ sign-in page left open longer than the transaction lives.
+      await this.audit("auth.oidc.callback.invalid", context, null, null, "TRANSACTION_NOT_FOUND");
       throw new AuthError(
         401,
         "OIDC_CALLBACK_INVALID",
@@ -107,7 +116,7 @@ export class OidcLoginService {
         nonce: transaction.nonce,
       });
     } catch {
-      await this.audit("auth.oidc.callback.invalid", context, null, null);
+      await this.audit("auth.oidc.callback.invalid", context, null, null, "PROVIDER_REJECTED");
       throw new AuthError(
         401,
         "OIDC_CALLBACK_INVALID",
@@ -237,19 +246,24 @@ export class OidcLoginService {
     return createHash("sha256").update(state, "utf8").digest("hex");
   }
 
+  /**
+   * `reasonCode` says which check refused a callback (AUTH-012 Rev 2). It is a fixed upper-case
+   * code (migration 0059 enforces the format), never a state, code, token, claim, or free text.
+   */
   private async audit(
     eventType: string,
     context: RequestContext,
     accountId: string | null,
     email: string | null,
+    reasonCode: OidcCallbackRefusal | null = null,
   ): Promise<void> {
     await this.pool.query(
       `
         INSERT INTO auth_audit_events (
-          id, account_id, event_type, email, ip_address, user_agent
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+          id, account_id, event_type, email, ip_address, user_agent, reason_code
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
-      [randomUUID(), accountId, eventType, email, context.ipAddress, context.userAgent],
+      [randomUUID(), accountId, eventType, email, context.ipAddress, context.userAgent, reasonCode],
     );
   }
 }

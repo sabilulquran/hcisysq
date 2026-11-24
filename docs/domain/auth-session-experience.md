@@ -92,9 +92,30 @@ Pada `AUTH_MODE=oidc`, halaman perantara "Masuk dengan Akun SQ" tidak lagi ditam
 - Actor: pengunjung tanpa sesi HCIS yang membuka `/` atau route terlindungi.
 - Flow: route terlindungi mengarahkan ke `/?returnTo=<path>`; login entry memeriksa `/auth/mode`, lalu `window.location.replace("/api/auth/oidc/start?returnTo=<path>")`. Selama itu hanya tampil status netral "Membuka Akun SQ…", bukan halaman hero.
 - `returnTo` hanya path same-origin yang diawali satu `/` (maksimal 512 karakter); `//`, backslash, scheme, karakter kontrol, serta path `/api/*` dan `/auth/*` ditolak. API memvalidasi ulang, menyimpannya di baris `auth_oidc_transactions.return_to` (migration `0060`), dan callback sukses mengarah ke nilai dari transaksi itu, tidak pernah dari query callback. Nilai tidak aman diabaikan dan login tetap berjalan ke `/`.
-- Failure: bila ada query `authError` (nilai apa pun), login entry tidak memulai ulang otomatis supaya tidak terjadi loop; pesan kategori di atas tetap tampil dengan tombol "Masuk dengan Akun SQ" sebagai percobaan ulang (membawa `returnTo` bila ada). Gagal memuat mode tetap fail closed.
+- Failure: bila ada query `authError`, login entry tidak memulai otomatis seperti biasa; pesan kategori di atas tampil dengan tombol "Masuk dengan Akun SQ" sebagai percobaan ulang (membawa `returnTo` bila ada). Satu-satunya pengecualian adalah coba-ulang otomatis sekali untuk `oidc_failed` (Rev 2 di bawah). Gagal memuat mode tetap fail closed.
 - Tidak ada `prompt=none`, direct grant/ROPC, atau form kata sandi. Local mode tetap memakai `LoginForm`.
 - Audit: tidak ada event baru; event OIDC yang ada tetap berlaku.
+
+### AUTH-012 Rev 2 — coba ulang otomatis sekali setelah callback gagal (2026-11-24)
+
+**Status:** ACCEPTED (owner, 2026-11-24: "Ya, perbaiki" atas audit login yang mendarat di tombol "Masuk dengan Akun SQ").
+
+Temuan audit: transaksi OIDC HCIS hidup 10 menit (`TRANSACTION_TTL_MINUTES`, cookie state SEC-05 `Max-Age=600`), sedangkan halaman masuk Akun SQ (realm `sq-staff`, `login_lifespan`) hidup 30 menit. Halaman masuk yang dibiarkan 10–30 menit (tab dipulihkan, layar ponsel mati) membuat Keycloak menerima login tetapi callback HCIS menolak karena transaksinya sudah tidak ada. Rev 1 lalu berhenti di tombol, padahal sesi SSO Akun SQ sudah aktif. Riwayat `auth.oidc.callback.invalid` sejak September 2026 menunjukkan pola ini sekitar 1 dari 8 login, kebanyakan pada login pertama pagi hari, dan hampir selalu disusul login sukses beberapa detik kemudian lewat tombol.
+
+- Actor dan precondition sama dengan AUTH-012; mode `oidc`.
+- Input: login entry dibuka dengan `authError=oidc_failed` (dan `returnTo` opsional).
+- Flow: login entry menulis penanda per tab `hcis.oidcRetryAt` (timestamp epoch ms) di `sessionStorage`, membacanya kembali, lalu `window.location.replace` ke route start seperti AUTH-012. Selama itu hanya tampil status netral "Membuka Akun SQ…". Karena SSO Akun SQ biasanya sudah aktif, pengguna langsung masuk tanpa melihat halaman tombol.
+- Batas loop: coba-ulang hanya diizinkan bila tidak ada penanda yang lebih baru dari 2 menit (`OIDC_RETRY_WINDOW_MS`); penanda bertanggal masa depan dianggap baru. `oidc_failed` kedua dalam jendela itu menampilkan pesan dan tombol seperti Rev 1. Bila `sessionStorage` tidak tersedia, melempar error, atau penanda tidak terbaca kembali, tidak ada coba-ulang otomatis (fail safe ke perilaku Rev 1).
+- Hanya `oidc_failed` yang dicoba ulang. `access_denied`, `access_unavailable`, `account_inactive`, dan nilai tak dikenal tetap langsung menampilkan pesan dan tombol, karena percobaan ulang akan gagal dengan cara yang sama.
+- Kontrak URL tidak berubah: browser tetap hanya menerima kategori aman; detail kegagalan tidak muncul di URL. Penanda hanya timestamp, bukan token, state, atau identitas.
+- Security: coba-ulang memulai transaksi baru milik browser itu sendiri (state, PKCE, cookie SEC-05 baru), jadi tidak membuka jalur login CSRF; tautan callback palsu tetap ditolak `UNBOUND_BROWSER` dan paling jauh memicu satu login normal ke akun pengguna sendiri. TTL transaksi 10 menit sengaja tidak diperpanjang.
+- Audit: `auth.oidc.callback.invalid` kini mengisi `reason_code` (format dijaga migration 0059): `MISSING_STATE` (callback tanpa state), `UNBOUND_BROWSER` (tanpa cookie state SEC-05), `TRANSACTION_NOT_FOUND` (transaksi kedaluwarsa, sudah dipakai, atau sudah dibersihkan), `PROVIDER_REJECTED` (penukaran kode atau validasi token ditolak). Coba-ulang otomatis tidak menambah event baru; percobaan barunya tercatat dengan event OIDC yang sudah ada. Tidak ada migration.
+- Acceptance:
+  - AUTH-012-R2-A: `oidc_failed` pertama dalam satu tab memulai ulang login otomatis tanpa menampilkan halaman tombol.
+  - AUTH-012-R2-B: `oidc_failed` kedua dalam 2 menit menampilkan pesan dan tombol; tidak ada loop.
+  - AUTH-012-R2-C: kategori akses dan nilai tak dikenal tidak dicoba ulang.
+  - AUTH-012-R2-D: tanpa `sessionStorage` yang berfungsi, perilaku sama dengan Rev 1.
+  - AUTH-012-R2-E: setiap `auth.oidc.callback.invalid` membawa salah satu dari empat `reason_code` di atas dan tidak membawa nilai dari request.
 
 ## AUTH-013 — Peluncur aplikasi bersama
 
@@ -150,6 +171,7 @@ Tidak ada token, password, ID token, recovery code, authorization code, atau `lo
 
 - gagal memuat auth mode tetap fail closed dan tidak menampilkan fallback password pada OIDC environment;
 - kategori OIDC yang tidak dikenal selalu menjadi `oidc_failed`;
+- `oidc_failed` dicoba ulang otomatis sekali per tab dalam 2 menit (AUTH-012 Rev 2); kegagalan berikutnya menampilkan tombol;
 - logout failure tidak menghapus/mengarang state di frontend; user dapat mencoba ulang;
 - tidak tersedianya SQ Account Center tidak boleh mengarah ke URL palsu atau halaman credential HCIS.
 

@@ -23,6 +23,8 @@ function buildHarness(options?: {
   allowed?: boolean;
   accessError?: boolean;
   transactionReturnTo?: string | null;
+  transactionMissing?: boolean;
+  providerRejects?: boolean;
 }) {
   const identity = options?.identity ?? {
     issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
@@ -31,6 +33,7 @@ function buildHarness(options?: {
   const accountRows = options?.accountRows ?? [mappedAccount];
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("DELETE FROM auth_oidc_transactions")) {
+      if (options?.transactionMissing) return { rows: [], rowCount: 0 };
       return {
         rows: [{ codeVerifier: "verifier", nonce: "nonce", returnTo: options?.transactionReturnTo ?? null }],
         rowCount: 1,
@@ -42,7 +45,10 @@ function buildHarness(options?: {
     return { rows: [], rowCount: 1 };
   });
   const provider = {
-    completeAuthorization: vi.fn(async () => identity),
+    completeAuthorization: vi.fn(async () => {
+      if (options?.providerRejects) throw new Error("token verification failed");
+      return identity;
+    }),
   } as unknown as OidcProvider;
   const applicationAccess = {
     isAllowed: vi.fn(async () => {
@@ -75,6 +81,16 @@ function buildHarness(options?: {
 
 // The browser presented the per-state cookie set by /auth/oidc/start (SEC-05).
 const bound = () => true;
+
+/** AUTH-012 Rev 2: the reason codes written with `auth.oidc.callback.invalid`. */
+function refusalReasons(query: ReturnType<typeof vi.fn>): unknown[] {
+  return query.mock.calls
+    .filter(([sql, params]) =>
+      String(sql).includes("INSERT INTO auth_audit_events")
+      && Array.isArray(params)
+      && params[2] === "auth.oidc.callback.invalid")
+    .map(([, params]) => (params as unknown[])[6]);
+}
 
 const callback = () =>
   new URL(
@@ -199,5 +215,41 @@ describe("OidcLoginService", () => {
     expect(seen).toEqual([service.hashState("state-1")]);
     expect(query.mock.calls.some(([sql]) => String(sql).includes("DELETE FROM auth_oidc_transactions"))).toBe(false);
     expect(provider.completeAuthorization).not.toHaveBeenCalled();
+  });
+  it("records why a callback was refused, without any request value (AUTH-012 Rev 2)", async () => {
+    const missingState = buildHarness();
+    await expect(missingState.service.complete(
+      new URL("https://hcis-staging.sabilulquran.or.id/auth/callback?code=opaque"),
+      context,
+      bound,
+    )).rejects.toMatchObject({ code: "OIDC_CALLBACK_INVALID" });
+    expect(refusalReasons(missingState.query)).toEqual(["MISSING_STATE"]);
+
+    const unbound = buildHarness();
+    await expect(unbound.service.complete(callback(), context, () => false))
+      .rejects.toMatchObject({ code: "OIDC_CALLBACK_UNBOUND" });
+    expect(refusalReasons(unbound.query)).toEqual(["UNBOUND_BROWSER"]);
+
+    const providerRejects = buildHarness({ providerRejects: true });
+    await expect(providerRejects.service.complete(callback(), context, bound))
+      .rejects.toMatchObject({ code: "OIDC_CALLBACK_INVALID", statusCode: 401 });
+    expect(refusalReasons(providerRejects.query)).toEqual(["PROVIDER_REJECTED"]);
+  });
+
+  it("refuses an expired or already used transaction before OIDC validation", async () => {
+    // The Akun SQ sign-in page outlives the 10-minute transaction: Keycloak accepts the
+    // sign-in, but the row is gone by the time the callback arrives.
+    const { service, query, provider, auth } = buildHarness({ transactionMissing: true });
+    await expect(service.complete(callback(), context, bound))
+      .rejects.toMatchObject({ code: "OIDC_CALLBACK_INVALID", statusCode: 401 });
+    expect(provider.completeAuthorization).not.toHaveBeenCalled();
+    expect(auth.createSessionForAccountId).not.toHaveBeenCalled();
+    expect(refusalReasons(query)).toEqual(["TRANSACTION_NOT_FOUND"]);
+  });
+
+  it("writes no callback refusal on a successful sign-in", async () => {
+    const { service, query } = buildHarness();
+    await service.complete(callback(), context, bound);
+    expect(refusalReasons(query)).toEqual([]);
   });
 });

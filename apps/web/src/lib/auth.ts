@@ -156,11 +156,57 @@ export function oidcStartHref(returnTo?: string | null): string {
 
 /**
  * Akun SQ passes through silently when its session is still active, so the login entry
- * goes straight to the authorization start. A callback failure (`authError`) stops the
- * automatic start so a failing sign-in cannot loop; the visitor retries with the button.
+ * goes straight to the authorization start. A callback failure (`authError`) stops this
+ * automatic start; `claimOidcRetry` decides whether one automatic retry is still allowed.
  */
 export function shouldStartOidcAutomatically(mode: AuthMode | null, search: LoginSearch): boolean {
   return mode === "oidc" && search.authError === undefined;
+}
+
+/** AUTH-012 Rev 2: per-tab marker of the last automatic retry (a timestamp, never a token). */
+export const OIDC_RETRY_STORAGE_KEY = "hcis.oidcRetryAt";
+/** A second `oidc_failed` within this window shows the button instead of retrying again. */
+export const OIDC_RETRY_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * AUTH-012 Rev 2: only the generic callback failure may be retried automatically. Its usual
+ * cause is an Akun SQ sign-in page left open longer than the 10-minute HCIS transaction:
+ * Akun SQ accepted the sign-in, so a fresh start passes straight through. Access outcomes
+ * (`access_denied`, `access_unavailable`, `account_inactive`) would only fail the same way.
+ */
+export function isOidcRetryCandidate(search: LoginSearch): boolean {
+  return search.authError === "oidc_failed";
+}
+
+type RetryStorage = Pick<Storage, "getItem" | "setItem">;
+
+/**
+ * Claims the one automatic retry for this tab. It returns true only when no retry happened
+ * within `OIDC_RETRY_WINDOW_MS` and the new marker was written and reads back; a missing or
+ * failing storage returns false, so the page falls back to the button and can never loop.
+ */
+export function claimOidcRetry(storage: RetryStorage | undefined, now: number): boolean {
+  if (!storage) return false;
+  try {
+    const previous = storage.getItem(OIDC_RETRY_STORAGE_KEY);
+    const previousAt = previous === null ? Number.NaN : Number(previous);
+    // A timestamp in the future (clock moved back) counts as recent, never as expired.
+    if (Number.isFinite(previousAt) && now - previousAt < OIDC_RETRY_WINDOW_MS) return false;
+    const marker = String(now);
+    storage.setItem(OIDC_RETRY_STORAGE_KEY, marker);
+    return storage.getItem(OIDC_RETRY_STORAGE_KEY) === marker;
+  } catch {
+    return false;
+  }
+}
+
+/** `window.sessionStorage` throws in some privacy modes; treat that as no storage. */
+export function sessionRetryStorage(): RetryStorage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 export function landingPath(

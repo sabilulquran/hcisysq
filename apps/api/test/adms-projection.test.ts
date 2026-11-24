@@ -174,4 +174,44 @@ describe.skipIf(!databaseUrl)("ATT-003 PostgreSQL projection integration", () =>
       note: "synthetic manual fact",
     });
   });
+
+  // ADMS-R2d: a corrected wrong mapping moves every scan away; the row ADMS projected is removed,
+  // a manual row never is.
+  it("clears the ADMS row of a day whose scans all left the employee, and keeps manual rows", async () => {
+    const rightEmployeeId = randomUUID();
+    await pool.query(
+      `INSERT INTO employees (id, employee_number, full_name, status)
+       VALUES ($1, $2, 'ADMS Right Owner Synthetic', 'active')`,
+      [rightEmployeeId, `ADMS-${rightEmployeeId}`],
+    );
+    await pool.query(
+      "UPDATE attendance_adms_employee_mappings SET employee_id = $2 WHERE id = ANY($1::uuid[])",
+      [[mappingId, manualMappingId], rightEmployeeId],
+    );
+
+    const cleared = await projectAdmsAttendanceDay(pool, employeeId, "2026-08-28");
+    expect(cleared.status).toBe("cleared");
+    const gone = await pool.query(
+      "SELECT 1 FROM attendance_daily_records WHERE employee_id = $1 AND attendance_date = '2026-08-28'",
+      [employeeId],
+    );
+    expect(gone.rowCount).toBe(0);
+    const audit = await pool.query<{ action: string; before_record: { source: string } | null }>(
+      `SELECT action, before_record FROM attendance_adms_projection_audit_events
+       WHERE employee_id = $1 AND attendance_date = '2026-08-28' ORDER BY created_at DESC LIMIT 1`,
+      [employeeId],
+    );
+    expect(audit.rows[0]).toMatchObject({ action: "cleared", before_record: { source: "integration" } });
+    expect((await projectAdmsAttendanceDay(pool, employeeId, "2026-08-28")).status).toBe("no_events");
+
+    const manual = await projectAdmsAttendanceDay(pool, manualEmployeeId, "2026-08-28");
+    expect(manual.status).toBe("no_events");
+    const kept = await pool.query<{ source: string }>(
+      "SELECT source FROM attendance_daily_records WHERE employee_id = $1 AND attendance_date = '2026-08-28'",
+      [manualEmployeeId],
+    );
+    expect(kept.rows[0]?.source).toBe("manual");
+
+    expect((await projectAdmsAttendanceDay(pool, rightEmployeeId, "2026-08-28")).status).toBe("created");
+  });
 });

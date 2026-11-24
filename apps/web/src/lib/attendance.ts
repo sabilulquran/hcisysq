@@ -261,6 +261,49 @@ export async function createAdmsMapping(
   );
 }
 
+export type AdmsMappingReassignStatus =
+  | "change"
+  | "not_found"
+  | "same_employee"
+  | "employee_not_found"
+  | "employee_not_active"
+  | "missing_start_date"
+  | "invalid_range"
+  | "overlap";
+
+export interface AdmsMappingReassignPlan {
+  status: AdmsMappingReassignStatus;
+  mappingId: string;
+  deviceId: string | null;
+  pin: string | null;
+  effectiveTo: string | null;
+  previous: { employeeId: string; employeeNumber: string; employeeName: string; effectiveFrom: string } | null;
+  next: {
+    employeeId: string;
+    employeeNumber: string;
+    employeeName: string;
+    startedOn: string | null;
+    effectiveFrom: string | null;
+  } | null;
+  scansFromPrevious: number;
+  scansToNext: number;
+}
+
+/** ADMS-R2d: moves a PIN mapped to the wrong employee to the right one (preview unless apply). */
+export async function reassignAdmsMapping(
+  mappingId: string,
+  input: { employeeId: string; apply: boolean; reason?: string },
+): Promise<{ applied: boolean; plan: AdmsMappingReassignPlan; reprojectionQueued?: number }> {
+  return readJson(
+    await fetch(`/api/admin/attendance/adms/mappings/${mappingId}/reassign`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
 export async function endAdmsMapping(mappingId: string): Promise<void> {
   const response = await fetch(`/api/admin/attendance/adms/mappings/${mappingId}`, {
     method: "DELETE",

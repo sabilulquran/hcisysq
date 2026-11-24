@@ -14,6 +14,10 @@ import { replaceDialogParam } from "@/lib/detailDialogParam";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
 import {
+  getEmployeeServiceStatuses,
+  type EmployeeServiceStatus,
+} from "@/lib/employeeServiceStatus";
+import {
   advanceStatusLabel,
   approverRoleLabel,
   cancelMyAdvance,
@@ -40,6 +44,7 @@ const NEW_ADVANCE = "baru";
 
 export function EmployeeTripAdvancesPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<EmployeeServiceStatus | null>(null);
   const [items, setItems] = useState<AdvanceSummary[]>([]);
   const [wilayahs, setWilayahs] = useState<Wilayah[]>([]);
   const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get("page")) || 1));
@@ -74,6 +79,9 @@ export function EmployeeTripAdvancesPage() {
   };
 
   useEffect(() => {
+    void getEmployeeServiceStatuses()
+      .then((map) => setServiceStatus(map["trip-advances"] ?? null))
+      .catch(() => undefined);
     void getEmployeeLeaveSummary().then((summary) => setEmployee(summary.employee)).catch(() => undefined);
     void loadList(page)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Uang muka dinas tidak dapat dimuat."))
@@ -192,11 +200,25 @@ export function EmployeeTripAdvancesPage() {
 
         {error && !param ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
         {notice && !param ? <div role="status" className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {/*
+          SVC-001: layanan ini terkunci di server sampai HC menyalakannya (TRIP-002 D-22). Sebelum
+          ini layarnya mengundang pegawai mengisi formulir yang pasti ditolak di ujung. Sekarang
+          keadaannya disebut di muka, dengan kalimat yang datang dari server.
+        */}
+        {serviceStatus ? (
+          <div role="status" className="mt-5 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-brand-heading">
+            <p className="font-bold">Layanan ini belum dibuka</p>
+            <p className="mt-1 leading-6 text-muted-foreground">{serviceStatus.message}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{serviceStatus.requirement}</p>
+          </div>
+        ) : null}
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-bold text-brand-heading">Uang muka saya</h2>
-          <button type="button" onClick={() => { setNotice(null); setError(null); showAdvance(NEW_ADVANCE); }}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)]">
+          <button type="button" disabled={Boolean(serviceStatus)}
+            title={serviceStatus?.message ?? undefined}
+            onClick={() => { setNotice(null); setError(null); showAdvance(NEW_ADVANCE); }}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none">
             <Plus className="h-4 w-4" aria-hidden="true" /> Ajukan uang muka
           </button>
         </div>

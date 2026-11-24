@@ -135,12 +135,13 @@ export class OrganizationAuthorityResolver {
     const unitApprover = await this.resolveUnitApproverInContext(context);
     const authorities: ResolvedAuthority[] = [];
     if (directManager) appendAuthority(authorities, directManager);
-    if (unitApprover) appendAuthority(authorities, unitApprover);
+    if (unitApprover.authority) appendAuthority(authorities, unitApprover.authority);
     return {
       effectiveDate: context.effectiveDate,
       changeSetId: context.snapshot.changeSet.id,
       governanceApplied: false,
       authorities,
+      unitApproverIsRequester: unitApprover.requesterIsUnitApprover,
     };
   }
 
@@ -167,7 +168,7 @@ export class OrganizationAuthorityResolver {
     // so. The owner named five seats, not "five seats unless it is the same person". So both rungs
     // stand, the same person approves twice, and that is visible.
     const authorities: ResolvedAuthority[] = [];
-    const unitApprover = await this.resolveUnitApproverInContext(context, true);
+    const { authority: unitApprover } = await this.resolveUnitApproverInContext(context, true);
     if (unitApprover) authorities.push({ ...unitApprover, sources: [unitApprover.source] });
     for (const seat of approvalSeats) {
       const authority = await this.resolvePosition(
@@ -188,7 +189,7 @@ export class OrganizationAuthorityResolver {
   }
 
   async resolveUnitApprover(input: AuthorityResolutionInput): Promise<ResolvedAuthority | null> {
-    return this.resolveUnitApproverInContext(await this.context(input));
+    return (await this.resolveUnitApproverInContext(await this.context(input))).authority;
   }
 
   async resolveGovernanceApprover(
@@ -345,7 +346,7 @@ export class OrganizationAuthorityResolver {
   private async resolveUnitApproverInContext(
     context: ResolutionContext,
     selfIsError = false,
-  ): Promise<ResolvedAuthority | null> {
+  ): Promise<{ authority: ResolvedAuthority | null; requesterIsUnitApprover: boolean }> {
     const membership = this.primaryMembership(context);
     const { binding, path } = this.findNodeBinding(context, membership.nodeKey, "UNIT_APPROVER");
     const authority = await this.resolvePosition(
@@ -356,17 +357,19 @@ export class OrganizationAuthorityResolver {
       path,
       true,
     );
-    if (selfIsError && authority.employeeId !== null
-        && authority.employeeId === context.requesterEmployeeId) {
+    const requesterIsUnitApprover = authority.employeeId !== null
+      && authority.employeeId === context.requesterEmployeeId;
+    if (selfIsError && requesterIsUnitApprover) {
       throw new OrganizationResolutionError(
         "AUTHORITY_SELF_RESOLUTION",
         "The unit approver of this request is the requester.",
         { employeeId: authority.employeeId, source: "UNIT_APPROVER", positionKey: authority.positionKey },
       );
     }
-    return authority.employeeId !== null && authority.employeeId === context.requesterEmployeeId
-      ? null
-      : authority;
+    // ORG-004 (D-R6): rungnya dibuang, tetapi kenyataannya ikut dibawa keluar. Dulu pemanggil
+    // hanya menerima `null` dan membacanya sebagai "kursi penyetuju unit belum dikonfigurasi",
+    // padahal kursinya ada dan terisi — oleh pemohon sendiri.
+    return { authority: requesterIsUnitApprover ? null : authority, requesterIsUnitApprover };
   }
 
   private async resolveGovernanceInContext(

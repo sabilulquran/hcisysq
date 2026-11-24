@@ -120,6 +120,50 @@ function organizationServices(db: Queryable) {
  * Yang ditulis ulang di sini hanyalah kalimat dan kodenya. Kapan resolusi menolak sama sekali
  * tetap keputusan resolver (D-R5), dan untuk kursi akun organ ORG-013 keputusan itu tidak berubah.
  */
+/**
+ * ORG-004 (D-R6, 2026-11-24): penolakan resolver yang sampai ke layar pegawai, dalam bahasa yang
+ * dipakai aplikasinya. Kalimat Inggris resolver ditulis untuk operator yang membaca log; pegawai
+ * yang mengajukan cuti membaca kalimat ini di layar, dan "Authority resolution cannot resolve to
+ * the requester" tidak mengatakan apa pun kepadanya tentang apa yang harus dilakukan.
+ *
+ * Setiap kalimat menyebut dua hal: apa yang berhenti, dan siapa yang dapat menyelesaikannya.
+ * Nama orang tidak pernah disebut di sini — hanya penolakan `AUTHORITY_INELIGIBLE` yang menyebut
+ * nama, karena hanya di sanalah resolver tahu kursi dan pejabat mana yang menghentikan rantai.
+ */
+const STRUCTURAL_REFUSAL_TEXT: Record<string, string> = {
+  AUTHORITY_SELF_RESOLUTION:
+    "Pada bagan organisasi, penyetuju untuk pengajuan ini jatuh kepada Anda sendiri, sehingga "
+    + "tidak ada yang dapat memutuskannya. Hubungi Human Capital untuk menetapkan penyetuju di "
+    + "atas jabatan Anda.",
+  AUTHORITY_VACANT:
+    "Kursi penyetuju pada bagan organisasi sedang kosong, sehingga rantai persetujuan berhenti di "
+    + "kursi itu. Hubungi Human Capital untuk mengisi kursinya atau menunjuk pelaksana tugas.",
+  ACTING_AUTHORITY_REQUIRED:
+    "Kursi penyetuju pada bagan organisasi menuntut pelaksana tugas selama pejabat tetapnya belum "
+    + "ada. Hubungi Human Capital untuk menunjuk pelaksana tugasnya.",
+  AUTHORITY_NOT_CONFIGURED:
+    "Jalur persetujuan untuk jabatan Anda belum lengkap di bagan organisasi. Hubungi Human Capital "
+    + "untuk melengkapinya.",
+  INVALID_AUTHORITY_PRINCIPAL:
+    "Kursi penyetuju pada bagan organisasi dipegang oleh akun yang tidak dapat memutuskan "
+    + "pengajuan ini. Hubungi Human Capital.",
+  MEMBERSHIP_NOT_CONFIGURED:
+    "Penempatan Anda pada bagan organisasi belum ada, sehingga penyetuju Anda tidak dapat "
+    + "ditentukan. Hubungi Human Capital.",
+  AMBIGUOUS_MEMBERSHIP:
+    "Anda tercatat pada lebih dari satu penempatan utama di bagan organisasi, sehingga penyetuju "
+    + "Anda tidak dapat ditentukan. Hubungi Human Capital.",
+  STRUCTURE_NOT_CONFIGURED:
+    "Belum ada bagan organisasi yang berlaku pada tanggal tersebut, sehingga penyetuju Anda tidak "
+    + "dapat ditentukan. Hubungi Human Capital.",
+  AUTHORITY_CYCLE:
+    "Jalur persetujuan pada bagan organisasi berputar kembali ke kursi yang sama. Hubungi Human "
+    + "Capital untuk memperbaiki bagannya.",
+  AUTHORITY_TRAVERSAL_LIMIT:
+    "Jalur persetujuan pada bagan organisasi terlalu panjang untuk ditelusuri. Hubungi Human "
+    + "Capital untuk memperbaiki bagannya.",
+};
+
 export async function legibleAuthorityError(
   db: Queryable,
   error: OrganizationResolutionError,
@@ -127,7 +171,8 @@ export async function legibleAuthorityError(
   const details = error.details;
   const reason = typeof details.ineligibleReason === "string" ? details.ineligibleReason : null;
   if (error.code !== "AUTHORITY_INELIGIBLE" || !reason) {
-    return new LeaveOrganizationAuthorityError(error.code, error.message, details);
+    const translated = STRUCTURAL_REFUSAL_TEXT[error.code];
+    return new LeaveOrganizationAuthorityError(error.code, translated ?? error.message, details);
   }
 
   const seat = typeof details.ineligiblePositionTitle === "string"
@@ -257,6 +302,17 @@ export function snapshotLeaveRolloutAuthorities(
         sourcesOf(authority).includes("UNIT_APPROVER")),
   );
   const policySources = new Set(policyAuthorities.flatMap(sourcesOf));
+  /**
+   * ORG-004 (D-R6, 2026-11-24): kursi penyetuju unit terisi oleh pemohon sendiri, sehingga rungnya
+   * dibuang — di produksi inilah keadaan delapan dari sembilan kepala unit terhadap unitnya sendiri.
+   *
+   * Dulu kedua keadaan di bawah ini berakhir sama: tanpa rung `UNIT_APPROVER`, pemeriksaan ini
+   * menjawab `UNIT_APPROVER_MISSING`, sehingga penyetuju unit **tidak dapat mengajukan cutinya
+   * sendiri** dan pesannya menyalahkan konfigurasi yang sebenarnya benar. APR-001 ("No
+   * self-approval" dengan fallback terdokumentasi) dan LEAVE-004-G ("self-unit-approval is not
+   * added") memang meminta rungnya dibuang, bukan pengajuannya ditolak.
+   */
+  const unitApproverIsRequester = result.unitApproverIsRequester === true;
   if (!hasGovernanceAuthority && input.policyChain === "LINE_AND_UNIT") {
     if (!policySources.has("DIRECT_MANAGER")) {
       throw new LeaveApprovalConfigurationError(
@@ -264,17 +320,27 @@ export function snapshotLeaveRolloutAuthorities(
         "Atasan langsung belum dikonfigurasi.",
       );
     }
-    if (!policySources.has("UNIT_APPROVER")) {
+    // Rantai yang tersisa adalah atasan langsung saja, dan itu fallback yang didokumentasikan:
+    // pemohon tidak pernah menyetujui dirinya sendiri, dan pengajuannya tetap berjalan.
+    if (!policySources.has("UNIT_APPROVER") && !unitApproverIsRequester) {
       throw new LeaveApprovalConfigurationError(
         "UNIT_APPROVER_MISSING",
         "Approver unit belum dikonfigurasi.",
       );
     }
   } else if (!hasGovernanceAuthority && !policySources.has("UNIT_APPROVER")) {
-    throw new LeaveApprovalConfigurationError(
-      "UNIT_APPROVER_MISSING",
-      "Approver unit belum dikonfigurasi.",
-    );
+    // Rantai tanpa rung atasan langsung tidak punya fallback: kalau penyetuju unitnya pemohon
+    // sendiri, tidak ada seorang pun yang tersisa, dan itu harus terbaca sebagai sebabnya.
+    throw unitApproverIsRequester
+      ? new LeaveApprovalConfigurationError(
+        "UNIT_APPROVER_SELF",
+        "Penyetuju unit pada alur ini adalah pemohon sendiri, sehingga tidak ada penyetuju yang "
+        + "tersisa. Tetapkan penyetuju unit yang berbeda dari pemohon.",
+      )
+      : new LeaveApprovalConfigurationError(
+        "UNIT_APPROVER_MISSING",
+        "Approver unit belum dikonfigurasi.",
+      );
   }
   const approvalChain = snapshotResolvedLeaveAuthorities({
     requesterEmployeeId: input.requesterEmployeeId,

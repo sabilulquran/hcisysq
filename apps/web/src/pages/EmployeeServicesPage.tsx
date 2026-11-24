@@ -28,6 +28,12 @@ import {
   type EmployeeLeaveSummary,
 } from "@/lib/employeeLeave";
 import { employeeShellUser } from "@/lib/employeeIdentity";
+import {
+  employeeServiceStatusLabel,
+  getEmployeeServiceStatuses,
+  type EmployeeServiceStatus,
+  type EmployeeServiceStatusMap,
+} from "@/lib/employeeServiceStatus";
 import { categoryTileClass, employeeCategoryToneOf } from "@/lib/serviceCategory";
 
 const icons = {
@@ -56,9 +62,25 @@ const icons = {
   reminders: BellRing,
 } as const;
 
-function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
+function ServiceTile({
+  service,
+  status,
+}: {
+  service: EmployeeServiceDefinition;
+  status: EmployeeServiceStatus | undefined;
+}) {
   const Icon = icons[service.key as keyof typeof icons] ?? FileText;
-  const available = service.stage === "available";
+  // SVC-001: keadaan dari server menang atas label katalog. Sebuah layanan yang hari ini ditolak
+  // server tidak boleh tertulis "Tersedia" — itulah yang ditemukan audit pada Uang Muka Dinas.
+  const serverLabel = employeeServiceStatusLabel(status);
+  const available = serverLabel === null && service.stage === "available";
+  const badgeClass = serverLabel === null
+    ? (available
+      ? "rounded-full bg-success-soft px-2.5 py-1 text-right text-[10px] font-bold text-success-ink"
+      : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground")
+    : (status?.state === "LOCKED"
+      ? "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground"
+      : "max-w-24 rounded-full bg-warning-soft px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-warning-ink");
 
   return (
     <a
@@ -71,6 +93,11 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
       <span className="min-w-0">
         <span className="block text-sm font-bold text-brand-heading">{service.label}</span>
         <span className="mt-1 block text-xs leading-5 text-muted-foreground">{service.description}</span>
+        {status ? (
+          <span className="mt-1.5 block text-[10px] font-semibold leading-4 text-muted-foreground">
+            {status.message}
+          </span>
+        ) : null}
         {service.details?.length ? (
           <span className="mt-1.5 block text-[10px] font-semibold leading-4 text-brand-primary-deep">
             {service.details.length} capability direncanakan
@@ -78,8 +105,8 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
         ) : null}
       </span>
       <span className="flex min-h-10 flex-col items-end justify-between gap-2">
-        <span className={available ? "rounded-full bg-success-soft px-2.5 py-1 text-right text-[10px] font-bold text-success-ink" : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground"}>
-          {employeeServiceStageLabel(service.stage)}
+        <span className={badgeClass}>
+          {serverLabel ?? employeeServiceStageLabel(service.stage)}
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
       </span>
@@ -89,6 +116,7 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
 
 export function EmployeeServicesPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
+  const [statuses, setStatuses] = useState<EmployeeServiceStatusMap>({});
 
   useEffect(() => {
     let mounted = true;
@@ -97,14 +125,24 @@ export function EmployeeServicesPage() {
         if (mounted) setEmployee(summary.employee);
       })
       .catch(() => undefined);
+    void getEmployeeServiceStatuses()
+      .then((map) => {
+        if (mounted) setStatuses(map);
+      })
+      .catch(() => undefined);
     return () => {
       mounted = false;
     };
   }, []);
 
   const user = useMemo(() => employeeShellUser(employee), [employee]);
-  const availableCount = employeeServices.filter((service) => service.stage === "available").length;
-  const plannedCount = employeeServices.length - availableCount;
+  const openCount = employeeServices.filter(
+    (service) => service.stage === "available" && !statuses[service.key],
+  ).length;
+  const limitedCount = employeeServices.filter(
+    (service) => statuses[service.key]?.state === "LIMITED",
+  ).length;
+  const closedCount = employeeServices.length - openCount - limitedCount;
 
   return (
     <AppShell user={user} activeItem="Lainnya">
@@ -113,11 +151,14 @@ export function EmployeeServicesPage() {
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">Layanan pegawai</p>
           <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Semua layanan HCIS</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Layanan disusun berdasarkan kebutuhan Anda. Yang belum aktif tetap ditampilkan sebagai arah pengembangan HCIS dan akan membuka halaman Coming Soon.
+            Layanan disusun berdasarkan kebutuhan Anda. Layanan yang belum dibuka tetap ditampilkan beserta keterangan singkat mengapa belum dapat dipakai.
           </p>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-success-soft px-3 py-1.5 text-success-ink">{availableCount} tersedia</span>
-            <span className="rounded-full bg-muted px-3 py-1.5 text-muted-foreground">{plannedCount} direncanakan</span>
+            <span className="rounded-full bg-success-soft px-3 py-1.5 text-success-ink">{openCount} tersedia</span>
+            {limitedCount > 0 ? (
+              <span className="rounded-full bg-warning-soft px-3 py-1.5 text-warning-ink">{limitedCount} sebagian dibuka</span>
+            ) : null}
+            <span className="rounded-full bg-muted px-3 py-1.5 text-muted-foreground">{closedCount} belum dibuka</span>
           </div>
         </header>
 
@@ -132,7 +173,9 @@ export function EmployeeServicesPage() {
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{category.description}</p>
                 </div>
                 <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                  {services.map((service) => <ServiceTile key={service.key} service={service} />)}
+                  {services.map((service) => (
+                    <ServiceTile key={service.key} service={service} status={statuses[service.key]} />
+                  ))}
                 </div>
               </section>
             );

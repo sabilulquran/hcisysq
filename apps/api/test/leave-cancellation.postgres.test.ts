@@ -198,9 +198,22 @@ describe.skipIf(!allowed)("LEAVE-010 approver notification and requester cancell
     const last = await call("unitApprover", "POST", `/leave/approvals/${second!.id}/decision`, { decision: "approve" });
     expect(last.json().requestStatus).toBe("approved");
     const lineNotifications = await client.query(
-      `SELECT 1 FROM in_app_notifications WHERE safe_metadata->>'leaveRequestId' = $1`, [request.id],
+      `SELECT 1 FROM in_app_notifications
+        WHERE safe_metadata->>'leaveRequestId' = $1 AND event_key LIKE 'leave.approval.requested.%'`,
+      [request.id],
     );
     expect(lineNotifications.rowCount).toBe(2);
+    // LEAVE-010-F (2026-11-24): the final approval adds exactly one more row, and it is the
+    // requester's — nobody on the line is notified again when the chain ends.
+    const everyRow = await client.query<{ eventKey: string }>(
+      `SELECT event_key AS "eventKey" FROM in_app_notifications
+        WHERE safe_metadata->>'leaveRequestId' = $1`, [request.id],
+    );
+    expect(everyRow.rows.map((row) => row.eventKey).sort()).toEqual([
+      `leave.approval.requested.${first!.id}`,
+      `leave.approval.requested.${second!.id}`,
+      `leave.request.decided.${request.id}`,
+    ].sort());
   });
 
   it("LEAVE-010-C/E: the requester cancels at the line stage; the approver is told and can no longer decide", async () => {

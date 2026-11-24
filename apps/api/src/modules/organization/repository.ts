@@ -791,6 +791,62 @@ export class PostgresOrganizationRepository {
     return (await this.resolveRolloutSetting(workflowKey, employeeId, effectiveDate)).mode;
   }
 
+  /**
+   * ORG-004 (D-R6, 2026-11-24): mode untuk banyak pegawai sekaligus, untuk layar yang perlu
+   * mengatakan "siapa yang sudah pindah ke bagan" tanpa memanggil `resolveRolloutSetting` sekali
+   * per orang — satu snapshot dan satu kueri, sisanya di memori.
+   *
+   * Ini dibutuhkan karena indikator kesiapan di layar Konfigurasi Cuti menghitung kolom atasan
+   * lama untuk **setiap** pegawai aktif, termasuk mereka yang unitnya sudah berjalan di atas bagan
+   * dan karena itu tidak membaca kolom itu sama sekali. Layarnya lalu menyuruh HC mengisi 94 kolom
+   * yang tidak akan dibaca siapa pun — pengisian ganda yang justru ingin dihindari.
+   *
+   * Urutan pemenangnya sama persis dengan `resolveRolloutSetting`: baris pada node terdekat
+   * menang, baris global (`node_key IS NULL`) adalah pilihan terakhir, dan tanpa baris hasilnya
+   * `LEGACY`.
+   */
+  async resolveRolloutModes(
+    workflowKey: OrganizationWorkflowKey,
+    employeeIds: readonly string[],
+    effectiveDate: string,
+  ): Promise<Map<string, OrganizationRolloutMode>> {
+    const modes = new Map<string, OrganizationRolloutMode>();
+    if (employeeIds.length === 0) return modes;
+    const rows = await this.db.query<{ mode: OrganizationRolloutMode; nodeKey: string | null }>(
+      `SELECT mode, node_key AS "nodeKey"
+       FROM organization_rollout_settings
+       WHERE workflow_key = $1
+         AND effective_from <= $2::date
+         AND (effective_to IS NULL OR effective_to >= $2::date)
+       ORDER BY effective_from DESC`,
+      [workflowKey, effectiveDate],
+    );
+    if (rows.rows.length === 0) {
+      for (const employeeId of employeeIds) modes.set(employeeId, "LEGACY");
+      return modes;
+    }
+    // Baris terbaru per node menang, seperti `ORDER BY ... effective_from DESC LIMIT 1` di atas.
+    const byNode = new Map<string | null, OrganizationRolloutMode>();
+    for (const row of rows.rows) if (!byNode.has(row.nodeKey)) byNode.set(row.nodeKey, row.mode);
+    const globalMode = byNode.get(null) ?? null;
+
+    const snapshot = await this.loadEffectiveSnapshot(effectiveDate);
+    for (const employeeId of employeeIds) {
+      const nodeKey = snapshot?.memberships.find(
+        (item) => item.employeeId === employeeId && item.isPrimary
+          && item.effectiveFrom <= effectiveDate
+          && (item.effectiveTo === null || item.effectiveTo >= effectiveDate),
+      )?.nodeKey ?? null;
+      let mode: OrganizationRolloutMode | null = null;
+      for (const ancestor of rolloutScopeAncestry(snapshot, nodeKey, effectiveDate)) {
+        const match = byNode.get(ancestor);
+        if (match) { mode = match; break; }
+      }
+      modes.set(employeeId, mode ?? globalMode ?? "LEGACY");
+    }
+    return modes;
+  }
+
   async validate(
     employeeId: string,
     context: AuthorityEligibilityContext,

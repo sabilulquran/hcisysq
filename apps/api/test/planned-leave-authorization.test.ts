@@ -246,9 +246,26 @@ function createHcDecisionPool(input: {
       sql.includes("UPDATE leave_request_hc_tasks") ||
       sql.includes("UPDATE leave_requests") ||
       sql.includes("INSERT INTO leave_request_events") ||
+      sql.includes("INSERT INTO in_app_notifications") ||
       sql.includes("INSERT INTO leave_notification_outbox")
     ) {
       return { rows: [], rowCount: 1 };
+    }
+    // LEAVE-010-F (2026-11-24): keputusan akhir HC memberi tahu pemohon.
+    if (sql.includes("FROM leave_requests request") && sql.includes("JOIN employees requester")) {
+      return {
+        rows: [{
+          requesterName: "Pegawai Uji",
+          policyKey: "unpaid",
+          startOn: "2099-02-02",
+          endOn: "2099-02-03",
+          workingDays: 2,
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM accounts account")) {
+      return { rows: [{ accountId: "00000000-0000-4000-8000-000000000002" }], rowCount: 1 };
     }
     throw new Error(`Unexpected SQL in planned HC decision test: ${sql}`);
   });

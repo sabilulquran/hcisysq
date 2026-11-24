@@ -26,7 +26,7 @@ import {
 } from "./domain/planned-leave-policy.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
 import { criticalPeriodTreatment } from "./domain/critical-period.js";
-import { notifyApprovalRequested } from "./approver-notifications.js";
+import { notifyApprovalRequested, notifyRequesterDecision } from "./approver-notifications.js";
 import { loadApplicableCriticalPeriods } from "./critical-period-store.js";
 import { postponementColumns, postponementJoin, type PostponementView } from "./postponement-store.js";
 import {
@@ -1184,6 +1184,13 @@ export async function registerPlannedLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        // LEAVE-010-F: di sinilah pengajuan ini benar-benar selesai, jadi di sinilah pemohon
+        // diberi tahu — bukan pada langkah atasan yang hanya meneruskannya ke Human Capital.
+        await notifyRequesterDecision(client, {
+          requestId: task.requestId,
+          requesterEmployeeId: task.requesterEmployeeId,
+          decision: "approved",
+        });
         await enqueueFinalApprovalOversight(client, {
           requestId: task.requestId,
           workflowKey: leaveWorkflowKey(task.policyKey),
@@ -1300,6 +1307,13 @@ export async function registerPlannedLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        // LEAVE-010-F: Cuti Tanpa Gaji selesai di sini — disetujui maupun ditolak — jadi di sini
+        // pula pemohon diberi tahu. Rute validasi di atas hanya menutup kebijakan terencana lain.
+        await notifyRequesterDecision(client, {
+          requestId: task.requestId,
+          requesterEmployeeId: task.requesterEmployeeId,
+          decision: approved ? "approved" : "rejected",
+        });
         if (approved) {
           await enqueueFinalApprovalOversight(client, {
             requestId: task.requestId,

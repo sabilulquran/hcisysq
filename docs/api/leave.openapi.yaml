@@ -275,6 +275,53 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/PolicyConflict' }
 
+  /admin/leave/approvals/{stepId}/reassign:
+    post:
+      tags: [Approvals]
+      summary: Move one pending approval step to another approver (APR-001 reassignment)
+      description: >
+        Requires `approvals.policy.manage`. Only the step named here moves; `sources`, step order
+        and every other step are untouched, so the submitted chain is never recomputed from today's
+        structure. The replacement must be an active HCIS-managed employee with an active account,
+        and never the requester. A step held by an Organ Yayasan account is refused with
+        `APPROVAL_STEP_ACCOUNT_HELD`: its decision passes a governance capability gate that only
+        the account branch has, so moving it to an employee would lower the authority silently.
+        Recorded as `leave.approval.reassigned` in both the request history and the access audit,
+        with previous approver, new approver, actor and reason.
+      parameters:
+        - name: stepId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newApproverEmployeeId, reason]
+              additionalProperties: false
+              properties:
+                newApproverEmployeeId: { type: string, format: uuid }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Step moved and audited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stepId: { type: string, format: uuid }
+                  requestId: { type: string, format: uuid }
+                  approverEmployeeId: { type: string, format: uuid }
+                  approverName: { type: string }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/PolicyConflict' }
+
   /leave/approvals/{stepId}/postponement/preview:
     post:
       tags: [Approvals]

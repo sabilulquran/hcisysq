@@ -21,6 +21,7 @@ import {
   validateSpecialLeaveRequest,
 } from "./domain/special-leave-policy.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
+import { notifyRequesterDecision } from "./approver-notifications.js";
 import {
   calculateWorkingDays,
   decodeWorkingWeekdays,
@@ -1017,6 +1018,12 @@ export async function registerSpecialLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        // LEAVE-010-F: cuti khusus selesai di tangan Human Capital, jadi pemohon diberi tahu di sini.
+        await notifyRequesterDecision(client, {
+          requestId: task.requestId,
+          requesterEmployeeId: task.requesterEmployeeId,
+          decision: "approved",
+        });
         await client.query("COMMIT");
         return reply.send({ requestId: task.requestId, requestStatus: "approved", taskStatus: "validated" });
       }

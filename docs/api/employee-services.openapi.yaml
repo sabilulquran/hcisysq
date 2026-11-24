@@ -1,0 +1,54 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee Service Availability (SVC-001)
+  version: 1.0.0
+  description: >
+    Which employee services are open, as the server actually enforces it. The service catalogue in
+    the Portal Pegawai holds names, descriptions and links; whether a service can be used is a
+    business rule and stays here. Added 2026-11-24 after the opening-readiness audit found Uang
+    Muka Dinas labelled "Tersedia" while the server answered 409 TRIP_PER_DIEM_NOT_ACTIVE to every
+    estimate and every submission.
+
+    Only services with a server-side gate are listed. A service absent from the list is open, so a
+    failed call to this route never locks a screen by mistake.
+paths:
+  /me/services:
+    get:
+      tags: [Employee services]
+      summary: Server-enforced state of each gated employee service
+      responses:
+        '200':
+          description: One entry per gated service; an empty list means every service is open
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [services]
+                properties:
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, state, code, message, requirement]
+                      properties:
+                        key:
+                          type: string
+                          description: Catalogue key in apps/web/src/lib/employeeServices.ts
+                          examples: [trip-advances, assets, training, rewards]
+                        state:
+                          type: string
+                          enum: [LOCKED, LIMITED]
+                          description: >
+                            LOCKED — the service's main action is refused today. LIMITED — the
+                            service is open but one part of it is switched off.
+                        code:
+                          type: string
+                          description: The same code the service's own route answers when tried.
+                          examples: [TRIP_PER_DIEM_NOT_ACTIVE]
+                        message:
+                          type: string
+                          description: For the employee — what cannot be done yet.
+                        requirement:
+                          type: string
+                          description: For HC — what opens this service.
+        '401': { $ref: './openapi.yaml#/components/responses/Unauthenticated' }

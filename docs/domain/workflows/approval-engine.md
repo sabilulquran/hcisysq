@@ -269,6 +269,8 @@ Reassignment must store:
 
 Reassignment does not recompute the entire chain from the latest organization structure.
 
+Implemented per workflow, not centrally. Leave reassigns through `POST /admin/leave/approvals/:stepId/reassign` (permission `approvals.policy.manage`), added 2026-11-24 after the opening-readiness audit found that a leave step whose approver lost access could only be freed by editing the database; see `leave-request.md` "APR-001 reassignment of a stuck step". Overtime (`attendance/workforce-routes.ts`), performance raters, and training assessors have their own routes. Business travel, loans, reimbursement, and work arrangements still have none: for those, a stuck step is withdrawn and resubmitted.
+
 ## Approval principal compatibility
 
 A stored approval step is an immutable principal snapshot. The deployed schema supports exactly one of:

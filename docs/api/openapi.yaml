@@ -381,6 +381,8 @@ paths:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1postponements~1{proposalId}~1accept'
   /leave/me/postponements/{proposalId}/decline:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1postponements~1{proposalId}~1decline'
+  /admin/leave/approvals/{stepId}/reassign:
+    $ref: './leave.openapi.yaml#/paths/~1admin~1leave~1approvals~1{stepId}~1reassign'
   /admin/leave/critical-periods:
     $ref: './leave-critical-periods.openapi.yaml#/paths/~1admin~1leave~1critical-periods'
   /admin/leave/critical-periods/{id}:
@@ -3356,6 +3358,8 @@ paths:
 
   /notifications/me:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1me'
+  /me/services:
+    $ref: './employee-services.openapi.yaml#/paths/~1me~1services'
   /notifications/{notificationId}/read:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1{notificationId}~1read'
   /notifications/read-all:

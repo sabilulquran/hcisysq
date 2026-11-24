@@ -174,6 +174,31 @@ Nama orangnya dicari oleh lapisan yang memegang basis data (`resolveLeaveAuthori
 
 **`LEGACY` tidak tersentuh.** Seluruh perubahan ini berada di jalur resolver, yang `LEGACY` tidak panggil sama sekali; production menjalankan `LEGACY` di mana-mana (`organization_rollout_settings` kosong) dan tetap menjawab persis seperti sebelumnya. Dalam mode `SHADOW` perubahan ini hanya mengubah diagnostik: keadaan yang dulu menghasilkan ketidakcocokan rantai kini menghasilkan `shadow.error` dengan kodenya, yang justru lebih dekat ke keadaan sebenarnya.
 
+### Kursi penyetuju unit yang dipegang pemohon sendiri (D-R6 `DRAFT`, 2026-11-24)
+
+Ditemukan audit kesiapan pembukaan 2026-11-24 (skenario B29), dan **menghalangi pembukaan**: seorang penyetuju unit tidak dapat mengajukan cutinya sendiri sama sekali. Di produksi ini bukan kasus sudut — **delapan dari sembilan pegawai yang menjadi penyetuju unit adalah penyetuju bagi unitnya sendiri** (pengukuran baca-saja 2026-11-24).
+
+Yang terjadi sebelumnya. Rung `UNIT_APPROVER` yang jatuh kepada pemohon memang dibuang; itu yang diminta APR-001 ("No self-approval", dengan fallback terdokumentasi) dan LEAVE-004-G ("self-unit-approval is not added"), dan kedua mode sudah melakukannya — `LEGACY` di `rollout.ts`, `STRUCTURE` di `resolveUnitApproverInContext`. Tetapi keduanya membuangnya **tanpa jejak**, dan pemeriksaan di hilir (`snapshotLeaveRolloutAuthorities`) hanya melihat rantai tanpa rung `UNIT_APPROVER`. Ia tidak dapat membedakan dua keadaan yang menuntut jawaban berlawanan:
+
+| Keadaan | Jawaban yang benar |
+|---|---|
+| Kursi penyetuju unit memang belum dikonfigurasi | `409 UNIT_APPROVER_MISSING` — HC harus mengisinya |
+| Kursi itu ada, terisi, dan yang duduk di sana adalah pemohon | Rantai berjalan dengan atasan langsung saja — tidak ada yang perlu diperbaiki |
+
+Keduanya dijawab `UNIT_APPROVER_MISSING`, sehingga pesannya menyalahkan konfigurasi yang justru benar dan tidak ada satu pun tindakan HC yang dapat melepaskannya.
+
+**Keputusannya.** Kenyataan "penyetuju unit adalah pemohon" ikut dibawa keluar dari resolver, sebagai `unitApproverIsRequester` pada `ResolvedLineAuthorities` dan `RolloutAuthorityResult`, dibaca dari kolom lama pada `LEGACY`/`SHADOW` dan dari bagan pada `STRUCTURE`. Dengan itu:
+
+- **`LINE_AND_UNIT`** (Cuti Tahunan dan cuti terencana): rungnya dibuang dan rantainya berjalan dengan atasan langsung saja. Itulah fallback terdokumentasi yang APR-001 maksud; pemohon tidak pernah menyetujui dirinya sendiri, dan pengajuannya tidak berhenti.
+- **`UNIT_ONLY`** (Cuti Tanpa Gaji): tidak ada rung lain yang dapat memikulnya, jadi keadaan ini tetap ditolak — kini sebagai `UNIT_APPROVER_SELF` pada **kedua** mode, bukan `UNIT_APPROVER_MISSING` pada salah satunya, sehingga sebabnya terbaca dari kodenya saja.
+- **`UNIT_AND_APPROVAL_SEATS`** (kasbon) tidak berubah arah: `STRUCTURE` tetap gagal tertutup lebih awal (`selfIsError`, LOAN-002 M1), dan pada `LEGACY` kodenya ikut menjadi `UNIT_APPROVER_SELF` supaya kalimatnya menyebut sebab yang sebenarnya.
+
+**Yang tidak berubah.** Kursi yang benar-benar kosong, kursi yang pejabatnya belum layak (D-R5), dan rung atasan langsung yang jatuh kepada pemohon (`AUTHORITY_SELF_RESOLUTION`) tetap seperti sebelumnya: ketiganya memang keadaan yang harus diperbaiki seseorang.
+
+**Indikator kesiapan ikut dibetulkan.** Layar Konfigurasi Cuti menghitung kolom atasan lama untuk setiap pegawai aktif tanpa kecuali, termasuk mereka yang unitnya sudah berjalan di atas bagan dan karena itu tidak membaca kolom itu sama sekali — sehingga layar menyuruh HC mengisi kolom yang tidak akan dibaca siapa pun, yaitu pengisian ganda yang justru ingin dihindari. `GET /admin/leave/configuration` kini menyertakan `approvalSource` per pegawai dan `summary.structureRouted`, dihitung dengan urutan pemenang yang sama persis dengan `resolveRolloutSetting`.
+
+**Kalimat penolakan resolver kini berbahasa Indonesia.** Penolakan yang sampai ke layar pegawai (`AUTHORITY_SELF_RESOLUTION`, `AUTHORITY_VACANT`, `ACTING_AUTHORITY_REQUIRED`, `MEMBERSHIP_NOT_CONFIGURED`, `AMBIGUOUS_MEMBERSHIP`, `AUTHORITY_NOT_CONFIGURED`, `INVALID_AUTHORITY_PRINCIPAL`, `STRUCTURE_NOT_CONFIGURED`, `AUTHORITY_CYCLE`, `AUTHORITY_TRAVERSAL_LIMIT`) diterjemahkan di `legibleAuthorityError`, masing-masing menyebut apa yang berhenti dan siapa yang dapat menyelesaikannya. Kodenya tidak berubah, dan hanya `AUTHORITY_INELIGIBLE` yang menyebut nama orang — karena hanya di sanalah resolver tahu kursi dan pejabat mana yang menghentikan rantai.
+
 ### The preview asks what the runtime asks (D-R3 `DRAFT`, 2026-11-20, extended 2026-11-23)
 
 The ORG-008-2 approval preview and the change-set resolution preview both resolve with exactly the inputs the runtime resolves with, and nothing more.

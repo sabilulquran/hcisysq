@@ -60,6 +60,7 @@ import { registerPayrollRoutes } from "./modules/payroll/routes.js";
 import { registerPph21AnnualRoutes } from "./modules/payroll/pph21-annual-routes.js";
 import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
+import { registerEmployeeServiceRoutes } from "./modules/services/employee-service-routes.js";
 import { registerAnnouncementRoutes } from "./modules/announcements/routes.js";
 import { registerJobClassificationRoutes } from "./modules/organization/job-classification-routes.js";
 import { registerLetterRoutes } from "./modules/documents/letter-routes.js";
@@ -238,6 +239,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPph21AnnualRoutes(app, pool, config);
   await registerPayslipRoutes(app, pool, config);
   await registerNotificationRoutes(app, pool, config);
+  await registerEmployeeServiceRoutes(app, pool, config);
   // NOTIF-003: reminder preferences (docs/domain/reminders.md §6).
   await registerReminderRoutes(app, pool, config);
   await registerAnnouncementRoutes(app, pool, config);

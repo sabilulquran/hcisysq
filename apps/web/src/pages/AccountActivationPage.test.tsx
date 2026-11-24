@@ -9,7 +9,10 @@ describe("AUTH-002 activation page in Akun SQ mode", () => {
     const html = renderToStaticMarkup(<AkunSqActivationNotice />);
     expect(html).toContain("Aktivasi memakai Akun SQ");
     expect(html).toContain("Lupa kata sandi?");
-    expect(html).toContain('href="/login"');
+    // Audit kesiapan 2026-11-24: tautannya dulu `/login`, rute yang tidak ada di SPA ini, sehingga
+    // satu-satunya tombol pada halaman ini menjawab "404 Halaman tidak tersedia".
+    expect(html).toContain('href="/"');
+    expect(html).not.toContain('href="/login"');
     expect(html).not.toContain('type="password"');
   });
 });

@@ -117,36 +117,80 @@ It stops first if another operator holds the release lock (§4.10).
 #### 4.2.1 Release gate: TRIP-002 uang saku (migration `0172`, SK 01.111/YSQ/VII/2026)
 
 Two **release-stopping** checks in the script, not steps anyone has to remember. They run only
-when the bundle carries `0172_trip_per_diem_decree.sql`.
+when the bundle carries `0172_trip_per_diem_decree.sql`. Both read their SQL from
+`scripts/mi8/sql/`, which is also what the test described at the end of this section runs, so the
+gate and its test can never drift into two different queries.
 
 1. **`trip_per_diem_rates` must be empty** — in `preflight`, while `0172` is still pending. A
    DRAFT-zone rate row has no golongan and no one may guess one, so the migration itself aborts;
-   the gate stops the release before it gets that far. The check is `trip_002_gate_pre_migrate`.
+   the gate stops the release before it gets that far. The check is `trip_002_gate_pre_migrate`,
+   over `sql/trip-002-pre-migrate-gate.sql`.
 
-2. **`trip_per_diem_golongan_map` must cover everything in play** — in `candidate`, after
+2. **Everyone who can ask for an advance must resolve to a golongan** — in `candidate`, after
    `migrate` and before `cutover`, beside the HTTP checks. The check is `trip_002_gate_mapped`,
-   and it covers two populations, because `resolveGolongan` resolves on the **departure date**,
-   not today:
-   - every job classification **in force today** (what new advances will resolve against), and
-   - every **live advance** (`status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')`) resolved on
-     **its own `start_on`** — a classification that was in force when an old trip departed but has
-     since been closed never shows up in the first list, yet its settlement still answers 409.
+   over `sql/trip-002-golongan-gate.sql`. It asks the question **from the people**, the way
+   `resolveGolongan` is asked it at runtime, and not from the catalogue; a catalogue-only check
+   is satisfied by an empty catalogue and never sees someone who holds no classification at all.
+   It stops the release (`FAIL`) on any of:
 
-   The screen shows the first list too ("Belum dipetakan: …"), so HC does not need the queries.
+   | Finding | What it means |
+   |---|---|
+   | `CATALOGUE_EMPTY` | No ORG-011 job classification is in force today, so nobody can resolve to a golongan at all. |
+   | `CLASSIFICATION_UNMAPPED <code>` | A classification in force today has no row in `trip_per_diem_golongan_map`. The first person placed in it answers 409. This is the same list the Admin screen shows as "Belum dipetakan". |
+   | `EMPLOYEE_UNRESOLVED <nomor pegawai>` | An **eligible employee** resolves to no golongan today — no classification bound, or none of the bound codes is mapped. Their estimate and their new advance answer 409. |
+   | `ADVANCE_UNRESOLVED <id> berangkat <tanggal>` | A **live advance** (`status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')`) resolves to no golongan **on its own `start_on`**. `resolveGolongan` settles on the departure date, which may be in the past and may name a classification that has since been closed. |
 
-**Dry run.** A dry run never runs `migrate`, so while `0172` is still pending the map table does not
-exist yet and check 2 cannot be evaluated. The dry run then says so (and whether
-`--allow-unmapped-golongan` was given) instead of failing on `relation "trip_per_diem_golongan_map"
-does not exist`; the real check runs in the `--apply` candidate phase after `migrate`. Observed on
-2026-11-23 against `e1d898f5`, where the dry run stopped on that error before the override could
-take effect.
+   **Eligible employee** (`DRAFT`, 2026-11-23): every employee whose `status` is `active` and
+   whose `removed_at` is null — the population `loadEmployeeContext` lets through. Nothing
+   further is filtered, on purpose: **the gate must be a superset of the route, never narrower.**
+   In particular `management_scope` is *not* tested, because the uang muka route does not test it
+   either, so an `OUTSIDE_HCIS` person with an active account really is refused 409 and really
+   must appear here. An active account is likewise not required: an employee whose account is
+   activated tomorrow must already have a golongan today.
 
-Until the map covers them, every per diem estimate, every new advance and every settlement
-answers 409 `TRIP_PER_DIEM_GOLONGAN_UNMAPPED` for every employee: a module-wide outage from the
-minute of cutover. There is therefore no "carry on and tell people afterwards" path in prose. The
-only way past the gate is `--allow-unmapped-golongan`, typed by the operator on the command line,
-which prints the offending list and an `OPERATOR OVERRIDE` line into this run's output — the
-release evidence of §8. Use it only when Keuangan and HC have agreed to the outage beforehand.
+   (Whether people outside HCIS management should be able to file a trip at all is a separate
+   question — the business-trip route checks `MANAGED` for approvers but not for the requester.
+   That is recorded as a follow-up, not decided here.)
+
+   **Today, not the future.** The blocking questions are asked about today and about each live
+   advance's own departure date. A classification that is published but takes effect later is
+   reported as `WARN CLASSIFICATION_UNMAPPED_FUTURE <code> berlaku <tanggal>` and does **not**
+   stop the release: it breaks nothing at cutover, and HC can map it any time before its date.
+   Record the warnings in the release evidence so they are not forgotten.
+
+   Long lists are cut at 20 rows per finding, with a `dan N lagi` line.
+
+   **An answer that does not arrive is a failure, not a pass.** `psql` writes its errors to
+   stderr and prints nothing at all to stdout — byte for byte what a world with nothing to report
+   looks like. The query therefore always emits a sentinel row (`OK|GATE|…`), the gate stops if
+   that row is absent, and the query's exit status is captured before it is judged. One practical
+   consequence: in a **dry run taken before `migrate`**, `trip_per_diem_golongan_map` does not
+   exist on the device yet, so this gate stops with that message instead of printing a green
+   line. That is correct — a dry run cannot answer this question — and the real answer comes from
+   the `candidate` phase of the apply run, after `migrate`.
+
+Until everything resolves, per diem estimates, new advances and settlements answer 409
+`TRIP_PER_DIEM_GOLONGAN_UNMAPPED`; with an empty map that is every employee, from the minute of
+cutover.
+
+**There is no override.** The `--allow-unmapped-golongan` flag was withdrawn by the owner on
+2026-11-20 and removed from the script; passing it now stops the run with the usage text. The
+fixes are data, not code, and none of them needs a release: the golongan map in Admin → Uang Muka
+Dinas → "Golongan uang saku per klasifikasi jabatan", and the ORG-011 placement of anyone listed
+as `EMPLOYEE_UNRESOLVED`. How long that takes depends on what is missing — a mapping row is a
+form entry, but an employee with no employment record at all needs an EMP-005 action first, which
+is not a two-minute job. Fix it, re-run `candidate`, and only then cut over.
+
+**Test.** `scripts/mi8/test-trip-002-gate.sh` runs both gates against a real PostgreSQL: it
+migrates `apps/api/migrations` into a disposable schema, builds fixtures for each failing and
+passing case, and drives the script's own `BEGIN trip-002-gate` block, the same way
+`test-release-lock.sh` drives the release-lock block. It never contacts the device. CI runs it on
+every pull request; locally it needs an empty loopback database it may create schemas in:
+
+```sh
+HCIS_GATE_TEST_DATABASE_URL=postgres://hcis@127.0.0.1:5432/hcis_mi8_gate_test \
+  bash scripts/mi8/test-trip-002-gate.sh
+```
 
 Informational, and **pre-migrate only** (after `0172` the column is `wilayah`, not `zone`):
 

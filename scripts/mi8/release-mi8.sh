@@ -4,7 +4,6 @@
 #
 #   scripts/mi8/release-mi8.sh <phase> --bundle <hcis-SHA8-DATE.tar.gz> --sha <40-hex>
 #                              [--apply --confirm RELEASE_<sha8>]
-#                              [--allow-unmapped-golongan]
 #
 # Phases: preflight upload backup migrate candidate cutover verify rollback all unlock
 #
@@ -17,7 +16,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -28,16 +27,12 @@ BUNDLE=
 SHA=
 APPLY=0
 CONFIRM=
-# TRIP-002 D-20: typed by the operator to cut over with the uang-saku golongan map incomplete.
-# It is recorded in this run's output, which is the release evidence (runbook §8).
-ALLOW_UNMAPPED_GOLONGAN=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bundle) BUNDLE=${2:-}; shift 2 ;;
     --sha) SHA=${2:-}; shift 2 ;;
     --apply) APPLY=1; shift ;;
     --confirm) CONFIRM=${2:-}; shift 2 ;;
-    --allow-unmapped-golongan) ALLOW_UNMAPPED_GOLONGAN=1; shift ;;
     *) usage ;;
   esac
 done
@@ -236,35 +231,116 @@ pending_migrations() {
 # ------------------------------------------------- TRIP-002 uang saku gate (D-20)
 
 # Migration 0172 seeds the six decree rates but, deliberately, no golongan mapping: deciding who
-# counts as Pimpinan/Yayasan is the foundation's call, not a migration's guess. Until
-# trip_per_diem_golongan_map covers the classifications in play, EVERY per diem estimate, every new
-# advance and every settlement answers 409 TRIP_PER_DIEM_GOLONGAN_UNMAPPED for EVERY employee. That
-# is a module-wide outage from the minute of cutover, so it is a release-stopping check here rather
-# than a paragraph someone is supposed to remember.
+# counts as Pimpinan/Kepala Unit/Staf is the foundation's call, not a migration's guess. Until
+# trip_per_diem_golongan_map resolves a golongan for the people who can actually ask for an
+# advance, their per diem estimate, their new advance and their settlement all answer 409
+# TRIP_PER_DIEM_GOLONGAN_UNMAPPED. With an empty map that is every employee, from the minute of
+# cutover, so it is a release-stopping check here rather than a paragraph someone must remember.
+#
+# There is no override. Everything the gate stops on is fixed by filling in data through the
+# HCIS admin screens, in minutes, without a release; cutting over regardless only buys an
+# outage (owner, 2026-11-20).
+#
+# The queries live in scripts/mi8/sql/ so that scripts/mi8/test-trip-002-gate.sh can drive the
+# same text against a throwaway PostgreSQL instead of a second copy that drifts from this one.
 TRIP_002_MIGRATION=0172_trip_per_diem_decree.sql
+GATE_SQL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/sql" 2>/dev/null && pwd) || GATE_SQL_DIR=
+
+# BEGIN trip-002-gate
+# Everything between these markers is free of ssh and of this release's own state, so that
+# scripts/mi8/test-trip-002-gate.sh can extract the block verbatim and run it against a real
+# PostgreSQL. It reads $GATE_SQL_DIR, reports through say() and stops through die().
+
+# Read one gate query and flatten it to a single line, so it can travel inside the nested double
+# quotes of as_termux "psql ... \"...\"" on the device. Comments go first: once flattened, one
+# of them would swallow the rest of the query.
+gate_sql() {
+  local file=$GATE_SQL_DIR/$1
+  [[ -n "$GATE_SQL_DIR" && -f "$file" ]] || die "missing gate query scripts/mi8/sql/$1"
+  local flat
+  flat=$(sed -e 's/--.*$//' "$file" | tr '\n\r' '  ' | tr -s ' ')
+  [[ -n "${flat// /}" ]] || die "gate query scripts/mi8/sql/$1 is empty after stripping comments"
+  case "$flat" in
+    *'"'*|*'\'*|*'$'*|*'`'*)
+      die "scripts/mi8/sql/$1 must not contain a double quote, backslash, dollar sign or backtick: it travels inside nested double quotes" ;;
+  esac
+  printf '%s' "$flat"
+}
+
+# $1 = output of sql/trip-002-pre-migrate-gate.sql (one number).
+#
+# 0172 refuses to run while DRAFT-zone rates exist (they have no golongan and no one may guess
+# one). Stop here instead of failing halfway through the release.
+trip_002_pre_migrate_verdict() {
+  local rates=${1//[[:space:]]/}
+  [[ "$rates" =~ ^[0-9]+$ ]] || die "could not count trip_per_diem_rates (got: $1)"
+  [[ "$rates" == 0 ]] \
+    || die "trip_per_diem_rates holds $rates DRAFT-zone rate rows; migration $TRIP_002_MIGRATION will abort. Export them and empty the table first (TRIP-002 D-02)."
+  say "trip-002 gate: trip_per_diem_rates is empty, $TRIP_002_MIGRATION may run"
+}
+
+# $1 = output of sql/trip-002-golongan-gate.sql, one SEVERITY|KIND|DETAIL row per line.
+trip_002_mapped_verdict() {
+  local fails warns junk
+  # The sentinel first. psql writes its errors to stderr and prints NOTHING to stdout, which is
+  # also exactly what a world with nothing to report looks like; without a row that is always
+  # emitted, a query that never ran would be read as "everyone resolves" and the release would
+  # cut over on no evidence at all. This is the same shape of defect the gate itself exists to
+  # close, one layer up.
+  printf '%s\n' "$1" | grep -qx 'OK|GATE|.*' \
+    || die "trip-002 gate: the golongan query did not answer (no sentinel row). Treat this as a failed check, not a clean one; read the error above."
+  fails=$(printf '%s\n' "$1" | grep '^FAIL|' || true)
+  warns=$(printf '%s\n' "$1" | grep '^WARN|' || true)
+  junk=$(printf '%s\n' "$1" | grep -v '^FAIL|' | grep -v '^WARN|' | grep -v '^OK|' \
+    | grep -v '^[[:space:]]*$' || true)
+  # An output shape this function no longer understands must stop the release too.
+  [[ -z "$junk" ]] || die "trip-002 gate: unreadable answer from the golongan query: $junk"
+  if [[ -n "$warns" ]]; then
+    say "trip-002 gate: klasifikasi jabatan berjadwal yang belum dipetakan (belum menghentikan rilis):"
+    printf '%s\n' "$warns" | sed 's/^WARN|/    /; s/|/ /'
+  fi
+  if [[ -z "$fails" ]]; then
+    say "trip-002 gate: every eligible employee, every live advance and every classification in force today resolves to a golongan"
+    return 0
+  fi
+  say "TRIP-002 GOLONGAN MAP INCOMPLETE - uang muka dinas answers 409 for these:"
+  printf '%s\n' "$fails" | sed 's/^FAIL|/    /; s/|/ /'
+  say "Fix: HC fills Admin -> Uang Muka Dinas -> \"Golongan uang saku per klasifikasi jabatan\", and the ORG-011 placement of anyone listed as EMPLOYEE_UNRESOLVED (TRIP-002 D-20)."
+  die "golongan map incomplete; cutting over would leave uang muka dinas unusable. Fill it in, re-run this phase, and only then cut over. There is no override flag."
+}
+# END trip-002-gate
 
 trip_002_in_bundle() {
   grep -qx "$TRIP_002_MIGRATION" <<<"$BUNDLE_MIGRATIONS"
 }
 
-# Before migrate: 0172 refuses to run while DRAFT-zone rates exist (they have no golongan and no
-# one may guess one). Stop here instead of failing halfway through the release.
+# Run one gate query on the device. Read-only, so it runs in dry run too.
+gate_query() {
+  local sql script
+  sql=$(gate_sql "$1")
+  script=$(printf 'as_termux "psql -U postgres -d $DB -Atc \\"%s\\""\n' "$sql")
+  remote_ro <<<"$script" | tr -d '\r'
+}
+
+# Before migrate.
+#
+# The query's exit status is captured into a variable first, on purpose. Written as
+# `verdict "$(gate_query ...)"` the substitution sits in an argument position, where bash does
+# not apply errexit, so a failed query would arrive as an empty string and be judged on.
 trip_002_gate_pre_migrate() {
   trip_002_in_bundle || return 0
   grep -qx "$TRIP_002_MIGRATION" <<<"$PENDING" || return 0
   local rates
-  rates=$(remote_ro <<'EOF' | tr -d '\r'
-as_termux "psql -U postgres -d $DB -Atc \"SELECT count(*) FROM trip_per_diem_rates\""
-EOF
-)
-  [[ "$rates" =~ ^[0-9]+$ ]] || die "could not count trip_per_diem_rates (got: $rates)"
-  [[ "$rates" == 0 ]] || die "trip_per_diem_rates holds $rates DRAFT-zone rate rows; migration $TRIP_002_MIGRATION will abort. Export them and empty the table first (TRIP-002 D-02)."
-  say "trip-002 gate: trip_per_diem_rates is empty, $TRIP_002_MIGRATION may run"
+  rates=$(gate_query trip-002-pre-migrate-gate.sql) \
+    || die "trip-002 gate: could not read trip_per_diem_rates from the device; read the error above"
+  trip_002_pre_migrate_verdict "$rates"
 }
 
-# After migrate, before cutover: the golongan map must cover both the classifications in force
-# today (new advances) and the classifications each LIVE advance resolves on ITS OWN departure
-# date, which may be in the past and may name a classification that has since been closed.
+# After migrate, before cutover. The query starts from the people who can actually submit a trip
+# advance, and from the advances already in flight, because that is what resolveGolongan() is
+# asked about at runtime; the classification catalogue is checked as well, but it can never stand
+# in for the people (an empty catalogue used to satisfy a catalogue-only check while refusing
+# every employee).
 trip_002_gate_mapped() {
   trip_002_in_bundle || return 0
   # A dry run never runs migrate, so while 0172 is still pending trip_per_diem_golongan_map does not
@@ -283,56 +359,9 @@ trip_002_gate_mapped() {
     fi
   fi
   local report
-  report=$(remote_ro <<'EOF' | tr -d '\r'
-as_termux "psql -U postgres -d $DB -Atc \"
-SELECT 'TODAY ' || classification.code
-  FROM job_classifications classification
- WHERE classification.active AND classification.effective_from <= current_date
-   AND (classification.effective_to IS NULL OR classification.effective_to >= current_date)
-   AND NOT EXISTS (SELECT 1 FROM trip_per_diem_golongan_map map
-                    WHERE map.job_classification_code = classification.code)
-UNION ALL
-SELECT 'ADVANCE ' || live.id || ' berangkat ' || live.start_on
-  FROM (SELECT advance.id, advance.employee_id, trip.start_on
-          FROM trip_advances advance
-          JOIN business_trip_requests trip ON trip.id = advance.business_trip_id
-         WHERE advance.status NOT IN ('SETTLED', 'REJECTED', 'CANCELLED')) live
- WHERE NOT EXISTS (
-   SELECT 1
-     FROM employments employment
-     JOIN employment_placements placement
-       ON placement.employment_id = employment.id AND placement.voided_by_action_id IS NULL
-      AND placement.effective_from <= live.start_on
-      AND (placement.effective_to IS NULL OR placement.effective_to >= live.start_on)
-     LEFT JOIN LATERAL (
-       SELECT id FROM organization_change_sets
-        WHERE status = 'PUBLISHED' AND effective_on <= live.start_on
-        ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC LIMIT 1
-     ) change_set ON true
-     LEFT JOIN organization_positions position_row
-       ON position_row.change_set_id = change_set.id
-      AND position_row.stable_key = placement.org_position_key AND position_row.active
-      AND position_row.effective_from <= live.start_on
-      AND (position_row.effective_to IS NULL OR position_row.effective_to >= live.start_on)
-     JOIN trip_per_diem_golongan_map map
-       ON map.job_classification_code
-          = COALESCE(placement.job_classification_code, position_row.job_classification_code)
-    WHERE employment.employee_id = live.employee_id AND employment.voided_by_action_id IS NULL
-      AND (employment.started_on IS NULL OR employment.started_on <= live.start_on)
-      AND (employment.ended_on IS NULL OR employment.ended_on >= live.start_on))
-ORDER BY 1\""
-EOF
-)
-  if [[ -z "${report//[[:space:]]/}" ]]; then
-    say "trip-002 gate: golongan map covers every classification in force and every live advance"
-    return 0
-  fi
-  say "TRIP-002 GOLONGAN MAP INCOMPLETE — uang muka dinas will answer 409 for these:"
-  printf '    %s\n' $report
-  say "Fix: HC fills Admin -> Uang Muka Dinas -> \"Golongan uang saku per klasifikasi jabatan\" (TRIP-002 D-20)."
-  [[ "$ALLOW_UNMAPPED_GOLONGAN" == 1 ]] \
-    || die "golongan map incomplete; cutover would break uang muka dinas for everyone. Fill it, or re-run with --allow-unmapped-golongan to accept the outage knowingly."
-  say "OPERATOR OVERRIDE: --allow-unmapped-golongan given; cutting over with uang muka dinas unusable. Record this in the release report and tell Keuangan and HC."
+  report=$(gate_query trip-002-golongan-gate.sql) \
+    || die "trip-002 gate: the golongan query failed on the device; read the error above. In a dry run before migrate, trip_per_diem_golongan_map does not exist yet, and that is a failed check, not a clean one."
+  trip_002_mapped_verdict "$report"
 }
 
 # ---------------------------------------------------------------- release lock

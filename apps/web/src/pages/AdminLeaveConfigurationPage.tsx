@@ -220,10 +220,15 @@ export function AdminLeaveConfigurationPage() {
             ORG-004 D-R6: unit yang sudah berjalan di atas bagan tidak membaca kolom atasan lama,
             jadi angka ini menghitungnya sebagai siap dan mengatakan dari mana asalnya. Tanpa
             kalimat ini, layar menyuruh HC mengisi kolom yang tidak akan dibaca siapa pun.
+
+            Mode rollout disimpan per kunci workflow, dan angka ini dihitung untuk Cuti Tahunan —
+            kunci yang layar ini urus. Kalimatnya menyebut itu, karena alur lain (cuti terencana,
+            lembur, perjalanan dinas) dapat berjalan `LEGACY` pada orang yang sama dan masih
+            membaca kolom atasannya.
           */}
           {summary?.structureRouted ? (
             <p className="mt-1 text-xs font-semibold text-brand-primary-deep">
-              {summary.structureRouted} di antaranya mengikuti bagan Struktur Organisasi, jadi kolom atasannya tidak perlu diisi.
+              {summary.structureRouted} di antaranya mengikuti bagan Struktur Organisasi untuk Cuti Tahunan, jadi kolom atasannya tidak dibaca alur itu. Alur lain yang masih memakai pengaturan lama tetap membacanya.
             </p>
           ) : null}
         </article>

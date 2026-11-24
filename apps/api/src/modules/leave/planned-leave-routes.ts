@@ -1307,6 +1307,13 @@ export async function registerPlannedLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        // LEAVE-010-F: Cuti Tanpa Gaji selesai di sini — disetujui maupun ditolak — jadi di sini
+        // pula pemohon diberi tahu. Rute validasi di atas hanya menutup kebijakan terencana lain.
+        await notifyRequesterDecision(client, {
+          requestId: task.requestId,
+          requesterEmployeeId: task.requesterEmployeeId,
+          decision: approved ? "approved" : "rejected",
+        });
         if (approved) {
           await enqueueFinalApprovalOversight(client, {
             requestId: task.requestId,

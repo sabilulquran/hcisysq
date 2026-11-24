@@ -566,6 +566,52 @@ describe.skipIf(!allowed)("ORG-004 D-R6: penyetuju unit mengajukan cutinya sendi
       expect(sudahDiputuskan.json().code).toBe("APPROVAL_STEP_NOT_PENDING");
     });
 
+    /**
+     * ORG-013: langkah yang dipegang akun Organ Yayasan tidak boleh berpindah ke pegawai.
+     *
+     * Ditemukan review independen PR #412. Keputusan atas langkah principal akun melewati
+     * `assertGovernanceApprovalCapability`; gerbang itu hanya ada pada cabang akun. Memindahkan
+     * langkahnya ke `approver_employee_id` membuat keputusan berikutnya mengambil cabang pegawai
+     * biasa — kapabilitas governance tidak pernah diperiksa — sementara `sources` tetap menuliskan
+     * `GOVERNANCE_APPROVER`. Wewenang turun tanpa jejak.
+     */
+    it("menolak memindahkan langkah yang dipegang akun Pengurus Yayasan, dan tidak mengubah apa pun", async () => {
+      const { stepId } = await pendingStep();
+      await client.query(
+        `UPDATE leave_request_approval_steps
+            SET approver_employee_id = NULL, approver_account_id = $2, sources = ARRAY['GOVERNANCE_APPROVER']
+          WHERE id = $1`,
+        [stepId, people.ketua.accountId],
+      );
+
+      const ditolak = await reassign(stepId, people.ketua.employeeId);
+      expect(ditolak.statusCode).toBe(409);
+      expect(ditolak.json().code).toBe("APPROVAL_STEP_ACCOUNT_HELD");
+
+      const after = await client.query<{ employee: string | null; account: string | null }>(
+        `SELECT approver_employee_id AS employee, approver_account_id AS account
+           FROM leave_request_approval_steps WHERE id = $1`,
+        [stepId],
+      );
+      expect(after.rows[0]).toEqual({ employee: null, account: people.ketua.accountId });
+      const jejak = await client.query<{ count: string }>(
+        `SELECT count(*) AS count FROM leave_request_events WHERE event_type = 'leave.approval.reassigned'`,
+      );
+      expect(jejak.rows[0]!.count).toBe("0");
+    });
+
+    it("menulis intent outbox di samping notifikasi, seperti pengaktifan langkah lain", async () => {
+      const { requestId, stepId } = await pendingStep();
+      await reassign(stepId, people.ketua.employeeId);
+      const outbox = await client.query<{ count: string }>(
+        `SELECT count(*) AS count FROM leave_notification_outbox
+          WHERE leave_request_id = $1 AND event_type = 'leave.approval.requested'
+            AND target_type = 'employee' AND target_key = $2`,
+        [requestId, people.ketua.employeeId],
+      );
+      expect(outbox.rows[0]!.count).toBe("1");
+    });
+
     it("hanya pemegang izin kebijakan persetujuan yang dapat mengalihkan", async () => {
       const { stepId } = await pendingStep();
       const olehPegawai = await call("guru", "POST", `/admin/leave/approvals/${stepId}/reassign`,

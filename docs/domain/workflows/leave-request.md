@@ -180,7 +180,7 @@ Found by the opening-readiness audit of 2026-11-24 (scenario B27): every approve
 | Element | Rule |
 | --- | --- |
 | Actor | System, inside the transaction that gives the request its final status. |
-| Trigger | The request reaches `approved` or `rejected`: a line decision that ends the chain (`employee-routes.ts`), or the HC task that completes planned or special leave. A line approval that merely activates the next step or hands over to HC is **not** a final decision and notifies nobody. |
+| Trigger | The request reaches `approved` or `rejected`, wherever that happens: a line decision that ends the chain (`employee-routes.ts`), the HC validation that completes planned or special leave, or the HC **approval queue** that decides Cuti Tanpa Gaji — the one policy whose final decision belongs to HC, approved and rejected alike. A line approval that merely activates the next step or hands over to HC is **not** a final decision and notifies nobody. |
 | Recipient | The requester's active `EMPLOYEE` account. No account, no row — the outbox intent stays the record. |
 | Content | Category `system`; title "Pengajuan cuti Anda disetujui" / "Pengajuan cuti Anda ditolak"; body names the leave type, dates, and working days; link `/app/leave`. The **decision note is never copied**: a rejection reason belongs on the Cuti & Izin screen the requester opens, not in a bell summary that is read over their shoulder. |
 | Idempotency | `event_key = leave.request.decided.<requestId>`: exactly one row per request, whichever path decides it and however often it is replayed. |
@@ -199,15 +199,16 @@ Acceptance:
 | Route | `POST /admin/leave/approvals/:stepId/reassign`, permission `approvals.policy.manage`. |
 | Input | `newApproverEmployeeId`, and a `reason` of at least 5 characters. |
 | Precondition | The step is `pending` and its request is `in_review`. A decided step is history and answers 409 `APPROVAL_STEP_NOT_PENDING`. |
+| Account-held steps | A step held by an Organ Yayasan **account** (`approver_account_id`, from a `GOVERNANCE_APPROVER` binding) is refused with 409 `APPROVAL_STEP_ACCOUNT_HELD`. Deciding such a step passes `assertGovernanceApprovalCapability`, a gate that exists only on the account branch; moving the step to an employee would take the ordinary branch, leave that capability unchecked, and still record `GOVERNANCE_APPROVER` in `sources` — lowering the authority with nothing on screen or in the audit saying so. A stuck organ seat is resolved in the chart, not by moving its step. |
 | Replacement | An active, HCIS-managed employee whose account is `active`, and never the requester: otherwise 409 `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`, or `APPROVAL_REASSIGNMENT_SELF`. Moving a step to the approver it already has answers 409 `APPROVAL_REASSIGNMENT_UNCHANGED`. |
 | Scope | **One step.** `sources`, step order, and every other step are untouched, so the snapshot stays a snapshot and the chain is never recomputed from today's structure. |
 | Record | `leave_request_events` row `leave.approval.reassigned` and an `access_audit_events` row of the same name, both carrying the step, the previous approver, the new approver, the acting administrator, and the reason. |
-| Notification | The new approver receives the ordinary step notification (`leave.approval.requested.<stepId>`). |
+| Notification | The new approver receives the ordinary step notification (`leave.approval.requested.<stepId>`) **and** the outbox intent `leave.approval.requested`, exactly as any other step activation does. |
 
 Acceptance:
 
 - LEAVE-010-G: an administrator moves a `pending` step to another eligible approver; the new approver sees it in **Persetujuan**, decides it, and the remaining steps keep their stored approvers.
-- LEAVE-010-H: reassignment refuses a decided step, the requester, an inactive employee, an account that is not active, and any actor without `approvals.policy.manage`; each refusal changes nothing.
+- LEAVE-010-H: reassignment refuses a decided step, a step held by an organ account, the requester, an inactive employee, an account that is not active, and any actor without `approvals.policy.manage`; each refusal changes nothing.
 - LEAVE-010-I: every reassignment is readable afterwards from both the request history and the access audit, with previous approver, new approver, actor, and reason.
 
 ### Employee cancellation

@@ -22,7 +22,7 @@ import {
   resolveLeaveLineApprovalChain,
 } from "./domain/approval-chain.js";
 import { LEAVE_POLICY_CATALOG } from "./domain/policy-catalog.js";
-import { addEvent } from "./employee-routes.js";
+import { addEvent, enqueueNotification } from "./employee-routes.js";
 import { notifyApprovalRequested } from "./approver-notifications.js";
 import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import { PostgresOrganizationRepository } from "../organization/index.js";
@@ -184,6 +184,11 @@ export async function registerLeaveAdminRoutes(
      * bagan tidak membaca kolom itu sama sekali, dan mengisinya hanya menambah sumber kedua untuk
      * hubungan yang sama. Angka kesiapan kini memakai sumber yang benar-benar dibaca runtime untuk
      * tiap orang: bagan bila modenya `STRUCTURE`, kolom lama bila `LEGACY`.
+     *
+     * Dihitung untuk **Cuti Tahunan** saja, karena mode rollout disimpan per kunci workflow dan
+     * itulah kunci yang layar ini urus. Orang yang sama bisa `STRUCTURE` untuk cuti tahunan dan
+     * `LEGACY` untuk lembur atau perjalanan dinas, jadi layar menyebut alurnya, bukan menyimpulkan
+     * bahwa kolom atasannya tidak diperlukan sama sekali.
      */
     const modes = await new PostgresOrganizationRepository(pool).resolveRolloutModes(
       leaveWorkflowKey("annual"),
@@ -494,6 +499,24 @@ export async function registerLeaveAdminRoutes(
           message: "Hanya tahap approval yang sedang menunggu keputusan yang dapat dialihkan.",
         });
       }
+      /**
+       * ORG-013: langkah yang dipegang **akun** Organ Yayasan tidak dapat dialihkan ke pegawai.
+       *
+       * Langkah semacam itu lahir dari binding `GOVERNANCE_APPROVER`, dan keputusannya melewati
+       * `assertGovernanceApprovalCapability` — gerbang yang hanya ada pada cabang principal akun.
+       * Memindahkannya ke `approver_employee_id` akan membuat keputusan berikutnya mengambil
+       * cabang pegawai biasa, sehingga kapabilitas governance tidak pernah diperiksa, sementara
+       * `sources` tetap menuliskan `GOVERNANCE_APPROVER`. Itu menurunkan wewenang tanpa jejak.
+       * Kursi organ yang tersangkut diselesaikan di bagannya, bukan dengan memindah langkahnya.
+       */
+      if (current.approverAccountId !== null) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "APPROVAL_STEP_ACCOUNT_HELD",
+          message: "Tahap ini dipegang akun Pengurus Yayasan dan tidak dapat dialihkan ke pegawai. "
+            + "Selesaikan lewat Portal Organ atau perbaiki kursinya di bagan organisasi.",
+        });
+      }
       if (current.approverEmployeeId === body.data.newApproverEmployeeId) {
         await client.query("ROLLBACK");
         return reply.status(409).send({
@@ -537,10 +560,10 @@ export async function registerLeaveAdminRoutes(
         });
       }
 
+      // `approver_account_id` sudah dipastikan NULL di atas; tidak ditulis ulang di sini supaya
+      // baris ini tidak pernah menjadi cara mengubah langkah akun menjadi langkah pegawai.
       await client.query(
-        `UPDATE leave_request_approval_steps
-            SET approver_employee_id = $2, approver_account_id = NULL
-          WHERE id = $1`,
+        `UPDATE leave_request_approval_steps SET approver_employee_id = $2 WHERE id = $1`,
         [current.id, body.data.newApproverEmployeeId],
       );
       // Jejaknya ditulis dua kali dengan sengaja: pada riwayat pengajuan, yang dibaca pemohon dan
@@ -559,6 +582,13 @@ export async function registerLeaveAdminRoutes(
         approverEmployeeId: body.data.newApproverEmployeeId,
         approverAccountId: null,
       });
+      // Setiap pengaktifan langkah lain menulis dua hal: notifikasi dalam aplikasi dan intent di
+      // outbox. Pengalihan adalah pengaktifan langkah bagi penyetuju baru, jadi ia menulis keduanya;
+      // tanpa intent itu, jalur pengiriman di luar aplikasi melewatkan satu-satunya langkah yang
+      // berpindah tangan.
+      await enqueueNotification(
+        client, current.requestId, "leave.approval.requested", "employee", body.data.newApproverEmployeeId,
+      );
       await client.query("COMMIT");
       await audit(pool, principal, "leave.approval.reassigned", "leave_request_approval_step", current.id, {
         leaveRequestId: current.requestId,

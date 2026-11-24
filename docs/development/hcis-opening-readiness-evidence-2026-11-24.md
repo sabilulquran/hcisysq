@@ -52,6 +52,18 @@ Ketiganya ada di `main` dan **belum dirilis**. Sampai dirilis, perilaku producti
 | 6 | **Pesan penolakan resolver berbahasa Indonesia** | Pegawai membaca "Authority resolution cannot resolve to the requester" | Skenario D16 |
 | 7 | **Tautan masuk pada halaman aktivasi lama** | Menuju `/login`, rute yang tidak ada, menampilkan "404 Halaman tidak tersedia". Ada 80 token aktivasi lama di produksi | `AccountActivationPage.test.tsx` |
 
+### 3.1 Putaran review independen, dan apa yang ia temukan
+
+Perubahan ini menyentuh resolver kewenangan dan menambah satu rute admin berizin `approvals.policy.manage`, jadi ia melewati satu putaran review independen sebelum merge (AGENTS.md §8). Review itu menemukan tiga hal yang diperbaiki sebelum PR dilanjutkan — dicatat di sini karena dua di antaranya adalah cacat yang perbaikan ini sendiri **hampir** tambahkan:
+
+| Temuan | Mengapa serius | Perbaikannya |
+|---|---|---|
+| Pengalihan langkah dapat memindahkan langkah yang dipegang **akun Organ Yayasan** ke pegawai biasa | Keputusan langkah akun melewati `assertGovernanceApprovalCapability`, gerbang yang hanya ada pada cabang akun. Setelah dipindahkan, keputusan berikutnya mengambil cabang pegawai biasa sehingga gerbang itu tidak pernah diperiksa, sementara `sources` tetap menuliskan `GOVERNANCE_APPROVER` — wewenang turun tanpa jejak | Ditolak `409 APPROVAL_STEP_ACCOUNT_HELD`; `approver_account_id` tidak lagi ditulis ulang oleh rute ini |
+| **Cuti Tanpa Gaji** tetap tidak memberi tahu pemohon | Keputusan akhirnya diambil HC di antrean persetujuan, bukan di rute validasi tempat panggilan notifikasi dipasang — jadi satu-satunya kebijakan yang keputusan akhirnya milik HC justru tetap diam | Pemberitahuan dipasang juga di antrean persetujuan, untuk disetujui maupun ditolak |
+| Indikator kesiapan menyimpulkan satu kunci workflow untuk semua alur | Mode rollout disimpan per kunci; orang yang sama dapat `STRUCTURE` untuk cuti tahunan dan `LEGACY` untuk lembur atau perjalanan dinas, yang masih membaca kolom atasannya | Kalimat di layar menyebut alurnya ("untuk Cuti Tahunan") dan mengingatkan bahwa alur lain masih membacanya |
+
+Satu temuan ringan ikut diperbaiki: pengalihan kini menulis intent outbox di samping notifikasi dalam aplikasi, seperti setiap pengaktifan langkah lain. Tiga temuan ringan lain tidak diambil dan dicatat sebagai pekerjaan terbuka: notifikasi penyetuju lama tidak dicabut (ia melihat butir yang kini menjawab 403), `audit()` berjalan sesudah `COMMIT` mengikuti pola rumah berkas itu, dan tidak ada pemeriksaan bahwa pengganti belum memegang rung lain pada pengajuan yang sama.
+
 ---
 
 ## 4. Jalur persetujuan berbasis bagan: apa yang terbukti

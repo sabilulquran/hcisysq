@@ -331,6 +331,42 @@ export const mapGolongan = (input: { jobClassificationCode: string; golongan: Go
 export const unmapGolongan = (code: string) =>
   send<{ jobClassificationCode: string }>("DELETE", `/admin/trip-per-diem-golongan/${encodeURIComponent(code)}`);
 
+/** D-22: the per diem lock. FAIL findings stop activation; WARN ones are shown and do not. */
+export interface PerDiemReadinessFinding {
+  severity: "FAIL" | "WARN";
+  kind: string;
+  detail: string;
+  /** How many findings of this kind there are in all; the list itself is cut at 20 per kind. */
+  total: number;
+}
+
+export interface PerDiemActivation {
+  state: "ACTIVE" | "INACTIVE";
+  changedAt: string | null;
+  changedByName: string | null;
+  reason: string | null;
+  ready: boolean;
+  blockers: PerDiemReadinessFinding[];
+  warnings: PerDiemReadinessFinding[];
+  checkedOn: string;
+}
+
+export const READINESS_LABELS: Record<string, string> = {
+  CATALOGUE_EMPTY: "Katalog klasifikasi jabatan kosong",
+  CLASSIFICATION_UNMAPPED: "Klasifikasi jabatan belum dipetakan ke golongan",
+  EMPLOYEE_UNRESOLVED: "Pegawai belum memperoleh golongan",
+  ADVANCE_UNRESOLVED: "Uang muka berjalan belum memperoleh golongan",
+  RATE_MISSING: "Tarif uang harian belum ditetapkan",
+  CLASSIFICATION_UNMAPPED_FUTURE: "Klasifikasi jabatan berjadwal belum dipetakan",
+};
+
+export const getPerDiemActivation = () => get<PerDiemActivation>("/admin/trip-per-diem-activation");
+
+export const setPerDiemActivation = (input: { state: "ACTIVE" | "INACTIVE"; reason: string }) =>
+  post<{ state: "ACTIVE" | "INACTIVE"; checkedOn: string; warnings: PerDiemReadinessFinding[] }>(
+    "/admin/trip-per-diem-activation", input,
+  );
+
 // ------------------------------------------------------------------ labels
 
 export const ADVANCE_STATUS_LABELS: Record<AdvanceStatus, string> = {

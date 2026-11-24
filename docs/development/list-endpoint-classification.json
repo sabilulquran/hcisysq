@@ -800,6 +800,11 @@
       "reason": "TRIP-002 D-19: rentang tanggal wajib maks. 366 hari; lebih dari 20.000 baris ditolak 422, tidak dipotong."
     },
     {
+      "url": "/admin/trip-per-diem-activation",
+      "list": "single",
+      "reason": "TRIP-002 D-22: satu keadaan saklar, ditambah daftar temuan kesiapan yang sudah dipotong 20 baris per jenis di dalam kuerinya."
+    },
+    {
       "url": "/admin/trip-per-diem-golongan",
       "list": "paged"
     },

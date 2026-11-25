@@ -278,7 +278,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <label className="block">
       <span className="text-xs font-bold text-brand-heading">{label}</span>
-      {hint ? <span className="ml-1 text-[11px] text-muted-foreground">{hint}</span> : null}
+      {hint ? <span className="ml-1 text-2xs text-muted-foreground">{hint}</span> : null}
       <span className="mt-1.5 block">{children}</span>
     </label>
   );
@@ -309,21 +309,21 @@ function ImpactCard({ label, count, tone = "default" }: { label: string; count: 
   return (
     <div className={cn("rounded-xl border px-3 py-3", tone === "warning" ? "border-warning-line bg-warning-soft" : tone === "visual" ? "border-info-line bg-info-soft" : "border-border/70 bg-surface")}>
       <p className="text-xl font-bold text-brand-heading">{count}</p>
-      <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-2xs leading-4 text-muted-foreground">{label}</p>
     </div>
   );
 }
 
 function ActionButton({ onClick, icon, children }: { onClick: () => void; icon: ReactNode; children: ReactNode }) {
-  return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-[11px] font-bold hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{children}</button>;
+  return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-2xs font-bold hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{children}</button>;
 }
 
 /** Codes and stable keys belong here only, never on the main screen (acceptance ORG-008-J). */
 function TechnicalDetails({ children }: { children: ReactNode }) {
   return (
     <details className="mt-3 rounded-xl border border-border/70 bg-surface px-3 py-2">
-      <summary className="cursor-pointer text-[11px] font-bold text-muted-foreground">Detail teknis</summary>
-      <div className="mt-2 text-[11px] leading-5 text-muted-foreground">{children}</div>
+      <summary className="cursor-pointer text-2xs font-bold text-muted-foreground">Detail teknis</summary>
+      <div className="mt-2 text-2xs leading-5 text-muted-foreground">{children}</div>
     </details>
   );
 }
@@ -389,7 +389,7 @@ function EmployeePicker({
         ))}
       </select>
       {options.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">Tidak ada pegawai aktif yang cocok dengan pencarian.</p>
+        <p className="text-2xs text-muted-foreground">Tidak ada pegawai aktif yang cocok dengan pencarian.</p>
       ) : null}
     </div>
   );
@@ -1176,9 +1176,9 @@ export function OrganizationDesignerWorkspace({
                 dates can no longer close the change the operator is working on. */}
             {hasActiveDraft && data?.draft ? (
               <div className="mb-0.5 self-end">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Perubahan yang sedang dibuka</p>
+                <p className="sq-eyebrow text-muted-foreground">Perubahan yang sedang dibuka</p>
                 <p className="mt-0.5 text-sm font-bold text-brand-heading">{data.draft.name}</p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Berlaku mulai {displayDate(data.draft.effectiveOn)} · {organizationDraftStatusLabel(data.draft.status, { effectiveOn: data.draft.effectiveOn, today, formatDate: displayDate })}
                 </p>
               </div>
@@ -1216,11 +1216,11 @@ export function OrganizationDesignerWorkspace({
 
         {canEdit && (selectedNode || selectedPosition) ? <div className="flex flex-col gap-3 border-b border-warning-line bg-surface-raised px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p>
+            <p className="sq-eyebrow text-muted-foreground">Dipilih</p>
             <p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p>
             {/* ORG-011 read view: the seat's default classification, payroll-only, never authority. */}
-            {!selectedNode && selectedPosition ? <p className="mt-0.5 text-[11px] text-muted-foreground">{seatClassificationLabel(selectedPosition.jobClassificationCode ?? null)}</p> : null}
-            {selectedSeat?.reason ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">{selectedSeat.reason}</p> : null}
+            {!selectedNode && selectedPosition ? <p className="mt-0.5 text-2xs text-muted-foreground">{seatClassificationLabel(selectedPosition.jobClassificationCode ?? null)}</p> : null}
+            {selectedSeat?.reason ? <p className="mt-1 max-w-xl text-2xs leading-4 text-muted-foreground">{selectedSeat.reason}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {selectedNode ? <>
@@ -1268,7 +1268,7 @@ export function OrganizationDesignerWorkspace({
           <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty}
             onSeedFromLegacy={!hasActiveDraft && canAssignIncumbents ? () => setAction({ type: "seedFromLegacy" }) : undefined} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-surface-raised px-5 py-3 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-surface-raised px-5 py-3 text-2xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" /> Jabatan terisi</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-warning-line bg-warning-soft" /> Jabatan kosong</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-px w-5 bg-brand-primary/40" /> Hubungan unit dan jabatan</span>
@@ -1343,7 +1343,7 @@ export function OrganizationDesignerWorkspace({
             </select>
             <button type="submit" disabled={previewLoading || !previewEmployeeId} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">{previewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Lihat</button>
           </form>
-          {preview ? <div className="mt-4 rounded-xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">{preview.employee.fullName}</p><div className="mt-3 flex flex-wrap items-center gap-2">{preview.steps.map((step, index) => <div key={`${step.employeeId}-${index}`} className="contents"><span className="rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs"><span className="font-bold">{step.employeeName}</span>{step.positionTitle ? <span className="block text-[10px] text-muted-foreground">{step.positionTitle}</span> : null}</span>{index < preview.steps.length - 1 ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : null}</div>)}{preview.steps.length === 0 ? <span className="text-xs text-muted-foreground">Atasan belum bisa ditentukan untuk pegawai ini.</span> : null}</div>{preview.oversight ? <p className="mt-3 text-xs text-muted-foreground">Setelah disetujui, yang diberi tahu: <span className="font-bold text-brand-heading">{preview.oversight.employeeName}</span></p> : null}<p className="mt-3 text-[11px] text-muted-foreground">Pengajuan yang sudah dikirim tidak berubah bila struktur diubah.</p></div> : null}
+          {preview ? <div className="mt-4 rounded-xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">{preview.employee.fullName}</p><div className="mt-3 flex flex-wrap items-center gap-2">{preview.steps.map((step, index) => <div key={`${step.employeeId}-${index}`} className="contents"><span className="rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs"><span className="font-bold">{step.employeeName}</span>{step.positionTitle ? <span className="block text-2xs text-muted-foreground">{step.positionTitle}</span> : null}</span>{index < preview.steps.length - 1 ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : null}</div>)}{preview.steps.length === 0 ? <span className="text-xs text-muted-foreground">Atasan belum bisa ditentukan untuk pegawai ini.</span> : null}</div>{preview.oversight ? <p className="mt-3 text-xs text-muted-foreground">Setelah disetujui, yang diberi tahu: <span className="font-bold text-brand-heading">{preview.oversight.employeeName}</span></p> : null}<p className="mt-3 text-2xs text-muted-foreground">Pengajuan yang sudah dikirim tidak berubah bila struktur diubah.</p></div> : null}
         </article>
         <article className="rounded-2xl border border-info-line bg-info-soft p-5"><h2 className="text-sm font-bold text-info-ink">Pengajuan yang sudah dikirim aman</h2><p className="mt-2 text-xs leading-5 text-info-ink">Menerbitkan struktur hanya memengaruhi pengajuan baru pada tanggal berlakunya. Penyetuju pada pengajuan yang sudah dikirim tidak dihitung ulang.</p></article>
       </section> : null}
@@ -1499,7 +1499,7 @@ export function OrganizationDesignerWorkspace({
             <input type="checkbox" name="alsoUnitApprover" defaultChecked className="mt-0.5 h-4 w-4 accent-[var(--color-brand-primary)]" />
             <span>
               <span className="block text-sm font-bold text-brand-heading">Pimpinan ini juga menyetujui cuti unit</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">Melupakan langkah inilah yang membuat jalur persetujuan cuti putus tanpa terlihat.</span>
+              <span className="mt-0.5 block text-2xs text-muted-foreground">Melupakan langkah inilah yang membuat jalur persetujuan cuti putus tanpa terlihat.</span>
             </span>
           </label>
           <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Tambah unit" />
@@ -1657,13 +1657,13 @@ export function OrganizationDesignerWorkspace({
 
       {action?.type === "node" ? <Modal title={action.mode === "edit" ? "Ganti nama atau pindahkan unit" : action.mode === "sibling" ? "Tambah unit sejajar" : action.mode === "child" ? "Tambah unit di bawah" : "Tambah unit pertama"} description="Unit adalah wadah organisasi. Jabatan ditambahkan terpisah." onClose={() => setAction(null)}><form onSubmit={(event) => handleNode(event, action)} className="space-y-4"><Field label="Nama unit"><input name="name" required defaultValue={action.mode === "edit" ? action.node?.name : ""} placeholder="Contoh: Bidang Pendidikan" className={inputClass} /></Field><Field label="Jenis unit"><select name="nodeType" defaultValue={action.node?.nodeType ?? "UNIT"} className={inputClass}>{["FOUNDATION", "DIRECTORATE", "UNIT", "DIVISION", "DEPARTMENT", "TEAM"].map((value) => <option key={value} value={value}>{organizationNodeTypeLabel(value)}</option>)}</select></Field><Field label="Berada di bawah unit"><select name="parentNodeKey" defaultValue={action.mode === "child" ? action.node?.stableKey ?? "" : action.mode === "sibling" ? action.node?.parentNodeKey ?? "" : action.node?.parentNodeKey ?? ""} className={inputClass}><option value="">Tidak ada — paling atas</option>{selectableOrganizationParents(data?.nodes ?? [], action.mode, action.node?.stableKey).map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Tampilan" hint="tidak memengaruhi persetujuan"><select name="visualRankOffset" defaultValue={action.node?.visualRankOffset ?? 0} className={inputClass}><option value="0">Sejajar dengan tingkat sebenarnya</option><option value="1">Turunkan 1 tingkat</option><option value="2">Turunkan 2 tingkat</option></select></Field><Field label="Kode integrasi" hint="opsional"><input name="integrationCode" defaultValue={action.node?.integrationCode ?? ""} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah unit"} /></form></Modal> : null}
 
-      {action?.type === "position" ? <Modal title={action.mode === "edit" ? "Ubah atau pindahkan jabatan" : "Tambah jabatan"} description="Judul jabatan hanya tampilan; kewenangan selalu dari pilihan yang Anda tetapkan." onClose={() => setAction(null)}><form onSubmit={(event) => handlePosition(event, action)} className="space-y-4"><Field label="Nama jabatan"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Kepala Bidang Pendidikan" className={inputClass} /></Field><Field label="Berada di unit"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Melapor ke"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? action.parentPositionKey ?? ""} className={inputClass}><option value="">Mengikuti pemimpin unit</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan ini kosong"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field>{classificationsFailed ? <p className="rounded-xl bg-warning-soft px-3 py-2 text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Simpan tetap bisa dilakukan; klasifikasi kursi ini tidak berubah.</p> : null}{classifications ? <Field label="Klasifikasi jabatan" hint="menentukan tunjangan, bukan kewenangan"><select name="jobClassificationCode" defaultValue={action.position?.jobClassificationCode ?? ""} className={inputClass}><option value="">Tidak ditetapkan — ikut penempatan pegawai</option>{classificationOptions(classifications, action.position?.jobClassificationCode, (item) => jobFamilyLabels[item.family]).map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select>{classificationsTruncated ? <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p> : null}</Field> : null}<input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} /><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah jabatan"} /></form></Modal> : null}
+      {action?.type === "position" ? <Modal title={action.mode === "edit" ? "Ubah atau pindahkan jabatan" : "Tambah jabatan"} description="Judul jabatan hanya tampilan; kewenangan selalu dari pilihan yang Anda tetapkan." onClose={() => setAction(null)}><form onSubmit={(event) => handlePosition(event, action)} className="space-y-4"><Field label="Nama jabatan"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Kepala Bidang Pendidikan" className={inputClass} /></Field><Field label="Berada di unit"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Melapor ke"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? action.parentPositionKey ?? ""} className={inputClass}><option value="">Mengikuti pemimpin unit</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan ini kosong"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field>{classificationsFailed ? <p className="rounded-xl bg-warning-soft px-3 py-2 text-2xs font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Simpan tetap bisa dilakukan; klasifikasi kursi ini tidak berubah.</p> : null}{classifications ? <Field label="Klasifikasi jabatan" hint="menentukan tunjangan, bukan kewenangan"><select name="jobClassificationCode" defaultValue={action.position?.jobClassificationCode ?? ""} className={inputClass}><option value="">Tidak ditetapkan — ikut penempatan pegawai</option>{classificationOptions(classifications, action.position?.jobClassificationCode, (item) => jobFamilyLabels[item.family]).map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select>{classificationsTruncated ? <p className="mt-1 text-2xs text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p> : null}</Field> : null}<input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} /><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah jabatan"} /></form></Modal> : null}
 
       {action?.type === "incumbency" ? <Modal title={action.acting ? "Tunjuk Plt" : "Tetapkan pejabat"} description={action.acting ? "Plt selalu ditunjuk eksplisit dan berbatas tanggal; sistem tidak menyimpulkannya dari absensi." : "Menetapkan pejabat tidak memberikan role atau izin aplikasi apa pun."} onClose={() => setAction(null)}><form onSubmit={(event) => handleIncumbency(event, action)} className="space-y-4"><div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">{action.position.title}</div><Field label="Pegawai"><EmployeePicker name="employeeId" required employees={employees} defaultValue={action.acting ? action.position.actingIncumbent?.employeeId ?? "" : action.position.primaryIncumbent?.employeeId ?? ""} /></Field>{action.acting ? <><Field label="Mulai"><input type="date" name="actingFrom" required defaultValue={action.position.actingIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field><Field label="Sampai"><input type="date" name="actingTo" required defaultValue={action.position.actingIncumbent?.effectiveTo ?? ""} className={inputClass} /></Field></> : <Field label="Mulai menjabat"><input type="date" name="effectiveFrom" required defaultValue={action.position.primaryIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field>}<SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan" /></form></Modal> : null}
 
       {action?.type === "members" ? <MembersModal node={action.node} employees={employees} memberships={data?.memberships ?? []} saving={saving} onClose={() => setAction(null)} onSubmit={(event) => handleMembers(event, action)} /> : null}
 
-      {action?.type === "visual" ? <Modal title="Atur tampilan kotak" description="Pengaturan ini hanya memindahkan kotak pada bagan. Atasan langsung, penyetuju cuti, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm font-bold text-info-ink">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Sejajar dengan tingkat sebenarnya" : `Turunkan ${offset} tingkat`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis penghubung tetap menunjuk ke unit induk yang sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
+      {action?.type === "visual" ? <Modal title="Atur tampilan kotak" description="Pengaturan ini hanya memindahkan kotak pada bagan. Atasan langsung, penyetuju cuti, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm font-bold text-info-ink">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Sejajar dengan tingkat sebenarnya" : `Turunkan ${offset} tingkat`}</span><span className="mt-0.5 block text-2xs text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis penghubung tetap menunjuk ke unit induk yang sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
 
       {action?.type === "authority" && action.kind === "position" ? <Modal
         title={`Pengaturan lanjutan \u2014 ${(action.item as OrganizationPosition).title}`}
@@ -1739,7 +1739,7 @@ function EmployeeCheckList({
             <input type="checkbox" name="employeeIds" value={employee.id} className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]" />
             <span>
               <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 {employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}
               </span>
             </span>
@@ -1800,7 +1800,7 @@ function MembersModal({
                 <input type="checkbox" name="employeeIds" value={employee.id} defaultChecked={isMember} className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]" />
                 <span>
                   <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}
                     {isActiveEmployee(employee) ? "" : " · sudah tidak aktif"}
                   </span>

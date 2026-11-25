@@ -1,5 +1,17 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect } from "react";
 
+const controlClass =
+  "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border bg-surface-raised px-2.5 font-medium text-brand-heading transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * ENG-LIST-001-I: the one pager for every paginated list. Inline pagers are not allowed.
+ *
+ * ENG-LIST-001-M: the bar stays reachable at 375px (it wraps, and every control is 40px tall),
+ * and a page that has fallen out of range — the last row of the last page was deleted, or a
+ * filter shrank the result — snaps back to the last page that exists instead of showing an
+ * empty table under a page number that no longer means anything.
+ */
 export function PaginationBar({
   page,
   pageSize,
@@ -18,9 +30,15 @@ export function PaginationBar({
   const start = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const end = Math.min(total, safePage * pageSize);
 
+  useEffect(() => {
+    if (page !== safePage) onPageChange(safePage);
+  }, [page, safePage, onPageChange]);
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] text-muted-foreground">
-      <div>{total === 0 ? "Tidak ada data" : `Menampilkan ${start}–${end} dari ${total}`}</div>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">
+      <p aria-live="polite" className="sq-nums">
+        {total === 0 ? "Tidak ada data" : `Menampilkan ${start}–${end} dari ${total}`}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange ? (
           <label className="flex items-center gap-2">
@@ -28,7 +46,7 @@ export function PaginationBar({
             <select
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
-              className="h-8 rounded-lg border border-border bg-surface-raised px-2 text-xs text-brand-heading"
+              className="sq-nums min-h-10 rounded-lg border border-border bg-surface-raised px-2 text-xs text-brand-heading focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Jumlah data per halaman"
             >
               {[10, 25, 50, 100].map((size) => (
@@ -39,20 +57,40 @@ export function PaginationBar({
         ) : null}
         <button
           type="button"
+          aria-label="Halaman pertama"
+          disabled={safePage <= 1}
+          onClick={() => onPageChange(1)}
+          className={controlClass}
+        >
+          <ChevronFirst className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-surface-raised px-2 font-semibold text-brand-heading disabled:opacity-40"
+          className={controlClass}
         >
-          <ChevronLeft className="h-3.5 w-3.5" /> Sebelumnya
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Sebelumnya
         </button>
-        <span className="min-w-20 text-center font-semibold text-brand-heading">{safePage} / {totalPages}</span>
+        <span className="sq-nums min-w-16 text-center font-medium text-brand-heading">
+          {safePage} / {totalPages}
+        </span>
         <button
           type="button"
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-surface-raised px-2 font-semibold text-brand-heading disabled:opacity-40"
+          className={controlClass}
         >
-          Berikutnya <ChevronRight className="h-3.5 w-3.5" />
+          Berikutnya <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-label="Halaman terakhir"
+          disabled={safePage >= totalPages}
+          onClick={() => onPageChange(totalPages)}
+          className={controlClass}
+        >
+          <ChevronLast className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
     </div>

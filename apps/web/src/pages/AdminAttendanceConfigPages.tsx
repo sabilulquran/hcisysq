@@ -280,7 +280,7 @@ function ShiftEditForm({ item, locations, busy, onSave, onCancel }: {
       </div>
       <label className="grid gap-1 text-xs font-semibold text-brand-heading">Lokasi kerja (absen HP)
         <select className="h-10 rounded-xl border border-brand-primary/40 px-3 text-sm font-normal text-foreground" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi (pakai lokasi unit)</option>{locations.filter((loc) => loc.active || loc.id === editForm.workLocationId).map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select>
-        <span className="text-[11px] font-normal leading-4 text-muted-foreground">Berlaku mulai tanggal di bawah. Kosong = lokasi unit pegawai.</span>
+        <span className="text-2xs font-normal leading-4 text-muted-foreground">Berlaku mulai tanggal di bawah. Kosong = lokasi unit pegawai.</span>
       </label>
       <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Berlaku mulai
         <input className="h-10 w-full max-w-xs rounded-xl border px-3 text-sm font-normal text-foreground" type="date" min={todayJakarta()} value={editForm.effectiveFrom} onChange={(e) => setEditForm({ ...editForm, effectiveFrom: e.target.value })} />

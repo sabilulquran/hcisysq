@@ -270,7 +270,7 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
                     {CATEGORY_LABELS[program.category]} · {program.sessionCount} sesi · {program.participantCount} peserta
                     {program.firstSessionAt ? ` · mulai ${formatInstant(program.firstSessionAt)}` : ""}
                   </span>
-                  <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{PROGRAM_STATUS_LABELS[program.status]}</span>
+                  <span className="mt-1 block text-2xs font-semibold text-muted-foreground">{PROGRAM_STATUS_LABELS[program.status]}</span>
                 </button>
               </li>
             ))}
@@ -457,11 +457,11 @@ function ProgramPanel({ program, canManage, action, reload }: {
               </p>
               {item.status === "SCHEDULED" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-semibold text-muted-foreground">Hadir {item.presentCount ?? 0} · tercatat {item.recordedCount ?? 0}</span>
+                  <span className="text-2xs font-semibold text-muted-foreground">Hadir {item.presentCount ?? 0} · tercatat {item.recordedCount ?? 0}</span>
                   <button type="button" className={secondary} onClick={() => setSheet(item)}>Daftar hadir</button>
                   {editable ? <button type="button" className={danger} disabled={action.busy} onClick={() => dropSession(item)}>Batalkan sesi</button> : null}
                 </div>
-              ) : <p className="mt-1 text-[11px] text-muted-foreground">Dibatalkan: {item.cancelReason}</p>}
+              ) : <p className="mt-1 text-2xs text-muted-foreground">Dibatalkan: {item.cancelReason}</p>}
             </li>
           ))}
         </ol>

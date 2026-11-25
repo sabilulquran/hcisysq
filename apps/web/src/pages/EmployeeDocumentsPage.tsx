@@ -142,7 +142,7 @@ export function EmployeeDocumentsPage() {
   return (
     <AppShell user={user} activeItem="Dokumen">
       <section className="mx-auto max-w-4xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Layanan Pegawai</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Layanan Pegawai</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Dokumen Kepegawaian</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Minta surat keterangan dan lihat dokumen yang sudah terbit untuk Anda. Surat keterangan penghasilan belum tersedia.
@@ -200,7 +200,7 @@ export function EmployeeDocumentsPage() {
                       <div className="min-w-0">
                         <p className="font-semibold text-brand-heading">{request.documentLabel}</p>
                         <p className="text-sm text-muted-foreground">{request.purpose}</p>
-                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                        <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                           {documentStatusLabel(request.status)} · {formatDate(request.createdAt)}
                           {request.documentNumber ? ` · ${request.documentNumber}` : ""}
                         </p>
@@ -238,7 +238,7 @@ export function EmployeeDocumentsPage() {
                         {document.documentNumber} · {formatDate(document.issuedAt)}
                         {document.status === "REVOKED" ? " · dibatalkan" : ""}
                       </p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                      <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                         Ditandatangani {document.signer.name ?? "-"} ({document.signer.title})
                       </p>
                       {document.status === "ISSUED" ? (
@@ -269,12 +269,12 @@ export function EmployeeDocumentsPage() {
                     <li key={letter.id} className="py-3">
                       <p className="font-semibold text-brand-heading">{letter.level} — {letter.subject}</p>
                       <p className="mt-1 text-sm leading-6 text-muted-foreground">{letter.narrative}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                      <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                         {letter.documentNumber} · berlaku {formatDate(letter.effectiveDate)} s.d. {formatDate(letter.expiresOn)}
                         {letter.active ? "" : " · sudah tidak berlaku"}
                       </p>
                       {letter.acknowledgedAt ? (
-                        <p className="mt-2 text-[11px] font-semibold text-muted-foreground">Dibaca {formatDate(letter.acknowledgedAt)}</p>
+                        <p className="mt-2 text-2xs font-semibold text-muted-foreground">Dibaca {formatDate(letter.acknowledgedAt)}</p>
                       ) : (
                         <button
                           type="button"

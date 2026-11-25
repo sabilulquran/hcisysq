@@ -167,7 +167,7 @@ function Pph21ReportBody({ report }: { report: PayrollPph21Report }) {
         <div className="-mx-4 overflow-x-auto">
           <table className="w-full min-w-[40rem] text-sm">
             <caption className="sr-only">PPh21 TER per pegawai, masa pajak {report.taxPeriod}</caption>
-            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <thead className="sq-eyebrow bg-muted/50 text-left text-muted-foreground">
               <tr>
                 <th scope="col" className="px-4 py-2">Pegawai</th>
                 <th scope="col" className="px-4 py-2">PTKP / TER</th>

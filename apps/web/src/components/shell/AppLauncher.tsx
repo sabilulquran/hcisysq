@@ -103,7 +103,7 @@ export function AppLauncher({ previewOpen = false, applications: fixedApplicatio
                     <Icon className="h-6 w-6" aria-hidden="true" />
                   </span>
                   <span className="line-clamp-2 text-xs font-semibold leading-tight text-foreground">{application.name}</span>
-                  {current ? <span className="text-[10px] font-bold text-brand-primary-deep">Di sini</span> : null}
+                  {current ? <span className="text-2xs font-bold text-brand-primary-deep">Di sini</span> : null}
                 </a>
               );
             })}

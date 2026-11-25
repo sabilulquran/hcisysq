@@ -145,7 +145,7 @@ export function AdminAdmsUsersManagementPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="bg-surface text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              <thead className="sq-eyebrow bg-surface text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Mesin</th>
@@ -161,7 +161,7 @@ export function AdminAdmsUsersManagementPage() {
                     <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${stateClass(item.state)}`}>{stateLabels[item.state]}</span></td>
                     <td className="px-4 py-3">
                       <a href={`/admin/attendance/devices/${item.deviceId}`} className="font-semibold text-brand-heading hover:underline">{item.deviceName || item.serialNumber}</a>
-                      <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{item.serialNumber}</div>
+                      <div className="mt-0.5 font-mono text-2xs text-muted-foreground">{item.serialNumber}</div>
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold">{item.pin}</td>
                     <td className="px-4 py-3">

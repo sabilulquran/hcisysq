@@ -255,7 +255,7 @@ export function EmployeeReimbursementsPage() {
   return (
     <AppShell user={user} activeItem="Reimbursement">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Keuangan Saya</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Keuangan Saya</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Reimbursement</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Klaim penggantian biaya kerja yang sudah Anda bayar sendiri. Atasan langsung lalu approver unit menyetujui, kemudian
@@ -291,7 +291,7 @@ export function EmployeeReimbursementsPage() {
                         <span className="block text-xs tabular-nums text-muted-foreground">
                           {formatRupiah(claim.claimedTotal)} · {claim.itemCount} baris{claim.tripDestination ? ` · ${claim.tripDestination}` : ""}
                         </span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                           {claimStatusLabel(claim.status)}
                           {claim.currentApproverName ? ` · menunggu ${claim.currentApproverName}` : ""}
                         </span>

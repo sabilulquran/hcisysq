@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, Copy, History, Loader2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AttendanceAdvancedLinks, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { listEmployees } from "@/lib/adminEmployees";
 import { attendanceAdvancedViews, type AttendanceTab } from "@/lib/attendanceNavigation";
@@ -271,12 +272,8 @@ export function AdminAttendancePlannerPage() {
               </article>
             ))}
           </div>
-          <div className="mt-3 flex items-center justify-between text-sm">
-            <span>{calendar.total} pegawai</span>
-            <div className="flex gap-2">
-              <button type="button" className="rounded-lg border px-3 py-1 disabled:opacity-50" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</button>
-              <button type="button" className="rounded-lg border px-3 py-1 disabled:opacity-50" disabled={page * calendar.pageSize >= calendar.total} onClick={() => setPage(page + 1)}>Berikutnya</button>
-            </div>
+          <div className="mt-3 overflow-hidden rounded-xl border border-border/70">
+            <PaginationBar page={page} pageSize={calendar.pageSize} total={calendar.total} onPageChange={setPage} />
           </div>
         </>
       ) : null}
@@ -463,10 +460,9 @@ function HistoryPanel({ canManage, onClose, onRevert }: { canManage: boolean; on
           </li>
         ))}
       </ul>
-      {history && history.total > history.pageSize ? (
-        <div className="mt-2 flex justify-end gap-2">
-          <button type="button" className="rounded-lg border px-2 disabled:opacity-50" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</button>
-          <button type="button" className="rounded-lg border px-2 disabled:opacity-50" disabled={page * history.pageSize >= history.total} onClick={() => setPage(page + 1)}>Berikutnya</button>
+      {history ? (
+        <div className="mt-2 overflow-hidden rounded-xl border border-border/70">
+          <PaginationBar page={page} pageSize={history.pageSize} total={history.total} onPageChange={setPage} />
         </div>
       ) : null}
     </section>

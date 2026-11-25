@@ -319,7 +319,7 @@ export function AdminJobClassificationsPage() {
 
         {!loading && rows.length > 0 ? (
           <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-muted-foreground">
+            <thead className="sq-eyebrow text-muted-foreground">
               <tr>
                 <th className="py-2">Kode</th>
                 <th className="py-2">Nama</th>

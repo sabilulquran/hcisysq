@@ -411,7 +411,7 @@ export function AdminLeaveConfigurationPage() {
             <>
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-xl bg-surface p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Approval Cuti Tahunan</p>
+                  <p className="sq-eyebrow text-muted-foreground">Approval Cuti Tahunan</p>
                   <div className="mt-3 space-y-2 text-sm">
                     {preview.approvalChain.length ? (
                       preview.approvalChain.map((step, index) => (
@@ -428,7 +428,7 @@ export function AdminLeaveConfigurationPage() {
                 </div>
 
                 <div className="rounded-xl bg-surface p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Hak dan ketersediaan</p>
+                  <p className="sq-eyebrow text-muted-foreground">Hak dan ketersediaan</p>
                   {preview.annualLeave ? (
                     <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                       <div>

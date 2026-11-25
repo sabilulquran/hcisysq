@@ -171,7 +171,7 @@ export function AdminWorkArrangementsPage() {
                       <span className="block text-xs text-muted-foreground">
                         {item.employeeNumber}{item.unitName ? ` · ${item.unitName}` : ""} · {formatArrangementRange(item.startOn, item.endOn)}
                       </span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {arrangementStatusLabel(item.status, item.type)}
                         {item.currentApproverName ? ` · menunggu ${item.currentApproverName}` : ""}
                       </span>

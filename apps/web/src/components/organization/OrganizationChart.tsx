@@ -75,7 +75,7 @@ function PositionCard({
           </span>
           <span
             className={cn(
-              "mt-0.5 block truncate text-[11px]",
+              "mt-0.5 block truncate text-2xs",
               vacant ? "font-semibold text-warning-ink" : "text-muted-foreground",
             )}
           >
@@ -93,19 +93,19 @@ function PositionCard({
         )}
       </span>
       {position.visualRankOffset > 0 ? (
-        <span className="mt-2 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-semibold text-info-ink">
+        <span className="mt-2 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-2xs font-semibold text-info-ink">
           Tampilan: turun {position.visualRankOffset} tingkat
         </span>
       ) : null}
       {isLeader ? (
-        <span className="mt-2 ml-1 inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
+        <span className="mt-2 ml-1 inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-semibold text-brand-primary-deep">
           Pemimpin unit
         </span>
       ) : null}
       {editability.badge ? (
         <span
           title={editability.reason ?? undefined}
-          className="mt-2 ml-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+          className="mt-2 ml-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-2xs font-semibold text-muted-foreground"
         >
           {editability.badge}
         </span>
@@ -232,7 +232,7 @@ function TreeBranch({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold text-brand-heading">{item.name}</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
                 {organizationNodeTypeLabel(item.nodeType)} · {item.memberCount} anggota
               </span>
             </span>
@@ -253,7 +253,7 @@ function TreeBranch({
         </div>
 
         {item.visualRankOffset > 0 ? (
-          <div className="mt-3 rounded-lg bg-info-soft px-2.5 py-2 text-[10px] leading-4 text-info-ink">
+          <div className="mt-3 rounded-lg bg-info-soft px-2.5 py-2 text-2xs leading-4 text-info-ink">
             Tampilan kotak ini diturunkan {item.visualRankOffset} tingkat. Hubungan sebenarnya tetap mengikuti garis induk dan tidak memengaruhi persetujuan.
           </div>
         ) : null}
@@ -365,7 +365,7 @@ function MobileBranch({
       <details open>
         <summary className="cursor-pointer py-2 text-sm font-bold text-brand-heading">
           {item.name}
-          <span className="ml-2 text-[11px] font-semibold text-muted-foreground">
+          <span className="ml-2 text-2xs font-semibold text-muted-foreground">
             {organizationNodeTypeLabel(item.nodeType)} &middot; {item.memberCount} anggota
           </span>
         </summary>
@@ -379,7 +379,7 @@ function MobileBranch({
                   className="w-full rounded-lg border border-border/60 bg-surface px-3 py-2 text-left text-xs"
                 >
                   <span className="block font-bold text-brand-heading">{position.title}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {position.actingIncumbent
                       ? `${position.actingIncumbent.employeeName} · Plt`
                       : position.primaryIncumbent?.employeeName ?? "Kosong · belum ada pejabat"}

@@ -201,7 +201,7 @@ export function EmployeeDashboardPage() {
     >
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold capitalize tracking-wide text-muted-foreground">{getDateLabel()}</p>
+          <p className="sq-eyebrow capitalize text-muted-foreground">{getDateLabel()}</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
             Assalamu&apos;alaikum, {firstName}{firstName.endsWith(".") ? "" : "."}
           </h1>
@@ -233,7 +233,7 @@ export function EmployeeDashboardPage() {
             <article className="order-1 rounded-2xl border border-border/75 bg-surface-raised p-4 shadow-[var(--shadow-soft)] sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Hari ini</p>
+                  <p className="sq-eyebrow text-muted-foreground">Hari ini</p>
                   <h2 className="mt-1 text-lg font-bold text-brand-heading">Kehadiran</h2>
                 </div>
                 <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${categoryTileClass.attendance}`}>
@@ -242,11 +242,11 @@ export function EmployeeDashboardPage() {
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">
+                <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-2xs font-bold text-brand-primary-deep">
                   {attendanceStatusLabel(data.attendance.result?.status ?? data.attendance.schedule.state)}
                 </span>
                 {data.attendance.schedule.scheduledStartAt ? (
-                  <span className="text-[11px] font-semibold text-muted-foreground">
+                  <span className="text-2xs font-semibold text-muted-foreground">
                     Jadwal {formatTime(data.attendance.schedule.scheduledStartAt)}–{formatTime(data.attendance.schedule.scheduledEndAt)}
                   </span>
                 ) : null}
@@ -278,7 +278,7 @@ export function EmployeeDashboardPage() {
             <section className="order-2 lg:order-3 lg:col-span-2 lg:mt-2">
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Akses cepat</p>
+                  <p className="sq-eyebrow text-muted-foreground">Akses cepat</p>
                   <h2 className="mt-1 text-lg font-bold text-brand-heading">Apa yang ingin Anda lakukan?</h2>
                 </div>
                 <a href="/app/services" className="hidden text-xs font-bold text-brand-primary-deep sm:inline">Semua layanan</a>
@@ -291,7 +291,7 @@ export function EmployeeDashboardPage() {
                       <span className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${categoryTileClass[category]}`}>
                         <TileIcon className="h-5 w-5" aria-hidden="true" />
                       </span>
-                      <span className="text-[10px] font-bold leading-4 text-brand-heading sm:text-xs">{label}</span>
+                      <span className="text-2xs font-bold leading-4 text-brand-heading sm:text-xs">{label}</span>
                     </a>
                   );
                 })}
@@ -301,7 +301,7 @@ export function EmployeeDashboardPage() {
             <article className={totalActions > 0 ? "order-3 rounded-2xl border border-warning-line bg-warning-soft p-4 sm:p-5 lg:order-2" : "order-3 rounded-2xl border border-success-line bg-success-soft p-4 sm:p-5 lg:order-2"}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Perlu tindakan</p>
+                  <p className="sq-eyebrow text-muted-foreground">Perlu tindakan</p>
                   <p className="mt-2 text-3xl font-bold text-brand-heading">{totalActions}</p>
                 </div>
                 {totalActions > 0 ? <ClipboardCheck className="h-5 w-5 text-warning-ink" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5 text-success-ink" aria-hidden="true" />}
@@ -322,7 +322,7 @@ export function EmployeeDashboardPage() {
             <article className="rounded-2xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti tahunan</p>
+                  <p className="sq-eyebrow text-muted-foreground">Cuti tahunan</p>
                   {employee?.leaveEntitlementGroup === "non_education" ? (
                     <>
                       <p className="mt-2 text-3xl font-bold text-brand-heading">{annualView?.availableNowDays ?? 0} <span className="text-sm font-semibold text-muted-foreground">hari tersedia</span></p>
@@ -347,7 +347,7 @@ export function EmployeeDashboardPage() {
             <article className="overflow-hidden rounded-2xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
               <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Aktivitas terbaru</p>
+                  <p className="sq-eyebrow text-muted-foreground">Aktivitas terbaru</p>
                   <h2 className="mt-1 text-base font-bold text-brand-heading">Pengajuan saya</h2>
                 </div>
                 <a href="/app/leave" className="text-xs font-bold text-brand-primary-deep">Lihat semua</a>
@@ -361,7 +361,7 @@ export function EmployeeDashboardPage() {
                       <p className="truncate text-sm font-bold text-brand-heading">{item.name}</p>
                       <p className="mt-1 truncate text-xs text-muted-foreground">{item.detail}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-[11px] font-semibold text-brand-heading">{item.status}</span>
+                    <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-2xs font-semibold text-brand-heading">{item.status}</span>
                   </div>
                 ))}
               </div>

@@ -67,7 +67,7 @@ export function PostponementResponse({
         {formatLeaveRange(postponement.proposedStartOn, postponement.proposedEndOn)} · {postponement.proposedWorkingDays} hari kerja
       </p>
       <p className="mt-1 whitespace-pre-line text-xs leading-5 text-foreground">{postponement.note}</p>
-      <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+      <p className="mt-2 text-2xs leading-4 text-muted-foreground">
         Bila diterima, sistem mengirim pengajuan baru dengan tanggal ini dan persetujuan dimulai lagi dari awal.
       </p>
       {declining ? (

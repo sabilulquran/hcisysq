@@ -60,7 +60,7 @@ export function OrganizationAdvancedAuthority({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Aturan yang berlaku</h3>
+        <h3 className="sq-eyebrow text-muted-foreground">Aturan yang berlaku</h3>
         {own.length === 0 ? (
           <p className="mt-2 rounded-xl border border-border/70 bg-surface p-3 text-sm text-muted-foreground">
             Belum ada aturan khusus untuk jabatan ini.
@@ -79,7 +79,7 @@ export function OrganizationAdvancedAuthority({
                       targetTitle: titleOf(binding.targetPositionKey),
                     })}
                     {unusable ? (
-                      <span className="mt-1 block text-[11px] font-semibold text-warning-ink">
+                      <span className="mt-1 block text-2xs font-semibold text-warning-ink">
                         Belum bisa dipakai untuk persetujuan: jabatan itu dipegang akun Dewan, dan
                         pemetaan akun Dewan belum diputuskan.
                       </span>
@@ -90,7 +90,7 @@ export function OrganizationAdvancedAuthority({
                       type="button"
                       disabled={saving}
                       onClick={() => onRemove(binding)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-[11px] font-bold hover:bg-muted disabled:opacity-60"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-2xs font-bold hover:bg-muted disabled:opacity-60"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Hapus aturan
                     </button>
@@ -113,7 +113,7 @@ export function OrganizationAdvancedAuthority({
           }}
           className="space-y-3 rounded-xl border border-border/70 bg-surface p-4"
         >
-          <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Tambah aturan</h3>
+          <h3 className="sq-eyebrow text-muted-foreground">Tambah aturan</h3>
           <label className="block">
             <span className="text-xs font-bold text-brand-heading">Aturan</span>
             <select name="bindingType" className="mt-1.5 h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm">

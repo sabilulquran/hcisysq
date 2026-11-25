@@ -200,7 +200,7 @@ export function ProgramEvaluationPanel({ programId, programStatus, canManage }: 
                     {editable ? <button type="button" className={danger} disabled={busy} onClick={() => archive(component)}>Arsipkan</button> : null}
                   </div>
                 </>
-              ) : <p className="mt-1 text-[11px] text-muted-foreground">Diarsipkan: {component.archiveReason}</p>}
+              ) : <p className="mt-1 text-2xs text-muted-foreground">Diarsipkan: {component.archiveReason}</p>}
             </li>
           ))}
         </ol>

@@ -283,7 +283,7 @@ export function EmployeeSpecialLeavePage() {
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti & izin</p>
+          <p className="sq-eyebrow text-muted-foreground">Cuti & izin</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Laporkan kondisi khusus</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Pilih kondisi yang paling sesuai. Anda hanya akan melihat pertanyaan dan dokumen yang memang diperlukan.
@@ -517,7 +517,7 @@ export function EmployeeSpecialLeavePage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatDate(item.startOn)} – {formatDate(item.endOn)} · {item.workingDays} hari kerja
                     </p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-2xs text-muted-foreground">
                       {item.evidenceCount > 0 ? `${item.evidenceCount} dokumen terlampir` : "Belum ada dokumen"}
                     </p>
                   </div>

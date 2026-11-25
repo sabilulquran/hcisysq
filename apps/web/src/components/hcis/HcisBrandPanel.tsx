@@ -52,10 +52,10 @@ export function HcisBrandPanel({ className }: { className?: string }) {
             className="mb-7 h-auto w-full max-w-[22rem] object-contain object-left"
           />
 
-          <h1 className="max-w-2xl font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-white sm:text-[2.15rem] lg:text-[2.55rem] xl:text-[2.8rem]">
+          <h1 className="max-w-2xl font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-white sm:text-4xl lg:text-[2.55rem] xl:text-[2.8rem]">
             Human Capital Information System
           </h1>
-          <p className="mt-3 max-w-lg text-sm font-semibold leading-relaxed text-white/82 sm:text-[0.95rem]">
+          <p className="mt-3 max-w-lg text-sm font-semibold leading-relaxed text-white/82 sm:text-base">
             Yayasan Sabilul Qur&apos;an
           </p>
           <p className="mt-6 max-w-xl text-base font-semibold leading-relaxed text-white sm:mt-7 lg:text-lg">
@@ -64,7 +64,7 @@ export function HcisBrandPanel({ className }: { className?: string }) {
         </div>
 
         <div className="hidden lg:block" aria-label="Nilai YSQ UTSMAN">
-          <div className="mb-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.17em] text-white/72">
+          <div className="sq-eyebrow mb-3 flex items-center gap-3 text-white/72">
             <span className="h-px w-8 bg-brand-yellow" aria-hidden="true" />
             Nilai YSQ · UTSMAN
           </div>
@@ -83,7 +83,7 @@ export function HcisBrandPanel({ className }: { className?: string }) {
                     </div>
                     <div className="min-w-0">
                       <h2 className="text-sm font-bold leading-tight text-white">{value.label}</h2>
-                      <p className="mt-1 text-[11px] leading-relaxed text-white/68">{value.description}</p>
+                      <p className="mt-1 text-2xs leading-relaxed text-white/68">{value.description}</p>
                     </div>
                   </div>
                 </article>

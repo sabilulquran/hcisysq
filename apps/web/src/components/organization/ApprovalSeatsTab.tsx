@@ -222,7 +222,7 @@ export function ApprovalSeatsTab() {
 
       <div className="overflow-hidden rounded-2xl border border-border">
         <table className="w-full text-left text-sm">
-          <thead className="bg-muted text-xs uppercase">
+          <thead className="sq-eyebrow bg-muted">
             <tr>
               <th scope="col" className="p-3">Kursi</th>
               <th scope="col" className="p-3">Keadaan</th>

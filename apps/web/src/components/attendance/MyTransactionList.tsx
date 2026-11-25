@@ -39,7 +39,7 @@ export function MyTransactionList({ items, refreshing, generatedAt, error, onRef
                 <p className="font-bold tabular-nums">{formatClock(item.occurredAt)}</p>
                 <p className="text-xs text-muted-foreground">{myTransactionSourceLabel(item)}</p>
               </div>
-              <div className="flex flex-wrap justify-end gap-1.5 text-[11px] font-bold">
+              <div className="flex flex-wrap justify-end gap-1.5 text-2xs font-bold">
                 <span className="rounded-full bg-surface px-2 py-0.5">{transactionKindLabel(item.kind)}</span>
                 {item.reviewState === "needs_review" ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning-ink">Perlu ditinjau HC</span> : null}
                 {item.afterCalculation ? <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-brand-primary-deep">Masuk setelah dihitung</span> : null}

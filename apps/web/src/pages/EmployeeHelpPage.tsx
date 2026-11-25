@@ -90,7 +90,7 @@ function FaqItem({ article, open, onToggle, showTopic }: {
         <span>
           <span className="block text-sm font-bold text-brand-heading">{article.title}</span>
           {showTopic ? (
-            <span className="mt-0.5 block text-[11px] font-semibold text-muted-foreground">
+            <span className="mt-0.5 block text-2xs font-semibold text-muted-foreground">
               {topicLabel(article.topic)}{article.kind === "GUIDE" ? " · Panduan" : ""}
             </span>
           ) : null}
@@ -189,7 +189,7 @@ export function EmployeeHelpPage() {
   return (
     <AppShell user={user} activeItem="Bantuan">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Bantuan</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Bantuan</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Pusat Bantuan</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Panduan singkat dan jawaban atas pertanyaan yang sering diajukan tentang layanan HCIS.
@@ -284,7 +284,7 @@ export function EmployeeHelpPage() {
               <div className={cn("grid gap-5", loading && "opacity-60")}>
                 {guides.map((guide) => (
                   <article key={guide.id} className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-primary-deep">Panduan</p>
+                    <p className="sq-eyebrow text-brand-primary-deep">Panduan</p>
                     <h2 className="mt-1 text-lg font-bold text-brand-heading">{guide.title}</h2>
                     <div className="mt-3"><ArticleBody body={guide.body} /></div>
                   </article>

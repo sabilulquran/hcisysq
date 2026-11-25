@@ -601,8 +601,8 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-bold text-brand-heading">{account.employeeName ?? account.email}</h2>
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-foreground">{account.principalType}</span>
-                  <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">{statusLabel(account.status)}</span>
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-2xs font-bold text-foreground">{account.principalType}</span>
+                  <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-2xs font-bold text-brand-primary-deep">{statusLabel(account.status)}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{account.email}{account.employeeNumber ? ` · ${account.employeeNumber}` : ""}{account.unitName ? ` · ${account.unitName}` : ""}</p>
                 {account.latestInvitation ? (
@@ -709,7 +709,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             <div key={role.id} className="rounded-xl bg-surface p-4">
               <p className="text-sm font-bold">{role.name}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{role.description ?? "—"}</p>
-              <p className="mt-2 text-[11px] font-semibold text-brand-primary-deep">{role.permissions.join(" · ") || "Belum ada permission"}</p>
+              <p className="mt-2 text-2xs font-semibold text-brand-primary-deep">{role.permissions.join(" · ") || "Belum ada permission"}</p>
             </div>
           ))}
         </div>

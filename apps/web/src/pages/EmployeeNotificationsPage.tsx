@@ -86,7 +86,7 @@ export function EmployeeNotificationsPage() {
       <section className="mx-auto max-w-4xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Informasi</p>
+            <p className="sq-eyebrow text-brand-primary-deep">Informasi</p>
             <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Notifikasi</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Pemberitahuan transaksi HCIS yang ditujukan khusus untuk akun Anda. Membaca notifikasi tidak menjalankan persetujuan apa pun.
@@ -133,11 +133,11 @@ export function EmployeeNotificationsPage() {
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-brand-heading">{item.title}</span>
-                      <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{categoryLabel(item.category)}</span>
-                      {!item.readAt ? <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">Baru</span> : null}
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-2xs font-bold text-muted-foreground">{categoryLabel(item.category)}</span>
+                      {!item.readAt ? <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-bold text-brand-primary-deep">Baru</span> : null}
                     </span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">{item.body}</span>
-                    <span className="mt-2 block text-[11px] font-semibold text-muted-foreground">{formatDate(item.createdAt)}</span>
+                    <span className="mt-2 block text-2xs font-semibold text-muted-foreground">{formatDate(item.createdAt)}</span>
                   </span>
                 </button>
               ))}

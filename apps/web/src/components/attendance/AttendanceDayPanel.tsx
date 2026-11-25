@@ -100,7 +100,7 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
           </section>
           {day.result?.blocks && day.result.blocks.length > 1 ? (
             <section>
-              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Blok kerja</h3>
+              <h3 className="sq-eyebrow text-muted-foreground">Blok kerja</h3>
               <ul className="mt-1 grid gap-1 tabular-nums">
                 {day.result.blocks.map((block) => (
                   <li key={block.sequence}>
@@ -113,7 +113,7 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
             </section>
           ) : null}
           <section>
-            <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Data scan</h3>
+            <h3 className="sq-eyebrow text-muted-foreground">Data scan</h3>
             <ul className="mt-1 grid gap-1">
               {day.punches.map((punch) => (
                 <li key={`${punch.source}:${punch.id}:${punch.boundary ?? ""}`} className="grid gap-1">
@@ -127,7 +127,7 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
           </section>
           {day.result?.sessions.length ? (
             <section>
-              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Sesi kerja</h3>
+              <h3 className="sq-eyebrow text-muted-foreground">Sesi kerja</h3>
               <ul className="mt-1 grid gap-1 tabular-nums">
                 {day.result.sessions.map((session) => <li key={session.sequence}>{session.sequence}. {time(session.checkInAt)} – {time(session.checkOutAt)}{session.complete ? "" : " · belum lengkap"}</li>)}
               </ul>

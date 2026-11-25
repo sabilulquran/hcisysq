@@ -52,12 +52,12 @@ export function EmployeeComingSoonPage() {
         <a href="/app/services" className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Semua layanan</a>
         <section className="mt-5 rounded-3xl border border-border/75 bg-surface-raised p-6 shadow-[var(--shadow-soft)] sm:p-8">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep"><Clock3 className="h-6 w-6" aria-hidden="true" /></span>
-          <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">{employeeServiceStageLabel(service.stage)}</p>
+          <p className="sq-eyebrow mt-6 text-brand-primary-deep">{employeeServiceStageLabel(service.stage)}</p>
           <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">{service.label}</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{service.description}</p>
           {service.details?.length ? (
             <div className="mt-5">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Cakupan yang direncanakan</p>
+              <p className="sq-eyebrow text-muted-foreground">Cakupan yang direncanakan</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {service.details.map((detail) => (
                   <div key={detail} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-sm font-semibold text-brand-heading"><Check className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />{detail}</div>

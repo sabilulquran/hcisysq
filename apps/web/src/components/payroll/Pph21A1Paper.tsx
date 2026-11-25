@@ -38,8 +38,8 @@ export function Pph21A1Paper({ a1 }: { a1: Pph21A1Document }) {
   return (
     <article className="pph21-a1-paper sq-paper rounded-2xl border border-border bg-white p-6 text-xs leading-5 text-slate-900">
       <header className="text-center">
-        <p className="font-semibold uppercase tracking-[0.12em]">Bukti Pemotongan PPh Pasal 21</p>
-        <p className="font-semibold uppercase">Bagi Pegawai Tetap atau Pensiunan yang Menerima Uang Terkait Pensiun Secara Berkala</p>
+        <p className="sq-eyebrow">Bukti Pemotongan PPh Pasal 21</p>
+        <p className="sq-eyebrow">Bagi Pegawai Tetap atau Pensiunan yang Menerima Uang Terkait Pensiun Secara Berkala</p>
         <p className="mt-1">Formulir 1721-A1 · Tahun pajak {a1.year} · Kode objek {a1.objectCode}</p>
         <p>Masa perolehan penghasilan: {monthYear(s.startPeriod)} s.d. {monthYear(s.endPeriod)}</p>
         <p className="text-slate-600">Referensi HCIS: {a1.reference} (nomor bukti potong mengikuti e-Bupot)</p>

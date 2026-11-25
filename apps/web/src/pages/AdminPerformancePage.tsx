@@ -183,7 +183,7 @@ export function AdminPerformancePage() {
                       className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${cycle?.id === item.id ? "bg-muted/60" : ""}`}>
                       <span className="block font-semibold text-brand-heading">{item.name}</span>
                       <span className="block text-xs text-muted-foreground">{CYCLE_KIND_LABELS[item.kind]} · {formatPeriod(item.periodStart, item.periodEnd)}</span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {CYCLE_STATUS_LABELS[item.status]}{item.participantCount !== undefined ? ` · ${item.participantCount} peserta` : ""}
                       </span>
                     </button>
@@ -681,7 +681,7 @@ function EmployeeHistory({ employeeId }: { employeeId: string }) {
 
   return (
     <section className="mt-6 border-t border-border/70 pt-4">
-      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Riwayat penilaian pegawai</h3>
+      <h3 className="sq-eyebrow text-muted-foreground">Riwayat penilaian pegawai</h3>
       {error ? <p className="mt-2 text-sm text-danger-ink">{error}</p> : null}
       <ul className="mt-2 divide-y divide-border/70 text-sm">
         {items.map((item) => (

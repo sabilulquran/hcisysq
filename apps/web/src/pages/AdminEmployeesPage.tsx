@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
@@ -113,6 +114,8 @@ export function EmployeeListEmpty({ scope }: { scope: EmployeeManagementScopeFil
  */
 export interface EmployeeListFilters {
   page: number;
+  /** ENG-LIST-001-B: 10/25/50/100, chosen in the shared pager. */
+  pageSize: number;
   query: string;
   status: EmployeeStatus | "";
   unitId: string;
@@ -122,7 +125,7 @@ export interface EmployeeListFilters {
 }
 
 export const INITIAL_EMPLOYEE_LIST_FILTERS: EmployeeListFilters = {
-  page: 1, query: "", status: "", unitId: "", positionId: "", scope: "MANAGED",
+  page: 1, pageSize: 25, query: "", status: "", unitId: "", positionId: "", scope: "MANAGED",
 };
 
 /** A filter changed: apply it and go back to the first page. */
@@ -138,7 +141,7 @@ export function withFilter<K extends Exclude<keyof EmployeeListFilters, "page">>
 export function employeeListRequest(filters: EmployeeListFilters): Parameters<typeof listEmployees>[0] {
   return {
     page: filters.page,
-    pageSize: 25,
+    pageSize: filters.pageSize,
     q: filters.query,
     status: filters.status,
     unitId: filters.unitId,
@@ -151,7 +154,7 @@ export function AdminEmployeesPage() {
   const [data, setData] = useState<AdminEmployeeListResponse | null>(null);
   const [draftQuery, setDraftQuery] = useState("");
   const [filters, setFilters] = useState<EmployeeListFilters>(INITIAL_EMPLOYEE_LIST_FILTERS);
-  const { page, status, unitId, positionId, scope } = filters;
+  const { status, unitId, positionId, scope } = filters;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,8 +183,8 @@ export function AdminEmployeesPage() {
   }, [filters]);
 
   const changeScope = (next: EmployeeManagementScopeFilter) => setFilters((current) => withFilter(current, "scope", next));
-  const setPage = (next: (current: number) => number) =>
-    setFilters((current) => ({ ...current, page: next(current.page) }));
+  const goToPage = (next: number) => setFilters((current) => ({ ...current, page: next }));
+  const changePageSize = (next: number) => setFilters((current) => withFilter(current, "pageSize", next));
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -311,29 +314,13 @@ export function AdminEmployeesPage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                Halaman {data.pagination.page} dari {data.pagination.pageCount} · {data.pagination.total} hasil
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={page <= 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  className="h-9 rounded-xl border border-border bg-surface-raised px-3 font-semibold text-foreground disabled:opacity-40"
-                >
-                  Sebelumnya
-                </button>
-                <button
-                  type="button"
-                  disabled={page >= data.pagination.pageCount}
-                  onClick={() => setPage((current) => current + 1)}
-                  className="h-9 rounded-xl border border-border bg-surface-raised px-3 font-semibold text-foreground disabled:opacity-40"
-                >
-                  Berikutnya
-                </button>
-              </div>
-            </div>
+            <PaginationBar
+              page={data.pagination.page}
+              pageSize={data.pagination.pageSize}
+              total={data.pagination.total}
+              onPageChange={goToPage}
+              onPageSizeChange={changePageSize}
+            />
           </>
         ) : (
           <EmployeeListEmpty scope={scope} />

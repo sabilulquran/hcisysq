@@ -160,7 +160,7 @@ export function HcPlannedLeavePage() {
       activeItem="Cuti Terencana"
     >
       <section>
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
+        <p className="sq-eyebrow text-muted-foreground">Human Capital</p>
         <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Cuti terencana & tanpa gaji</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Pemeriksaan administrasi dan persetujuan Cuti Tanpa Gaji ditampilkan terpisah. Validasi dokumen bukan persetujuan diskresioner.

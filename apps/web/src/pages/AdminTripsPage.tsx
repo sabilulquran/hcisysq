@@ -156,7 +156,7 @@ export function AdminTripsPage() {
                       <span className="block text-xs text-muted-foreground">
                         {trip.employeeNumber}{trip.unitName ? ` · ${trip.unitName}` : ""} · {formatTripRange(trip.startOn, trip.endOn)}
                       </span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {tripStatusLabel(trip.status)}
                         {trip.currentApproverName ? ` · menunggu ${trip.currentApproverName}` : ""}
                         {trip.documentNumber ? ` · ${trip.documentNumber}` : ""}

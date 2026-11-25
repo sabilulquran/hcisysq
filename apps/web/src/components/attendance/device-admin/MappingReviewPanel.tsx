@@ -90,19 +90,19 @@ export function MappingReviewPanel() {
         <>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl bg-surface p-3">
-              <div className="text-[11px] font-semibold text-muted-foreground">Belum terhubung</div>
+              <div className="text-2xs font-semibold text-muted-foreground">Belum terhubung</div>
               <div className="mt-1 text-xl font-bold text-brand-heading">{summary.totalUnmapped}</div>
             </div>
             <div className="rounded-xl bg-success-soft p-3">
-              <div className="text-[11px] font-semibold text-success-ink">Rekomendasi nama sama</div>
+              <div className="text-2xs font-semibold text-success-ink">Rekomendasi nama sama</div>
               <div className="mt-1 text-xl font-bold text-success-ink">{summary.exactNameRecommendations}</div>
             </div>
             <div className="rounded-xl bg-info-soft p-3">
-              <div className="text-[11px] font-semibold text-info-ink">Rekomendasi nama mirip</div>
+              <div className="text-2xs font-semibold text-info-ink">Rekomendasi nama mirip</div>
               <div className="mt-1 text-xl font-bold text-info-ink">{summary.fuzzyNameRecommendations}</div>
             </div>
             <div className="rounded-xl bg-warning-soft p-3">
-              <div className="text-[11px] font-semibold text-warning-ink">Tanpa rekomendasi nama</div>
+              <div className="text-2xs font-semibold text-warning-ink">Tanpa rekomendasi nama</div>
               <div className="mt-1 text-xl font-bold text-warning-ink">{summary.withoutRecommendation}</div>
             </div>
           </div>
@@ -113,7 +113,7 @@ export function MappingReviewPanel() {
             </div>
           ) : (
             <div className="mt-4 overflow-hidden rounded-xl border border-border/70">
-              <div className="border-b border-border/70 bg-surface/70 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="sq-eyebrow border-b border-border/70 bg-surface/70 px-3 py-2 text-muted-foreground">
                 Prioritas review
               </div>
               <div className="divide-y divide-border/60">
@@ -124,13 +124,13 @@ export function MappingReviewPanel() {
                       <div className="font-mono font-bold text-brand-heading">PIN {item.pin}</div>
                       <div>
                         <div className="font-semibold text-brand-heading">{item.rosterDisplayName?.trim() || "Nama mesin belum teramati"}</div>
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">{item.eventCount} fakta punch tersimpan</div>
+                        <div className="mt-0.5 text-2xs text-muted-foreground">{item.eventCount} fakta punch tersimpan</div>
                       </div>
                       <div>
                         {candidate ? (
                           <>
                             <div className="font-semibold text-brand-heading">{candidate.fullName}</div>
-                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            <div className="mt-0.5 text-2xs text-muted-foreground">
                               {candidateLabel(item)} · similarity {candidate.similarity}/100 · {candidate.employeeNumber}
                             </div>
                           </>
@@ -142,7 +142,7 @@ export function MappingReviewPanel() {
                       </div>
                       <a
                         href="#device-user-list"
-                        className="text-[11px] font-bold text-brand-primary-deep hover:underline"
+                        className="text-2xs font-bold text-brand-primary-deep hover:underline"
                       >
                         Tinjau di daftar
                       </a>
@@ -163,7 +163,7 @@ export function MappingReviewPanel() {
             </div>
           )}
 
-          <div className="mt-3 text-[11px] leading-5 text-muted-foreground">
+          <div className="mt-3 text-2xs leading-5 text-muted-foreground">
             Kemiripan nama hanya membantu mengurutkan pilihan, bukan tingkat keyakinan. Kartu, NIP, unit, PIN, dan ID lain tidak pernah dipakai untuk menghubungkan pegawai secara otomatis; Anda yang memilih.
           </div>
         </>

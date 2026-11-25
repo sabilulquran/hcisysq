@@ -7,7 +7,7 @@ export function NotFoundPage() {
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
           <FileQuestion className="h-6 w-6" aria-hidden="true" />
         </span>
-        <p className="mt-5 text-xs font-bold uppercase tracking-[0.18em] text-brand-primary-deep">404</p>
+        <p className="sq-eyebrow mt-5 text-brand-primary-deep">404</p>
         <h1 className="mt-2 font-display text-2xl font-bold text-brand-heading">Halaman tidak tersedia</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           Alamat ini tidak tersedia untuk account Anda atau halaman yang dituju tidak ditemukan.

@@ -463,12 +463,12 @@ export function EmploymentActionDialog({
                       ))}
                     </select>
                     {classificationsTruncated ? (
-                      <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p>
+                      <p className="mt-1 text-2xs text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p>
                     ) : null}
                   </Labelled>
                 ) : null}
                 {classificationsFailed ? (
-                  <p className="text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Tindakan tetap bisa direkam; penempatan akan mengikuti klasifikasi kursi jabatan.</p>
+                  <p className="text-2xs font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Tindakan tetap bisa direkam; penempatan akan mengikuti klasifikasi kursi jabatan.</p>
                 ) : null}
               </>
             ) : null}

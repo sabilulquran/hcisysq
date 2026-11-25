@@ -284,7 +284,7 @@ Terpisah dari §5, dan **tidak** diperlukan untuk menjalankan pilot:
 - `docs/development/hcis-opening-readiness-evidence-2026-11-24.md` (OPS-EVID-001) — S1 dan S2.
 - `docs/domain/leave-policy-ysq.md` — aturan kelompok hak cuti yang §5.1 kutip.
 - `docs/development/leave-003-r2-semester-quota-2026-11-25.md` (LEAVE-003 R2) — perpindahan batas
-  pemakaian ke 6 hari kerja per semester. Tidak menambah prasyarat pilot: selama tanggal efektifnya
-  belum ditetapkan, aturan 3 hari per triwulan tetap berlaku untuk semua tanggal, dan tanggal yang
-  diusulkan (1 Januari 2027) jatuh setelah pilot.
+  pemakaian ke 6 hari kerja per semester, berlaku untuk cuti yang mulai 1 Januari 2027 (ditetapkan
+  pemilik 25 November 2026). Tidak menambah prasyarat pilot: cuti yang mulai sebelum tanggal itu
+  tetap memakai aturan 3 hari per triwulan.
 - `docs/domain/dynamic-organization-structure.md` — perilaku saklar ORG-004.

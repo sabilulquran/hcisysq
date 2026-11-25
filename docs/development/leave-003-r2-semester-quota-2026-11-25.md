@@ -1,6 +1,6 @@
 # LEAVE-003 R2 — 6 hari kerja per semester: implementasi dan bukti uji
 
-**Status:** IMPLEMENTED — TANGGAL EFEKTIF MENUNGGU PEMILIK (`DRAFT`)
+**Status:** IMPLEMENTED — TANGGAL EFEKTIF 1 JANUARI 2027 (ditetapkan pemilik 25 November 2026)
 **Spesifikasi:** LEAVE-003 R2 (`docs/domain/leave-policy-ysq.md` §"LEAVE-003 R2")
 **Terkait:** LEAVE-001, LEAVE-004, LEAVE-008, ATT-004, HELP-001
 **Tanggal:** 25 November 2026
@@ -14,21 +14,38 @@ triwulan** (Jan-Mar, Apr-Jun, Jul-Sep, Okt-Des) menjadi **6 hari kerja per semes
 Tidak berubah: kelompok yang berhak (`non_education`), masa kerja 12 bulan, H-7, kalender hari
 kerja, dan sisa kuota yang tidak otomatis dibawa ke periode berikutnya.
 
-## 2. Tanggal efektif — satu-satunya yang `DRAFT`
+## 2. Tanggal efektif
 
 Aturan baru berlaku berdasarkan **tanggal cuti**, dan tanggal mulainya diambil dari pengaturan
 `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM`.
 
 | | Nilai | Akibat |
 | --- | --- | --- |
-| Default yang dirilis, production termasuk | tidak diisi | aturan triwulan berlaku untuk **semua** tanggal, persis seperti sekarang |
-| Usulan untuk rancangan dan pengujian | `2027-01-01` | dipakai di seluruh uji; belum dipasang di production |
+| Default yang dirilis | tidak diisi | aturan triwulan berlaku untuk **semua** tanggal |
+| Production, sejak 25 November 2026 (keputusan pemilik) | `2027-01-01` | cuti yang mulai sebelum 1 Januari 2027 tetap aturan triwulan; yang mulai pada atau sesudahnya aturan semester, kapan pun diajukan |
 
-Jadi menggabungkan perubahan ini dan bahkan merilisnya **tidak mengubah apa pun** bagi pegawai
-sampai pemilik menetapkan tanggalnya. Layar Admin → Konfigurasi Cuti menyebutkan aturan yang sedang
-berlaku dan tanggal mulai aturan semester, dibaca dari API, bukan ditulis di halaman.
+Layar Admin → Konfigurasi Cuti menyebutkan aturan yang sedang berlaku dan tanggal mulai aturan
+semester, dibaca dari API, bukan ditulis di halaman. Artikel Pusat Bantuan sengaja tetap menyebut
+"tanggal yang ditetapkan yayasan" tanpa angka; layar Cuti Tahunan pegawai menyebut tanggalnya.
 
-### Cara memberlakukannya setelah pemilik menetapkan tanggal
+### Pemasangan di production
+
+1. Kode dirilis sebagai `hcis-df406452-20261125`, cutover 25 November 2026 20:56 WIB, bersama
+   migrasi `0185` dan `0186` (bukti
+   `docs/development/production-release-verification-2026-11-25-df406452.md`).
+2. Pukul 20:58 WIB baris `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM=2027-01-01` ditambahkan ke
+   `/srv/hcis/shared/final.env` (salinan sebelumnya
+   `final.env.pre-leave-semester-20261125T135802Z`), lalu hanya layanan API yang dimulai ulang.
+3. Proses API yang baru membawa nilai itu di lingkungannya, dan `/health` serta `/ready` menjawab
+   200. Karena pembacaan tanggalnya gagal tertutup saat start, API yang sehat berarti nilainya
+   terbaca sebagai tanggal yang sah.
+4. **Belum dibuktikan lewat layar**: Admin → Konfigurasi Cuti belum dibuka dengan akun sungguhan,
+   karena agen tidak pernah mengetik kata sandi. Yang perlu terlihat di sana: aturan hari ini
+   masih per triwulan, dan aturan semester mulai 1 Januari 2027.
+
+Jalan mundurnya: kembalikan salinan `final.env` di atas, lalu mulai ulang API.
+
+### Cara memasang atau mengubah tanggalnya
 
 1. Tambahkan `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM=<YYYY-MM-DD>` pada
    `/srv/hcis/shared/final.env` di Mi8VPS.
@@ -225,9 +242,10 @@ sesudahnya.
 
 ## 9. Dampak pada pilot Cuti Tahunan Taman Tahfizh
 
-Tidak ada, selama tanggal efektif belum ditetapkan — dan tanggal usulannya (1 Januari 2027) jatuh
-setelah pilot. Pilot berjalan dengan aturan 3 hari per triwulan, persis seperti yang direncanakan di
-`docs/operations/pilot-cuti-taman-tahfizh-2026-11-25.md`.
+Cuti pilot yang mulai sebelum 1 Januari 2027 berjalan dengan aturan 3 hari per triwulan, persis
+seperti yang direncanakan di `docs/operations/pilot-cuti-taman-tahfizh-2026-11-25.md`. Peserta pilot
+yang mengajukan cuti mulai Januari 2027 sudah memakai aturan semester — itu memang aturan yang
+berlaku bagi semua pegawai pada tanggal tersebut, bukan pengecualian pilot.
 
 Dua catatan untuk pilot:
 

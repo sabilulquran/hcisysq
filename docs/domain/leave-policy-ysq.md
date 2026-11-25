@@ -255,18 +255,19 @@ From the effective date onwards there are two 6-day periods:
 Either way the year totals 12 working days, and the implementation does **not** carry unused days
 from one period into the next unless YSQ later approves an explicit carry-forward rule.
 
-### LEAVE-003 R2 — six working days per semester (`DRAFT` effective date)
+### LEAVE-003 R2 — six working days per semester (effective 1 January 2027)
 
 Owner instruction, 25 November 2026: replace the 3-working-day limit per three-month period with
 **6 working days per calendar semester** — January-June and July-December. The annual right stays
 **12 working days**, and the rules for entitlement group, length of service, H-7 notice, the working
 calendar, and unused quota not carrying forward are unchanged.
 
-**What is `DRAFT`.** Only the effective date. The proposal on record is **1 January 2027**, which is
-what the design and the tests use. Nothing changes in production until the owner names a date: the
-setting `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM` is unset in the shipped default and in
-production, and while it is unset the three-month rule governs every date, as it does today.
-Admin → Konfigurasi Cuti states which rule is in force and the date the semester rule starts.
+**Effective date.** The owner set **1 January 2027** on 25 November 2026. Production carries it as
+`ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM=2027-01-01`; leave starting before that date keeps the
+three-month rule, leave starting on or after it follows the semester rule, whenever it is submitted.
+The setting stays unset in the shipped default, so any other environment keeps the three-month rule
+for every date until it is set there too. Admin → Konfigurasi Cuti states which rule is in force and
+the date the semester rule starts.
 
 #### The rule follows the leave date
 

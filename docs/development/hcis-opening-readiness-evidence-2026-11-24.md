@@ -4,6 +4,7 @@
 **Status:** CATATAN BUKTI (bukan gate). Dokumen ini tidak menaikkan status satu butir pun di `hcis-closure-list.md` (OPS-CLOSE-001) dan tidak menggantikan kriteria pintu di `hcis-opening-criteria-and-pilot-plan-2026-11-23.md` (OPS-OPEN-001). Ia mencatat **apa yang benar-benar diuji pada 24 November 2026, dengan cara apa, dan apa hasilnya.**
 **Rilis production saat ditulis:** `hcis-734be5ca-20261124` (155 migrasi, tertinggi `0183`), dibuktikan dari `cwd` proses yang berjalan, bukan dari CI.
 **Repository:** `origin/main` pada `b9969d63`; satu-satunya selisih terhadap rilis adalah commit dokumen.
+**Pembaruan 2026-11-25:** perbaikan yang lahir dari audit ini **sudah dirilis** sebagai `hcis-f6edebd4-20261125` (tanpa migrasi; bukti `production-release-verification-2026-11-25-f6edebd4.md`). Setiap "belum dirilis" di bawah terbaca sebagai keadaan pada 24 November; S1 di §7 tertutup.
 
 ---
 
@@ -140,7 +141,7 @@ Dijalankan di browser terhadap API lokal dan data sintetis.
 
 | # | Pekerjaan | Penanggung jawab | Bukti yang menutupnya |
 |---|---|---|---|
-| S1 | Rilis perbaikan 24 November ke production (OPS-MI8-REL-001) | Operator | Catatan verifikasi rilis bertanggal, `cwd` proses menunjuk rilis baru |
+| ~~S1~~ **selesai** | Rilis perbaikan 24 November ke production (OPS-MI8-REL-001) | Operator | **Tertutup 2026-11-25:** `hcis-f6edebd4-20261125`, cutover 09:27 WIB, verify lulus percobaan pertama, tanpa migrasi; `cmdline` kedua proses menunjuk rilis baru; `GET /api/me/services` dan `POST /api/admin/leave/approvals/<uuid>/reassign` menjawab 401 (sebelumnya 404). Bukti `production-release-verification-2026-11-25-f6edebd4.md` |
 | S2 | Tombol **Tolak** diuji di layar, atau dialognya dipindahkan ke halaman | Pengembang bersama HCM | Satu penolakan nyata lewat layar, atau uji otomatis atas dialog barunya |
 | S3 | Jalankan empat berkas uji yang dilewati (AUTH-011, ORG-010, ORG-013, ADR-0008) di CI | Pengembang | 90 uji itu hijau pada gerbang yang sama dengan suite harian |
 | S4 | Tutup celah V22: kursi yang dipegang akun organ dan akunnya belum aktif masih dilewati diam-diam | Pengembang, setelah keputusan ORG-013-1 | Uji yang menolak kursi organ berakun belum aktif, seperti D-R5 untuk kursi pegawai |
@@ -163,7 +164,8 @@ Dijalankan di browser terhadap API lokal dan data sintetis.
 
 ## 8. Hubungan dengan dokumen lain
 
-- `hcis-closure-list.md` (OPS-CLOSE-001) — posisi tiap butir; pembaruan 24 November mencatat ketiga perbaikan di atas sebagai "di `main`, belum dirilis".
+- `hcis-closure-list.md` (OPS-CLOSE-001) — posisi tiap butir; pembaruan 25 November mencatat ketiga perbaikan di atas sebagai **ada di production** dan menutup W15.
+- `production-release-verification-2026-11-25-f6edebd4.md` — bukti rilis perbaikan audit ini.
 - `hcis-opening-criteria-and-pilot-plan-2026-11-23.md` (OPS-OPEN-001) — kriteria pintu G1–G13. Audit ini tidak menaikkan satu pun; yang berubah adalah dua penghalang perangkat lunak pada G2/G4 modul cuti hilang dari daftar.
 - `docs/domain/dynamic-organization-structure.md` — D-R6.
 - `docs/domain/workflows/leave-request.md` — LEAVE-010-F dan pengalihan langkah.

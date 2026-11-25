@@ -101,8 +101,36 @@ describe("ORG-004 panel mode persetujuan per unit", () => {
     const html = render(configured, { search: "?mode-persetujuan=baru" });
     expect(html).toMatch(/role="dialog"[^>]*aria-modal="true"[^>]*aria-label="Pindahkan unit ke struktur"/);
     expect(html).toContain("Taman Tahfizh Sabilul Qur&#x27;an");
-    // Picking no unit moves the whole foundation; the form says so where the choice is made.
     expect(html).toContain("Seluruh yayasan");
+  });
+
+  it("starts the move form with no unit chosen, so the widest scope is never the default", () => {
+    // A row with no node moves every employee at once. Leaving a select alone must not do that:
+    // the field starts on a placeholder, and "Seluruh yayasan" is its own deliberate option.
+    const html = render(configured, { search: "?mode-persetujuan=baru" });
+    expect(html).toMatch(/<option value="" selected="">— pilih unit —<\/option>/);
+    // The widest scope is its own option, and it is not the selected one.
+    expect(html).toMatch(/<option value="SELURUH_YAYASAN">Seluruh yayasan/);
+    expect(html).toContain("Unit yang dipilih berlaku beserta seluruh bagian di bawahnya");
+  });
+
+  it("offers today as the end date of a setting already in force", () => {
+    const html = render(configured, { search: `?akhiri-mode=${ROW_ID}` });
+    expect(html).toContain('value="2026-11-25"');
+    expect(html).toContain('min="2026-11-25"');
+  });
+
+  it("offers the day before the start as the end date of a setting that has not started", () => {
+    // The server refuses an earlier last day with ORGANIZATION_ROLLOUT_END_TOO_EARLY. Defaulting
+    // to today would be refused on a form the operator never touched.
+    const future: OrganizationRolloutConfiguration = {
+      ...configured,
+      settings: [{ ...configured.settings![0]!, effectiveFrom: "2026-12-01" }],
+    };
+    const html = render(future, { search: `?akhiri-mode=${ROW_ID}` });
+    expect(html).toContain('value="2026-11-30"');
+    expect(html).toContain('min="2026-11-30"');
+    expect(html).toContain("sehari sebelum pengaturan ini mulai berlaku");
   });
 
   it("opens the end form for the row the URL names, and never for a row already ended", () => {

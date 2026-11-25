@@ -28,6 +28,8 @@ import {
 } from "@/lib/organizationLanguage";
 
 const WHOLE_FOUNDATION = "Seluruh yayasan";
+/** Scope that writes `node_key = NULL`. Never the initial value of the field: see `AddRolloutDialog`. */
+const WHOLE_FOUNDATION_VALUE = "SELURUH_YAYASAN";
 
 function workflowLabel(key: string) {
   return ROLLOUT_WORKFLOW_WORDING[key] ?? key;
@@ -35,6 +37,14 @@ function workflowLabel(key: string) {
 
 function modeLabel(mode: string) {
   return ROLLOUT_MODE_WORDING[mode] ?? mode;
+}
+
+/** ISO date shifted by whole days, in UTC, so no timezone can move it onto another day. */
+function shiftIsoDay(isoDate: string, days: number) {
+  const base = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) return isoDate;
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
 }
 
 function nodeLabel(nodes: OrganizationNode[], key: string | null) {
@@ -178,6 +188,17 @@ function AddRolloutDialog({
   }, [nodes, search]);
 
   const submit = async () => {
+    // The widest possible scope must be chosen on purpose. An empty field is not "the whole
+    // foundation": a row with no node moves all ~97 employees at once, and that is not something
+    // an operator should be able to do by leaving a select alone.
+    if (!nodeKey) {
+      setError("Pilih unit lebih dulu, atau pilih Seluruh yayasan dengan sengaja.");
+      return;
+    }
+    if (!effectiveFrom) {
+      setError("Isi tanggal mulai berlaku.");
+      return;
+    }
     if (!reason.trim()) {
       setError("Tulis alasan pemindahan; alasan ini tersimpan di jurnal organisasi.");
       return;
@@ -188,7 +209,7 @@ function AddRolloutDialog({
       await updateOrganizationRollout({
         mode,
         workflowKey,
-        organizationalNodeKey: nodeKey || null,
+        organizationalNodeKey: nodeKey === WHOLE_FOUNDATION_VALUE ? null : nodeKey,
         effectiveFrom,
         reason: reason.trim(),
       });
@@ -223,15 +244,18 @@ function AddRolloutDialog({
           onChange={(event) => setNodeKey(event.target.value)}
           className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
         >
-          <option value="">{WHOLE_FOUNDATION} — seluruh pegawai sekaligus</option>
+          <option value="">— pilih unit —</option>
           {matches.map((node) => (
             <option key={node.stableKey} value={node.stableKey}>{node.name}</option>
           ))}
+          <option value={WHOLE_FOUNDATION_VALUE}>{WHOLE_FOUNDATION} — seluruh pegawai sekaligus</option>
         </select>
       </label>
       <p className="mt-1 text-[11px] text-muted-foreground">
         {matches.length} dari {nodes.length} unit ditampilkan.
-        {nodeKey ? "" : " Tanpa memilih unit, pengaturan ini memindahkan seluruh yayasan sekaligus."}
+        {nodeKey === WHOLE_FOUNDATION_VALUE
+          ? " Pilihan ini memindahkan seluruh yayasan sekaligus, bukan satu unit."
+          : " Unit yang dipilih berlaku beserta seluruh bagian di bawahnya."}
       </p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <label className="block text-xs font-semibold text-brand-heading">
@@ -316,8 +340,12 @@ function EndRolloutDialog({
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
+  // Server rule (D-R4): the earliest last day is today, except for a setting that has not started
+  // yet, which ends the day before it starts. Defaulting to today for a future-dated row would be
+  // refused with `ORGANIZATION_ROLLOUT_END_TOO_EARLY` on a form the operator never touched.
+  const earliest = [shiftIsoDay(setting.effectiveFrom, -1), today].sort().at(-1)!;
   const [reason, setReason] = useState("");
-  const [lastDay, setLastDay] = useState(today);
+  const [lastDay, setLastDay] = useState(earliest);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -353,14 +381,16 @@ function EndRolloutDialog({
         <input
           type="date"
           value={lastDay}
-          min={today}
+          min={earliest}
           onChange={(event) => setLastDay(event.target.value)}
           className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
         />
       </label>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Paling awal hari ini: pengaturan yang berlaku hari ini sudah menjelaskan setiap rantai yang
-        diselesaikan hari ini.
+        Paling awal {earliest}
+        {earliest === today
+          ? ": pengaturan yang berlaku hari ini sudah menjelaskan setiap rantai yang diselesaikan hari ini."
+          : `, yaitu sehari sebelum pengaturan ini mulai berlaku (${setting.effectiveFrom}), sehingga masa berlakunya kosong.`}
       </p>
       <label className="mt-2 block text-xs font-semibold text-brand-heading">
         Alasan

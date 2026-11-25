@@ -457,7 +457,7 @@ export function AdminTripAdvancesPage() {
               <dd className="font-bold tabular-nums text-brand-heading">
                 {rate.dailyAmount === null ? "Belum ditetapkan" : `${formatRupiah(rate.dailyAmount)}/hari`}
               </dd>
-              {rate.effectiveFrom ? <dd className="text-[11px] text-muted-foreground">berlaku {rate.effectiveFrom}</dd> : null}
+              {rate.effectiveFrom ? <dd className="text-2xs text-muted-foreground">berlaku {rate.effectiveFrom}</dd> : null}
             </div>
           ))}
         </dl>
@@ -632,7 +632,7 @@ export function AdminTripAdvancesPage() {
                     <span className="block truncate text-xs text-muted-foreground">
                       {advance.employeeNumber}{advance.unitName ? ` · ${advance.unitName}` : ""} · {advance.tripDestination} · {advance.tripStartOn} – {advance.tripEndOn}
                     </span>
-                    <span className={`mt-1 block text-[11px] font-semibold ${advance.overdue ? "text-danger-ink" : "text-muted-foreground"}`}>
+                    <span className={`mt-1 block text-2xs font-semibold ${advance.overdue ? "text-danger-ink" : "text-muted-foreground"}`}>
                       {advanceStatusLabel(advance.status)}{advance.overdue ? ` · terlambat sejak ${advance.dueOn}` : ""}
                       {advance.currentApproverName ? ` · menunggu ${advance.currentApproverName}` : ""}
                     </span>

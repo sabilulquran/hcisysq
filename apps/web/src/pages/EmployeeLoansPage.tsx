@@ -176,7 +176,7 @@ export function EmployeeLoansPage() {
   return (
     <AppShell user={user} activeItem="Pinjaman">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Keuangan Saya</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Keuangan Saya</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Pinjaman</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Ajukan pinjaman tanpa bunga. Atasan langsung lalu approver unit menyetujui, kemudian Keuangan mencairkan dan
@@ -301,7 +301,7 @@ export function EmployeeLoansPage() {
                     <span className="min-w-0">
                       <span className="block font-semibold tabular-nums text-brand-heading">{formatRupiah(loan.principal)} · {loan.tenorMonths} bulan</span>
                       <span className="block truncate text-xs text-muted-foreground">{loan.purpose}</span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {loanStatusLabel(loan.status)}
                         {loan.currentApproverName ? ` · menunggu ${loan.currentApproverName}` : ""}
                         {loan.status === "DISBURSED" ? ` · sisa ${formatRupiah(loan.outstanding)}` : ""}

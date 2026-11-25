@@ -95,13 +95,13 @@ export function EmployeeAnnouncementsPage() {
         <span className="flex flex-wrap items-center gap-2">
           <span className="font-bold text-brand-heading">{item.title}</span>
           {item.level === "PENTING" ? (
-            <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger-ink">Penting</span>
+            <span className="rounded-full bg-danger-soft px-2 py-0.5 text-2xs font-bold text-danger-ink">Penting</span>
           ) : null}
           {!item.readAt ? (
-            <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">Baru</span>
+            <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-bold text-brand-primary-deep">Baru</span>
           ) : null}
         </span>
-        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
           {formatDate(item.publishedAt)}
           {item.visibility === "SUPERSEDED" ? " · sudah diralat" : ""}
           {item.visibility === "ARCHIVED" ? " · arsip" : ""}
@@ -113,7 +113,7 @@ export function EmployeeAnnouncementsPage() {
   return (
     <AppShell user={user} activeItem="Pengumuman">
       <section className="mx-auto max-w-3xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Informasi</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Informasi</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Pengumuman</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Pengumuman resmi yang ditujukan kepada Anda. Pengumuman lama tetap dapat dibaca di arsip.
@@ -178,7 +178,7 @@ export function EmployeeAnnouncementsPage() {
                 ))}
                 {opened.level === "PENTING" ? (
                   opened.acknowledgedAt ? (
-                    <p className="mt-4 text-[11px] font-semibold text-muted-foreground">
+                    <p className="mt-4 text-2xs font-semibold text-muted-foreground">
                       Dikonfirmasi {formatDate(opened.acknowledgedAt)}
                     </p>
                   ) : (

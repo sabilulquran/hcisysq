@@ -10,6 +10,52 @@
   src: url("./assets/fonts/inter-latin-wght.woff2") format("woff2");
 }
 
+/*
+ * One declared type scale (UI-TYPE-001). Before this, 94% of the interface was
+ * `text-sm`/`text-xs` with 354 one-off `text-[10px]`/`text-[11px]` values underneath,
+ * and hierarchy was carried by `font-bold` rather than by size and colour.
+ *
+ * - `text-2xs` (11px) is the floor. Nothing in the interface is smaller; the phone
+ *   tab bar and count badges used to be 9–10px.
+ * - Weights: 400 body, 500 emphasis, `semibold` 560 and `bold` 640. Inter is a
+ *   variable face, so these are real weights. Remapping them here calms every
+ *   existing `font-semibold`/`font-bold` call site at once without changing which
+ *   element is emphasised.
+ */
+@theme {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm--line-height: 1.375rem;
+
+  --font-weight-medium: 500;
+  --font-weight-semibold: 560;
+  --font-weight-bold: 640;
+  --font-weight-extrabold: 700;
+
+  /* The navigation rail. The header logo slot uses the same value so the rail,
+     the logo and the content edge line up in one column. */
+  --spacing-sidebar: 17rem;
+}
+
+/*
+ * Section labels ("Pegawai", "Waktu & kehadiran", "Hari ini", table headers). They used to be
+ * uppercase with tracking from 0.08em to 0.18em at four different sizes and three weights.
+ * One treatment now, sentence case; the call site still chooses the colour.
+ */
+@utility sq-eyebrow {
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+  font-weight: 560;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Figures that sit in a column or change in place: one width per digit. */
+@utility sq-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 @theme inline {
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);

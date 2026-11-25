@@ -90,7 +90,7 @@ export function EmployeeCommitteesPage() {
   return (
     <AppShell user={user} activeItem="Kepanitiaan">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Kepanitiaan Saya</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Kepanitiaan yang Anda ikuti, susunan panitianya, dan SK penetapannya. Kepanitiaan dicatat oleh Human Capital;
@@ -132,7 +132,7 @@ export function EmployeeCommitteesPage() {
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{item.name}</span>
                         <span className="block text-xs text-muted-foreground">{formatPeriod(item.startOn, item.endOn)} · {CATEGORY_LABELS[item.category]}</span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                           {roleLabel(item.role, item.section)}
                           {item.status !== "ACTIVE" ? ` · ${STATUS_LABELS[item.status]}` : ""}
                           {item.decreeNumber ? ` · SK ${item.decreeNumber}` : ""}

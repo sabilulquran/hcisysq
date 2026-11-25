@@ -333,7 +333,7 @@ export function AdminEmployeeImportPage() {
                     <tr key={row.rowNumber}>
                       <td className="px-4 py-3 font-semibold">{row.rowNumber}</td>
                       <td className="px-4 py-3">
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold uppercase text-foreground">{row.action}</span>
+                        <span className="sq-eyebrow rounded-full bg-muted px-2.5 py-1 text-foreground">{row.action}</span>
                       </td>
                       <td className="px-4 py-3">
                         {row.issues.length ? (

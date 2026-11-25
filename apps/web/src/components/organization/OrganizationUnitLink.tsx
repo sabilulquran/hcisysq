@@ -41,7 +41,7 @@ export function OrganizationUnitLink({
   return (
     <div className="space-y-5">
       <section>
-        <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Unit lama yang diwakili</h3>
+        <h3 className="sq-eyebrow text-muted-foreground">Unit lama yang diwakili</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           Dipakai untuk menentukan staf Human Capital mana yang diberi tahu soal pengajuan lembur di
           unit ini dan unit di bawahnya. Tanpa tautan, pemberitahuan jatuh ke penerima tingkat
@@ -94,7 +94,7 @@ export function OrganizationUnitLink({
       <section>
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
-          <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Staf HC unit ini</h3>
+          <h3 className="sq-eyebrow text-muted-foreground">Staf HC unit ini</h3>
         </div>
 
         {staffError ? (
@@ -128,13 +128,13 @@ export function OrganizationUnitLink({
               {staff.items.map((person) => (
                 <li key={`${person.employeeId}-${person.unitId}`} className="rounded-xl border border-border/70 bg-surface px-4 py-3 text-sm">
                   <span className="block font-semibold text-brand-heading">{person.fullName}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     Kewenangan atas unit {person.unitName}
                   </span>
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2 text-2xs text-muted-foreground">
               Daftar ini hanya menampilkan penugasan yang sudah ada. Menambah atau mencabutnya dilakukan di layar Akses.
             </p>
           </>

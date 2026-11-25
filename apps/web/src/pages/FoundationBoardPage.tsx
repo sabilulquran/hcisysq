@@ -42,7 +42,7 @@ export function OrganApprovalsOnly({ organPortalUrl }: { organPortalUrl: string 
   return (
     <>
       <section>
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Organ Yayasan</p>
+        <p className="sq-eyebrow text-muted-foreground">Organ Yayasan</p>
         <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Persetujuan Organ Yayasan</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Putuskan pengajuan cuti yang menunggu persetujuan Anda.
@@ -123,7 +123,7 @@ export function FoundationBoardPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <BrandLockup compact />
-            <span className="hidden truncate border-l border-border pl-3 text-[11px] font-semibold text-muted-foreground sm:inline">Organ Yayasan</span>
+            <span className="hidden truncate border-l border-border pl-3 text-2xs font-semibold text-muted-foreground sm:inline">Organ Yayasan</span>
           </div>
           <div className="flex items-center gap-2">
             {isEmployee ? (
@@ -157,7 +157,7 @@ export function FoundationBoardPage() {
         <>
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Ringkasan organisasi</p>
+            <p className="sq-eyebrow text-muted-foreground">Ringkasan organisasi</p>
             <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Dashboard Organ Yayasan</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Ringkasan agregat Human Capital untuk kebutuhan governance. Tidak menampilkan data pribadi pegawai atau dokumen cuti.
@@ -225,7 +225,7 @@ export function FoundationBoardPage() {
               <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kesiapan approval</p>
+                    <p className="sq-eyebrow text-muted-foreground">Kesiapan approval</p>
                     <h2 className="mt-1 text-lg font-bold text-brand-heading">Konfigurasi organisasi</h2>
                   </div>
                   <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
@@ -240,7 +240,7 @@ export function FoundationBoardPage() {
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-brand-primary" style={{ width: `${managerCoverage}%` }} />
                     </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">{data.approvalReadiness.withDirectManager} terisi · {data.approvalReadiness.withoutDirectManager} belum terisi</p>
+                    <p className="mt-2 text-2xs text-muted-foreground">{data.approvalReadiness.withDirectManager} terisi · {data.approvalReadiness.withoutDirectManager} belum terisi</p>
                   </div>
 
                   <div>
@@ -251,7 +251,7 @@ export function FoundationBoardPage() {
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-brand-primary" style={{ width: `${unitApproverCoverage}%` }} />
                     </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">{data.approvalReadiness.unitsWithApprover} unit terisi · {data.approvalReadiness.unitsWithoutApprover} belum terisi</p>
+                    <p className="mt-2 text-2xs text-muted-foreground">{data.approvalReadiness.unitsWithApprover} unit terisi · {data.approvalReadiness.unitsWithoutApprover} belum terisi</p>
                   </div>
 
                   <div>
@@ -262,7 +262,7 @@ export function FoundationBoardPage() {
                     <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-brand-primary" style={{ width: `${entitlementCoverage}%` }} />
                     </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">{data.entitlementGroups.unclassified} pegawai aktif belum diklasifikasikan</p>
+                    <p className="mt-2 text-2xs text-muted-foreground">{data.entitlementGroups.unclassified} pegawai aktif belum diklasifikasikan</p>
                   </div>
                 </div>
               </article>
@@ -270,7 +270,7 @@ export function FoundationBoardPage() {
               <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Komposisi hak cuti</p>
+                    <p className="sq-eyebrow text-muted-foreground">Komposisi hak cuti</p>
                     <h2 className="mt-1 text-lg font-bold text-brand-heading">Kelompok pegawai aktif</h2>
                   </div>
                   <UserRoundCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
@@ -295,7 +295,7 @@ export function FoundationBoardPage() {
             <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
               <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Distribusi unit</p>
+                  <p className="sq-eyebrow text-muted-foreground">Distribusi unit</p>
                   <h2 className="mt-1 text-lg font-bold text-brand-heading">Pegawai aktif per unit</h2>
                 </div>
                 <div className="mt-5 space-y-3">
@@ -312,12 +312,12 @@ export function FoundationBoardPage() {
                   ))}
                 </div>
                 {data.unitDistribution.length > topUnits.length ? (
-                  <p className="mt-4 text-[11px] text-muted-foreground">Menampilkan 8 unit dengan pegawai aktif terbanyak dari {data.unitDistribution.length} unit.</p>
+                  <p className="mt-4 text-2xs text-muted-foreground">Menampilkan 8 unit dengan pegawai aktif terbanyak dari {data.unitDistribution.length} unit.</p>
                 ) : null}
               </article>
 
               <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Status kepegawaian</p>
+                <p className="sq-eyebrow text-muted-foreground">Status kepegawaian</p>
                 <h2 className="mt-1 text-lg font-bold text-brand-heading">Komposisi pegawai aktif</h2>
                 <div className="mt-5 divide-y divide-border/70">
                   {data.employmentStatus.map((item) => (
@@ -332,12 +332,12 @@ export function FoundationBoardPage() {
 
             <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pergerakan tahun ini</p>
+                <p className="sq-eyebrow text-muted-foreground">Pergerakan tahun ini</p>
                 <p className="mt-3 text-2xl font-bold text-brand-heading">{data.movements.startedThisYear}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Tanggal mulai kerja tercatat tahun ini</p>
               </article>
               <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pergerakan tahun ini</p>
+                <p className="sq-eyebrow text-muted-foreground">Pergerakan tahun ini</p>
                 <p className="mt-3 text-2xl font-bold text-brand-heading">{data.movements.endedThisYear}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Tanggal akhir kerja tercatat tahun ini</p>
               </article>

@@ -144,7 +144,7 @@ export function EmployeeTrainingPage() {
   return (
     <AppShell user={user} activeItem="Pelatihan">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Pelatihan</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Jadwal pelatihan yang Anda ikuti, riwayat pelatihan, dan jam pelatihan Anda. Pelatihan dari pihak luar dapat
@@ -186,7 +186,7 @@ export function EmployeeTrainingPage() {
                         <span className="block text-xs text-muted-foreground">
                           {program.nextSessionAt ? `Sesi berikutnya ${formatInstant(program.nextSessionAt)} WIB` : PROGRAM_STATUS_LABELS[program.status]}
                         </span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                           {program.participantStatus ? PARTICIPANT_STATUS_LABELS[program.participantStatus] : ""}
                           {program.attendedHours != null ? ` · ${formatHours(program.attendedHours)}` : ""}
                         </span>
@@ -226,7 +226,7 @@ export function EmployeeTrainingPage() {
                           {session.location ? ` · ${session.location}` : ""}
                           {session.speakerName ? ` · ${session.speakerName}` : ""}
                         </p>
-                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                        <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                           {session.status === "CANCELLED" ? "Dibatalkan" : session.myAttendance ? ATTENDANCE_LABELS[session.myAttendance] : "Kehadiran belum dicatat"}
                         </p>
                       </li>
@@ -254,7 +254,7 @@ export function EmployeeTrainingPage() {
                       {formatDateRange(record.startOn, record.endOn)} · {record.organizer} · {formatHours(record.hours)}
                       {record.role === "SPEAKER" ? " · narasumber" : ""}
                     </span>
-                    <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                    <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                       {RECORD_STATUS_LABELS[record.status]}
                       {record.completed === false ? " · belum memenuhi kehadiran" : ""}
                       {record.rejectReason ? ` · ${record.rejectReason}` : ""}

@@ -140,7 +140,7 @@ export function EmployeeAnnualLeavePage() {
       <a href="/app/leave" className="inline-flex items-center gap-2 text-sm font-semibold text-brand-primary-deep">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Cuti & Izin
       </a>
-      <h1 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">
+      <h1 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
         Ajukan Cuti Tahunan
       </h1>
 
@@ -251,7 +251,7 @@ export function EmployeeAnnualLeavePage() {
               ["Tersisa setelah", preview.availableDaysAfterRequest],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl bg-surface p-3">
-                <p className="text-[11px] leading-4 text-muted-foreground">{label}</p>
+                <p className="text-2xs leading-4 text-muted-foreground">{label}</p>
                 <p className="mt-1 text-xl font-bold text-brand-heading">{value}</p>
               </div>
             ))}

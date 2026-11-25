@@ -153,7 +153,7 @@ export function EmployeePerformancePage() {
   return (
     <AppShell user={user} activeItem="Kinerja">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Pengembangan</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Pengembangan</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Penilaian Kinerja</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Isi penilaian diri pada setiap siklus. Atasan Anda memberi nilai, lalu Human Capital mengesahkan. Hasilnya
@@ -199,7 +199,7 @@ export function EmployeePerformancePage() {
                       <span className="block text-xs text-muted-foreground">
                         {tab === "team" ? `${item.cycleName} · ` : ""}{formatPeriod(item.periodStart, item.periodEnd)}
                       </span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {reviewStatusLabel(item.status)}
                         {item.predicateCode ? ` · ${item.predicateCode} ${item.predicateLabel} (${formatScore(item.finalScore)})` : ""}
                       </span>

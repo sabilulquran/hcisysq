@@ -160,7 +160,7 @@ export function OrganizationChangeList({
                   type="button"
                   disabled={busy}
                   onClick={() => onUndo(entry.seq)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-[11px] font-bold hover:bg-muted disabled:opacity-60"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-2xs font-bold hover:bg-muted disabled:opacity-60"
                 >
                   <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Batalkan
                 </button>

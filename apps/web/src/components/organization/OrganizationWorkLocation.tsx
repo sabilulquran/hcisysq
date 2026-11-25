@@ -34,7 +34,7 @@ export function OrganizationWorkLocation({
     <section>
       <div className="flex items-center gap-2">
         <MapPin className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
-        <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Lokasi kerja</h3>
+        <h3 className="sq-eyebrow text-muted-foreground">Lokasi kerja</h3>
       </div>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
         Unit di bawahnya ikut memakai lokasi ini selama tidak memilih lokasinya sendiri.

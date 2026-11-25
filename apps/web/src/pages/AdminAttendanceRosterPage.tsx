@@ -103,7 +103,7 @@ export function AdminAttendanceRosterPage() {
                   <td className="p-3 align-top">
                     <p className="font-semibold text-brand-heading">{employee.employeeName}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeNumber}{employee.unitName ? " · " + employee.unitName : ""}</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">Pola: {data?.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
+                    <p className="mt-1 text-2xs text-muted-foreground">Pola: {data?.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
                   </td>
                   {dates.map((workDate) => {
                     const entry = entryMap.get(employee.id + ":" + workDate);
@@ -113,7 +113,7 @@ export function AdminAttendanceRosterPage() {
                           {!entry ? "Ikuti pola jadwal" : entry.isOff ? "Libur" : scheduleName(entry.scheduleTemplateId)}
                         </span>
                         {entry ? (
-                          <div className="mt-1 text-[10px]">
+                          <div className="mt-1 text-2xs">
                             {draft ? <span className="font-semibold text-warning-ink">Draf, belum diterapkan</span> : <span className="text-success-ink">Berlaku</span>}
                           </div>
                         ) : null}

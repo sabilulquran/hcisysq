@@ -63,7 +63,7 @@ export function AccountMenu({ user, previewOpen = false }: AccountMenuProps) {
         <Avatar initials={user.initials} />
         <span className="hidden min-w-0 flex-col md:flex">
           <span className="max-w-40 truncate text-xs font-bold leading-tight text-foreground">{user.name}</span>
-          <span className="max-w-40 truncate text-[11px] leading-tight text-muted-foreground">{user.roles[0] ?? user.detail}</span>
+          <span className="max-w-40 truncate text-2xs leading-tight text-muted-foreground">{user.roles[0] ?? user.detail}</span>
         </span>
         <ChevronDown
           className={cn("hidden h-4 w-4 text-muted-foreground transition-transform md:block", open && "rotate-180")}
@@ -94,7 +94,7 @@ export function AccountMenu({ user, previewOpen = false }: AccountMenuProps) {
                 {user.roles.length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {user.roles.map((role) => (
-                      <span key={role} className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">
+                      <span key={role} className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-bold text-brand-primary-deep">
                         {role}
                       </span>
                     ))}

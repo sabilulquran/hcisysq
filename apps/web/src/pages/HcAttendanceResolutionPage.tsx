@@ -105,7 +105,7 @@ export function HcAttendanceResolutionPage() {
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
+          <p className="sq-eyebrow text-muted-foreground">Human Capital</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Penyelesaian ketidakhadiran</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Hanya tanggal yang administrasi cutinya belum terpenuhi yang masuk ke sini. Tentukan klasifikasi akhirnya tanpa mengubah hak cuti tenaga pendidikan.
@@ -167,10 +167,10 @@ export function HcAttendanceResolutionPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-bold text-brand-heading">{item.requesterName}</p>
-                      <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] font-bold text-muted-foreground">
+                      <span className="rounded-full bg-surface px-2.5 py-1 text-2xs font-bold text-muted-foreground">
                         {item.policyName}
                       </span>
-                      <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[10px] font-bold text-brand-primary-deep">
+                      <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-2xs font-bold text-brand-primary-deep">
                         {item.entitlementGroup === "education" ? "Tenaga pendidikan" : "Non-pendidikan"}
                       </span>
                     </div>
@@ -237,12 +237,12 @@ export function HcAttendanceResolutionPage() {
                             <span className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep">
                               <CalendarCheck2 className="h-4 w-4" aria-hidden="true" /> Usulkan pakai Cuti Tahunan
                             </span>
-                            <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
+                            <span className="mt-1 block text-2xs leading-5 text-muted-foreground">
                               {item.annualConversion.requestedDays} hari · sisa periode sebelum konversi {item.annualConversion.remainingDays} hari · perlu persetujuan pegawai
                             </span>
                           </button>
                         ) : item.entitlementGroup === "non_education" ? (
-                          <div className="rounded-xl border border-border bg-surface-raised p-3 text-[11px] leading-5 text-muted-foreground">
+                          <div className="rounded-xl border border-border bg-surface-raised p-3 text-2xs leading-5 text-muted-foreground">
                             Konversi Cuti Tahunan tidak tersedia: {item.annualConversion.reason}
                           </div>
                         ) : null}

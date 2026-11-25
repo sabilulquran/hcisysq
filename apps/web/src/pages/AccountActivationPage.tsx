@@ -126,7 +126,7 @@ export function AccountActivationPage() {
     <AuthLayout>
       <header className="mb-7 sm:mb-8">
         <span className="mb-4 block h-1 w-12 rounded-full bg-brand-yellow" aria-hidden="true" />
-        <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-[2.15rem]">
+        <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-4xl">
           Aktifkan account
         </h2>
         {usesAkunSq ? null : (

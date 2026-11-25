@@ -565,7 +565,7 @@ export function AdminAdmsDeviceUsersPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1040px] text-left text-sm">
-              <thead className="border-b border-border/70 bg-surface/70 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+              <thead className="sq-eyebrow border-b border-border/70 bg-surface/70 text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-bold">Pegawai HCIS</th>
                   <th className="px-4 py-3 font-bold">PIN</th>
@@ -587,25 +587,25 @@ export function AdminAdmsDeviceUsersPage() {
                           <>
                             <div className="font-semibold text-brand-heading">{row.employeeName ?? "Pegawai terhubung"}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{row.employeeNumber ?? "—"}</div>
-                            {mappingReview ? <div className="mt-1 text-[11px] font-semibold text-warning-ink">{employeeLifecycleLabel(row.employeeStatus)}</div> : null}
+                            {mappingReview ? <div className="mt-1 text-2xs font-semibold text-warning-ink">{employeeLifecycleLabel(row.employeeStatus)}</div> : null}
                           </>
                         ) : <span className="text-xs text-muted-foreground">Belum terhubung</span>}
                       </td>
                       <td className="px-4 py-4">
                         <div className="font-mono text-xs font-bold text-brand-heading">{row.pin}</div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">{row.eventCount} transaksi tersimpan</div>
+                        <div className="mt-1 text-2xs text-muted-foreground">{row.eventCount} transaksi tersimpan</div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1.5">
                           <span className={mappingReview
-                            ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-ink"
+                            ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-2xs font-semibold text-warning-ink"
                             : !mapped || !row.rosterObserved || (row.employeeName && row.displayName !== row.employeeName)
-                              ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-ink"
-                              : "inline-flex rounded-full bg-success-soft px-2 py-1 text-[11px] font-semibold text-success-ink"}
+                              ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-2xs font-semibold text-warning-ink"
+                              : "inline-flex rounded-full bg-success-soft px-2 py-1 text-2xs font-semibold text-success-ink"}
                           >
                             {mappingReview ? "Perlu ditinjau" : !mapped ? "Belum terhubung" : !row.rosterObserved ? "Belum ada di mesin" : row.employeeName && row.displayName !== row.employeeName ? "Data berbeda" : "Sinkron"}
                           </span>
-                          {plan ? <div className="text-[11px] font-medium text-info-ink">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div> : null}
+                          {plan ? <div className="text-2xs font-medium text-info-ink">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div> : null}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-xs text-muted-foreground">
@@ -614,7 +614,7 @@ export function AdminAdmsDeviceUsersPage() {
                       <td className="px-4 py-4">
                         <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum teramati"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">Kartu {row.cardNumber ?? "—"}</div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">Terakhir {fmt(row.lastSeenAt)}</div>
+                        <div className="mt-1 text-2xs text-muted-foreground">Terakhir {fmt(row.lastSeenAt)}</div>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -640,7 +640,7 @@ export function AdminAdmsDeviceUsersPage() {
                               {mapped ? (
                                 <>
                                   {mappingReview ? (
-                                    <div className="rounded-lg bg-warning-soft px-3 py-2 text-[11px] leading-4 text-warning-ink">
+                                    <div className="rounded-lg bg-warning-soft px-3 py-2 text-2xs leading-4 text-warning-ink">
                                       Pegawai HCIS sudah tidak aktif. Akhiri hubungan jika mapping ini tidak lagi berlaku.
                                     </div>
                                   ) : null}
@@ -677,7 +677,7 @@ export function AdminAdmsDeviceUsersPage() {
                                     Nonaktifkan di mesin
                                   </button>
                                   {(profileCapability?.state !== "available" || enabledCapability?.state !== "available") ? (
-                                    <div className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                                    <div className="px-3 py-2 text-2xs leading-4 text-muted-foreground">
                                       {operatorCapabilityLabel(profileCapability?.state !== "available" ? profileCapability : enabledCapability)}
                                     </div>
                                   ) : null}
@@ -731,7 +731,7 @@ export function AdminAdmsDeviceUsersPage() {
             setPage(1);
           }}
         />
-        <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
+        <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-2xs leading-5 text-muted-foreground">
           Workspace ini menggabungkan PIN dari punch, metadata pengguna aman yang pernah teramati secara pasif, dan mapping eksplisit HCIS. PIN yang tidak terlihat di sini tidak membuktikan pengguna sudah tidak ada di mesin.
         </div>
       </section>
@@ -773,11 +773,11 @@ export function AdminAdmsDeviceUsersPage() {
                   >
                     <span>
                       <span className="block text-sm font-semibold text-brand-heading">{candidate.fullName}</span>
-                      <span className="mt-1 block text-[11px] text-muted-foreground">
+                      <span className="mt-1 block text-2xs text-muted-foreground">
                         {candidate.employeeNumber}{candidate.unitName ? ` · ${candidate.unitName}` : ""}{candidate.positionName ? ` · ${candidate.positionName}` : ""}
                       </span>
                     </span>
-                    <span className="shrink-0 rounded-full bg-success-soft px-2 py-1 text-[11px] font-semibold text-success-ink">
+                    <span className="shrink-0 rounded-full bg-success-soft px-2 py-1 text-2xs font-semibold text-success-ink">
                       {candidateLabel(candidate.matchKind)} · {candidate.similarity}/100
                     </span>
                   </button>
@@ -828,7 +828,7 @@ export function AdminAdmsDeviceUsersPage() {
                   >
                     <span>
                       <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
-                      <span className="mt-1 block text-[11px] text-muted-foreground">{employee.employeeNumber}{employee.unitName ? ` · ${employee.unitName}` : ""}</span>
+                      <span className="mt-1 block text-2xs text-muted-foreground">{employee.employeeNumber}{employee.unitName ? ` · ${employee.unitName}` : ""}</span>
                     </span>
                     <span className="text-xs font-semibold text-brand-primary-deep">Pilih</span>
                   </button>
@@ -909,7 +909,7 @@ export function AdminAdmsDeviceUsersPage() {
                     >
                       <span>
                         <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
-                        <span className="mt-1 block text-[11px] text-muted-foreground">{employee.employeeNumber}{employee.unitName ? ` · ${employee.unitName}` : ""}</span>
+                        <span className="mt-1 block text-2xs text-muted-foreground">{employee.employeeNumber}{employee.unitName ? ` · ${employee.unitName}` : ""}</span>
                       </span>
                       <span className="text-xs font-semibold text-brand-primary-deep">Lanjutkan</span>
                     </button>

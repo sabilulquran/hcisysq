@@ -390,7 +390,7 @@ export function EmployeePayslipsPage() {
 
       <div className="space-y-4">
         <div className="print:hidden">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary">Dokumen pribadi</p>
+          <p className="sq-eyebrow text-brand-primary">Dokumen pribadi</p>
           <h1 className="mt-2 font-display text-2xl font-bold text-brand-heading sm:text-3xl">Slip Gaji</h1>
         </div>
 
@@ -398,7 +398,7 @@ export function EmployeePayslipsPage() {
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warning-ink" />
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-warning-ink">Catatan penting</p>
+              <p className="sq-eyebrow text-warning-ink">Catatan penting</p>
               <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs leading-5 text-warning-ink">
                 {payslipConfidentialityNotes.map((note) => <li key={note}>{note}</li>)}
               </ol>
@@ -487,7 +487,7 @@ export function EmployeePayslipsPage() {
                   <Printer className="h-4 w-4" /> Cetak / Simpan PDF
                 </button>
               </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">{items.length} slip tersedia. Klik kolom pilihan untuk melihat semua periode atau ketik untuk memfilter.</p>
+              <p className="mt-2 text-2xs text-muted-foreground">{items.length} slip tersedia. Klik kolom pilihan untuk melihat semua periode atau ketik untuk memfilter.</p>
             </section>
 
             {loadingDetail ? (

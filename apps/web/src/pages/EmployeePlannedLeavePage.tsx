@@ -254,8 +254,8 @@ export function EmployeePlannedLeavePage() {
       </div>
 
       <section>
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti & izin</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">
+        <p className="sq-eyebrow text-muted-foreground">Cuti & izin</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
           Keperluan terencana & Cuti Tanpa Gaji
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

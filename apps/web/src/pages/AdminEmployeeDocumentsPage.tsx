@@ -112,7 +112,7 @@ export function AdminEmployeeDocumentsPage() {
         <div className="overflow-x-auto rounded-2xl border border-border/70">
           <table className="w-full min-w-[640px] text-left text-sm">
             <caption className="sr-only">{tab === "expiring" ? "Dokumen yang akan berakhir" : "Unggahan yang menunggu verifikasi"}</caption>
-            <thead className="bg-surface text-xs uppercase text-muted-foreground">
+            <thead className="sq-eyebrow bg-surface text-muted-foreground">
               <tr>
                 <th scope="col" className="px-4 py-3">Pegawai</th>
                 <th scope="col" className="px-4 py-3">Unit</th>

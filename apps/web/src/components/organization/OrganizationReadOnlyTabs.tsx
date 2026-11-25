@@ -8,6 +8,7 @@
 import { AlertTriangle, CheckCircle2, ChevronRight, Info, LoaderCircle, Search } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { DetailDialog } from "@/components/DetailDialog";
 import type { OrganizationPosition } from "@/lib/organizationDesigner";
 import {
@@ -205,7 +206,7 @@ export function OrganizationReadinessTab({
             ].map((item) => (
               <div key={item.label} className="rounded-xl border border-border/70 bg-surface px-3 py-3">
                 <p className="text-xl font-bold text-brand-heading">{item.value}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{item.label}</p>
+                <p className="mt-0.5 text-2xs leading-4 text-muted-foreground">{item.label}</p>
               </div>
             ))}
           </div>
@@ -259,7 +260,6 @@ export function OrganizationPeopleTab({
   onSelect: (employeeId: string) => void;
   onCloseExplanation: () => void;
 }) {
-  const totalPages = page ? Math.max(1, Math.ceil(page.total / page.pageSize)) : 1;
 
   return (
     <div className="space-y-5">
@@ -301,7 +301,7 @@ export function OrganizationPeopleTab({
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
                     <thead>
-                      <tr className="border-b border-border/70 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                      <tr className="sq-eyebrow border-b border-border/70 text-muted-foreground">
                         <th className="py-2 pr-3 font-bold">Pegawai</th>
                         <th className="py-2 pr-3 font-bold">Unit</th>
                         <th className="py-2 pr-3 font-bold">Jabatan</th>
@@ -321,12 +321,12 @@ export function OrganizationPeopleTab({
                         >
                           <td className="py-2.5 pr-3">
                             <span className="block font-semibold text-brand-heading">{person.fullName}</span>
-                            <span className="text-[11px] text-muted-foreground">{person.employeeNumber}</span>
+                            <span className="text-2xs text-muted-foreground">{person.employeeNumber}</span>
                           </td>
                           <td className="py-2.5 pr-3 text-muted-foreground">
                             {person.unit ? person.unit.path.join(" › ") : "—"}
                             {person.workLocation ? (
-                              <span className="block text-[11px]">Lokasi: {person.workLocation.name}</span>
+                              <span className="block text-2xs">Lokasi: {person.workLocation.name}</span>
                             ) : null}
                           </td>
                           <td className="py-2.5 pr-3 text-muted-foreground">{person.position?.title ?? "—"}</td>
@@ -334,7 +334,7 @@ export function OrganizationPeopleTab({
                             {person.directManager ? (
                               <>
                                 <span className="block font-semibold text-brand-heading">{person.directManager.employeeName}</span>
-                                <span className="text-[11px] text-muted-foreground">
+                                <span className="text-2xs text-muted-foreground">
                                   {person.directManager.positionTitle ?? ""} · {organizationSourceLabel(person.source)}
                                 </span>
                               </>
@@ -344,14 +344,14 @@ export function OrganizationPeopleTab({
                           </td>
                           <td className="py-2.5">
                             {person.issues.length === 0 ? (
-                              <span className="inline-flex rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-ink">Beres</span>
+                              <span className="inline-flex rounded-full bg-success-soft px-2 py-0.5 text-2xs font-semibold text-success-ink">Beres</span>
                             ) : (
-                              <span className="inline-flex rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-semibold text-warning-ink">
+                              <span className="inline-flex rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-semibold text-warning-ink">
                                 Perlu dibereskan
                               </span>
                             )}
                             {person.legacy && person.legacy.comparison !== "NO_LEGACY" ? (
-                              <span className="mt-1 block text-[11px] text-muted-foreground">
+                              <span className="mt-1 block text-2xs text-muted-foreground">
                                 data lama: {organizationComparisonLabel(person.legacy.comparison)}
                               </span>
                             ) : null}
@@ -361,18 +361,13 @@ export function OrganizationPeopleTab({
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span>
-                    {page.total} pegawai · halaman {page.page} dari {totalPages}
-                  </span>
-                  <span className="flex gap-2">
-                    <button type="button" disabled={page.page <= 1} onClick={() => onPageChange(page.page - 1)} className="h-9 rounded-xl border border-border px-3 font-bold disabled:opacity-50">
-                      Sebelumnya
-                    </button>
-                    <button type="button" disabled={page.page >= totalPages} onClick={() => onPageChange(page.page + 1)} className="h-9 rounded-xl border border-border px-3 font-bold disabled:opacity-50">
-                      Berikutnya
-                    </button>
-                  </span>
+                <div className="mt-4 overflow-hidden rounded-xl border border-border/70">
+                  <PaginationBar
+                    page={page.page}
+                    pageSize={page.pageSize}
+                    total={page.total}
+                    onPageChange={onPageChange}
+                  />
                 </div>
               </>
             )
@@ -448,7 +443,7 @@ export function OrganizationActingTab({
                   <span className="text-muted-foreground">· sampai {position.actingIncumbent.effectiveTo}</span>
                 ) : null}
                 {endsOnByPosition.has(position.stableKey) ? (
-                  <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-semibold text-warning-ink">
+                  <span className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-semibold text-warning-ink">
                     berakhir dalam 14 hari
                   </span>
                 ) : null}
@@ -466,7 +461,7 @@ export function OrganizationActingTab({
             {vacant.map((position) => (
               <li key={position.stableKey} className="rounded-xl border border-border/70 bg-surface px-4 py-3">
                 <span className="block font-semibold text-brand-heading">{position.title}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {organizationVacancyPolicyLabel(position.vacancyPolicy)}
                 </span>
               </li>
@@ -571,7 +566,7 @@ export function OrganizationApprovalCheckTab({
               .map((warning) => (
                 <p key={warning.code} className="mt-2 text-xs text-warning-ink">{organizationWarningSentence(warning.code)}</p>
               ))}
-            <p className="mt-3 text-[11px] text-muted-foreground">
+            <p className="mt-3 text-2xs text-muted-foreground">
               Pengajuan yang sudah dikirim tidak berubah bila struktur diubah.
             </p>
             {legacyPerson?.legacy ? (

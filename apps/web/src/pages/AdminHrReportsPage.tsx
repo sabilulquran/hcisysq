@@ -183,7 +183,7 @@ export function AdminHrReportsPage() {
             <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
               <button type="submit" className="min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground">Tampilkan</button>
               {access.canExport && !exportable ? (
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   Unduhan akun Anda hanya untuk unit {exportUnits.join(", ")}. Pilih unit tersebut untuk mengunduh.
                 </span>
               ) : null}
@@ -197,7 +197,7 @@ export function AdminHrReportsPage() {
                       Unduh {format.toUpperCase()}
                     </button>
                   ))}
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     Unduhan memakai filter di atas tanpa pencarian nama, paling banyak {access.limits.exportRowLimit.toLocaleString("id-ID")} baris.
                   </span>
                 </>

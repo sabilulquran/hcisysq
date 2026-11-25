@@ -199,10 +199,10 @@ export function EmployeeApprovalsPage() {
   return (
     <AppShell user={user} activeItem="Persetujuan">
       <section>
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+        <p className="sq-eyebrow text-muted-foreground">
           Manajemen
         </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">
+        <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
           Persetujuan
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -251,7 +251,7 @@ export function EmployeeApprovalsPage() {
                     {item.reason ? (
                       <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.reason}</p>
                     ) : null}
-                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="sq-eyebrow mt-2 text-muted-foreground">
                       {item.sources.includes("DIRECT_MANAGER") ? "Atasan langsung" : ""}
                       {item.sources.includes("DIRECT_MANAGER") && item.sources.includes("UNIT_APPROVER") ? " + " : ""}
                       {item.sources.includes("UNIT_APPROVER") ? "Approver unit" : ""}
@@ -321,7 +321,7 @@ export function EmployeeApprovalsPage() {
                     <p className="text-sm font-bold text-brand-heading">{item.requesterName} · {item.destination}</p>
                     <p className="mt-1 text-sm text-foreground">{formatTripRange(item.startOn, item.endOn)}{item.unitName ? ` · ${item.unitName}` : ""}</p>
                     <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.purpose}</p>
-                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                    <p className="sq-eyebrow mt-2 text-muted-foreground">{approverRoleLabel(item.sources)}</p>
                   </div>
                   <div className="flex gap-2">
                     <button type="button" disabled={acting === item.stepId} onClick={() => void decideTrip(item, "reject")}
@@ -367,7 +367,7 @@ export function EmployeeApprovalsPage() {
                     <p className="text-sm font-bold text-brand-heading">{item.requesterName} · {formatRupiah(item.principal)}</p>
                     <p className="mt-1 text-sm text-foreground">{item.tenorMonths} bulan cicilan, tanpa bunga{item.unitName ? ` · ${item.unitName}` : ""}</p>
                     <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.purpose}</p>
-                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                    <p className="sq-eyebrow mt-2 text-muted-foreground">{approverRoleLabel(item.sources)}</p>
                   </div>
                   <div className="flex gap-2">
                     <button type="button" disabled={acting === item.stepId} onClick={() => void decideLoan(item, "reject")}

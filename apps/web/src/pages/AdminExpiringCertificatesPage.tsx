@@ -101,7 +101,7 @@ export function AdminExpiringCertificatesPage() {
           <div className="overflow-hidden rounded-2xl border border-border/70">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">Sertifikat yang akan berakhir</caption>
-              <thead className="bg-surface text-xs uppercase text-muted-foreground">
+              <thead className="sq-eyebrow bg-surface text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-4 py-3">Pegawai</th>
                   <th scope="col" className="px-4 py-3">Unit</th>

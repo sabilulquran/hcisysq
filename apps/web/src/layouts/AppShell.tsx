@@ -142,7 +142,7 @@ export function EmployeeHumanCapitalNavigation({
       <nav aria-label="Tugas Human Capital" className="mb-5 rounded-2xl border border-border/80 bg-surface-raised p-3 shadow-[var(--shadow-soft)] lg:hidden">
         <div className="mb-2 flex items-center gap-2 px-1">
           <ShieldCheck className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-heading">Human Capital</p>
+          <p className="sq-eyebrow text-brand-heading">Human Capital</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           {items.map(({ label, href, icon: Icon }) => (

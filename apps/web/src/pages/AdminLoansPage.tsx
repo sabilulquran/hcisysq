@@ -213,7 +213,7 @@ export function AdminLoansPage() {
                       <span className="block text-xs text-muted-foreground">
                         {loan.employeeNumber}{loan.unitName ? ` · ${loan.unitName}` : ""} · {loan.tenorMonths} bulan
                       </span>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                      <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                         {loanStatusLabel(loan.status)}
                         {loan.currentApproverName ? ` · menunggu ${loan.currentApproverName}` : ""}
                         {loan.status === "DISBURSED" ? ` · sisa ${formatRupiah(loan.outstanding)}` : ""}

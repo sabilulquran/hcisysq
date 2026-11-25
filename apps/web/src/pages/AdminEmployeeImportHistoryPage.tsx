@@ -106,7 +106,7 @@ export function AdminEmployeeImportHistoryPage() {
                       </td>
                       <td className="max-w-64 px-4 py-3">
                         <p className="truncate font-semibold text-foreground">{item.sourceFilename}</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">{item.importId}</p>
+                        <p className="mt-1 text-2xs text-muted-foreground">{item.importId}</p>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(item.status)}`}>{item.status}</span>
@@ -118,7 +118,7 @@ export function AdminEmployeeImportHistoryPage() {
                         <p>Preview: {item.createdByEmail ?? "—"}</p>
                         <p className="mt-1">Commit: {item.committedByEmail ?? "—"}</p>
                       </td>
-                      <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{item.checksumSha256.slice(0, 16)}…</td>
+                      <td className="px-4 py-3 font-mono text-2xs text-muted-foreground">{item.checksumSha256.slice(0, 16)}…</td>
                     </tr>
                   ))}
                 </tbody>

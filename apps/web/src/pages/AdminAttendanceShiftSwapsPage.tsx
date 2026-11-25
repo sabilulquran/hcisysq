@@ -143,7 +143,7 @@ export function AdminAttendanceShiftSwapsPage() {
                     <h3 className="font-bold text-brand-heading">
                       {item.requesterName} ↔ {item.counterpartName}
                     </h3>
-                    <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-bold">
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-2xs font-bold">
                       {statusLabel(item.status)}
                     </span>
                   </div>
@@ -153,7 +153,7 @@ export function AdminAttendanceShiftSwapsPage() {
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div className="rounded-2xl bg-surface p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pengaju</p>
+                      <p className="sq-eyebrow text-muted-foreground">Pengaju</p>
                       <p className="mt-1 font-bold text-brand-heading">{item.requesterName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.requesterEmployeeNumber} · {item.requesterScheduleName}
@@ -163,7 +163,7 @@ export function AdminAttendanceShiftSwapsPage() {
                       </p>
                     </div>
                     <div className="rounded-2xl bg-surface p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Rekan tukar</p>
+                      <p className="sq-eyebrow text-muted-foreground">Rekan tukar</p>
                       <p className="mt-1 font-bold text-brand-heading">{item.counterpartName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.counterpartEmployeeNumber} · {item.counterpartScheduleName}

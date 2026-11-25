@@ -116,7 +116,7 @@ export function EmployeeRewardsPage() {
   return (
     <AppShell user={user} activeItem="Semua Layanan">
       <section className="mx-auto max-w-3xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Kinerja &amp; Pengembangan</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Penghargaan</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Penghargaan bulanan bagi pegawai yang paling istiqamah membaca Al-Qur&apos;an, ditetapkan Kepala HCM dari papan skor aplikasi Al-Qur&apos;an.

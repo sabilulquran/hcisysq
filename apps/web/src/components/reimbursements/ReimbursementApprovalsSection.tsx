@@ -106,7 +106,7 @@ export function ReimbursementApprovalsSection() {
                     {item.title} · {item.itemCount} baris, {item.receiptCount} bukti{item.unitName ? ` · ${item.unitName}` : ""}
                   </p>
                   {item.tripDestination ? <p className="mt-1 text-xs text-muted-foreground">Perjalanan dinas: {item.tripDestination}</p> : null}
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                  <p className="sq-eyebrow mt-2 text-muted-foreground">{approverRoleLabel(item.sources)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => showClaim(item.stepId)}

@@ -1,6 +1,7 @@
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import {
   createOvertimeEligibilityRule,
@@ -44,14 +45,14 @@ function PolicySection({ onDone }: { onDone: (error: string | null, notice: stri
   const [current, setCurrent] = useState<OvertimePolicyVersion | null>(null);
   const [history, setHistory] = useState<OvertimePolicyVersion[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
-  const [historyPages, setHistoryPages] = useState(1);
+  const [historyPaging, setHistoryPaging] = useState({ pageSize: 20, total: 0 });
   const [form, setForm] = useState({ effectiveFrom: todayJakarta(), daily: "4", weekly: "18", reason: "" });
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     const result = await getOvertimePolicy(historyPage);
     setCurrent(result.current);
     setHistory(result.items);
-    setHistoryPages(result.pageCount);
+    setHistoryPaging({ pageSize: result.pageSize, total: result.total });
     setForm((value) => ({ ...value, daily: String(result.current.dailyWarningMinutes / 60).replace(".", ","), weekly: String(result.current.weeklyWarningMinutes / 60).replace(".", ",") }));
   }, [historyPage]);
   useEffect(() => { void load().catch((cause) => onDone(cause instanceof Error ? cause.message : "Batas peringatan tidak dapat dimuat.", null)); }, [load, onDone]);
@@ -91,13 +92,14 @@ function PolicySection({ onDone }: { onDone: (error: string | null, notice: stri
           <ul className="mt-2 divide-y rounded-xl border">
             {history.map((item) => <li key={item.id ?? item.effectiveFrom} className="p-2">Mulai {item.effectiveFrom}: {hoursLabel(item.dailyWarningMinutes)}/hari, {hoursLabel(item.weeklyWarningMinutes)}/minggu{item.createdByName ? ` · ${item.createdByName}` : ""}{item.reason ? ` · ${item.reason}` : ""}</li>)}
           </ul>
-          {historyPages > 1 ? (
-            <div className="mt-2 flex items-center justify-end gap-2">
-              <span>Halaman {historyPage} dari {historyPages}</span>
-              <button type="button" aria-label="Riwayat sebelumnya" disabled={historyPage <= 1} onClick={() => setHistoryPage(historyPage - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" aria-label="Riwayat berikutnya" disabled={historyPage >= historyPages} onClick={() => setHistoryPage(historyPage + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-            </div>
-          ) : null}
+          <div className="mt-2 overflow-hidden rounded-xl border">
+            <PaginationBar
+              page={historyPage}
+              pageSize={historyPaging.pageSize}
+              total={historyPaging.total}
+              onPageChange={setHistoryPage}
+            />
+          </div>
         </details>
       ) : null}
     </section>
@@ -179,7 +181,7 @@ function EndRule({ rule, onEnded, onError }: { rule: OvertimeEligibilityRule; on
   return (
     <div className="grid gap-2 sm:min-w-[260px]">
       <input className="h-10 rounded-xl border px-3 text-xs" placeholder="Alasan (wajib)" value={reason} onChange={(event) => setReason(event.target.value)} />
-      <p className="text-[11px] text-muted-foreground">{rule.state === "scheduled" ? "Aturan ini belum berlaku dan tidak akan pernah berlaku." : "Lembur dihitung lagi mulai hari ini."} Aturan tidak dihapus, tetap tercatat di riwayat.</p>
+      <p className="text-2xs text-muted-foreground">{rule.state === "scheduled" ? "Aturan ini belum berlaku dan tidak akan pernah berlaku." : "Lembur dihitung lagi mulai hari ini."} Aturan tidak dihapus, tetap tercatat di riwayat.</p>
       <div className="flex gap-2">
         <button type="button" disabled={busy || reason.trim().length < 3} onClick={() => void (async () => {
           setBusy(true);
@@ -238,13 +240,9 @@ export function AdminAttendanceOvertimeRulesPage() {
             {rules && rules.items.length === 0 ? <li className="rounded-xl border p-6 text-center text-sm text-muted-foreground">{status === "current" ? "Belum ada aturan. Tambahkan jabatan Direktur agar lembur tidak berlaku untuknya." : "Belum ada aturan yang berakhir."}</li> : null}
             {!rules && !error ? <li className="p-6 text-sm text-muted-foreground">Memuat…</li> : null}
           </ul>
-          {rules && rules.pageCount > 1 ? (
-            <footer className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{rules.total} aturan · halaman {page} dari {rules.pageCount}</span>
-              <div className="flex gap-2">
-                <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-                <button type="button" aria-label="Halaman berikutnya" disabled={page >= rules.pageCount} onClick={() => setPage(page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-              </div>
+          {rules ? (
+            <footer className="mt-3 overflow-hidden rounded-xl border">
+              <PaginationBar page={page} pageSize={rules.pageSize} total={rules.total} onPageChange={setPage} />
             </footer>
           ) : null}
         </section>

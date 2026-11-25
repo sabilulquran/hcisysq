@@ -1,6 +1,7 @@
-import { AlertTriangle, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, CalendarPlus, CheckCircle2, ChevronLeft, Loader2, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import type { AttendanceCalculationScope } from "@/lib/attendanceCalculation";
 import {
   alignAdmsMappingsToStartDate,
@@ -307,13 +308,14 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
             </div>
           </article>
         ))}
-        {data.employees.totalPages > 1 ? (
-          <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <span>Halaman {data.employees.page} dari {data.employees.totalPages}</span>
-            <button type="button" aria-label="Halaman sebelumnya" disabled={data.employees.page <= 1} onClick={() => onPage(data.employees.page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-            <button type="button" aria-label="Halaman berikutnya" disabled={data.employees.page >= data.employees.totalPages} onClick={() => onPage(data.employees.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-          </div>
-        ) : null}
+        <div className="mt-2 overflow-hidden rounded-xl border border-border/70">
+          <PaginationBar
+            page={data.employees.page}
+            pageSize={data.employees.pageSize}
+            total={data.employees.total}
+            onPageChange={onPage}
+          />
+        </div>
       </section>
 
       {data.pins ? (
@@ -353,13 +355,14 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
               </tbody>
             </table>
           </div>
-          {data.pins.totalPages > 1 ? (
-            <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground">
-              <span>Halaman {data.pins.page} dari {data.pins.totalPages}</span>
-              <button type="button" aria-label="Halaman PIN sebelumnya" disabled={data.pins.page <= 1} onClick={() => onPinPage(data.pins!.page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" aria-label="Halaman PIN berikutnya" disabled={data.pins.page >= data.pins.totalPages} onClick={() => onPinPage(data.pins!.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-            </div>
-          ) : null}
+          <div className="mt-2 overflow-hidden rounded-xl border border-border/70">
+            <PaginationBar
+              page={data.pins.page}
+              pageSize={data.pins.pageSize}
+              total={data.pins.total}
+              onPageChange={onPinPage}
+            />
+          </div>
         </section>
       ) : null}
     </div>

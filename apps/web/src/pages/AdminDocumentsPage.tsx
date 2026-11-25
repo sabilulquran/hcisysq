@@ -242,7 +242,7 @@ export function AdminDocumentsPage() {
                     <div className="min-w-0">
                       <p className="font-semibold text-brand-heading">{request.employeeName} · {request.documentLabel}</p>
                       <p className="text-sm text-muted-foreground">{request.purpose}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                      <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                         {documentStatusLabel(request.status)} · {formatDate(request.createdAt)}
                         {request.documentNumber ? ` · ${request.documentNumber}` : ""}
                       </p>
@@ -341,7 +341,7 @@ export function AdminDocumentsPage() {
                     <li key={letter.id} className="py-3">
                       <p className="font-semibold text-brand-heading">{letter.level} · {letter.employeeName}</p>
                       <p className="text-sm text-muted-foreground">{letter.subject}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                      <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                         {letter.documentNumber} · {formatDate(letter.effectiveDate)} s.d. {formatDate(letter.expiresOn)}
                         {letter.status === "REVOKED" ? " · dibatalkan" : letter.active ? "" : " · tidak berlaku"}
                         {letter.acknowledgedAt ? ` · dibaca ${formatDate(letter.acknowledgedAt)}` : " · belum dibaca"}

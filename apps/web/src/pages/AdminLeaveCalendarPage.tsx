@@ -210,7 +210,7 @@ export function AdminLeaveCalendarPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold">
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-2xs font-semibold">
                       {item.isWorkingDay ? "Kerja" : "Libur"}
                     </span>
                     <button

@@ -112,7 +112,7 @@ export function EmployeeAttendanceResolutionPage() {
     <AppShell user={user} activeItem="Cuti & Izin">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti & izin</p>
+          <p className="sq-eyebrow text-muted-foreground">Cuti & izin</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Tindak lanjut ketidakhadiran</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Halaman ini hanya muncul saat ada tanggal yang administrasi cutinya belum sepenuhnya terpenuhi. Anda hanya perlu bertindak jika ada kartu yang meminta keputusan.
@@ -154,8 +154,8 @@ export function EmployeeAttendanceResolutionPage() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-bold text-muted-foreground">{item.policyName}</span>
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-bold ${item.status === "awaiting_employee" ? "bg-brand-yellow/18 text-warning-ink" : "bg-brand-primary-pale text-brand-primary-deep"}`}>
+                    <span className="rounded-full bg-surface px-3 py-1 text-2xs font-bold text-muted-foreground">{item.policyName}</span>
+                    <span className={`rounded-full px-3 py-1 text-2xs font-bold ${item.status === "awaiting_employee" ? "bg-brand-yellow/18 text-warning-ink" : "bg-brand-primary-pale text-brand-primary-deep"}`}>
                       {item.status === "awaiting_employee" ? "Perlu keputusan Anda" : "Sedang ditangani HC"}
                     </span>
                   </div>
@@ -200,7 +200,7 @@ export function EmployeeAttendanceResolutionPage() {
                       </button>
                     </div>
                     {!item.annualConversion.available ? (
-                      <p className="mt-3 text-[11px] leading-5 text-danger-ink">{item.annualConversion.reason}</p>
+                      <p className="mt-3 text-2xs leading-5 text-danger-ink">{item.annualConversion.reason}</p>
                     ) : null}
                   </div>
                 ) : (

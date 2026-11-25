@@ -301,7 +301,7 @@ export function AdminReimbursementsPage() {
                         <span className="block truncate text-xs text-muted-foreground">
                           {claim.employeeNumber}{claim.unitName ? ` · ${claim.unitName}` : ""} · {claim.title}
                         </span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                           {claimStatusLabel(claim.status)}
                           {claim.currentApproverName ? ` · menunggu ${claim.currentApproverName}` : ""}
                         </span>

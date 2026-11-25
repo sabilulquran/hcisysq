@@ -135,7 +135,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       <section className="rounded-2xl border border-slate-300 bg-slate-950 p-5 text-slate-100 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Area teknis · operator ADMS berizin</div>
+            <div className="sq-eyebrow text-slate-400">Area teknis · operator ADMS berizin</div>
             <h2 className="mt-1 text-base font-bold">Diagnostik mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-300">
               Protocol evidence, canary, reconciliation, dan log aman untuk mesin pada URL. Metadata biometrik hanya dimuat bila account memiliki izin biometrik terpisah.
@@ -170,7 +170,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
           <summary className="cursor-pointer p-3 text-xs font-semibold text-brand-heading">Field transport / INFO teramati</summary>
           <div className="grid gap-2 border-t border-border/70 p-3 md:grid-cols-2">
             {Object.entries({ ...(telemetry?.transportObserved ?? {}), ...(telemetry?.infoObserved ?? {}) }).map(([key, value]) => (
-              <div key={key} className="grid grid-cols-[10rem_minmax(0,1fr)] gap-2 text-[11px]">
+              <div key={key} className="grid grid-cols-[10rem_minmax(0,1fr)] gap-2 text-2xs">
                 <span className="font-mono text-muted-foreground">{key}</span><span className="break-all text-brand-heading">{displayObserved(value)}</span>
               </div>
             ))}
@@ -186,7 +186,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
             <div className="text-xs font-bold text-brand-heading">Rekonsiliasi terbaru</div>
             <div className="mt-3 space-y-2">
               {(reconciliation?.items ?? []).slice(0, 8).map((item) => (
-                <div key={item.commandId} className="rounded-lg bg-surface p-3 text-[11px]">
+                <div key={item.commandId} className="rounded-lg bg-surface p-3 text-2xs">
                   <div className="flex justify-between gap-3"><span className="font-mono font-bold">C:{item.commandNumber}</span><span>{commandStatusLabel(item.status)}</span></div>
                   <div className="mt-1 text-muted-foreground">{fmt(item.requestedRangeStart)} – {fmt(item.requestedRangeEnd)}</div>
                   <div className="mt-1">Persisted {item.currentPersistedCount} · sejak delivery {item.persistedSinceDeliveryCount} · ATTLOG req {item.attlogRequestCount}</div>
@@ -203,7 +203,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
               <Stat label="Quarantine" value={String(logs?.quarantines.length ?? 0)} />
               <Stat label="Admin audit" value={String(logs?.adminAudit.length ?? 0)} />
             </dl>
-            <div className="mt-3 rounded-lg bg-surface p-3 text-[11px] leading-5 text-muted-foreground">Raw request body exposed: <strong className="text-brand-heading">{logs?.rawRequestBodiesExposed ? "YA" : "TIDAK"}</strong></div>
+            <div className="mt-3 rounded-lg bg-surface p-3 text-2xs leading-5 text-muted-foreground">Raw request body exposed: <strong className="text-brand-heading">{logs?.rawRequestBodiesExposed ? "YA" : "TIDAK"}</strong></div>
           </div>
         </div>
       </section>
@@ -225,7 +225,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
                 <span>device <strong>{biometricPolicy?.deviceCollectionEnabled ? "ON" : "OFF"}</strong></span>
                 <span>effective <strong>{biometricPolicy?.effectiveCollectionEnabled ? "ON" : "OFF"}</strong></span>
               </div>
-              <div className="mt-2 flex gap-2 text-[11px] leading-5 text-warning-ink"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> UI redesign ini tidak menyediakan tombol untuk menyalakan biometric collection. Aktivasi tetap menunggu approval hardware/privacy/key canary terpisah.</div>
+              <div className="mt-2 flex gap-2 text-2xs leading-5 text-warning-ink"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> UI redesign ini tidak menyediakan tombol untuk menyalakan biometric collection. Aktivasi tetap menunggu approval hardware/privacy/key canary terpisah.</div>
             </div>
           </div>
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -233,7 +233,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
               <div className="flex items-center gap-2 text-xs font-bold text-brand-heading"><Fingerprint className="h-4 w-4" /> Vault metadata</div>
               <div className="mt-3 space-y-2">
                 {(credentials?.items ?? []).slice(0, 20).map((item) => (
-                  <div key={item.id} className="rounded-lg bg-surface p-3 text-[11px]">
+                  <div key={item.id} className="rounded-lg bg-surface p-3 text-2xs">
                     <div className="font-semibold text-brand-heading">{item.employeeName} · {item.employeeNumber}</div>
                     <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · {item.vendorFormat} · source PIN {item.sourcePin ?? "—"}</div>
                   </div>
@@ -245,7 +245,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
               <div className="text-xs font-bold text-brand-heading">Replica state</div>
               <div className="mt-3 space-y-2">
                 {(inventory?.items ?? []).slice(0, 20).map((item) => (
-                  <div key={item.credentialId} className="rounded-lg bg-surface p-3 text-[11px]">
+                  <div key={item.credentialId} className="rounded-lg bg-surface p-3 text-2xs">
                     <div className="flex justify-between gap-2"><span className="font-semibold text-brand-heading">{item.employeeName}</span><span>{item.state}</span></div>
                     <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · last sync {fmt(item.lastSyncedAt)}</div>
                   </div>
@@ -270,7 +270,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="rounded-xl bg-surface p-3">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className={`mt-1 break-all text-xs font-semibold text-brand-heading ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );

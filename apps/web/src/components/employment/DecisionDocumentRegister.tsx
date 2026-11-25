@@ -290,7 +290,7 @@ export function DecisionDocumentRegister({
         ) : (
           <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
             <table className="w-full min-w-[40rem] text-left text-sm">
-              <thead className="bg-surface text-xs font-semibold uppercase text-muted-foreground">
+              <thead className="sq-eyebrow bg-surface text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Nomor</th>
                   <th className="px-4 py-3">Jenis</th>

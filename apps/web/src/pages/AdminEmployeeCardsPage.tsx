@@ -72,7 +72,7 @@ function CardState({ item }: { item: CardListItem }) {
       <span className={cn("font-semibold", card.invalidReason ? "text-orange-800" : "text-emerald-800")}>
         {card.invalidReason ? invalidReasonLabel[card.invalidReason] : "Aktif"}
       </span>
-      <span className="block text-[11px] text-muted-foreground">
+      <span className="block text-2xs text-muted-foreground">
         {card.cardNumber} · ke-{card.edition} · s.d. {formatDate(card.validUntil)}
         {card.dataChanged ? " · data berubah" : ""}
       </span>
@@ -154,7 +154,7 @@ function EmployeePanel({ employeeId, onChanged }: { employeeId: string; onChange
         <div className="h-32 w-24 shrink-0 overflow-hidden rounded-xl border border-border bg-surface">
           {photo
             ? <img src={employeePhotoUrl(employee.id, photo.id)} alt={`Foto ${employee.fullName}`} className="h-full w-full object-cover" />
-            : <div className="flex h-full items-center justify-center p-2 text-center text-[11px] text-muted-foreground">Belum ada foto</div>}
+            : <div className="flex h-full items-center justify-center p-2 text-center text-2xs text-muted-foreground">Belum ada foto</div>}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-brand-heading">Pas foto</p>
@@ -283,7 +283,7 @@ function EmployeePanel({ employeeId, onChanged }: { employeeId: string; onChange
                     <td className="px-3 py-2">{issueReasonLabel[card.issueReason]}</td>
                     <td className="px-3 py-2">
                       {card.invalidReason && card.status === "ACTIVE" ? invalidReasonLabel[card.invalidReason] : statusLabel[card.status]}
-                      {card.endReason ? <span className="block text-[11px] text-muted-foreground">{card.endReason}</span> : null}
+                      {card.endReason ? <span className="block text-2xs text-muted-foreground">{card.endReason}</span> : null}
                     </td>
                     <td className="px-3 py-2">{card.printCount}×</td>
                   </tr>
@@ -403,7 +403,7 @@ function EmployeesTab() {
                       <button type="button" onClick={() => openEmployee(item.employeeId)}
                         className="min-h-11 text-left font-semibold text-brand-heading underline-offset-2 hover:underline">
                         {item.fullName}
-                        <span className="block text-[11px] font-normal text-muted-foreground">
+                        <span className="block text-2xs font-normal text-muted-foreground">
                           {item.employeeNumber} · {item.unitName ?? "Unit belum tercatat"}
                         </span>
                       </button>
@@ -551,7 +551,7 @@ function HistoryTab() {
                 {event.employeeName ? ` · ${event.employeeName}` : ""}
                 {typeof event.metadata.cardNumber === "string" ? ` · ${event.metadata.cardNumber}` : ""}
               </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+              <p className="mt-0.5 text-2xs font-semibold text-muted-foreground">
                 {formatInstant(event.occurredAt)} · {event.actorName ?? "Sistem"}{event.reason ? ` · ${event.reason}` : ""}
               </p>
             </li>

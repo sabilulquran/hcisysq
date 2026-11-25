@@ -94,7 +94,7 @@ export function AdminComingSoonPage() {
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
             <Clock3 className="h-6 w-6" aria-hidden="true" />
           </span>
-          <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">{adminServiceStageLabel(service.stage)}</p>
+          <p className="sq-eyebrow mt-6 text-brand-primary-deep">{adminServiceStageLabel(service.stage)}</p>
           <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Belum tersedia untuk digunakan</h2>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Modul ini sudah masuk arah produk HCIS, tetapi workflow operasionalnya belum aktif. Belum ada tanggal peluncuran yang dijanjikan.
@@ -102,7 +102,7 @@ export function AdminComingSoonPage() {
 
           {service.details?.length ? (
             <div className="mt-5">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Cakupan yang direncanakan</p>
+              <p className="sq-eyebrow text-muted-foreground">Cakupan yang direncanakan</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {service.details.map((detail) => (
                   <div key={detail} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-sm font-semibold text-brand-heading">

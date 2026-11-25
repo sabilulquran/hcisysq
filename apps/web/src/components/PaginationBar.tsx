@@ -40,12 +40,18 @@ export function PaginationBar({
   page,
   pageSize,
   total,
+  loading = false,
   onPageChange,
   onPageSizeChange,
 }: {
   page: number;
   pageSize: number;
   total: number;
+  /**
+   * ENG-LIST-001-M: a list whose rows are still on their way says so here, where the count
+   * that is about to change would otherwise read as settled.
+   */
+  loading?: boolean;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }) {
@@ -55,7 +61,11 @@ export function PaginationBar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">
       <p aria-live="polite" className="sq-nums">
-        {total === 0 ? "Tidak ada data" : `Menampilkan ${start}–${end} dari ${total}`}
+        {loading
+          ? "Memuat…"
+          : total === 0
+            ? "Tidak ada data"
+            : `Menampilkan ${start}–${end} dari ${total}`}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange ? (

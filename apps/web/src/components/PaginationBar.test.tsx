@@ -70,6 +70,14 @@ describe("ENG-LIST-001 pagination", () => {
     expect(withoutSizes).not.toContain("Per halaman");
   });
 
+  it("says the rows are still coming instead of showing a count about to change", () => {
+    const html = renderToStaticMarkup(
+      <PaginationBar page={2} pageSize={50} total={420} loading onPageChange={() => {}} />,
+    );
+    expect(html).toContain("Memuat…");
+    expect(html).not.toContain("Menampilkan 51–100 dari 420");
+  });
+
   it("says so plainly when there is no data", () => {
     const html = renderToStaticMarkup(
       <PaginationBar page={1} pageSize={25} total={0} onPageChange={() => {}} />,

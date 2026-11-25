@@ -142,11 +142,16 @@ Dijalankan pada 25 November 2026 di checkout kerja, PostgreSQL 16 lokal.
 | Gate | Hasil |
 | --- | --- |
 | `npm run typecheck` (web + api) | lulus |
-| `npm run lint` | 0 error (63 warning lama, tidak bertambah) |
-| Suite API penuh (`vitest run --no-file-parallelism`) | **3243 lulus**, 91 dilewati, 287 berkas |
-| Empat suite tata kelola (`HCIS_AUTH011_TEST_DATABASE_URL`) | **124 lulus** (AUTH-011 30, ORG-010 39, ORG-013 13, ADR-0008 8, dan dua berkas pendukung) |
-| Suite web | **765 lulus**, 103 berkas |
+| `npm run lint` | 0 error (64 warning lama, tidak bertambah) |
+| Suite API penuh, **termasuk** empat suite tata kelola | **3338 lulus**, 1 dilewati, 291 berkas |
+| Suite web | **779 lulus**, 105 berkas |
 | `npm run build` | lulus |
+
+Suite API dijalankan dengan `HCIS_AUTH011_TEST_DATABASE_URL` terpasang, sehingga AUTH-011,
+ORG-010, ORG-013, dan ADR-0008 ikut berjalan, bukan dilewati — 90 uji yang menjaga matriks izin.
+Dijalankan satu kali di atas `hcis_pr` yang baru dibuat ulang: menjalankan suite dua kali pada
+database yang sama membuat `break-glass`, `auth014-module-admin-migration`, dan beberapa lainnya
+gagal pada baris yang ditinggalkan jalannya sendiri, bukan pada perubahan ini.
 
 ### Uji yang khusus membuktikan aturan ini
 

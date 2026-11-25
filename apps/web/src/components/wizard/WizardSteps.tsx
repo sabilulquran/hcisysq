@@ -28,7 +28,7 @@ export function WizardSteps({ steps, current }: { steps: readonly string[]; curr
               {done ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
             </span>
             <span
-              className={`truncate text-[11px] font-semibold sm:text-xs ${
+              className={`truncate text-2xs font-semibold sm:text-xs ${
                 active ? "text-brand-heading" : "text-muted-foreground"
               } ${active ? "" : "hidden sm:inline"}`}
             >

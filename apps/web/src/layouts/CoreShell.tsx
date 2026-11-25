@@ -68,7 +68,7 @@ export function CoreShell({
           <a
             href={space === "admin" ? "/admin" : "/app"}
             aria-label={space === "admin" ? "Beranda Administrasi HCIS" : "Beranda HCIS"}
-            className="min-w-0 shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:w-[13.5rem]"
+            className="min-w-0 shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:w-sidebar"
           >
             <BrandLockup compact />
           </a>
@@ -82,15 +82,15 @@ export function CoreShell({
         </div>
       </header>
 
-      <aside className="fixed bottom-0 left-0 top-16 z-30 hidden w-14 overflow-y-auto border-r border-border bg-sidebar px-2 py-4 md:block lg:w-[248px] lg:px-3">
+      <aside className="fixed bottom-0 left-0 top-16 z-30 hidden w-14 overflow-y-auto border-r border-border bg-sidebar px-2 py-4 md:block lg:w-sidebar lg:px-3">
         <nav aria-label={sidebarLabel}>
           {navigation.map((group, index) => (
             <div key={group.label ?? `group-${index}`} className="mb-5">
               {group.label ? (
                 <div className="mb-1.5 hidden items-center justify-between gap-2 px-3 lg:flex">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{group.label}</p>
+                  <p className="sq-eyebrow text-muted-foreground">{group.label}</p>
                   {group.badge ? (
-                    <span className="truncate rounded-full bg-warning-soft px-2 py-0.5 text-[9px] font-bold text-warning-ink">{group.badge}</span>
+                    <span className="truncate rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-bold text-warning-ink">{group.badge}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -106,7 +106,7 @@ export function CoreShell({
         </nav>
       </aside>
 
-      <div className="md:pl-14 lg:pl-[248px]">
+      <div className="md:pl-14 lg:pl-sidebar">
         <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-5 sm:px-6 sm:pt-7 md:pb-12 lg:px-8">
           {breadcrumb && breadcrumb.length > 0 ? (
             <nav aria-label="Breadcrumb" className="mb-3">
@@ -146,7 +146,7 @@ function NotificationBell({ unread }: { unread: number }) {
     >
       <Bell className="h-5 w-5" aria-hidden="true" />
       {unread > 0 ? (
-        <span className="absolute right-1 top-1 min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-destructive-foreground">
+        <span className="absolute right-1 top-1 min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-2xs font-bold leading-4 text-destructive-foreground">
           {unread > 99 ? "99+" : unread}
         </span>
       ) : null}
@@ -162,10 +162,12 @@ function SidebarLink({ item }: { item: ShellNavItem }) {
       title={item.label}
       aria-current={item.active ? "page" : undefined}
       className={cn(
+        // Navigation is the densest part of the app, so the label carries the weight of a
+        // label and not of a heading: 500, with the active row marked by surface and colour.
         "group flex min-h-10 items-center justify-center gap-3 rounded-xl px-1.5 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:justify-start lg:px-2",
         item.active
-          ? "bg-brand-primary-pale font-bold text-brand-primary-deep"
-          : "font-semibold text-muted-foreground hover:bg-muted hover:text-foreground",
+          ? "bg-brand-primary-pale font-medium text-brand-primary-deep"
+          : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
       <span
@@ -255,14 +257,14 @@ function MobileNavigation({
             <span className="mx-auto mb-3 block h-1 w-10 rounded-full bg-border" aria-hidden="true" />
             {canSwitchSpace ? (
               <section aria-label="Pindah ruang" className="mb-4">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Pindah ruang</p>
+                <p className="sq-eyebrow mb-2 text-muted-foreground">Pindah ruang</p>
                 <SpaceSwitcher space={space} />
               </section>
             ) : null}
             {remaining.map((group, index) => (
               <div key={group.label ?? `more-${index}`} className="mb-3">
                 {group.label ? (
-                  <p className="mb-1 px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{group.label}</p>
+                  <p className="sq-eyebrow mb-1 px-1 text-muted-foreground">{group.label}</p>
                 ) : null}
                 <ul className="space-y-0.5">
                   {group.items.map((item) => {
@@ -297,7 +299,7 @@ function MobileNavigation({
 
 function tabClass(active: boolean) {
   return cn(
-    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 text-2xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground",
   );
 }

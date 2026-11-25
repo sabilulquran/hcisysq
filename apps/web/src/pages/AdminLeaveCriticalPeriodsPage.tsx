@@ -270,7 +270,7 @@ export function AdminLeaveCriticalPeriodsPage() {
                         <AlertTriangle className="h-4 w-4 shrink-0 text-warning-ink" aria-hidden="true" />
                         <span className="truncate">{period.label}</span>
                         {!period.isActive ? (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Nonaktif</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-semibold text-muted-foreground">Nonaktif</span>
                         ) : null}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">

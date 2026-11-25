@@ -171,7 +171,7 @@ export function HcLeaveValidationPage() {
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
+          <p className="sq-eyebrow text-muted-foreground">Human Capital</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Validasi administrasi cuti</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Untuk kasus normal cukup pilih “Administrasi sesuai”. Detail tanggal hanya dibuka bila dokumen mencakup sebagian periode atau administrasinya tidak terpenuhi.
@@ -233,10 +233,10 @@ export function HcLeaveValidationPage() {
               return (
                 <article key={item.taskId} className="px-5 py-5">
                   <div className="mb-4 flex items-center justify-between gap-3">
-                    <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] font-bold text-muted-foreground">
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-2xs font-bold text-muted-foreground">
                       #{index + 1}
                     </span>
-                    <span className="rounded-full bg-brand-primary-pale px-3 py-1 text-[10px] font-bold text-brand-primary-deep">
+                    <span className="rounded-full bg-brand-primary-pale px-3 py-1 text-2xs font-bold text-brand-primary-deep">
                       {item.policyName}
                     </span>
                   </div>
@@ -266,7 +266,7 @@ export function HcLeaveValidationPage() {
                       <div className="mt-4">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs font-semibold text-muted-foreground">Dokumen pendukung</p>
-                          <span className={`text-[10px] font-bold ${item.evidence.length ? "text-brand-primary-deep" : "text-warning-ink"}`}>
+                          <span className={`text-2xs font-bold ${item.evidence.length ? "text-brand-primary-deep" : "text-warning-ink"}`}>
                             {item.evidence.length ? `${item.evidence.length} tersedia` : "Belum tersedia"}
                           </span>
                         </div>
@@ -352,7 +352,7 @@ export function HcLeaveValidationPage() {
                       {partialOpen ? (
                         <div className="mt-4 rounded-2xl border border-border bg-surface-raised p-4">
                           <p className="text-xs font-bold text-brand-heading">Tanggal yang administrasinya terpenuhi</p>
-                          <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                          <p className="mt-1 text-2xs leading-5 text-muted-foreground">
                             Centang tanggal yang didukung dokumen. Hilangkan semua centang bila tidak ada tanggal yang dapat divalidasi.
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -374,7 +374,7 @@ export function HcLeaveValidationPage() {
                               );
                             })}
                           </div>
-                          <p className="mt-3 text-[11px] font-semibold text-muted-foreground">
+                          <p className="mt-3 text-2xs font-semibold text-muted-foreground">
                             {selected.length} dari {item.workingDates.length} hari akan dinyatakan tervalidasi.
                           </p>
                           <button

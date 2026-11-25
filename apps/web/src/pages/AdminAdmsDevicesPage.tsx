@@ -228,7 +228,7 @@ export function AdminAdmsDevicesPage() {
             <Plus className="h-3.5 w-3.5" /> Tambah mesin
           </button>
         ) : sessionResolved ? (
-          <span className="rounded-xl bg-surface px-3 py-2 text-[11px] font-semibold text-muted-foreground">Mode baca saja · tambah/claim mesin memerlukan izin konfigurasi</span>
+          <span className="rounded-xl bg-surface px-3 py-2 text-2xs font-semibold text-muted-foreground">Mode baca saja · tambah/claim mesin memerlukan izin konfigurasi</span>
         ) : null}
       </div>
 
@@ -260,7 +260,7 @@ export function AdminAdmsDevicesPage() {
             </label>
           </div>
           <div className="flex items-center justify-between gap-3 lg:justify-end">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {lastRefreshedAt ? `Diperbarui ${lastRefreshedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Belum diperbarui"}
             </span>
             <button
@@ -291,7 +291,7 @@ export function AdminAdmsDevicesPage() {
           <>
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[880px] text-left text-sm">
-                <thead className="bg-surface text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                <thead className="sq-eyebrow bg-surface text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Mesin</th>
@@ -366,14 +366,14 @@ export function AdminAdmsDevicesPage() {
             <label className="mt-4 block text-xs font-semibold text-muted-foreground">Nama mesin (opsional)<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Contoh: SDIT Tahfizh" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading" /></label>
 
             <div className="mt-5">
-              <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Terdeteksi otomatis</div>
+              <div className="sq-eyebrow text-muted-foreground">Terdeteksi otomatis</div>
               {detectedLoading ? <div className="mt-2 flex items-center gap-2 rounded-xl bg-surface p-4 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat mesin terdeteksi…</div> : detected.length === 0 ? <div className="mt-2 rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Tidak ada mesin baru yang menunggu untuk ditambahkan.</div> : (
-                <div className="mt-2 space-y-2">{detected.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3"><div><div className="font-mono text-sm font-bold text-brand-heading">{item.serialNumber}</div><div className="mt-1 text-[11px] text-muted-foreground">IP {item.lastIp ?? "—"} · terakhir {fmt(item.lastSeenAt)} · {item.observedCount} request</div></div><button type="button" disabled={onboardingBusy !== null} onClick={() => void claim(item)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{onboardingBusy === `claim:${item.id}` ? "Menambahkan…" : "Tambahkan"}</button></div>)}</div>
+                <div className="mt-2 space-y-2">{detected.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3"><div><div className="font-mono text-sm font-bold text-brand-heading">{item.serialNumber}</div><div className="mt-1 text-2xs text-muted-foreground">IP {item.lastIp ?? "—"} · terakhir {fmt(item.lastSeenAt)} · {item.observedCount} request</div></div><button type="button" disabled={onboardingBusy !== null} onClick={() => void claim(item)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{onboardingBusy === `claim:${item.id}` ? "Menambahkan…" : "Tambahkan"}</button></div>)}</div>
               )}
             </div>
 
             <div className="mt-5 border-t border-border/70 pt-5">
-              <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Registrasi manual</div>
+              <div className="sq-eyebrow text-muted-foreground">Registrasi manual</div>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} placeholder="Serial mesin, contoh SPK7245000738" className="h-10 min-w-0 flex-1 rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" /><button type="button" disabled={onboardingBusy !== null || !serialNumber.trim()} onClick={() => void registerManual()} className="h-10 rounded-xl border border-border bg-surface-raised px-4 text-xs font-semibold hover:bg-surface disabled:opacity-50">{onboardingBusy === "manual" ? "Mendaftarkan…" : "Daftarkan manual"}</button></div>
             </div>
           </div>

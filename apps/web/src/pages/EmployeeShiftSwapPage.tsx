@@ -207,7 +207,7 @@ export function EmployeeShiftSwapPage() {
   return (
     <AppShell user={user} activeItem="Tukar Shift">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Waktu & Kehadiran</p>
+        <p className="sq-eyebrow text-muted-foreground">Waktu & Kehadiran</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Tukar Shift</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Tukar shift dengan rekan satu unit pada tanggal yang sama. Rekan harus menyetujui lebih dulu, kemudian Human Capital memberi keputusan final.
@@ -289,7 +289,7 @@ export function EmployeeShiftSwapPage() {
             <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memeriksa jadwal…</div>
           ) : requesterSchedule ? (
             <div className="mt-4 rounded-2xl bg-surface p-4">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Shift Anda</p>
+              <p className="sq-eyebrow text-muted-foreground">Shift Anda</p>
               <p className="mt-1 text-lg font-bold text-brand-heading">{time(requesterSchedule.scheduledStartAt)}–{time(requesterSchedule.scheduledEndAt)}</p>
             </div>
           ) : null}
@@ -368,7 +368,7 @@ export function EmployeeShiftSwapPage() {
                         {time(myStart)}–{time(myEnd)} → {time(targetStart)}–{time(targetEnd)}
                       </p>
                     </div>
-                    <span className={"rounded-full px-2.5 py-1 text-[11px] font-bold " + statusClass(item.status)}>
+                    <span className={"rounded-full px-2.5 py-1 text-2xs font-bold " + statusClass(item.status)}>
                       {statusLabel(item.status)}
                     </span>
                   </div>

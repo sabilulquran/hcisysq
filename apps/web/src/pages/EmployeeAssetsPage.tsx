@@ -33,7 +33,7 @@ export function EmployeeAssetsPage() {
         <a href="/app/services" className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />Semua layanan
         </a>
-        <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Layanan Pegawai</p>
+        <p className="sq-eyebrow mt-4 text-brand-primary-deep">Layanan Pegawai</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Asset Saya</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Aset organisasi yang sedang menjadi tanggung jawab Anda, menurut catatan Aset SQ. Untuk menerima,
@@ -123,14 +123,14 @@ export function AssetHoldingsView({ holdings }: { holdings: AssetHoldings }) {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-bold text-brand-heading">{item.assetLabel}</span>
                 {item.custodyState === "PENDING_ACCEPTANCE" ? (
-                  <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">
+                  <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-bold text-brand-primary-deep">
                     Menunggu konfirmasi Anda
                   </span>
                 ) : (
-                  <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold text-muted-foreground">Dipegang</span>
+                  <span className="rounded-full bg-surface px-2 py-0.5 text-2xs font-bold text-muted-foreground">Dipegang</span>
                 )}
                 {item.overdue ? (
-                  <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger-ink">
+                  <span className="rounded-full bg-danger-soft px-2 py-0.5 text-2xs font-bold text-danger-ink">
                     Lewat tanggal kembali
                   </span>
                 ) : null}
@@ -138,11 +138,11 @@ export function AssetHoldingsView({ holdings }: { holdings: AssetHoldings }) {
               <p className="mt-1 font-mono text-xs text-muted-foreground">{item.assetTag}</p>
               <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="text-[11px] font-semibold text-muted-foreground">Diserahkan</dt>
+                  <dt className="text-2xs font-semibold text-muted-foreground">Diserahkan</dt>
                   <dd className="font-semibold text-brand-heading">{formatAssetDate(item.checkoutAt)}</dd>
                 </div>
                 <div>
-                  <dt className="text-[11px] font-semibold text-muted-foreground">Harus kembali</dt>
+                  <dt className="text-2xs font-semibold text-muted-foreground">Harus kembali</dt>
                   <dd className="font-semibold text-brand-heading">{formatAssetDate(item.expectedReturnOn)}</dd>
                 </div>
               </dl>

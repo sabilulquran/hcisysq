@@ -101,7 +101,7 @@ export function ReviewDetailPanel({ review, actions, form }: { review: ReviewDet
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
 
       <section>
-        <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Riwayat</h3>
+        <h3 className="sq-eyebrow text-muted-foreground">Riwayat</h3>
         <ol className="mt-2 space-y-2">
           {review.events.map((event) => (
             <li key={event.id} className="text-xs">

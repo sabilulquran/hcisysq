@@ -61,20 +61,20 @@ export function AdminServiceTile({ service, canOpen }: { service: AdminServiceDe
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
         <span className={service.stage === "available"
-          ? "rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success-ink"
-          : "rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground"}>
+          ? "rounded-full bg-success-soft px-2.5 py-1 text-2xs font-bold text-success-ink"
+          : "rounded-full bg-muted px-2.5 py-1 text-2xs font-bold text-muted-foreground"}>
           {adminServiceStageLabel(service.stage)}
         </span>
       </div>
       <p className="mt-3 text-sm font-bold text-brand-heading">{service.label}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{service.description}</p>
       {service.details?.length ? (
-        <p className="mt-2 text-[10px] font-semibold leading-4 text-brand-primary-deep">
+        <p className="mt-2 text-2xs font-semibold leading-4 text-brand-primary-deep">
           {service.details.join(" · ")}
         </p>
       ) : null}
       {!canOpen && service.stage === "available" ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-warning-ink">{lockedNote(service)}</p>
+        <p className="mt-2 text-2xs font-bold leading-4 text-warning-ink">{lockedNote(service)}</p>
       ) : null}
     </>
   );

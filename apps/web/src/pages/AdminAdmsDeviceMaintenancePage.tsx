@@ -190,7 +190,7 @@ export function AdminAdmsDeviceMaintenancePage() {
           <div className="mt-4 grid gap-3">
             {risks.map((item) => {
               const capability = capabilityByKey(capabilities, item.capability);
-              return <div key={item.key} className="flex flex-col gap-3 rounded-xl border border-danger-line bg-surface-raised p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-bold text-danger-ink">{item.label}</div><div className="mt-1 text-xs text-danger-ink">{item.detail}</div><div className="mt-1 text-[11px] font-semibold text-muted-foreground">{operatorCapabilityLabel(capability)}</div></div><button type="button" disabled={busy !== null || capability?.state !== "available"} onClick={() => void highRisk(item.key)} className="h-9 shrink-0 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50">Lanjutkan…</button></div>;
+              return <div key={item.key} className="flex flex-col gap-3 rounded-xl border border-danger-line bg-surface-raised p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-bold text-danger-ink">{item.label}</div><div className="mt-1 text-xs text-danger-ink">{item.detail}</div><div className="mt-1 text-2xs font-semibold text-muted-foreground">{operatorCapabilityLabel(capability)}</div></div><button type="button" disabled={busy !== null || capability?.state !== "available"} onClick={() => void highRisk(item.key)} className="h-9 shrink-0 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50">Lanjutkan…</button></div>;
             })}
           </div>
         </section>

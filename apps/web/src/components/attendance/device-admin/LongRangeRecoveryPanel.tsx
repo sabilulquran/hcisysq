@@ -191,7 +191,7 @@ export function LongRangeRecoveryPanel() {
       ) : null}
 
       {canOperate && rangePlan ? (
-        <div className={`mt-2 text-[11px] ${rangePlan.valid ? "text-info-ink" : "text-muted-foreground"}`}>
+        <div className={`mt-2 text-2xs ${rangePlan.valid ? "text-info-ink" : "text-muted-foreground"}`}>
           {rangePlan.valid
             ? `Rencana: sekitar ${Math.ceil(rangePlan.days)} hari → ${rangePlan.chunks} bagian, maksimal 31 hari per bagian.`
             : rangePlan.reason}
@@ -203,8 +203,8 @@ export function LongRangeRecoveryPanel() {
 
       <div className="mt-5 border-t border-border/70 pt-4">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Pemulihan terbaru</div>
-          <div className="text-[11px] text-muted-foreground">Maks. 730 hari per permintaan · 31 hari per bagian</div>
+          <div className="sq-eyebrow text-muted-foreground">Pemulihan terbaru</div>
+          <div className="text-2xs text-muted-foreground">Maks. 730 hari per permintaan · 31 hari per bagian</div>
         </div>
 
         {loading ? (
@@ -226,14 +226,14 @@ export function LongRangeRecoveryPanel() {
                       <div className="text-xs font-semibold text-brand-heading">
                         {fmt(job.requestedRangeStart)} — {fmt(job.requestedRangeEnd)}
                       </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
+                      <div className="mt-1 text-2xs text-muted-foreground">
                         {job.succeededChunks}/{job.totalChunks} bagian selesai
                         {job.activeCommandNumber ? " · satu bagian sedang diproses" : ""}
                         {job.queuedChunks > 0 ? ` · ${job.queuedChunks} menunggu giliran` : ""}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(job.status)}`}>
+                      <span className={`rounded-full px-2.5 py-1 text-2xs font-semibold ${statusClass(job.status)}`}>
                         {recoveryStatusLabel(job.status)}
                       </span>
                       {job.status === "running" && canOperate ? (
@@ -241,7 +241,7 @@ export function LongRangeRecoveryPanel() {
                           type="button"
                           onClick={() => void cancelJob(job)}
                           disabled={busy !== null}
-                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] font-semibold hover:bg-surface disabled:opacity-50"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-2xs font-semibold hover:bg-surface disabled:opacity-50"
                         >
                           {busy === `cancel:${job.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
                           Batalkan
@@ -252,7 +252,7 @@ export function LongRangeRecoveryPanel() {
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface" aria-label={`Progress ${progress}%`}>
                     <div className="h-full rounded-full bg-brand-primary" style={{ width: `${progress}%` }} />
                   </div>
-                  {job.failureReason ? <div className="mt-2 text-[11px] font-medium text-danger-ink">Alasan berhenti: {job.failureReason}</div> : null}
+                  {job.failureReason ? <div className="mt-2 text-2xs font-medium text-danger-ink">Alasan berhenti: {job.failureReason}</div> : null}
                 </div>
               );
             })}
@@ -260,7 +260,7 @@ export function LongRangeRecoveryPanel() {
         )}
       </div>
 
-      <div className="mt-4 rounded-xl bg-surface px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
+      <div className="mt-4 rounded-xl bg-surface px-3 py-2.5 text-2xs leading-5 text-muted-foreground">
         Pemulihan ini hanya mengambil catatan absen dari mesin. Transaksi yang sudah ada tidak tercatat dua kali, dan HCIS tidak menyimpulkan terlambat, absen, jam kerja, lembur, cuti, atau payroll dari sini.
       </div>
     </section>

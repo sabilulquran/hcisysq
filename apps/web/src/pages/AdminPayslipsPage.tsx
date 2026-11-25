@@ -408,7 +408,7 @@ export function AdminPayslipsPage() {
                 Periode fallback untuk format lama
                 <input type="month" value={fallbackPeriod} onChange={(event) => setFallbackPeriod(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm font-normal" />
               </label>
-              <p className="text-[11px] leading-5 text-muted-foreground">Opsional. Dipakai bila CSV tetap/honorer tidak memiliki kolom TANGGAL.</p>
+              <p className="text-2xs leading-5 text-muted-foreground">Opsional. Dipakai bila CSV tetap/honorer tidak memiliki kolom TANGGAL.</p>
               <button type="button" disabled={!file || busy} onClick={() => file && void run(async () => { await previewPayslipImport(file, fallbackPeriod || undefined); setBatchPage(1); }, "Preview disimpan. Baris valid siap dimasukkan ke draft; baris error dapat diperbaiki dari Review.")} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:cursor-not-allowed disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Preview CSV
               </button>
@@ -426,8 +426,8 @@ export function AdminPayslipsPage() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-base font-bold text-brand-heading">Perbaikan batch · {review.sourceFilename}</h2>
-                    <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[10px] font-bold text-brand-primary-deep">{sourceFormatLabel(review.sourceFormat)}</span>
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold uppercase">{review.status}</span>
+                    <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-2xs font-bold text-brand-primary-deep">{sourceFormatLabel(review.sourceFormat)}</span>
+                    <span className="sq-eyebrow rounded-full bg-muted px-2.5 py-1">{review.status}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">Fokus layar ini adalah NIP, periode, dan validation issue. Nominal payroll tetap read-only dan disembunyikan sampai dibuka.</p>
                 </div>
@@ -435,10 +435,10 @@ export function AdminPayslipsPage() {
               </div>
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl bg-success-soft p-3"><p className="text-[11px] font-bold uppercase text-success-ink">Masuk draft</p><p className="mt-1 text-xl font-extrabold text-success-ink">{review.draftedCount}</p></div>
-                <div className="rounded-xl bg-info-soft p-3"><p className="text-[11px] font-bold uppercase text-info-ink">Siap draft</p><p className="mt-1 text-xl font-extrabold text-info-ink">{review.pendingValidCount}</p></div>
-                <div className="rounded-xl bg-warning-soft p-3"><p className="text-[11px] font-bold uppercase text-warning-ink">Perlu tindakan</p><p className="mt-1 text-xl font-extrabold text-warning-ink">{review.unresolvedCount}</p></div>
-                <div className="rounded-xl bg-muted p-3"><p className="text-[11px] font-bold uppercase text-muted-foreground">Dihapus</p><p className="mt-1 text-xl font-extrabold text-foreground">{review.excludedCount}</p></div>
+                <div className="rounded-xl bg-success-soft p-3"><p className="sq-eyebrow text-success-ink">Masuk draft</p><p className="mt-1 text-xl font-extrabold text-success-ink">{review.draftedCount}</p></div>
+                <div className="rounded-xl bg-info-soft p-3"><p className="sq-eyebrow text-info-ink">Siap draft</p><p className="mt-1 text-xl font-extrabold text-info-ink">{review.pendingValidCount}</p></div>
+                <div className="rounded-xl bg-warning-soft p-3"><p className="sq-eyebrow text-warning-ink">Perlu tindakan</p><p className="mt-1 text-xl font-extrabold text-warning-ink">{review.unresolvedCount}</p></div>
+                <div className="rounded-xl bg-muted p-3"><p className="sq-eyebrow text-muted-foreground">Dihapus</p><p className="mt-1 text-xl font-extrabold text-foreground">{review.excludedCount}</p></div>
               </div>
 
               {review.unresolvedCount > 0 ? (
@@ -448,7 +448,7 @@ export function AdminPayslipsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-warning-ink">{review.unresolvedCount} baris perlu keputusan sebelum Publish.</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {errorSummary.map(({ message, count }) => <span key={message} className="rounded-full bg-surface-raised px-2.5 py-1 text-[11px] font-semibold text-warning-ink">{count} × {message}</span>)}
+                        {errorSummary.map(({ message, count }) => <span key={message} className="rounded-full bg-surface-raised px-2.5 py-1 text-2xs font-semibold text-warning-ink">{count} × {message}</span>)}
                       </div>
                     </div>
                   </div>
@@ -475,9 +475,9 @@ export function AdminPayslipsPage() {
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="mr-auto">
                     <p className="text-xs font-bold text-brand-heading">Aksi massal</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{selectedRows.size} baris dipilih · {changedCorrections.length} perubahan belum disimpan</p>
+                    <p className="mt-0.5 text-2xs text-muted-foreground">{selectedRows.size} baris dipilih · {changedCorrections.length} perubahan belum disimpan</p>
                   </div>
-                  <label className="text-[11px] font-bold text-muted-foreground">
+                  <label className="text-2xs font-bold text-muted-foreground">
                     Set periode terpilih
                     <input type="month" value={bulkPeriod} onChange={(event) => setBulkPeriod(event.target.value)} className="mt-1 block rounded-lg border border-border bg-surface-raised px-2.5 py-2 text-xs font-normal text-brand-heading" />
                   </label>
@@ -490,7 +490,7 @@ export function AdminPayslipsPage() {
 
             <div className="max-h-[38rem] overflow-auto">
               <table className="w-full min-w-[62rem] table-fixed text-left text-sm">
-                <thead className="sticky top-0 z-10 bg-surface text-[11px] uppercase tracking-wide text-muted-foreground">
+                <thead className="sq-eyebrow sticky top-0 z-10 bg-surface text-muted-foreground">
                   <tr>
                     <th className="w-12 px-3 py-2.5">
                       <input
@@ -542,7 +542,7 @@ export function AdminPayslipsPage() {
                           ) : null}
                         </td>
                         <td className="px-3 py-2.5 align-top font-semibold">{row.rowNumber}</td>
-                        <td className="px-3 py-2.5 align-top"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${rowStatusClass(row)}`}>{rowStatusLabel(row)}</span></td>
+                        <td className="px-3 py-2.5 align-top"><span className={`inline-flex rounded-full px-2 py-1 text-2xs font-bold ${rowStatusClass(row)}`}>{rowStatusLabel(row)}</span></td>
                         <td className="px-3 py-2.5 align-top">
                           {editable ? <input value={edit.employeeNumber} onChange={(event) => setRowEdits((current) => ({ ...current, [row.rowNumber]: { ...edit, employeeNumber: event.target.value } }))} className="w-full rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-xs" aria-label={`NIP row ${row.rowNumber}`} /> : <span className="font-semibold">{row.employeeNumber || "—"}</span>}
                         </td>
@@ -550,14 +550,14 @@ export function AdminPayslipsPage() {
                           {editable ? <input type="month" value={edit.period} onChange={(event) => setRowEdits((current) => ({ ...current, [row.rowNumber]: { ...edit, period: event.target.value } }))} className="w-full rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-xs" aria-label={`Periode row ${row.rowNumber}`} /> : row.period?.slice(0, 7) ?? "—"}
                         </td>
                         <td className="px-3 py-2.5 align-top">
-                          {row.errors.length === 0 ? <span className="text-xs font-semibold text-success-ink">{row.resolutionStatus === "drafted" ? "Sudah masuk draft" : row.resolutionStatus === "excluded" ? "Dihapus dari batch" : "Valid"}</span> : <div className="space-y-1">{row.errors.map((message) => <div key={message} className="rounded-md bg-danger-soft px-2 py-1 text-[11px] font-medium leading-4 text-danger-ink">{message}</div>)}</div>}
+                          {row.errors.length === 0 ? <span className="text-xs font-semibold text-success-ink">{row.resolutionStatus === "drafted" ? "Sudah masuk draft" : row.resolutionStatus === "excluded" ? "Dihapus dari batch" : "Valid"}</span> : <div className="space-y-1">{row.errors.map((message) => <div key={message} className="rounded-md bg-danger-soft px-2 py-1 text-2xs font-medium leading-4 text-danger-ink">{message}</div>)}</div>}
                         </td>
                         <td className="px-3 py-2.5 align-top">
                           {row.lines?.length ? (
                             <details className="text-xs">
                               <summary className="cursor-pointer font-semibold text-brand-primary-deep">Lihat {row.lines.length} komponen</summary>
                               <div className="mt-2 max-h-44 space-y-1 overflow-auto rounded-lg border border-border bg-surface-raised p-2">
-                                {row.lines.map((line, index) => <div key={`${line.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-[11px]"><span className="text-muted-foreground">{line.label}</span><strong className="break-all text-right">{line.value}</strong></div>)}
+                                {row.lines.map((line, index) => <div key={`${line.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-2xs"><span className="text-muted-foreground">{line.label}</span><strong className="break-all text-right">{line.value}</strong></div>)}
                               </div>
                             </details>
                           ) : "—"}
@@ -601,8 +601,8 @@ export function AdminPayslipsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <FileCheck2 className="h-4 w-4 text-brand-primary" />
                         <p className="font-bold">{item.sourceFilename}</p>
-                        <span className="rounded-full bg-brand-primary-pale px-2 py-1 text-[10px] font-bold text-brand-primary-deep">{sourceFormatLabel(item.sourceFormat)}</span>
-                        <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-bold uppercase tracking-wide">{item.status}</span>
+                        <span className="rounded-full bg-brand-primary-pale px-2 py-1 text-2xs font-bold text-brand-primary-deep">{sourceFormatLabel(item.sourceFormat)}</span>
+                        <span className="sq-eyebrow rounded-full bg-muted px-2 py-1">{item.status}</span>
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">{item.rowCount} row · {item.draftedCount} draft · {item.pendingValidCount} siap draft · {item.unresolvedCount} perlu tindakan · {item.excludedCount} dihapus</p>
                       {item.status === "committed" && hasPending ? <p className="mt-1 text-xs font-semibold text-warning-ink">Draft aman. Selesaikan baris pending sebelum Publish.</p> : null}

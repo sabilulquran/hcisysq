@@ -82,7 +82,7 @@ function MemberRow({ member, highlight, actions }: { member: CommitteeMember; hi
         <p className="text-xs text-muted-foreground">
           {ROLE_LABELS[member.role]}{member.section ? ` · ${member.section}` : ""} · {member.unitName ?? "Tanpa unit"}
         </p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Bergabung {formatDate(member.joinedOn)}
           {ended ? ` · berakhir ${formatDate(member.leftOn)}` : ""}
           {member.endReason ? ` · ${member.endReason}` : ""}

@@ -91,7 +91,7 @@ export function LoginPageView({
     <AuthLayout>
       <header className="mb-7 sm:mb-8">
         <span className="mb-4 block h-1 w-12 rounded-full bg-brand-yellow" aria-hidden="true" />
-        <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-[2.15rem]">
+        <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-4xl">
           Selamat datang kembali
         </h2>
         <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">

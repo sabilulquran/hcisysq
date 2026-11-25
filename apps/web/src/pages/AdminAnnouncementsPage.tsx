@@ -162,7 +162,7 @@ export function AdminAnnouncementsPage() {
                         {item.title}
                         {item.level === "PENTING" ? " · penting" : ""}
                       </p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                      <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                         {announcementStatusLabel(item)}
                         {item.publishedAt ? ` · ${formatDate(item.publishedAt)}` : ""}
                         {item.reach ? ` · ${item.readCount}/${item.reach} dibaca` : ""}

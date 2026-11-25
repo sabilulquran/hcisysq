@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { DialogMessages } from "@/components/DetailDialogParts";
+import { PaginationBar } from "@/components/PaginationBar";
 import { requestStatusLabel } from "@/lib/attendanceLabels";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -90,7 +91,7 @@ export function EmployeeTeamOvertimePage() {
   return (
     <AppShell user={user} activeItem="Lembur Tim">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Waktu & Kehadiran</p>
+        <p className="sq-eyebrow text-muted-foreground">Waktu & Kehadiran</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading">Lembur Tim</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Setujui atau tolak lembur bawahan langsung Anda, dan perintahkan lembur yang perlu disetujui pegawainya. Persetujuan di HCIS berlaku sebagai persetujuan tertulis.</p>
       </section>
@@ -163,10 +164,9 @@ export function EmployeeTeamOvertimePage() {
         ) : null}
         {!data && !error ? <li className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</li> : null}
       </ul>
-      {data && data.total > data.pageSize ? (
-        <div className="mt-3 flex justify-end gap-2 text-sm">
-          <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="min-h-10 rounded-xl border px-3 disabled:opacity-50">Sebelumnya</button>
-          <button type="button" disabled={page * data.pageSize >= data.total} onClick={() => setPage(page + 1)} className="min-h-10 rounded-xl border px-3 disabled:opacity-50">Berikutnya</button>
+      {data && data.total > 0 ? (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-border/70">
+          <PaginationBar page={page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         </div>
       ) : null}
     </AppShell>

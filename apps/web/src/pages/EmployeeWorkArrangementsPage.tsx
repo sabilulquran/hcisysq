@@ -242,7 +242,7 @@ export function EmployeeWorkArrangementsPage() {
   return (
     <AppShell user={user} activeItem="Tugas Luar & WFH">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Layanan Pegawai</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Layanan Pegawai</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Tugas Luar &amp; WFH</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Ajukan tugas di luar lokasi kerja, bekerja dari rumah atau lokasi lain, atau ubah shift Anda. Atasan langsung lalu
@@ -438,7 +438,7 @@ export function EmployeeWorkArrangementsPage() {
                         <span className="min-w-0">
                           <span className="block truncate font-semibold text-brand-heading">{ARRANGEMENT_TYPE_LABELS[item.type]} · {arrangementSubject(item)}</span>
                           <span className="block text-xs text-muted-foreground">{formatArrangementRange(item.startOn, item.endOn)}</span>
-                          <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                          <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                             {arrangementStatusLabel(item.status, item.type)}
                             {item.currentApproverName ? ` · menunggu ${item.currentApproverName}` : ""}
                           </span>

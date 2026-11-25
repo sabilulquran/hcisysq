@@ -185,7 +185,7 @@ export function EmployeeMobileAttendancePage() {
   return (
     <AppShell user={user} activeItem="Clock In/Out">
       <section>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Presensi HP</p>
+        <p className="sq-eyebrow text-muted-foreground">Presensi HP</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Clock In / Out</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Tekan Baca GPS, buka kamera, lalu ambil foto sebelum mengirim. Tidak ada pelacakan lokasi di latar belakang.</p>
       </section>
@@ -200,7 +200,7 @@ export function EmployeeMobileAttendancePage() {
         <>
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
             <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Hari kerja {snapshot.workDate}</p>
+              <p className="sq-eyebrow text-muted-foreground">Hari kerja {snapshot.workDate}</p>
               <h2 className="mt-2 text-lg font-bold text-brand-heading">{statusLabel(snapshot.result?.status ?? snapshot.schedule.state)}</h2>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-surface p-4"><p className="text-xs font-semibold text-muted-foreground">Jadwal masuk</p><p className="mt-1 text-xl font-bold">{formatTime(snapshot.schedule.scheduledStartAt)}</p></div>
@@ -220,7 +220,7 @@ export function EmployeeMobileAttendancePage() {
               <p className={snapshot.mobileEnabled ? "mt-3 rounded-xl bg-success-soft p-3 text-xs leading-5 text-success-ink" : "mt-3 rounded-xl bg-warning-soft p-3 text-xs leading-5 text-warning-ink"}>
                 {mobileReadinessMessage(snapshot.mobileReadiness.captureReason)}
               </p>
-              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+              <p className="mt-2 text-2xs leading-5 text-muted-foreground">
                 Evaluasi jadwal: {statusLabel(snapshot.mobileReadiness.scheduleState)}
                 {snapshot.mobileReadiness.scheduleReason ? ` · ${snapshot.mobileReadiness.scheduleReason}` : ""}
                 {" · "}Lokasi kerja: {snapshot.mobileReadiness.hasWorkLocation

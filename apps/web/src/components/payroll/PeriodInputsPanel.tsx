@@ -234,7 +234,7 @@ export function PeriodInputsPanel({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+              <thead className="sq-eyebrow bg-muted/50 text-left text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-3 py-2">Pegawai</th>
                   <th scope="col" className="px-3 py-2">Jenis</th>

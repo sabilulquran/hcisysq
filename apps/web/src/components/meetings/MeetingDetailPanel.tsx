@@ -50,9 +50,9 @@ export function MeetingDetailPanel({
     <article>
       {cancelled || meeting.confidential ? (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          {cancelled ? <span className="rounded-full border border-danger-line bg-danger-soft px-2 py-0.5 text-[11px] font-bold text-danger-ink">Dibatalkan</span> : null}
+          {cancelled ? <span className="rounded-full border border-danger-line bg-danger-soft px-2 py-0.5 text-2xs font-bold text-danger-ink">Dibatalkan</span> : null}
           {meeting.confidential ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-2xs font-bold text-muted-foreground">
               <Lock className="h-3 w-3" aria-hidden="true" />Rahasia
             </span>
           ) : null}
@@ -127,7 +127,7 @@ export function MeetingDetailPanel({
                 </p>
                 {participant.responseNote ? <p className="mt-0.5 text-xs text-brand-heading">"{participant.responseNote}"</p> : null}
               </div>
-              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${responseTone[participant.response]}`}>
+              <span className={`rounded-full border px-2 py-0.5 text-2xs font-bold ${responseTone[participant.response]}`}>
                 {RESPONSE_LABELS[participant.response]}
               </span>
             </li>

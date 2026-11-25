@@ -84,7 +84,7 @@ export function ArrangementApprovalsSection() {
                   </p>
                   <p className="mt-1 text-sm text-foreground">{formatArrangementRange(item.startOn, item.endOn)}{item.unitName ? ` · ${item.unitName}` : ""}</p>
                   <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.purpose}</p>
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                  <p className="sq-eyebrow mt-2 text-muted-foreground">{approverRoleLabel(item.sources)}</p>
                 </div>
                 <div className="flex gap-2">
                   <button type="button" disabled={acting === item.stepId} onClick={() => void decide(item, "reject")}

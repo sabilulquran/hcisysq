@@ -245,7 +245,7 @@ export function EmployeeCalendarPage() {
   return (
     <AppShell user={user} activeItem="Kalender">
       <section className="mx-auto max-w-6xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Layanan Pegawai</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Layanan Pegawai</p>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-brand-heading sm:text-3xl">Kalender &amp; Rapat</h1>
@@ -290,7 +290,7 @@ export function EmployeeCalendarPage() {
                 </div>
 
                 <div className="mt-3 hidden sm:block">
-                  <div className="grid grid-cols-7 text-center text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <div className="sq-eyebrow grid grid-cols-7 text-center text-muted-foreground">
                     {WEEKDAYS.map((day) => <div key={day} className="py-1">{day}</div>)}
                   </div>
                   <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70">
@@ -312,13 +312,13 @@ export function EmployeeCalendarPage() {
                           )}>
                             {Number(cell.date.slice(8))}
                           </span>
-                          {holiday ? <span className="truncate text-[10px] text-danger-ink">{calendarItemLabel(holiday)}</span> : null}
+                          {holiday ? <span className="truncate text-2xs text-danger-ink">{calendarItemLabel(holiday)}</span> : null}
                           {visible.slice(0, 3).map((item, index) => (
-                            <span key={index} className={cn("truncate rounded px-1 text-[10px] font-semibold", chipClass(item))}>
+                            <span key={index} className={cn("truncate rounded px-1 text-2xs font-semibold", chipClass(item))}>
                               {calendarItemLabel(item)}
                             </span>
                           ))}
-                          {visible.length > 3 ? <span className="text-[10px] text-muted-foreground">+{visible.length - 3} lainnya</span> : null}
+                          {visible.length > 3 ? <span className="text-2xs text-muted-foreground">+{visible.length - 3} lainnya</span> : null}
                         </button>
                       );
                     })}
@@ -389,7 +389,7 @@ export function EmployeeCalendarPage() {
                               {meeting.title}
                             </span>
                             <span className="block text-xs text-muted-foreground">{formatMeetingRange(meeting.startAt, meeting.endAt)}</span>
-                            <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                            <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                               {meeting.status === "CANCELLED" ? "Dibatalkan" : meeting.myRole === "ORGANIZER" ? "Anda penyelenggara" : RESPONSE_LABELS[meeting.myResponse]}
                               {` · ${meeting.participantCount} orang`}
                               {meeting.confidential ? " · Rahasia" : ""}

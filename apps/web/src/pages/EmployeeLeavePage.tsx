@@ -92,10 +92,10 @@ export function EmployeeLeavePage() {
     <AppShell user={user} activeItem="Cuti & Izin">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="sq-eyebrow text-muted-foreground">
             Cuti & izin
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">
+          <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
             Apa yang Anda butuhkan?
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -226,7 +226,8 @@ export function EmployeeLeavePage() {
                   <div key={period.key} className="rounded-2xl border border-border/70 p-3">
                     <p className="text-xs font-semibold text-brand-heading">{period.label}</p>
                     <p className="mt-1 text-lg font-bold">{period.remainingDays}<span className="ml-1 text-xs font-medium text-muted-foreground">/ {period.allocationDays}</span></p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-1 text-2xs text-muted-foreground">
+
                       {period.status === "not_eligible"
                         ? "Belum dapat digunakan"
                         : period.status === "current"

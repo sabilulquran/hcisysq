@@ -190,7 +190,7 @@ export function EmployeeTripAdvancesPage() {
   return (
     <AppShell user={user} activeItem="Uang Muka Dinas">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Keuangan Saya</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Keuangan Saya</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Uang Muka Dinas</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Ajukan uang muka untuk perjalanan dinas Anda, atau hanya uang harian. Setelah kembali, klaim biaya nyata lewat
@@ -240,7 +240,7 @@ export function EmployeeTripAdvancesPage() {
                       {advance.tripDestination} · <span className="tabular-nums">{advance.amount === 0 ? "Hanya uang harian" : formatRupiah(advance.amount)}</span>
                     </span>
                     <span className="block text-xs text-muted-foreground">{advance.tripStartOn} – {advance.tripEndOn} · {advance.wilayahLabel}</span>
-                    <span className={`mt-1 block text-[11px] font-semibold ${advance.overdue ? "text-danger-ink" : "text-muted-foreground"}`}>
+                    <span className={`mt-1 block text-2xs font-semibold ${advance.overdue ? "text-danger-ink" : "text-muted-foreground"}`}>
                       {advanceStatusLabel(advance.status)}{advance.overdue ? " · terlambat" : ""}
                       {advance.currentApproverName ? ` · menunggu ${advance.currentApproverName}` : ""}
                     </span>

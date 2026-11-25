@@ -156,7 +156,7 @@ export function EmployeeLettersPage() {
   return (
     <AppShell user={user} activeItem="Semua Layanan">
       <section className="mx-auto max-w-4xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Layanan Pegawai</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Layanan Pegawai</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Nomor Surat Keluar</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Ambil nomor untuk surat yang Anda buat atas nama unit atau panitia. Nomor tidak pernah dipakai ulang; nomor yang
@@ -271,7 +271,7 @@ export function EmployeeLettersPage() {
                         <p className="break-all font-mono text-sm font-bold text-brand-heading">{row.letterNumber}</p>
                         <p className="text-sm text-brand-heading">{row.subject}</p>
                         <p className="text-sm text-muted-foreground">Kepada: {row.recipient}</p>
-                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                        <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                           {row.typeLabel} · {formatLetterDate(row.letterDate)} · {row.mine ? "Anda" : row.requestedByName}
                           {row.status === "VOIDED" ? ` · Dibatalkan: ${row.voidReason ?? "-"}` : ""}
                         </p>

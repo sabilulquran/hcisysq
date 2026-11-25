@@ -84,7 +84,7 @@ export function TripAdvanceApprovalsSection() {
                     {item.tripDestination} · {item.tripStartOn} – {item.tripEndOn} · {item.wilayahLabel}{item.unitName ? ` · ${item.unitName}` : ""}
                   </p>
                   <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{item.purpose}</p>
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                  <p className="sq-eyebrow mt-2 text-muted-foreground">{approverRoleLabel(item.sources)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" disabled={acting === item.stepId} onClick={() => void decide(item, "reject")}

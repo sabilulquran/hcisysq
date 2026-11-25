@@ -180,15 +180,15 @@ export function AdminAdmsDeviceTransactionsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="border-b border-border/70 bg-surface/70 text-[11px] uppercase tracking-[0.08em] text-muted-foreground"><tr><th className="px-4 py-3 font-bold">Waktu mesin</th><th className="px-4 py-3 font-bold">PIN</th><th className="px-4 py-3 font-bold">Pegawai HCIS</th><th className="px-4 py-3 font-bold">Diterima HCIS</th><th className="px-4 py-3 font-bold">Status</th></tr></thead>
+              <thead className="sq-eyebrow border-b border-border/70 bg-surface/70 text-muted-foreground"><tr><th className="px-4 py-3 font-bold">Waktu mesin</th><th className="px-4 py-3 font-bold">PIN</th><th className="px-4 py-3 font-bold">Pegawai HCIS</th><th className="px-4 py-3 font-bold">Diterima HCIS</th><th className="px-4 py-3 font-bold">Status</th></tr></thead>
               <tbody className="divide-y divide-border/60">
                 {pagedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-surface/40">
-                    <td className="px-4 py-4"><div className="font-semibold text-brand-heading">{fmt(item.occurredAt)}</div><div className="mt-1 font-mono text-[11px] text-muted-foreground">{item.occurredAtRaw}</div></td>
+                    <td className="px-4 py-4"><div className="font-semibold text-brand-heading">{fmt(item.occurredAt)}</div><div className="mt-1 font-mono text-2xs text-muted-foreground">{item.occurredAtRaw}</div></td>
                     <td className="px-4 py-4 font-mono text-xs font-bold text-brand-heading">{item.pin}</td>
                     <td className="px-4 py-4">{item.employeeName ? <><div className="font-semibold text-brand-heading">{item.employeeName}</div><div className="mt-1 text-xs text-muted-foreground">{item.employeeNumber ?? "—"}</div></> : <span className="text-xs font-medium text-warning-ink">Belum terhubung</span>}</td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(item.receivedAt)}</td>
-                    <td className="px-4 py-4"><span className="inline-flex rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-brand-heading">Tersimpan</span></td>
+                    <td className="px-4 py-4"><span className="inline-flex rounded-full bg-surface px-2 py-1 text-2xs font-semibold text-brand-heading">Tersimpan</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -196,7 +196,7 @@ export function AdminAdmsDeviceTransactionsPage() {
           </div>
         )}
         <PaginationBar page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Daftar ini memuat 200 transaksi terbaru dari mesin ini. Untuk periode lain gunakan Cari per tanggal. Export CSV memuat transaksi tersimpan hingga batas server, dan transaksi yang diambil ulang tidak tercatat dua kali.</div>
+        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-2xs leading-5 text-muted-foreground">Daftar ini memuat 200 transaksi terbaru dari mesin ini. Untuk periode lain gunakan Cari per tanggal. Export CSV memuat transaksi tersimpan hingga batas server, dan transaksi yang diambil ulang tidak tercatat dua kali.</div>
       </section>
 
       {canOperate && recoveryOpen ? (

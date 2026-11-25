@@ -259,7 +259,7 @@ function AddRolloutDialog({
           <option value={WHOLE_FOUNDATION_VALUE}>{WHOLE_FOUNDATION} — seluruh pegawai sekaligus</option>
         </select>
       </label>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-2xs text-muted-foreground">
         {matches.length} dari {nodes.length} unit ditampilkan.
         {nodeKey === WHOLE_FOUNDATION_VALUE
           ? " Pilihan ini memindahkan seluruh yayasan sekaligus, bukan satu unit."
@@ -394,7 +394,7 @@ function EndRolloutDialog({
           className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
         />
       </label>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-2xs text-muted-foreground">
         Paling awal {earliest}
         {earliest === today
           ? ": pengaturan yang berlaku hari ini sudah menjelaskan setiap rantai yang diselesaikan hari ini."

@@ -166,7 +166,7 @@ export function AdminAdmsDeviceSettingsPage() {
           <label className="text-xs font-semibold text-muted-foreground">Unit<select value={organizationalUnitId} onChange={(e) => setOrganizationalUnitId(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm disabled:bg-surface"><option value="">Belum ditentukan</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
           <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja{canPickWorkLocation ? (<>
             <select value={workLocationId} onChange={(e) => setWorkLocationId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm"><option value="">Belum ditentukan</option>{workLocations.filter((item) => item.active || item.id === workLocationId).map((item) => <option key={item.id} value={item.id}>{item.name}{item.active ? "" : " (nonaktif)"}</option>)}</select>
-            {workLocationsFailed ? <span className="mt-1 block text-[11px] font-normal text-danger-ink">Daftar lokasi kerja tidak dapat dimuat; lokasi yang sudah tersimpan tidak berubah.</span> : null}
+            {workLocationsFailed ? <span className="mt-1 block text-2xs font-normal text-danger-ink">Daftar lokasi kerja tidak dapat dimuat; lokasi yang sudah tersimpan tidak berubah.</span> : null}
           </>) : (
             <input value={profile?.workLocationName ?? ""} disabled placeholder="Belum ditentukan" className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" />
           )}</label>

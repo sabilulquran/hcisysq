@@ -63,7 +63,7 @@ export function RegisterRow({
         <p className="flex flex-wrap items-center gap-2 font-semibold text-brand-heading">
           <span className="break-all">{entry.documentNumber}</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+            className={`rounded-full px-2 py-0.5 text-2xs font-bold ${
               revoked ? "bg-danger-soft text-danger-ink" : "bg-surface text-muted-foreground"
             }`}
           >

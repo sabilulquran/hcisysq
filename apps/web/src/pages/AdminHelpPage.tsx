@@ -64,9 +64,9 @@ function StatusBadge({ article }: { article: AdminHelpArticle }) {
     : article.status === "ARCHIVED" ? "bg-surface text-muted-foreground" : "bg-warning-soft text-warning-ink";
   return (
     <span className="flex flex-wrap gap-1.5">
-      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", tone)}>{statusLabel[article.status]}</span>
+      <span className={cn("rounded-full px-2 py-0.5 text-2xs font-bold", tone)}>{statusLabel[article.status]}</span>
       {isUnreviewedSeed(article) ? (
-        <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning-ink">Draf awal — perlu ditinjau</span>
+        <span className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-bold text-warning-ink">Draf awal — perlu ditinjau</span>
       ) : null}
     </span>
   );
@@ -129,7 +129,7 @@ function ArticleEditor({ initial, busy, onCancel, onSave }: {
             onChange={(event) => set("body", event.target.value)}
             placeholder="Teks biasa. Pisahkan paragraf dengan baris kosong. Langkah boleh ditulis 1. 2. 3. per baris."
             className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-normal leading-6 text-brand-heading" />
-          <span className="mt-1 block text-right text-[11px] font-normal text-muted-foreground">{state.body.length}/8000</span>
+          <span className="mt-1 block text-right text-2xs font-normal text-muted-foreground">{state.body.length}/8000</span>
         </label>
         {state.id ? (
           <label className="text-sm font-semibold text-brand-heading sm:col-span-3">
@@ -174,7 +174,7 @@ function RevisionPanel({ article }: { article: AdminHelpArticle }) {
             <button type="button" onClick={() => setOpenVersion(openVersion === revision.version ? null : revision.version)}
               aria-expanded={openVersion === revision.version} className="w-full text-left">
               <span className="text-sm font-semibold text-brand-heading">Versi {revision.version} · {revision.title}</span>
-              <span className="mt-0.5 block text-[11px] font-semibold text-muted-foreground">
+              <span className="mt-0.5 block text-2xs font-semibold text-muted-foreground">
                 {formatDateTime(revision.createdAt)} · {revision.actorName ?? "Isi awal sistem"} · {statusLabel[revision.status]}
                 {revision.changeNote ? ` · ${revision.changeNote}` : ""}
               </span>
@@ -367,7 +367,7 @@ function ArticlesTab() {
               <li key={article.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-brand-heading">{article.title}</p>
-                  <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                  <p className="mt-1 text-2xs font-semibold text-muted-foreground">
                     {kindLabel[article.kind]} · {topicLabel(article.topic)} · urutan {article.sortOrder} · versi {article.version}
                     {article.publishedAt ? ` · ${article.status === "PUBLISHED" ? "terbit" : "terakhir terbit"} ${formatDateTime(article.publishedAt)}` : ""}
                   </p>
@@ -540,7 +540,7 @@ function ContactsTab() {
               <li key={contact.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-brand-heading">{contact.label}{contact.active ? "" : " · disembunyikan"}</p>
-                  <p className="mt-0.5 break-words text-[11px] font-semibold text-muted-foreground">
+                  <p className="mt-0.5 break-words text-2xs font-semibold text-muted-foreground">
                     {channelLabel[contact.channel]}: {contact.value}{contact.note ? ` · ${contact.note}` : ""} · urutan {contact.sortOrder}
                   </p>
                 </div>
@@ -610,7 +610,7 @@ function HistoryTab() {
                 {auditLabel[event.eventType] ?? event.eventType}{subject(event) ? `: ${subject(event)}` : ""}
                 {event.metadata.version ? ` (versi ${event.metadata.version})` : ""}
               </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+              <p className="mt-0.5 text-2xs font-semibold text-muted-foreground">
                 {formatDateTime(event.occurredAt)} · {event.actorName ?? "Isi awal sistem"}{event.reason ? ` · ${event.reason}` : ""}
               </p>
             </li>

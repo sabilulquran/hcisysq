@@ -83,12 +83,12 @@ function CandidateCard({
     <li className="rounded-2xl border border-border/75 bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-bold text-brand-heading">{candidate.employeeName ?? "Orang tidak dikenal di HCIS"}</span>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{CANDIDATE_STATUS_LABELS[candidate.status]}</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-bold text-muted-foreground">{CANDIDATE_STATUS_LABELS[candidate.status]}</span>
         {candidate.replacesCandidateId ? (
-          <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">Peringkat berikutnya</span>
+          <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-2xs font-bold text-brand-primary-deep">Peringkat berikutnya</span>
         ) : null}
         {candidate.labels.length ? (
-          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning-ink">Sebagian {labelText(candidate.labels)}</span>
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-bold text-warning-ink">Sebagian {labelText(candidate.labels)}</span>
         ) : null}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
@@ -106,7 +106,7 @@ function CandidateCard({
         </p>
       ) : null}
       {candidate.declineReason ? <p className="mt-2 text-xs text-muted-foreground">Alasan: {candidate.declineReason}</p> : null}
-      {candidate.decidedByName ? <p className="mt-1 text-[11px] text-muted-foreground">Diputuskan oleh {candidate.decidedByName}</p> : null}
+      {candidate.decidedByName ? <p className="mt-1 text-2xs text-muted-foreground">Diputuskan oleh {candidate.decidedByName}</p> : null}
       {decidable || canRefill ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {decidable && candidate.status !== "AWARDED" && !candidate.replaced ? (
@@ -393,7 +393,7 @@ export function AdminRewardsPage() {
           {source ? <SourceBanner source={source} /> : null}
 
           {(canManage && source && !source.manualImportOpen) || (canImport && source?.manualImportOpen) ? (
-            <section className="mb-6 grid gap-4 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:grid-cols-2">
+            <section className="mb-6 grid gap-4 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)] [&>*]:min-w-0 sm:grid-cols-2">
               <label className="text-xs font-semibold text-muted-foreground">Bulan
                 <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className={field} />
               </label>
@@ -409,7 +409,7 @@ export function AdminRewardsPage() {
                 <div className="space-y-3 sm:col-span-2">
                   <p className="text-xs text-muted-foreground">
                     Impor snapshot manual (sementara, sampai aplikasi Al-Qur&apos;an tersambung). Kolom CSV:{" "}
-                    <code className="rounded bg-muted px-1">{MANUAL_CSV_TEMPLATE.split("\n")[0]}</code>. Cakupan diisi YAYASAN atau nama/kode unit; label kosong, otomatis, atau mandiri.
+                    <code className="rounded bg-muted px-1 break-all">{MANUAL_CSV_TEMPLATE.split("\n")[0]}</code>. Cakupan diisi YAYASAN atau nama/kode unit; label kosong, otomatis, atau mandiri.
                     Kepala HCM yang memutuskan; pengimpor tidak dapat memutuskan.
                   </p>
                   <label className="block text-xs font-semibold text-muted-foreground">Catatan sumber data

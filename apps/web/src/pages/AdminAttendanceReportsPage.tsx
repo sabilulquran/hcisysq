@@ -444,12 +444,12 @@ export function AdminAttendanceReportsPage() {
                         <td className="p-3">{item.unitName ?? "—"}</td>
                         <td className="p-3 tabular-nums">{shortDate(item.workDate)}</td>
                         <td className="p-3 tabular-nums">{item.scheduledStartAt ? `${time(item.scheduledStartAt)}–${time(item.scheduledEndAt)}` : "—"}</td>
-                        <td className="p-3 tabular-nums">{item.firstCheckInAt || item.lastCheckOutAt ? `${time(item.firstCheckInAt)} → ${time(item.lastCheckOutAt)}` : "—"}{item.blocks ? <p className="text-[11px] text-muted-foreground">{blockSummaryText(item.blocks)}</p> : null}</td>
+                        <td className="p-3 tabular-nums">{item.firstCheckInAt || item.lastCheckOutAt ? `${time(item.firstCheckInAt)} → ${time(item.lastCheckOutAt)}` : "—"}{item.blocks ? <p className="text-2xs text-muted-foreground">{blockSummaryText(item.blocks)}</p> : null}</td>
                         <td className="p-3">
                           <p className="font-semibold">{calculationRowStatusLabel(item.status)}</p>
                           <div className="mt-1 flex flex-wrap gap-1">
-                            {item.provisional ? <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">Hari berjalan</span> : null}
-                            {item.changedSinceCalculated ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-semibold text-warning-ink">Berubah sejak ditarik</span> : null}
+                            {item.provisional ? <span className="rounded-full bg-surface px-2 py-0.5 text-2xs font-semibold text-muted-foreground">Hari berjalan</span> : null}
+                            {item.changedSinceCalculated ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-semibold text-warning-ink">Berubah sejak ditarik</span> : null}
                           </div>
                         </td>
                         <td className="p-3 tabular-nums">{minutes(item.lateMinutes)}</td>

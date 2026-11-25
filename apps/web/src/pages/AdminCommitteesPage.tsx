@@ -83,7 +83,7 @@ function StatusBadge({ status }: { status: CommitteeStatus }) {
   const tone = status === "ACTIVE" ? "bg-brand-primary-pale text-brand-primary-deep"
     : status === "DRAFT" ? "bg-warning-soft text-warning-ink"
       : status === "CANCELLED" ? "bg-danger-soft text-danger-ink" : "bg-surface text-muted-foreground";
-  return <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", tone)}>{STATUS_LABELS[status]}</span>;
+  return <span className={cn("rounded-full px-2 py-0.5 text-2xs font-bold", tone)}>{STATUS_LABELS[status]}</span>;
 }
 
 // ------------------------------------------------------------- committee form
@@ -538,7 +538,7 @@ export function CommitteesTab({ canManage }: { canManage: boolean }) {
                     <StatusBadge status={item.status} />
                   </span>
                   <span className="text-xs text-muted-foreground">{formatPeriod(item.startOn, item.endOn)} · {CATEGORY_LABELS[item.category]}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     Ketua: {item.chairName ?? "belum ada"} · {item.activeMemberCount} anggota{item.decreeNumber ? ` · SK ${item.decreeNumber}` : ""}
                   </span>
                 </button>
@@ -785,7 +785,7 @@ export function ParticipationTab() {
                   <li key={item.memberId} className="px-3 py-2.5 text-sm">
                     <p className="flex flex-wrap items-center gap-2 font-semibold text-brand-heading">{item.name} <StatusBadge status={item.status} /></p>
                     <p className="text-xs text-muted-foreground">{roleLabel(item.role, item.section)} · {formatPeriod(item.startOn, item.endOn)}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       Bergabung {formatDate(item.joinedOn)}{item.leftOn ? ` · berakhir ${formatDate(item.leftOn)}` : ""}
                       {item.decreeNumber ? ` · SK ${item.decreeNumber}` : ""}
                     </p>

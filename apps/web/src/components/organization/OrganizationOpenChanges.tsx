@@ -143,7 +143,7 @@ export function OrganizationOpenChangeList({
               <li key={change.id} className="flex flex-col gap-3 px-5 py-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-brand-heading">{change.name}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                  <p className="mt-0.5 text-2xs leading-4 text-muted-foreground">
                     Berlaku mulai {openChangeDate(change.effectiveOn)} · {statusLabel(change)} · Disusun oleh {change.createdByName ?? "—"} · Terakhir diubah {openChangeTime(change.updatedAt ?? change.createdAt)}
                   </p>
                 </div>
@@ -223,7 +223,7 @@ export function OrganizationDiscardDialog({
               placeholder="Contoh: sudah digantikan struktur yang terbit 27 Agustus 2026"
               className="w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm text-brand-heading outline-none focus:border-brand-primary"
             />
-            <span className="mt-1 block text-[11px] text-muted-foreground">Wajib diisi. Tersimpan di catatan audit.</span>
+            <span className="mt-1 block text-2xs text-muted-foreground">Wajib diisi. Tersimpan di catatan audit.</span>
           </label>
           <div className="flex justify-end gap-2 border-t border-border/70 pt-4">
             <button type="button" disabled={saving} onClick={onCancel} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-60">Batal</button>

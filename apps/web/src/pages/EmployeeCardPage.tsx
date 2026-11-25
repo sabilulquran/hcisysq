@@ -71,7 +71,7 @@ export function EmployeeCardPage() {
   return (
     <AppShell user={user} activeItem="Kartu Pegawai">
       <section className="mx-auto max-w-md">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep">Saya</p>
+        <p className="sq-eyebrow text-brand-primary-deep">Saya</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading">Kartu Pegawai</h1>
 
         {loading && !data ? (

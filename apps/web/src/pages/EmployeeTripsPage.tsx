@@ -187,7 +187,7 @@ export function EmployeeTripsPage() {
   return (
     <AppShell user={user} activeItem="Perjalanan Dinas">
       <section className="mx-auto max-w-5xl">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-primary-deep print:hidden">Layanan Pegawai</p>
+        <p className="sq-eyebrow text-brand-primary-deep print:hidden">Layanan Pegawai</p>
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl print:hidden">Perjalanan Dinas</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground print:hidden">
           Ajukan penugasan ke luar tempat kerja. Atasan langsung lalu approver unit menyetujui, kemudian Human Capital
@@ -308,7 +308,7 @@ export function EmployeeTripsPage() {
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{trip.destination}</span>
                         <span className="block text-xs text-muted-foreground">{formatTripRange(trip.startOn, trip.endOn)}</span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        <span className="mt-1 block text-2xs font-semibold text-muted-foreground">
                           {tripStatusLabel(trip.status)}
                           {trip.currentApproverName ? ` · menunggu ${trip.currentApproverName}` : ""}
                           {trip.documentNumber ? ` · ${trip.documentNumber}` : ""}

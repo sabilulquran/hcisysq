@@ -207,14 +207,14 @@ export function AdminNavigation({ active, session, compact = false }: { active: 
     <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Administrator HCIS">
       {permittedGroups(session).map((group, groupIndex) => (
         <div key={group.label ?? `root-${groupIndex}`}>
-          {group.label ? <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p> : null}
+          {group.label ? <p className="sq-eyebrow mb-1.5 px-3 text-muted-foreground/80">{group.label}</p> : null}
           <div className="space-y-1">
             {group.items.map((item) => {
               const Icon = item.icon;
               const selected = item.key === active;
               return (
                 <a key={item.key} href={item.href} aria-current={selected ? "page" : undefined}
-                  className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
                   <Icon className={cn("h-[18px] w-[18px] shrink-0", group.category ? categoryIconClass[group.category] : null)} aria-hidden="true" />{item.label}
                 </a>
@@ -306,7 +306,7 @@ export function AdminShell({ children, active, title, description, previewMode }
       previewMode={previewMode}
     >
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">{title}</h1>
         {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </header>
       {active === "attendance" ? <AdminDeviceAccessNote session={session} /> : null}

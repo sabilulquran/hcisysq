@@ -76,11 +76,11 @@ function ServiceTile({
   const available = serverLabel === null && service.stage === "available";
   const badgeClass = serverLabel === null
     ? (available
-      ? "rounded-full bg-success-soft px-2.5 py-1 text-right text-[10px] font-bold text-success-ink"
-      : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground")
+      ? "rounded-full bg-success-soft px-2.5 py-1 text-right text-2xs font-bold text-success-ink"
+      : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-2xs font-bold leading-4 text-muted-foreground")
     : (status?.state === "LOCKED"
-      ? "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground"
-      : "max-w-24 rounded-full bg-warning-soft px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-warning-ink");
+      ? "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-2xs font-bold leading-4 text-muted-foreground"
+      : "max-w-24 rounded-full bg-warning-soft px-2.5 py-1 text-right text-2xs font-bold leading-4 text-warning-ink");
 
   return (
     <a
@@ -94,12 +94,12 @@ function ServiceTile({
         <span className="block text-sm font-bold text-brand-heading">{service.label}</span>
         <span className="mt-1 block text-xs leading-5 text-muted-foreground">{service.description}</span>
         {status ? (
-          <span className="mt-1.5 block text-[10px] font-semibold leading-4 text-muted-foreground">
+          <span className="mt-1.5 block text-2xs font-semibold leading-4 text-muted-foreground">
             {status.message}
           </span>
         ) : null}
         {service.details?.length ? (
-          <span className="mt-1.5 block text-[10px] font-semibold leading-4 text-brand-primary-deep">
+          <span className="mt-1.5 block text-2xs font-semibold leading-4 text-brand-primary-deep">
             {service.details.length} capability direncanakan
           </span>
         ) : null}
@@ -148,7 +148,7 @@ export function EmployeeServicesPage() {
     <AppShell user={user} activeItem="Lainnya">
       <div className="mx-auto max-w-5xl">
         <header>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">Layanan pegawai</p>
+          <p className="sq-eyebrow text-brand-primary-deep">Layanan pegawai</p>
           <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Semua layanan HCIS</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Layanan disusun berdasarkan kebutuhan Anda. Layanan yang belum dibuka tetap ditampilkan beserta keterangan singkat mengapa belum dapat dipakai.

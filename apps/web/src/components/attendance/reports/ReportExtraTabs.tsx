@@ -1,7 +1,8 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Square, X } from "lucide-react";
+import { AlertTriangle, Loader2, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { REPORT_TABLE_CSS, ReportTableView } from "@/components/attendance/reports/ReportTableView";
+import { PaginationBar } from "@/components/PaginationBar";
 import {
   calculationProgress,
   calculationRunLabel,
@@ -78,13 +79,7 @@ export function ExceptionsTab({ scope, version }: { scope: AttendanceCalculation
           </tbody>
         </table>
       </div>
-      <footer className="flex items-center justify-between gap-3 border-t p-3 text-xs text-muted-foreground">
-        <span>{data.total} baris · halaman {data.page} dari {data.pageCount}</span>
-        <div className="flex gap-2">
-          <button type="button" aria-label="Halaman sebelumnya" disabled={data.page <= 1} onClick={() => setPage(data.page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-          <button type="button" aria-label="Halaman berikutnya" disabled={data.page >= data.pageCount} onClick={() => setPage(data.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-        </div>
-      </footer>
+      <PaginationBar page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
     </div>
   );
 }

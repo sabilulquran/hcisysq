@@ -48,8 +48,11 @@ tanpa pemberitahuan (contoh: SPMB "Riwayat PPDB lama" hanya menampilkan 500 dari
 
 1. **ENG-LIST-001-I — Komponen bersama.** Daftar berhalaman memakai satu komponen bersama
    (`apps/web/src/components/PaginationBar.tsx`, diperluas untuk mode server-side) yang menampilkan
-   "Menampilkan 26–50 dari 312", tombol sebelum/berikutnya, dan pilihan ukuran halaman 10/25/50/100.
-   Pager inline baru tidak diizinkan.
+   "Menampilkan 26–50 dari 312", tombol halaman pertama/sebelumnya/berikutnya/terakhir, dan pilihan
+   ukuran halaman 10/25/50/100. Pager inline baru tidak diizinkan; sejak 25 November 2026 tidak ada
+   lagi pager inline yang tersisa di `apps/web`. Pager menampilkan halaman di luar jangkauan sebagai
+   halaman terakhir yang masih ada, tetapi **tidak** memindahkan daftar sendiri — memulihkan halaman
+   setelah baris terakhir hilang adalah tugas pemanggil (lihat komentar di `PaginationBar.tsx`).
 2. **ENG-LIST-001-J — State di URL.** `page`, `pageSize`, filter, dan pencarian disimpan di query string sehingga
    bisa dibagikan, di-refresh, dan tombol back bekerja. Mengubah filter atau pencarian mengembalikan ke halaman 1.
 3. **ENG-LIST-001-K — Pemilihan record (dropdown).** `<select>` biasa hanya untuk data terbatas dengan ≤ 50 opsi.

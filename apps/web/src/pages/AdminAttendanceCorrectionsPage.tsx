@@ -1,9 +1,10 @@
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Plus, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { PaginationBar } from "@/components/PaginationBar";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { getAttendanceTransactions, transactionSourceLabel, type AttendanceTransaction } from "@/lib/attendanceCalculation";
 import {
@@ -193,13 +194,8 @@ export function AdminAttendanceCorrectionsPage() {
             </tbody>
           </table>
           {data ? (
-            <footer className="flex items-center justify-between gap-3 border-t p-3 text-xs text-muted-foreground">
-              <span>{loading ? "Memuat…" : `${data.total} baris · halaman ${data.page} dari ${data.totalPages}`}</span>
-              <div className="flex gap-2">
-                <button type="button" aria-label="Halaman sebelumnya" disabled={data.page <= 1} onClick={() => setPage(data.page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-                <button type="button" aria-label="Halaman berikutnya" disabled={data.page >= data.totalPages} onClick={() => setPage(data.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-              </div>
-            </footer>
+            <PaginationBar page={data.page} pageSize={data.pageSize} total={data.total}
+              loading={loading} onPageChange={setPage} />
           ) : null}
         </div>
       </section>

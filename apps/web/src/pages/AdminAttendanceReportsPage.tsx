@@ -1,10 +1,11 @@
-import { AlertTriangle, Calculator, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, Loader2 } from "lucide-react";
+import { AlertTriangle, Calculator, CheckCircle2, ChevronDown, Download, FileText, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { AttendanceDayPanel } from "@/components/attendance/AttendanceDayPanel";
 import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
 import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { PaginationBar } from "@/components/PaginationBar";
 import { CalculationDialog, ExceptionsTab, OvertimeTab, SummaryTab } from "@/components/attendance/reports/ReportExtraTabs";
 import { UnscheduledTab } from "@/components/attendance/reports/UnscheduledTab";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
@@ -67,18 +68,6 @@ function minutes(value: number | null) {
 /** One transaction row; a punch can appear twice (check-in and check-out boundary). */
 function punchRowKey(item: AttendanceTransaction) {
   return `${item.source}:${item.id}:${item.boundary ?? ""}`;
-}
-
-function Pager({ page, totalPages, total, loading, onPage }: { page: number; totalPages: number; total: number; loading: boolean; onPage: (page: number) => void }) {
-  return (
-    <footer className="flex items-center justify-between gap-3 border-t p-3 text-xs text-muted-foreground">
-      <span>{loading ? "Memuat…" : `${total} baris · halaman ${page} dari ${totalPages}`}</span>
-      <div className="flex gap-2">
-        <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-        <button type="button" aria-label="Halaman berikutnya" disabled={page >= totalPages} onClick={() => onPage(page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-      </div>
-    </footer>
-  );
 }
 
 /**
@@ -386,7 +375,10 @@ export function AdminAttendanceReportsPage() {
                 ))}
                 {transactions && transactions.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada absen pada lingkup ini.</li> : null}
               </ul>
-              {transactions ? <Pager page={transactions.page} totalPages={transactions.totalPages} total={transactions.total} loading={loading} onPage={setTransactionPage} /> : null}
+              {transactions ? (
+                <PaginationBar page={transactions.page} pageSize={transactions.pageSize} total={transactions.total}
+                  loading={loading} onPageChange={setTransactionPage} />
+              ) : null}
               {punchKey && transactions ? (
                 <DetailDialog
                   title={selectedPunch ? `${selectedPunch.employeeName} · ${time(selectedPunch.occurredAt)}` : "Detail absen"}
@@ -473,7 +465,10 @@ export function AdminAttendanceReportsPage() {
                 ))}
                 {rows && rows.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada baris yang cocok dengan filter.</li> : null}
               </ul>
-              {rows ? <Pager page={rows.page} totalPages={rows.totalPages} total={rows.total} loading={loading} onPage={setDetailPage} /> : null}
+              {rows ? (
+                <PaginationBar page={rows.page} pageSize={rows.pageSize} total={rows.total}
+                  loading={loading} onPageChange={setDetailPage} />
+              ) : null}
             </div>
           ) : tab === "exceptions" ? (
             <div role="tabpanel"><ExceptionsTab scope={scope} version={version} /></div>

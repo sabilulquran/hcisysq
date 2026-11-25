@@ -1,6 +1,7 @@
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
 import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
@@ -88,7 +89,7 @@ export function AdminAttendanceOvertimePage() {
   const [canPickEmployee, setCanPickEmployee] = useState(false);
   const [status, setStatus] = useState<OvertimeStatusFilter>("submitted");
   const [page, setPage] = useState(1);
-  const [paging, setPaging] = useState({ total: 0, pageCount: 1 });
+  const [paging, setPaging] = useState({ pageSize: 25, total: 0 });
   const [form, setForm] = useState({ workDate: "", requestedMinutes: "60", note: "" });
   const [approvedMinutes, setApprovedMinutes] = useState<Record<string, string>>({});
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
@@ -102,7 +103,7 @@ export function AdminAttendanceOvertimePage() {
 
   const apply = (result: Awaited<ReturnType<typeof listAttendanceOvertime>>) => {
     setItems(result.items);
-    setPaging({ total: result.total, pageCount: result.pageCount });
+    setPaging({ pageSize: result.pageSize, total: result.total });
     // Deciding the last item of the last page shrinks the list; step back instead of showing nothing.
     if (result.items.length === 0 && result.page > result.pageCount) setPage(result.pageCount);
   };
@@ -184,15 +185,7 @@ export function AdminAttendanceOvertimePage() {
         <div className="hidden overflow-x-auto md:block"><table className="min-w-[1200px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Tanggal</th><th className="p-3">Jenis hari</th><th className="p-3">Dimulai oleh</th><th className="p-3">Fakta scan</th><th className="p-3">Diajukan</th><th className="p-3">Disetujui</th><th className="p-3">Status</th><th className="p-3">Catatan</th><th className="p-3">Keputusan</th></tr></thead>
         <tbody className="divide-y">{items.map((item) => <tr key={item.id}><td className="p-3"><p className="font-semibold">{item.employeeName ?? "Pegawai"}</p><p className="text-xs text-muted-foreground">{item.employeeNumber ?? ""} {item.unitName ? "· "+item.unitName : ""}</p></td><td className="p-3">{item.workDate}<RowNotes item={item} /></td><td className="p-3">{dayTypeLabel(item.dayType)}</td><td className="p-3">{initiatorLabel(item.initiatedBy)}</td><td className="p-3 text-xs">{scanFact(item.scanOutsideScheduleMinutes)}</td><td className="p-3">{item.requestedMinutes} mnt</td><td className="p-3">{item.approvedMinutes == null ? "—" : item.approvedMinutes+" mnt"}</td><td className="p-3">{requestStatusLabel(item.status)}{item.awaiting ? <span className="block text-xs text-muted-foreground">{awaitingLabel(item.awaiting, item.supervisorName)}</span> : null}</td><td className="p-3">{item.decisionNote ?? item.note ?? "—"}</td><td className="p-3">{item.status === "submitted" && item.decidedByHc ? <div className="grid min-w-[300px] grid-cols-[90px_1fr_auto_auto] gap-2"><input className="h-9 rounded-lg border px-2" type="number" min="0" max={item.requestedMinutes} value={approvedMinutes[item.id] ?? String(item.requestedMinutes)} onChange={(e) => setApprovedMinutes({ ...approvedMinutes, [item.id]: e.target.value })}/><input className="h-9 rounded-lg border px-2" placeholder="Catatan" value={decisionNotes[item.id] ?? ""} onChange={(e) => setDecisionNotes({ ...decisionNotes, [item.id]: e.target.value })}/><button disabled={busy !== null} className="rounded-lg bg-brand-primary px-3 text-xs font-bold text-brand-foreground" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "approve", approvedMinutes: Number(approvedMinutes[item.id] ?? item.requestedMinutes), note: decisionNotes[item.id] || null }), "Lembur disetujui.")}>Setujui</button><button disabled={busy !== null} className="rounded-lg border px-3 text-xs font-bold" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "reject", note: decisionNotes[item.id] || null }), "Lembur ditolak.")}>Tolak</button></div> : <HcOvertimeActions item={item} busy={busy !== null} onRun={run} />}</td></tr>)}
         {items.length === 0 ? <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Tidak ada pengajuan pada filter ini.</td></tr> : null}</tbody></table></div>
-        {paging.pageCount > 1 ? (
-          <footer className="flex items-center justify-between border-t p-3 text-xs text-muted-foreground">
-            <span>{paging.total} pengajuan · halaman {page} dari {paging.pageCount}</span>
-            <div className="flex gap-2">
-              <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" aria-label="Halaman berikutnya" disabled={page >= paging.pageCount} onClick={() => setPage(page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-            </div>
-          </footer>
-        ) : null}
+        <PaginationBar page={page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} />
       </section>
     </AttendanceWorkforceShell>
   );

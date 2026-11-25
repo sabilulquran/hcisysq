@@ -27,7 +27,7 @@ Yang ditemukan dan diperbaiki:
 | 4 | Ukuran lepas di bawah skala | `text-[11px]` 273, `text-[10px]` 80, `text-[9px]` 1 | metadata, lencana, tab HP |
 | 5 | Teks di bawah 11px | 81 titik | tab bawah HP, lencana hitung |
 | 6 | Hierarki dibawa ketebalan huruf | `font-bold` 1.384 + `font-extrabold` 17 lawan `font-medium` 58 | judul, label, penekanan |
-| 7 | Pager inline, bukan komponen bersama | 9 pager di 6 berkas | melanggar ENG-LIST-001-I |
+| 7 | Pager inline, bukan komponen bersama | 15 pager di 11 berkas | melanggar ENG-LIST-001-I |
 | 8 | Label menu terpotong | rail 248px | "Sertifikat Akan Ber…", "Dokumen Kepegaw…" |
 | 9 | Slot logo 216px ≠ rail 248px | 1 | kepala halaman tidak segaris dengan rail |
 | 10 | Meluber mendatar di 375px | 2 halaman | parity ADMS, Penghargaan |
@@ -67,15 +67,12 @@ Yang ditemukan dan diperbaiki:
 
 ### 2.3 Pagination (ENG-LIST-001)
 
-`PaginationBar` dipakai ulang di seluruh 9 pager inline yang tersisa — Data Pegawai, Lembur Tim,
+`PaginationBar` dipakai ulang di 9 pager inline di luar laporan kehadiran — Data Pegawai, Lembur Tim,
 Aturan Lembur (daftar dan riwayat), Planner Jadwal (kalender dan riwayat), Unscheduled (pegawai dan
 PIN), dan Struktur Organisasi.
 
-Lima berkas laporan kehadiran masih memakai pager sendiri dan **belum** dipindahkan, karena
-tidak ada yang berubah pada layar itu di perubahan ini: `AdminAttendanceReportsPage.tsx` (dua
-pemakaian), `ReportExtraTabs.tsx`, `AdminAttendanceActionQueuePage.tsx`,
-`AdminAttendanceCorrectionsPage.tsx`, dan `AdminAttendanceOvertimePage.tsx`. ENG-LIST-001-I belum
-tuntas untuk kelimanya.
+Enam pager terakhir di lima berkas laporan kehadiran menyusul (lihat §2.4), sehingga
+ENG-LIST-001-I kini berlaku untuk seluruh `apps/web`.
 
 Pager bersamanya diperbaiki:
 
@@ -101,6 +98,33 @@ diminta" ikut hilang, dan backend yang mengembalikan nomor halaman yang tidak ia
 menjadi gelung permintaan (terukur ±28 permintaan/detik pada Data Pegawai). Memindahkan daftar
 tetap menjadi urusan pemanggil, yang tahu kapan barisnya sendiri hilang.
 
+### 2.4 Enam pager laporan kehadiran
+
+Enam pager inline terakhir ikut pindah ke `PaginationBar`, jadi tidak ada lagi pager inline di
+`apps/web`:
+
+| Layar | Berkas | Sumber data |
+|---|---|---|
+| Laporan Kehadiran · tab Absen | `AdminAttendanceReportsPage.tsx` | `transactions.pageSize/total` |
+| Laporan Kehadiran · tab Harian | `AdminAttendanceReportsPage.tsx` | `rows.pageSize/total` |
+| Laporan Kehadiran · tab Pengecualian | `ReportExtraTabs.tsx` | `data.pageSize/total` |
+| Antrean Tindakan | `AdminAttendanceActionQueuePage.tsx` | `data.pageSize/total` |
+| Koreksi Kehadiran | `AdminAttendanceCorrectionsPage.tsx` | `data.pageSize/total` |
+| Lembur | `AdminAttendanceOvertimePage.tsx` | `paging.pageSize/total` |
+
+Ketiganya yang sebelumnya menulis `pageCount` sendiri kini memakai `total` dan `pageSize` dari
+jawaban API, bukan hitungan di layar. Halaman Lembur tetap memegang pemulihan halaman di luar
+jangkauan sendiri (`apply()`: keputusan atas baris terakhir memundurkan halaman), sesuai §2.3.
+
+Dua layar sebelumnya menyembunyikan pager ketika hanya ada satu halaman (`pageCount > 1`). Pager
+sekarang selalu tampil, karena jumlah baris itu sendiri informasi — dan "Tidak ada data" adalah
+keadaan kosong yang diwajibkan ENG-LIST-001-M.
+
+`PaginationBar` mendapat satu prop baru, `loading`, yang menggantikan ringkasan dengan "Memuat…".
+Dua pager lama pada Laporan Kehadiran dan Koreksi Kehadiran punya perilaku itu; tanpa prop ini
+kedua layar kehilangan satu-satunya penanda muat yang mereka punya. ENG-LIST-001-M menyebut
+loading sebagai state wajib, jadi tempatnya memang di pager bersama.
+
 ## 3. Bukti uji
 
 Semua dijalankan di worktree ini pada 25 November 2026.
@@ -109,7 +133,7 @@ Semua dijalankan di worktree ini pada 25 November 2026.
 |---|---|
 | `npm run typecheck:web` | lulus |
 | `npm run lint:web` | lulus (0 error, 64 warning `react-refresh/only-export-components` yang sudah ada polanya) |
-| `npm run test:web` | **774 test lulus**, 104 berkas (9 test pager baru) |
+| `npm run test:web` | **775 test lulus**, 104 berkas (10 test pager baru) |
 | `npm run build:web` | lulus |
 | `npm run typecheck:api` / `lint:api` / `build:api` | lulus |
 
@@ -122,6 +146,29 @@ API dan web lokal dengan PostgreSQL sendiri, basis data `hcis_ui` berisi data si
 pegawai (58 aktif, 6 tidak aktif, 4 keluar), 34 pengajuan cuti, 45 slip gaji, 3 pengumuman, 1 mesin
 fingerprint, dan satu periode payroll. Empat akun uji: Human Capital (peran lengkap), pegawai biasa,
 kepala unit, dan Organ Yayasan. Tidak ada data production yang dipakai.
+
+Untuk §2.4 basis data yang sama ditambah data kehadiran sintetis: 420 absen (14 hari × 30 pegawai),
+420 rekap harian, 90 klarifikasi, dan 60 pengajuan lembur, lalu Kalkulasi dijalankan dari layar
+sehingga tab Harian punya 1.450 baris.
+
+### Enam pager laporan kehadiran, diukur di layar
+
+Setiap pager dibuka dengan data di atas, lalu ditekan **halaman terakhir** dan dikembalikan. Angka
+berikut dibaca dari ringkasan `aria-live` pager itu sendiri.
+
+| Layar | Halaman pertama | Halaman terakhir |
+|---|---|---|
+| Laporan Kehadiran · Absen | Menampilkan 1–50 dari 420 | Menampilkan 401–420 dari 420 |
+| Laporan Kehadiran · Harian | Menampilkan 1–50 dari 1450 | Menampilkan 1401–1450 dari 1450 |
+| Laporan Kehadiran · Pengecualian | Menampilkan 1–25 dari 103 | Menampilkan 101–103 dari 103 |
+| Antrean Tindakan | Menampilkan 1–25 dari 90 | Menampilkan 76–90 dari 90 |
+| Koreksi Kehadiran | Menampilkan 1–50 dari 90 | Menampilkan 51–90 dari 90 |
+| Lembur | Menampilkan 1–25 dari 60 | Menampilkan 51–60 dari 60 |
+
+- **Filter mengatur ulang ke halaman 1** (ENG-LIST-001-J): pada Koreksi Kehadiran, dari
+  "Menampilkan 51–90 dari 90" filter asal diubah dan hasilnya "Menampilkan 1–50 dari 90".
+- **375px** (ENG-LIST-001-M): Koreksi Kehadiran `scrollWidth` 376 pada viewport 376 — tidak meluber
+  mendatar — dan kedua tombol halaman terukur 40px tinggi serta berada di dalam layar.
 
 ### Alur yang diuji ulang setelah perubahan tata letak
 

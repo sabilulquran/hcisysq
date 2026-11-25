@@ -1,8 +1,9 @@
-import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { AttendanceDayPanel } from "@/components/attendance/AttendanceDayPanel";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { PaginationBar } from "@/components/PaginationBar";
 import { listEmployees } from "@/lib/adminEmployees";
 import { ACTION_KIND_LABELS, getActionQueue, type ActionKind, type ActionQueue, type ActionQueueItem } from "@/lib/attendanceActionQueue";
 import { clarificationKindLabel, geofenceLabel } from "@/lib/attendanceLabels";
@@ -95,14 +96,8 @@ export function AdminAttendanceActionQueuePage() {
           {data && data.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada yang perlu ditindaklanjuti.</li> : null}
           {!data && !error ? <li className="p-8 text-center text-sm text-muted-foreground">Memuat…</li> : null}
         </ul>
-        {data && data.pageCount > 1 ? (
-          <footer className="flex items-center justify-between border-t p-3 text-xs text-muted-foreground">
-            <span>{data.total} baris · halaman {data.page} dari {data.pageCount}</span>
-            <div className="flex gap-2">
-              <button type="button" aria-label="Halaman sebelumnya" disabled={data.page <= 1} onClick={() => setPage(data.page - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" aria-label="Halaman berikutnya" disabled={data.page >= data.pageCount} onClick={() => setPage(data.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-            </div>
-          </footer>
+        {data ? (
+          <PaginationBar page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         ) : null}
       </section>
       {open ? (

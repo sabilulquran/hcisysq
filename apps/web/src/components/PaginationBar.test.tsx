@@ -21,6 +21,18 @@ describe("ENG-LIST-001 pagination", () => {
     expect(view).toMatchObject({ totalPages: 2, safePage: 2, outOfRange: true, start: 26, end: 50 });
   });
 
+  it("shows an out-of-range page as the last page that exists, and moves nothing itself", () => {
+    // The caller owns its own page. The bar renders the clamped window and leaves the
+    // controls pointing at real pages; it never calls onPageChange on its own.
+    let moved = 0;
+    const html = renderToStaticMarkup(
+      <PaginationBar page={7} pageSize={25} total={50} onPageChange={() => { moved += 1; }} />,
+    );
+    expect(html).toContain("Menampilkan 26–50 dari 50");
+    expect(html).toContain('aria-label="Halaman terakhir" disabled=""');
+    expect(moved).toBe(0);
+  });
+
   it("keeps page 1 when the result set still fits", () => {
     expect(paginationView(1, 100, 68)).toMatchObject({ totalPages: 1, outOfRange: false, end: 68 });
   });

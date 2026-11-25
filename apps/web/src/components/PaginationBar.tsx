@@ -1,5 +1,4 @@
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect } from "react";
 
 const controlClass =
   "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border bg-surface-raised px-2.5 font-medium text-brand-heading transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -15,7 +14,7 @@ export function paginationView(page: number, pageSize: number, total: number) {
   return {
     totalPages,
     safePage,
-    /** The page prop points outside the result set, so the list should move. */
+    /** The page prop points outside the result set; the bar shows the last page that exists. */
     outOfRange: page !== safePage,
     start: total === 0 ? 0 : (safePage - 1) * size + 1,
     end: Math.min(total, safePage * size),
@@ -29,8 +28,13 @@ export function paginationView(page: number, pageSize: number, total: number) {
  *
  * ENG-LIST-001-M: the bar stays reachable at 375px (it wraps, and every control is 40px tall),
  * and a page that has fallen out of range — the last row of the last page was deleted, or a
- * filter shrank the result — snaps back to the last page that exists instead of showing an
- * empty table under a page number that no longer means anything.
+ * filter shrank the result — is shown as the last page that does exist, with the controls
+ * pointing at real pages, instead of a page number that no longer means anything.
+ *
+ * The bar never moves the list by itself. Most callers unmount it while their request is in
+ * flight, so an effect here could not tell "already asked" from "asked again after a remount",
+ * and a backend that echoed a page it had not honoured would turn that into a request loop.
+ * Moving the list stays with the caller, which knows when its own rows went away.
  */
 export function PaginationBar({
   page,
@@ -45,12 +49,8 @@ export function PaginationBar({
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }) {
-  const { totalPages, safePage, outOfRange, start, end, atFirst, atLast } =
+  const { totalPages, safePage, start, end, atFirst, atLast } =
     paginationView(page, pageSize, total);
-
-  useEffect(() => {
-    if (outOfRange) onPageChange(safePage);
-  }, [outOfRange, safePage, onPageChange]);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">

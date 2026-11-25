@@ -49,8 +49,11 @@ Yang ditemukan dan diperbaiki:
   tanpa tracking). Warna tetap ditentukan di tempat pemakaian.
 - 296 ukuran lepas turun ke skala. Judul halaman `sm:text-[1.75rem]` dan display auth
   `sm:text-[2.15rem]` ikut ke `sm:text-3xl` / `sm:text-4xl`.
-- Dokumen cetak (slip gaji, SK, kartu) **tidak disentuh**: ukuran `pt` dan gaya kertasnya memang
-  tipografi cetak, bukan antarmuka.
+- Ukuran dan gaya kertas dokumen cetak (slip gaji, SK, kartu) **tidak disentuh**: ukuran `pt` dan
+  aturan `@media print`-nya memang tipografi cetak, bukan antarmuka. Satu hal ikut berubah di sana:
+  pemetaan bobot berlaku global, jadi `font-bold` pada slip gaji, formulir PPh21 A1, dan SK kini
+  640, bukan 700. Perbedaannya halus di layar dan belum diperiksa di atas kertas; bila terlalu
+  ringan saat dicetak, `.sq-paper` dapat mengunci 700 sendiri.
 
 ### 2.2 Tata letak
 
@@ -66,7 +69,13 @@ Yang ditemukan dan diperbaiki:
 
 `PaginationBar` dipakai ulang di seluruh 9 pager inline yang tersisa — Data Pegawai, Lembur Tim,
 Aturan Lembur (daftar dan riwayat), Planner Jadwal (kalender dan riwayat), Unscheduled (pegawai dan
-PIN), dan Struktur Organisasi. Tidak ada lagi pager inline di `apps/web`.
+PIN), dan Struktur Organisasi.
+
+Lima berkas laporan kehadiran masih memakai pager sendiri dan **belum** dipindahkan, karena
+tidak ada yang berubah pada layar itu di perubahan ini: `AdminAttendanceReportsPage.tsx` (dua
+pemakaian), `ReportExtraTabs.tsx`, `AdminAttendanceActionQueuePage.tsx`,
+`AdminAttendanceCorrectionsPage.tsx`, dan `AdminAttendanceOvertimePage.tsx`. ENG-LIST-001-I belum
+tuntas untuk kelimanya.
 
 Pager bersamanya diperbaiki:
 
@@ -74,14 +83,23 @@ Pager bersamanya diperbaiki:
   menekan "Berikutnya" berulang kali;
 - target sentuh 40px (sebelumnya 32px), supaya tetap terjangkau di 375px — ENG-LIST-001-M;
 - angka memakai `tabular-nums`, ringkasan "Menampilkan 51–68 dari 68" diumumkan `aria-live`;
-- **halaman di luar jangkauan kembali ke halaman terakhir yang ada**. Inilah kasus "baris terakhir
-  pada suatu halaman dihapus": sebelumnya daftar menampilkan tabel kosong di bawah nomor halaman
-  yang sudah tidak berarti.
+- **halaman di luar jangkauan ditampilkan sebagai halaman terakhir yang masih ada**, dengan tombol
+  yang menunjuk ke halaman nyata — kasus "baris terakhir pada suatu halaman dihapus". Lihat
+  catatan di bawah: pager sengaja tidak memindahkan daftar sendiri.
 - Data Pegawai kini punya pilihan jumlah per halaman 10/25/50/100 (ENG-LIST-001-B); sebelumnya
   terkunci di 25.
 
 Aritmetika pager dipisahkan menjadi fungsi murni `paginationView()` dan diuji di
-`apps/web/src/components/PaginationBar.test.tsx` (8 test), termasuk kasus halaman di luar jangkauan.
+`apps/web/src/components/PaginationBar.test.tsx` (9 test), termasuk kasus halaman di luar jangkauan.
+
+Halaman di luar jangkauan — baris terakhir pada halaman terakhir dihapus, atau filter memperkecil
+hasil — **ditampilkan sebagai halaman terakhir yang masih ada**, dengan tombolnya menunjuk ke
+halaman yang nyata. Pager tidak memindahkan daftar sendiri. Rancangan pertama memakai `useEffect`
+yang memanggil `onPageChange` otomatis; itu dibuang setelah diuji di browser: sebagian besar
+pemanggil melepas (unmount) pager selama permintaannya berjalan, sehingga penjaga "sudah pernah
+diminta" ikut hilang, dan backend yang mengembalikan nomor halaman yang tidak ia patuhi berubah
+menjadi gelung permintaan (terukur ±28 permintaan/detik pada Data Pegawai). Memindahkan daftar
+tetap menjadi urusan pemanggil, yang tahu kapan barisnya sendiri hilang.
 
 ## 3. Bukti uji
 
@@ -90,8 +108,8 @@ Semua dijalankan di worktree ini pada 25 November 2026.
 | Gate | Hasil |
 |---|---|
 | `npm run typecheck:web` | lulus |
-| `npm run lint:web` | lulus (0 error, 63 warning yang sudah ada sebelumnya) |
-| `npm run test:web` | **760 test lulus**, 102 berkas (naik dari 752; 8 test pager baru) |
+| `npm run lint:web` | lulus (0 error, 64 warning `react-refresh/only-export-components` yang sudah ada polanya) |
+| `npm run test:web` | **774 test lulus**, 104 berkas (9 test pager baru) |
 | `npm run build:web` | lulus |
 | `npm run typecheck:api` / `lint:api` / `build:api` | lulus |
 

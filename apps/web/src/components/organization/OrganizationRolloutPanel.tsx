@@ -73,7 +73,7 @@ export function OrganizationRolloutPanel({
   const [endParam, openEnd, closeEnd] = useDialogParam("akhiri-mode");
 
   const settings = rollout?.settings ?? [];
-  const adding = canManage && addParam === "baru";
+  const adding = canManage && Boolean(rollout) && addParam === "baru";
   const ending = canManage
     ? settings.find((setting) => setting.id && setting.id === endParam && !setting.effectiveTo) ?? null
     : null;
@@ -89,7 +89,7 @@ export function OrganizationRolloutPanel({
             tetap memakai data atasan lama. Pengajuan yang sudah dikirim tidak ikut berubah.
           </p>
         </div>
-        {canManage ? (
+        {canManage && rollout ? (
           <button
             type="button"
             onClick={() => openAdd("baru")}
@@ -100,7 +100,15 @@ export function OrganizationRolloutPanel({
         ) : null}
       </div>
 
-      {settings.length === 0 ? (
+      {/* A failed read is not an empty list. Stating "nothing is moved" as a fact when the
+          configuration could not be read would contradict the banner above it, and would be the
+          wrong half of the two answers to believe. */}
+      {!rollout ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Pengaturan mode persetujuan tidak dapat dibaca, jadi halaman ini tidak dapat menyatakan
+          unit mana yang sudah dipindahkan. Muat ulang halaman sebelum menulis pengaturan baru.
+        </p>
+      ) : settings.length === 0 ? (
         <p className="mt-3 text-xs text-muted-foreground">
           Belum ada unit yang dipindahkan. Seluruh persetujuan memakai data atasan lama.
         </p>

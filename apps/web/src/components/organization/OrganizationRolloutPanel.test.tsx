@@ -81,6 +81,16 @@ describe("ORG-004 panel mode persetujuan per unit", () => {
     expect(html).toContain("Pindahkan unit");
   });
 
+  it("does not read a failed load as an empty list, and offers no write while it cannot see", () => {
+    // Saying "nothing is moved" here would contradict the banner above the panel and would be the
+    // wrong half of the two answers to believe.
+    const html = render(null);
+    expect(html).not.toContain("Belum ada unit yang dipindahkan");
+    expect(html).toContain("tidak dapat dibaca");
+    expect(html).not.toContain("Pindahkan unit</button>");
+    expect(render(null, { search: "?mode-persetujuan=baru" })).not.toContain('role="dialog"');
+  });
+
   it("names the unit, the request type and the subtree reach of an effective setting", () => {
     const html = render(configured);
     expect(html).toContain("Taman Tahfizh Sabilul Qur&#x27;an");

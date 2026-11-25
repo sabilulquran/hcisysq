@@ -139,6 +139,22 @@ describe("ORG-004 kunci workflow rollout", () => {
     const latest = defining.at(-1)!;
     expect(latest.keys, `migrasi ${latest.name}`).toEqual([...ORGANIZATION_WORKFLOW_KEYS]);
   });
+
+  // D-R7: sejak panel "Mode persetujuan per unit" ada, layar juga menawarkan daftar kunci. Daftar
+  // ketiga yang bisa menyimpang berarti operator ditawari kunci yang database tolak, atau sebuah
+  // workflow yang ada hilang dari pilihan tanpa ada yang menyadarinya.
+  it("menjaga daftar kunci yang ditawarkan layar sama persis dengan daftar kanonik", async () => {
+    const source = await readFile(
+      new URL("../../web/src/lib/organizationLanguage.ts", import.meta.url),
+      "utf8",
+    );
+    const body = /ROLLOUT_WORKFLOW_WORDING: Record<string, string> = \{([\s\S]*?)\n\};/.exec(source)?.[1];
+    expect(body, "ROLLOUT_WORKFLOW_WORDING harus ada di apps/web/src/lib/organizationLanguage.ts")
+      .toBeTruthy();
+    const keys = [...body!.matchAll(/^\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\s*:/gm)]
+      .map((match) => match[1] ?? match[2]!);
+    expect(keys.sort()).toEqual([...ORGANIZATION_WORKFLOW_KEYS].sort());
+  });
 });
 
 describe("ORG-004 rantai yang diminta tiap workflow", () => {

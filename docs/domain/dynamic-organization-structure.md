@@ -125,6 +125,15 @@ The row that decided the mode travels with the result (`rolloutScope`: matched n
 - The earliest end is **today**, not yesterday: a setting in force today has already explained every chain resolved today, so ending it in the past would make the record deny a day it demonstrably governed. A setting that has not started yet is ended the day before it starts, which leaves its period empty.
 - A rejected overlap is now `409 ORGANIZATION_ROLLOUT_PERIOD_OVERLAP` naming the way out, not a bare `23P01` surfacing as `500`.
 
+### The switch is operated from a screen (D-R7 `DRAFT`, 2026-11-25)
+
+D-R4 gave the switch a way back as a route. It had no caller: nothing in the app invoked `PATCH /admin/organization/rollout` or `POST /admin/organization/rollout/:id/end`, and `GET /admin/organization/rollout` did not return each row's `id`, so not even a new client could address the end route. Moving one unit onto the chart, and the rollback the pilot plan names as its way back (OPS-OPEN-001 §7.8), could therefore only be done by writing SQL against production — with no record of who turned it on and no button for the person who owns the rollback.
+
+- `GET /admin/organization/rollout` now carries `id` and `reason` on each effective row. The top-level fields and the existing `settings` fields are unchanged.
+- **Admin → Struktur Organisasi → "Mode persetujuan per unit"** lists the effective rows by unit name, request type, mode and period, offers **Pindahkan unit** (`PATCH`) and **Akhiri** per row (`POST .../end`), and is shown only to `approvals.policy.manage`. Both routes authorize again regardless of what the screen offers.
+- The form states where the choice is made that **a row on a node reaches that node's whole subtree**, so picking no unit moves the entire foundation — the scope is the node, and nothing narrows it afterwards (D-R2).
+- The screen's list of workflow keys is the third place the closed set lives, after the canonical constant and the database constraint. `org004-workflow-keys.test.ts` compares it with the constant, so a workflow added in one place cannot go missing in another.
+
 ### Kursi yang pejabatnya belum layak bukan kursi yang kosong (D-R5 `DRAFT`, 2026-11-23)
 
 `vacancy_policy` menjawab satu pertanyaan: apa yang dilakukan ketika sebuah kursi **tidak ada yang menduduki**. `CLIMB_TO_PARENT` menjawab "naik ke kursi induknya", dan untuk kursi yang memang kosong itu benar.

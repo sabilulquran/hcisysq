@@ -3127,6 +3127,9 @@ paths:
         workflow and unit. The newest row alone cannot say which mode applies, because the
         resolver picks per workflow and unit. configuredRowCount = 0 is the one case a screen
         may state LEGACY as a fact. The existing top-level fields are unchanged.
+        ORG-004 D-R7 (2026-11-25): each settings row also carries id and reason. Without the id
+        no client could address POST /admin/organization/rollout/{id}/end, so the documented
+        rollback path had no caller; the reason says what the row was written for.
       tags: [Organization]
       operationId: getOrganizationRollout
       responses:

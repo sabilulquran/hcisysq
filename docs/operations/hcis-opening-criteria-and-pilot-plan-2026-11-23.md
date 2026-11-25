@@ -1,8 +1,9 @@
 # Kriteria go/no-go pembukaan HCIS dan rencana pilot terbatas
 
 **Spec ID:** OPS-OPEN-001
-**Status:** PROPOSED — kriteria dan rencana di sini **diajukan untuk diputuskan owner**, belum berlaku. Tidak ada satu butir pun di dokumen ini yang dinyatakan siap.
+**Status:** PROPOSED untuk kriteria G1–G13; **tiga keputusan §9 sudah diambil owner pada 2026-11-25** — D1 (bertahap lewat pilot), D2 (unit pilot **Taman Tahfizh**, modul **Cuti Tahunan**), dan D3b (menyiapkan baris pengaturan rollout untuk node unit itu). Selebihnya tetap diajukan, belum berlaku.
 **Disiapkan:** 2026-11-23
+**Pembaruan 2026-11-25:** pengukuran unit pilot, penghambat yang ditemukan, dan daftar prasyaratnya ada di `docs/operations/pilot-cuti-taman-tahfizh-2026-11-25.md` (OPS-PILOT-TT-001). Tiga hal dari sana yang mengubah isi dokumen ini ditandai di §3.2, §7.1, §7.1a, dan §7.6. **G12 kini terpenuhi** untuk ketiga perilaku yang dibutuhkan pilot: ketiganya berjalan di production sejak `hcis-f6edebd4-20261125`.
 **Keputusan yang ditopang:** "Pilot ready" dan "Production ready" di `docs/product/scope.md`, yang penandatanganannya terjadi di `go-live-decision-record-template.md` (OPS-GOLIVE-001), bukan di sini.
 **Sumber angka production:** pengukuran baca-saja owner pada 2026-11-20 dan 2026-11-23, sebagaimana dicatat `docs/development/hcis-closure-list.md` (OPS-CLOSE-001) §3 dan §4. Penulis dokumen ini tidak punya akses production, **tidak menurunkan ulang angka itu, dan tidak menyalin tabelnya**. Dua pengukuran baca-saja 2026-11-23 yang dipakai di sini belum masuk OPS-CLOSE-001 — penelusuran bagan terbit dan kelengkapan email — dan ditandai di tempatnya masing-masing (§10).
 **Sumber angka repository:** `origin/main` pada `1e5d46fd` (merge #399, 2026-11-23).
@@ -24,6 +25,8 @@ Tiga aturan pemakaian dokumen ini:
 
 Satu hal yang tidak dilunakkan: **tidak satu pun kriteria pintu di §3 terpenuhi hari ini.** Yang belum terpenuhi dan yang belum terverifikasi dibedakan, karena keduanya menuntut pekerjaan yang berbeda.
 
+*Pembaruan 2026-11-25: satu baris sudah berubah — **G12 terpenuhi** untuk ketiga perilaku yang dibutuhkan pilot, lewat rilis `hcis-f6edebd4-20261125`. Dua belas baris lainnya belum.*
+
 ## 1. Dua keputusan yang berbeda, dan tidak boleh digabung
 
 | | Keputusan A — **membuka pintu sama sekali** | Keputusan B — **membuka satu modul** |
@@ -41,7 +44,7 @@ Dua keputusan ini berurutan: **B tidak pernah dinilai sebelum A terpenuhi untuk 
 |---|---|
 | **BELUM TERPENUHI** | Sudah diperiksa, jawabannya tidak. |
 | **BELUM TERVERIFIKASI** | Belum diperiksa. Tidak boleh dibaca sebagai "kemungkinan sudah". |
-| **TERPENUHI** | Ada bukti bertanggal yang menjawab persis pertanyaannya. **Tidak ada baris yang bernilai ini pada 2026-11-23.** |
+| **TERPENUHI** | Ada bukti bertanggal yang menjawab persis pertanyaannya. **Tidak ada baris yang bernilai ini pada 2026-11-23**; pada 2026-11-25 hanya G12, dan hanya untuk ketiga perilaku yang dibutuhkan pilot. |
 
 Status "TERPENUHI" hanya boleh ditulis dengan bukti bertanggal pada baris yang sama, sejalan dengan aturan OPS-CLOSE-001 §2.
 
@@ -62,7 +65,7 @@ Setiap baris adalah satu pertanyaan ya/tidak. "Cakupan" berarti populasi yang pi
 | **G9** | Apakah tidak ada temuan keamanan High yang terbuka, setiap Medium sudah diperbaiki atau diterima tertulis, dan test matriks izin hijau di CI? | Peninjau keamanan; CI untuk bagian testnya | Status SEC-07 bagian SPA/edge (V7) ditambah tinjauan ulang rute yang lahir sejak 2026-10-16 | **BELUM TERVERIFIKASI** | OPS-CLOSE-001 W13 dan V7; OPS-READY-001 R2 (PARTIAL) |
 | **G10** | Apakah sudah diputuskan apa yang dilihat pengguna untuk modul yang **tidak** dibuka, dan apakah layarnya cocok dengan keputusan itu? | Owner memutuskan, HCM memeriksa layarnya | Keputusan tertulis di catatan go-live, lalu satu penelusuran layar dengan akun pegawai biasa | **BELUM TERPENUHI** | OPS-CLOSE-001 W11 |
 | **G11** | Apakah topik Pusat Bantuan untuk setiap layanan yang dibuka sudah **terbit**, dan satu pengumuman pembukaan sudah siap? | HC | Hitung topik berstatus terbit untuk layanan cakupan (V12) | **BELUM TERVERIFIKASI** | OPS-CLOSE-001 W10 dan V12 |
-| **G12** | Apakah rilis yang **sedang berjalan** memuat perilaku yang dijanjikan kepada pengguna cakupan? | Operator | Bandingkan `cwd` proses yang berjalan dengan daftar PR tertahan; catatan rilis baru per OPS-MI8-REL-001 | **BELUM TERPENUHI** | OPS-CLOSE-001 W15 dan §4 — production berhenti di `hcis-127b6068-20261118`, migrasi tertinggi `0167`. Sejak pengukuran itu #399 ikut masuk `main` dengan migrasi `0182`, jadi antreannya bertambah, bukan berkurang. **Dua perilaku yang dibutuhkan pilot ada di antrean ini** (§3.2) |
+| **G12** | Apakah rilis yang **sedang berjalan** memuat perilaku yang dijanjikan kepada pengguna cakupan? | Operator | Bandingkan `cwd` proses yang berjalan dengan daftar PR tertahan; catatan rilis baru per OPS-MI8-REL-001 | **TERPENUHI 2026-11-25** untuk ketiga perilaku yang dibutuhkan pilot | Rilis `hcis-f6edebd4-20261125`, 156 migrasi, tertinggi `0184`; `cmdline` kedua proses menunjuk rilis itu. Bukti `docs/development/production-release-verification-2026-11-25-f6edebd4.md`. Pada 23 November baris ini **BELUM TERPENUHI** — production berhenti di `hcis-127b6068-20261118`, migrasi tertinggi `0167` (OPS-CLOSE-001 W15 dan §4). Perubahan OPS-PILOT-TT-001 sendiri — panel mode persetujuan dan dialog Tolak — **belum dirilis**, jadi G12 terbuka lagi untuk keduanya sampai rilis berikutnya |
 | **G13** | Apakah keputusan pembukaannya sendiri — cakupan, tanggal, pemilik, syarat berhenti, jalan mundur — sudah tertulis dan ditandatangani? | Owner | Satu berkas hasil salinan OPS-GOLIVE-001 yang terisi penuh, tanpa `TBD` | **BELUM TERPENUHI** | OPS-READY-001 P10 |
 
 **Bagaimana membaca tabel ini.** Sepuluh baris BELUM TERPENUHI dan tiga baris mengandung BELUM TERVERIFIKASI. G1 dan G3 adalah yang mengunci semua yang lain, dan keduanya tentang **akun**, bukan tentang data organisasi.
@@ -83,9 +86,9 @@ Akibatnya untuk kriteria:
 | **Kursi kosong, rangkap jabatan, dan sub-bagian tanpa kursi kepala bukan penghambat** | Pencarian naik melewatinya. Sudah diperiksa pada 2026-11-23: Bidang Operasional kosong dan tidak ada orang yang tersangkut karenanya; Tata Usaha tidak punya kursi kepala dan orangnya naik satu tingkat. Ketiganya **keadaan yang sudah diperiksa dan tidak berakibat**, bukan pekerjaan yang tertunda |
 | **Yang tersisa pada G2 tinggal satu hal** | Belum pernah ada **satu pun pengajuan nyata yang dirutekan lewat bagan di production**. Penelusuran dan test ORG-004 seluruhnya memakai data sintetis dalam transaksi yang di-rollback dan tidak menyalakan apa pun. Bukti itu hanya dapat datang dari pengajuan sungguhan, dan karena itu ia menjadi salah satu syarat keberhasilan pilot (§7.6) |
 
-### 3.2 Tiga perilaku yang dibutuhkan pilot masih tertahan di `main`
+### 3.2 Tiga perilaku yang dibutuhkan pilot — tertahan di `main` pada 23 November, **sudah di production sejak 25 November**
 
-Dua yang pertama masuk `main` lewat #399 (`1e5d46fd`, 2026-11-23); yang ketiga menyusul 2026-11-23. Ketiganya **belum ada di production**, sehingga ketiganya bergantung pada G12:
+Dua yang pertama masuk `main` lewat #399 (`1e5d46fd`, 2026-11-23); yang ketiga menyusul 2026-11-23. Ketiganya ikut rilis `hcis-f6edebd4-20261125` (bukti `docs/development/production-release-verification-2026-11-25-f6edebd4.md`), sehingga **G12 terpenuhi untuk ketiganya** dan kalimat "belum ada di production" di bawah terbaca sebagai keadaan pada 23 November:
 
 1. **Satu baris pengaturan pada node unit kini menjangkau seluruh sub-nodenya.** Sebelumnya Taman Tahfizh menuntut 18 baris karena orangnya duduk di tiga node berbeda. Baris pada leluhur mana pun menjangkau seluruh subtree-nya pada kedalaman berapa pun — yang juga berarti baris di node akar memindahkan seluruh yayasan sekaligus, jadi pemilihan node adalah cakupannya.
 2. **Saklarnya kini dapat dimatikan kembali** lewat `POST /admin/organization/rollout/:id/end` (izin `approvals.policy.manage`, alasan wajib, teraudit sebagai `organization.rollout.ended`, paling awal berakhir hari ini). Sebelum ini rollout hanya bisa dinyalakan, sehingga bagian jalan mundur pilot tidak punya jalur nyata di luar rollback migrasi. Sekarang punya (§7.8).
@@ -152,6 +155,12 @@ Alasan unit ini diajukan:
 
 Keduanya ditulis di sini sebagai **keputusan yang belum diambil**, bukan sebagai langkah yang akan dijalankan. Satu hal yang masih perlu diukur sebelum hari pertama: kelengkapan email kesembilan pegawainya, karena yang terukur baru angka seluruh yayasan — **23 pegawai aktif tanpa email** (§10).
 
+**Pembaruan 2026-11-25 (owner memilih unit ini; pengukurannya menambah satu penghambat yang dokumen ini lewatkan).** Pengukuran baca-saja terhadap unit ini ada di OPS-PILOT-TT-001 §4 dan tidak disalin ke sini. Tiga hal yang mengubah isi §7.1:
+
+1. **Email kesembilan pegawainya kini terukur:** delapan punya email dan akun `invited`; satu — Siska Malika N. — tanpa email dan tanpa akun, dan punya **dua baris pegawai** (satu `resigned`, satu `active`) yang mana yang benar adalah keputusan HC (D12). Jadi delapan dapat diundang hari ini.
+2. **Penghambat yang lebih awal daripada akun: kelompok hak cuti.** Cuti Tahunan individual hanya berlaku untuk `non_education` (`docs/domain/leave-policy-ysq.md`), dan di production kolom itu **kosong untuk kesembilan pegawai unit ini** — serta untuk 91 dari 97 pegawai aktif se-yayasan. Pengajuan dari pegawai yang kelompoknya kosong dijawab `409 UNSUPPORTED_ENTITLEMENT_GROUP` **sebelum rantai penyetuju disentuh**, jadi tanpa langkah ini pilot tidak membuktikan apa pun, termasuk hal-hal yang sebenarnya sudah benar. Spesifikasi melarang HCIS menebak klasifikasinya dari nama unit atau jabatan, sehingga ini keputusan HC, bukan migrasi. Jalannya ada di layar: **Admin → Konfigurasi Cuti**.
+3. **Akibatnya bagi "sembilan pegawai".** Unit ini sekolah: tujuh dari sembilan orangnya pengajar, dan pengajar memang tidak berhak atas Cuti Tahunan individual — haknya Cuti Akhir Semester, yang berbentuk peristiwa kalender. Yang benar-benar dapat mengajukan Cuti Tahunan di sini paling banyak **dua** orang. Itu tidak membatalkan unit ini sebagai kandidat, tetapi membatalkan satu ukuran keberhasilan di §7.6.
+
 ### 7.1a Dua hal yang ditemukan di `STRUCTURE`, dan apa yang terjadi padanya
 
 Ditemukan 2026-11-23 dari uji sintetis yang menjalankan alur cuti penuh dalam mode `STRUCTURE` lewat route API sungguhan (`apps/api/test/org004-structure-leave-flow.postgres.test.ts`), di atas fixture berbentuk unit ini — node unit dengan binding `LEADER` ke kursi pada node yang sama, binding `UNIT_APPROVER` ke kursi `Kepala Bidang`, dua anak node tanpa binding sendiri, dan seluruh kolom atasan lama kosong.
@@ -161,6 +170,8 @@ Ditemukan 2026-11-23 dari uji sintetis yang menjalankan alur cuti penuh dalam mo
 1. **Kode penolakan untuk akun yang belum aktif sempat berbeda, dan kini kembali sama.** Kalimat "setiap pengajuan berhenti di `409 APPROVER_ACCOUNT_NOT_READY`" benar untuk `LEGACY`, yaitu mode yang production jalankan hari ini. Dalam `STRUCTURE`, penyetuju yang akunnya bukan `active` ditolak lebih awal oleh resolver, dan penolakan itu dijawab **`409 AUTHORITY_INELIGIBLE`** dengan pesan berbahasa Inggris yang tidak menyebut nama siapa pun: "The configured incumbent is not eligible for this authority." Alasan sebenarnya (`ACCOUNT_NOT_ACTIVE`) ada di `details` galat itu, tetapi tidak diteruskan ke respons — sehingga kode yang terbaca tidak lagi membedakan "akun belum aktif" dari "bagan atau kursinya bermasalah", padahal pembedaan itulah yang §7.5 minta dicacah. **Diperbaiki (D-R5):** keadaan akun kini dijawab `409 APPROVER_ACCOUNT_NOT_READY` pada kedua mode, dengan kalimat berbahasa Indonesia yang menyebut kursinya, orangnya, dan bahwa yang perlu diselesaikan adalah aktivasi akunnya, bukan bagannya. `AUTHORITY_INELIGIBLE` tetap dipakai untuk pegawai yang memang sudah tidak dapat menjadi penyetuju, jadi pembedaan §7.5 terbaca dari kodenya saja.
 
 2. **Kebijakan kekosongan sempat menentukan apakah penolakannya terjadi sama sekali.** Yang di atas hanya terjadi bila `vacancy_policy` binding-nya `BLOCK`. Dengan `CLIMB_TO_PARENT` — dan pengukuran owner 2026-11-23 menunjukkan **seluruh 63 ikatan wewenang dan seluruh 29 jabatan** pada bagan terbit memakainya, tanpa satu pun pengecualian — kursi kepala unit yang akunnya belum aktif **dilewati diam-diam**: rantainya naik ke kursi induk, di unit ini `Kepala Bidang`, yang orangnya sama dengan penyetuju unit, sehingga dua langkah menyusut menjadi satu, pengajuannya berjalan sampai disetujui, kepala unitnya tidak pernah melihatnya, dan tidak ada pesan apa pun yang mengatakan demikian. **Diperbaiki (D-R5):** kursi yang pejabatnya ada tetapi akunnya belum siap bukan kursi kosong, dan tidak lagi dilewati, apa pun kebijakannya. Kursi yang benar-benar **kosong** tetap memanjat seperti sebelumnya, jadi **kebijakan kekosongan pada binding `LEADER` dan `UNIT_APPROVER` node Taman Tahfizh tetap perlu dibaca sebelum baris pengaturan rollout ditulis**, dan hasil bacaannya dicatat.
+
+   **Terpenuhi 2026-11-25.** Pembacaan baca-saja: binding `LEADER` node Taman Tahfizh menunjuk kursi `Kepala` pada node yang sama (pejabat **Pipit Fithriyah**), binding `UNIT_APPROVER` menunjuk kursi `Kepala` pada node **Bidang Pendidikan** (pejabat **Muchsalmina**), dan **keduanya `CLIMB_TO_PARENT`**, demikian pula kebijakan kedua kursinya. Kedua anak node — **Guru** dan **Tata Usaha** — tidak punya ikatan sendiri, sehingga orangnya mendaki ke node unit dan satu baris pada node unit cukup. Dicatat di OPS-PILOT-TT-001 §3.
 
 **Rekomendasi penulis:** bila kandidat ini ditolak, unit pengganti dipilih dengan sifat yang sama — di bawah sepuluh orang, kepala unit dan penyetuju unit yang terbaca jelas di bagan, dan punya jadwal kehadiran. Unit terbesar adalah kandidat terburuk untuk percobaan pertama, karena satu kesalahan routing di sana menyentuh paling banyak orang sekaligus, dan karena pegawainya tersebar ke lima atau enam kepala (§3.1).
 
@@ -221,7 +232,7 @@ Pilot dinyatakan berhasil hanya bila **seluruh** baris berikut benar pada hari k
 
 1. **Minimal satu pengajuan nyata benar-benar dirutekan lewat bagan di production, dan diputuskan.** Ini bukti yang paling penting dan tidak dapat digantikan uji sintetis: seluruh test ORG-004 berjalan atas data buatan dalam transaksi yang di-rollback, dan sampai hari ini belum ada satu pun pengajuan sungguhan yang dirutekan lewat bagan.
 2. Setiap pegawai dalam cakupan berhasil masuk setidaknya sekali.
-3. Minimal lima pengajuan cuti nyata selesai diputuskan, berasal dari lebih dari satu orang.
+3. Minimal lima pengajuan cuti nyata selesai diputuskan, berasal dari lebih dari satu orang. **Tidak dapat dipenuhi di unit yang dipilih owner, dan menunggu keputusan owner (2026-11-25).** Taman Tahfizh adalah unit sekolah: setelah klasifikasi kelompok hak cuti, paling banyak **dua** orangnya dapat mengajukan Cuti Tahunan (§7.1 pembaruan butir 3). Tiga jalan, dengan rekomendasi penulis pada yang pertama, dibentangkan di OPS-PILOT-TT-001 §8: **(A)** turunkan angkanya menjadi dua pengajuan dari dua orang, sesuai empat sasaran yang owner tetapkan; **(B)** tambah unit kedua yang tenaganya non-pendidikan; **(C)** perluas ke jenis cuti lain. Sampai owner memilih, butir ini tidak dipakai menilai pilot.
 4. **Nol** kegagalan routing yang tidak terjelaskan; setiap kegagalan punya kode dan sebab yang tertulis.
 5. Minimal satu scan kehadiran nyata dari mesin di unit itu, bila kehadiran masuk cakupan.
 6. Minimal satu pegawai membuka slipnya dan mengonfirmasi isinya cocok dengan slip kertas bulan yang sama.
@@ -265,14 +276,15 @@ Aturan tunggal yang merangkum tabel ini: **pilot tidak menyalakan apa pun yang h
 
 ## 9. Keputusan yang menunggu, dan siapa pemiliknya
 
-Tidak satu pun dapat diputuskan di dalam dokumen ini.
+Tidak satu pun dapat diputuskan di dalam dokumen ini. **Tiga di antaranya sudah diputuskan owner pada 2026-11-25 dan ditandai begitu di bawah**; sisanya masih menunggu.
 
 | # | Keputusan | Pemilik | Mengapa bukan keputusan dokumen ini |
 |---|---|---|---|
-| D1 | Membuka bertahap lewat pilot satu unit, atau sekaligus untuk seluruh pegawai | Owner | Kebijakan, bukan temuan teknis. **Rekomendasi penulis:** bertahap, karena yang mengunci (G1, G3) gagal dengan cara yang sama untuk satu unit maupun untuk sembilan, dan satu unit jauh lebih murah untuk diperbaiki |
-| D2 | Unit pilot dan pesertanya | Owner bersama HCM | OPS-READY-001 P1; formulirnya di luar Git karena memuat nama |
-| D3a | Mengaktifkan akun kepala unit dan penyetuju unit pilot — untuk Taman Tahfizh, Pipit Fithriyah dan Muchsalmina | HCM | Menyentuh orang dan jadwal kerja mereka. Dokumen ini hanya mencatat bahwa tanpa itu G1 dan G3 tidak dapat terpenuhi untuk unit mana pun |
-| D3b | Menuliskan satu baris pengaturan rollout untuk node unit pilot | HCM | Perubahan routing production; cakupannya ditentukan oleh node yang dipilih, dan jalur mundurnya baru ada setelah G12 |
+| ~~D1~~ **diputuskan 2026-11-25** | Membuka bertahap lewat pilot satu unit, atau sekaligus untuk seluruh pegawai | Owner | **Bertahap**, sejalan dengan rekomendasi penulis. Aktivasi massal menunggu hasil pilot |
+| ~~D2~~ **diputuskan 2026-11-25** | Unit pilot dan pesertanya | Owner bersama HCM | **Taman Tahfizh, modul Cuti Tahunan.** Peserta: kepala unit **Pipit Fithriyah**, penyetuju unit **Muchsalmina**, dan satu pegawai pilot — usul penulis **Rosaliana** (OPS-PILOT-TT-001 §5.2), menunggu penegasan HCM |
+| D3a | Mengaktifkan akun kepala unit dan penyetuju unit pilot — untuk Taman Tahfizh, Pipit Fithriyah dan Muchsalmina | HCM | Menyentuh orang dan jadwal kerja mereka. Dokumen ini hanya mencatat bahwa tanpa itu G1 dan G3 tidak dapat terpenuhi untuk unit mana pun. **Masih menunggu**; urutannya di OPS-PILOT-TT-001 §5.3 |
+| ~~D3b~~ **diputuskan 2026-11-25, pelaksanaannya menunggu D3a** | Menuliskan satu baris pengaturan rollout untuk node unit pilot | HCM | Owner meminta pengaturan khusus unit pilot disiapkan agar data atasan cukup dipelihara di bagan. Sejak 2026-11-25 baris itu ditulis **dan diakhiri dari layar** (Admin → Struktur Organisasi → Mode persetujuan per unit), jadi jalur mundur §7.8 punya tombolnya sendiri, bukan hanya route. Nilai persisnya di OPS-PILOT-TT-001 §5.5 |
+| **D13** (baru 2026-11-25) | Kelompok hak cuti peserta pilot: siapa `non_education`, siapa `education` | HC | Cuti Tahunan individual hanya untuk `non_education`, dan spesifikasi melarang HCIS menebaknya dari nama unit atau jabatan. Kosong untuk kesembilan pegawai unit pilot, jadi **ini penghambat paling awal** (§7.1 pembaruan butir 2) |
 | D4 | Apakah mode daftar izin pemberitahuan dilonggarkan, untuk siapa, dan kapan | Owner | Keputusan jangkauan pesan ke orang sungguhan |
 | D5 | Jalur pemulihan kata sandi atau fallback manual yang diterima | Owner bersama HCM | OPS-READY-001 P9 |
 | D6 | Nama pemilik stop, rollback, dan insiden beserta cadangannya; nilai RPO dan RTO | Owner | OPS-GOLIVE-001 §2 dan §4; tidak ada default yang masuk akal untuk diambil sendiri |

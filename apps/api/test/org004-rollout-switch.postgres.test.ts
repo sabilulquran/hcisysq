@@ -745,6 +745,40 @@ describe.skipIf(!allowed)("ORG-004 saklar rollout (PostgreSQL)", () => {
     ]);
   });
 
+  /**
+   * D-R7: jalur mundur hanya nyata bila ada yang dapat menyebut barisnya.
+   *
+   * `POST /admin/organization/rollout/:id/end` menuntut id baris, dan satu-satunya route yang
+   * membaca konfigurasi tidak mengembalikannya. Akibatnya jalan mundur yang ditulis OPS-OPEN-001
+   * §7.8 adalah route tanpa pemanggil: operator harus membuka psql untuk sekadar mengetahui id
+   * yang akan diakhirinya. Yang dijaga di sini: setiap baris yang berlaku membawa `id` dan
+   * `reason`-nya sendiri.
+   */
+  it("D-R7: konfigurasi yang dibaca membawa id dan alasan tiap baris yang berlaku", async () => {
+    const created = await call("hc", "PATCH", "/admin/organization/rollout", {
+      mode: "STRUCTURE", workflowKey: ANNUAL, organizationalNodeKey: nodes.pilot,
+      effectiveFrom: "2020-01-01", reason: "Pilot Cuti Tahunan unit sintetis",
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const id = created.json().id as string;
+
+    const read = await call("hc", "GET", "/admin/organization/rollout");
+    expect(read.statusCode, read.body).toBe(200);
+    expect(read.json().settings).toEqual([expect.objectContaining({
+      id,
+      workflowKey: ANNUAL,
+      organizationalNodeKey: nodes.pilot,
+      mode: "STRUCTURE",
+      reason: "Pilot Cuti Tahunan unit sintetis",
+    })]);
+
+    // Dan id itu benar-benar yang diterima jalur mundur, bukan sekadar sebuah uuid.
+    const ended = await call("hc", "POST", `/admin/organization/rollout/${id}/end`, {
+      reason: "Pilot selesai",
+    });
+    expect(ended.statusCode, ended.body).toBe(200);
+  });
+
   it("D-R4: menolak mengakhiri baris yang tidak ada, dan tanggal yang menulis ulang masa lalu", async () => {
     const missing = await call("hc", "POST", `/admin/organization/rollout/${randomUUID()}/end`, { reason: "Tidak ada" });
     expect(missing.statusCode).toBe(404);

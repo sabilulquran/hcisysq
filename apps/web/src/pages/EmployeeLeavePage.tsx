@@ -15,6 +15,7 @@ import { postponementStatusNote } from "@/lib/leavePostponementView";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
+  annualQuotaHint,
   getEmployeeLeaveSummary,
   type EmployeeLeaveSummary,
 } from "@/lib/employeeLeave";
@@ -214,11 +215,19 @@ export function EmployeeLeavePage() {
                 <p className="mt-1 text-sm font-bold text-brand-heading">{formatDate(annual.eligibleFrom)}</p>
                 <p className="mt-3 text-xs text-muted-foreground">Tersedia pada periode saat ini</p>
                 <p className="mt-1 text-2xl font-bold text-brand-heading">{annual.availableNowDays} hari</p>
-                {/* LEAVE-003 R2: the rule in force reads off the API, never off a number typed here. */}
+                {/*
+                  LEAVE-003 R2: the rule reads off the API, never off a number typed here, and it
+                  names the day the rule changes rather than letting today's rule speak for dates
+                  after it — enforcement follows the leave date.
+                */}
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  {annual.quotaScheme === "SEMESTER"
-                    ? `Batas pemakaian ${annual.currentPeriodLimitDays} hari kerja per semester (Januari-Juni dan Juli-Desember). Satu pengajuan tidak boleh melewati 30 Juni-1 Juli atau pergantian tahun.`
-                    : `Batas pemakaian ${annual.currentPeriodLimitDays} hari kerja per periode tiga bulan. Satu pengajuan tidak boleh melewati batas periode.`}
+                  Batas pemakaian{" "}
+                  {annualQuotaHint({
+                    quotaScheme: annual.quotaScheme,
+                    periodLimitDays: annual.currentPeriodLimitDays,
+                    semesterEffectiveFrom: annual.semesterEffectiveFrom,
+                    referenceDate: summary?.referenceDate,
+                  })}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">

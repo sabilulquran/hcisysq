@@ -68,6 +68,17 @@ Juli-Desember terpakai = Jul-Sep terpakai + Okt-Des terpakai
 Yang dihitung tetap pengajuan berstatus `in_review` dan `approved`; yang dibatalkan dan ditolak
 tidak, seperti sebelumnya.
 
+**Batas semester mengikat kedua aturan.** Begitu ada tanggal efektif, batas 6 hari berlaku untuk
+seluruh setengah tahun, termasuk tanggal yang masih dibaca dengan aturan triwulan. Ini hanya
+berpengaruh bila tanggal efektif jatuh di tengah semester — justru di situlah kedua aturan bertemu.
+Pengajuan untuk Mei bisa dikirim lebih dulu di bawah aturan semester, lalu pengajuan untuk Maret di
+bawah aturan triwulan; pemeriksaan triwulan yang hanya melihat triwulannya sendiri akan menumpuk 3
+hari di atas 6 hari pada setengah tahun yang sama. Tahun yang seluruhnya di bawah aturan triwulan
+tidak pernah ikut terbatasi, karena 3 + 3 memang sudah sama dengan batas semester.
+
+Temuan ini datang dari putaran tinjauan independen; pada rancangan awal lubang itu ada, dan contoh
+di bawah menutupnya untuk tanggal efektif mana pun serta urutan pengiriman mana pun.
+
 ### Contoh saldo sebelum dan sesudah tanggal efektif
 
 Pegawai sudah genap 12 bulan, tanggal efektif 1 Januari 2027.
@@ -88,6 +99,10 @@ Februari di bawah aturan lama:
 
 Total setahun: 3 + 3 + 6 = **12 hari kerja**. Tiga hari Februari dihitung satu kali, yaitu sebagai
 bagian dari semester Januari-Juni.
+
+Urutan pengiriman tidak mengubah hasilnya. Dengan tanggal efektif yang sama, bila pengajuan Mei
+(6 hari, aturan semester) dikirim lebih dulu, pengajuan Maret berikutnya melihat semester Januari-Juni
+sudah habis dan ditolak — bukan melihat triwulan Januari-Maret yang masih kosong.
 
 ## 5. Satu pengajuan, satu periode
 
@@ -157,7 +172,7 @@ masuk ke periode semester dengan batas 6, tanggal melintasi batas triwulan lama 
 semester diterima, tanggal melintasi 30 Juni-1 Juli ditolak, dan tanggal sebelum tanggal efektif
 tetap memakai aturan triwulan.
 
-`apps/api/test/leave-semester-quota.postgres.test.ts` — **7 kasus terhadap skema basis data yang
+`apps/api/test/leave-semester-quota.postgres.test.ts` — **9 kasus terhadap skema basis data yang
 sebenarnya**. Uji ini menjalankan **dua aplikasi pada satu transaksi**: `legacyApp` dengan
 konfigurasi yang dipakai production hari ini (tanpa tanggal efektif) dan `app` dengan tanggal
 efektif terpasang. Baris "lama" karena itu benar-benar ditulis oleh konfigurasi lama lewat route
@@ -172,8 +187,17 @@ pengiriman biasa, bukan disisipkan tangan:
 4. pengajuan yang masih `in_review` menahan kuota, dan setelah dibatalkan kuotanya kembali penuh;
 5. satu pengajuan melintasi batas triwulan lama di dalam satu semester diterima (`JAN_JUN`, 4 hari);
 6. satu pengajuan melintasi 30 Juni-1 Juli ditolak `CROSS_PERIOD_REQUEST_UNSUPPORTED`;
-7. ringkasan pegawai menampilkan empat periode 3 hari pada `legacyApp` dan dua periode 6 hari pada
+7. **tanggal efektif di tengah semester** (1 April): pengajuan Mei 6 hari dikirim lebih dulu di
+   bawah aturan semester, lalu pengajuan Maret di bawah aturan triwulan ditolak walau triwulannya
+   sendiri masih kosong, dan ringkasan menunjukkan 0 hari tersedia;
+8. pengajuan Desember terhitung pada periode Juli-Desember — batas bulan ke-12 pada kueri pemakaian;
+9. ringkasan pegawai menampilkan empat periode 3 hari pada `legacyApp` dan dua periode 6 hari pada
    `app`, dengan hak tahunan tetap 12.
+
+Satu uji web, `apps/web/src/lib/annualQuotaHint.test.ts`, menjaga petunjuk di layar: selama tanggal
+efektif masih di depan, kotak hak cuti menyebut tanggal itu dan menerangkan bahwa yang berlaku
+adalah aturan pada tanggal cuti — bukan membiarkan aturan hari ini berbicara untuk tanggal
+sesudahnya.
 
 ## 8. Risiko dan jalur mundur
 
@@ -181,8 +205,12 @@ pengiriman biasa, bukan disisipkan tangan:
   sedang berjalan tidak pernah menulis kunci semester, jadi ia berjalan apa adanya di atas
   constraint baru. Jalur mundurnya ada di kepala berkas migrasinya, beserta kueri pemeriksa yang
   harus kosong sebelum constraint lama dipasang kembali.
-- **Migrasi `0186`** hanya menyentuh satu artikel Pusat Bantuan, dan hanya selama isinya masih
-  persis teks awal 0130; suntingan HC selalu menang.
+- **Migrasi `0186`** hanya menyentuh satu artikel Pusat Bantuan, dan hanya selama isinya masih teks
+  awal 0130; suntingan HC selalu menang. Perbandingannya membuang CR lebih dulu di kedua sisi:
+  baris yang pernah ditanam dari checkout CRLF berisi kata yang sama dengan akhir baris berbeda,
+  dan pencocokan persis akan diam-diam tidak menemukan apa pun lalu melaporkan sukses — tanpa galat
+  dan tanpa jumlah baris yang terlihat siapa pun. Tetap periksa sesudah rilis:
+  `SELECT left(body, 80) FROM help_articles WHERE id = '33b7ee82-a5df-5249-9d20-722b12b83e74'`.
 - **Pengaturan tanggal efektif** dapat dikosongkan kembali kapan saja untuk kembali ke aturan
   triwulan, tanpa migrasi.
 - Yang tidak dapat dikembalikan dengan mengosongkan pengaturan: baris yang sudah tersimpan dengan

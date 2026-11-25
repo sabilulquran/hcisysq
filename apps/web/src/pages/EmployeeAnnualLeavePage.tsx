@@ -14,6 +14,7 @@ import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
+  annualQuotaHint,
   getEmployeeLeaveSummary,
   previewAnnualLeave,
   submitAnnualLeave,
@@ -177,12 +178,22 @@ export function EmployeeAnnualLeavePage() {
                   </div>
                   {/*
                     LEAVE-003 R2: the employee is told the boundary before picking dates, because a
-                    request that crosses one is refused rather than split.
+                    request that crosses one is refused rather than split. Once dates are chosen the
+                    preview speaks for those dates; before that the box speaks for today and names
+                    the day the rule changes, since enforcement follows the leave date.
                   */}
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {summary.annualLeave.quotaScheme === "SEMESTER"
-                      ? `${summary.annualLeave.currentPeriodLimitDays} hari kerja per semester. Satu pengajuan harus berada dalam satu semester: tanggal yang melewati 30 Juni-1 Juli atau pergantian tahun diajukan terpisah.`
-                      : `${summary.annualLeave.currentPeriodLimitDays} hari kerja per periode tiga bulan. Satu pengajuan harus berada dalam satu periode: tanggal setelah batas periode diajukan terpisah.`}
+                    {preview
+                      ? annualQuotaHint({
+                          quotaScheme: preview.quotaScheme,
+                          periodLimitDays: preview.periodLimitDays,
+                        })
+                      : annualQuotaHint({
+                          quotaScheme: summary.annualLeave.quotaScheme,
+                          periodLimitDays: summary.annualLeave.currentPeriodLimitDays,
+                          semesterEffectiveFrom: summary.annualLeave.semesterEffectiveFrom,
+                          referenceDate: summary.referenceDate,
+                        })}
                   </p>
                 </div>
               ) : null}

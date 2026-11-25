@@ -3,9 +3,14 @@
 -- where the employee reads the figure that actually binds their request.
 -- Spec: docs/domain/leave-policy-ysq.md §"LEAVE-003 R2", docs/domain/help-center.md §8.1.
 --
--- HC's own edits always win; the article changes only while its body is still exactly the 0130 text,
+-- HC's own edits always win; the article changes only while its body is still the 0130 text,
 -- following the same two cases as 0137 (untouched draft corrected in place; published-but-never-saved
 -- seed edited as a normal save). Re-running is harmless: once the body has changed, nothing matches.
+--
+-- The comparison strips CR before matching. A row seeded from a CRLF checkout holds the same words
+-- with different line endings, and an exact match would then find nothing, report success and leave
+-- every employee reading the old rule — a silent no-op with no error and no row count anyone sees.
+-- The text written is always the LF form, so the row is normalised on the way through.
 --
 -- Down: none needed for safety. To restore the 0130 wording of an untouched draft, run only the
 -- draft and draft_revision parts with old and new swapped; a published one is edited back by HC on
@@ -27,16 +32,16 @@ Untuk tenaga pendidikan, hak tahunan dipenuhi lewat Cuti Akhir Semester dan Akhi
 ),
 draft AS (
   UPDATE help_articles article
-     SET body = changes.new_body, updated_at = now()
+     SET body = replace(changes.new_body, chr(13), ''), updated_at = now()
     FROM changes
    WHERE article.id = changes.id::uuid
      AND article.origin = 'SEED' AND article.status = 'DRAFT' AND article.version = 1
-     AND article.published_at IS NULL AND article.body = changes.old_body
+     AND article.published_at IS NULL AND replace(article.body, chr(13), '') = replace(changes.old_body, chr(13), '')
   RETURNING article.id, article.kind, article.topic, article.title, changes.change_note
 ),
 draft_revision AS (
   UPDATE help_article_revisions revision
-     SET body = changes.new_body
+     SET body = replace(changes.new_body, chr(13), '')
     FROM draft
     JOIN changes ON changes.id::uuid = draft.id
    WHERE revision.article_id = draft.id AND revision.version = 1
@@ -44,10 +49,10 @@ draft_revision AS (
 ),
 live AS (
   UPDATE help_articles article
-     SET body = changes.new_body, version = article.version + 1, updated_at = now()
+     SET body = replace(changes.new_body, chr(13), ''), version = article.version + 1, updated_at = now()
     FROM changes
    WHERE article.id = changes.id::uuid
-     AND article.origin = 'SEED' AND article.status = 'PUBLISHED' AND article.body = changes.old_body
+     AND article.origin = 'SEED' AND article.status = 'PUBLISHED' AND replace(article.body, chr(13), '') = replace(changes.old_body, chr(13), '')
      AND NOT EXISTS (SELECT 1 FROM help_article_revisions saved
                       WHERE saved.article_id = article.id AND saved.actor_account_id IS NOT NULL)
   RETURNING article.id, article.kind, article.topic, article.title, article.body, article.status,

@@ -544,7 +544,11 @@ export function annualLeaveSemesterQuotaEffectiveFrom(
   const value = config.ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM;
   if (!value) return null;
   // The schema checks the shape; this checks that the day exists (2027-02-30 is not a date).
-  if (new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value) {
+  // The NaN guard comes first: `toISOString()` on an Invalid Date — which is what a month or day
+  // out of range gives — throws a RangeError that names nothing, and an operator restarting the
+  // VPS after mistyping this needs to be told which setting is wrong.
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
     throw new Error(
       `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM is not a calendar date: ${value}`,
     );

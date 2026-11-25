@@ -123,6 +123,13 @@ const QUARTERS_IN_SEMESTER: Record<AnnualLeaveSemesterKey, readonly AnnualLeaveQ
   JUL_DEC: ["JUL_SEP", "OCT_DEC"],
 };
 
+const SEMESTER_OF_QUARTER: Record<AnnualLeaveQuarterKey, AnnualLeaveSemesterKey> = {
+  JAN_MAR: "JAN_JUN",
+  APR_JUN: "JAN_JUN",
+  JUL_SEP: "JUL_DEC",
+  OCT_DEC: "JUL_DEC",
+};
+
 export class AnnualLeavePolicyError extends Error {
   constructor(
     readonly code:
@@ -334,7 +341,34 @@ export function calculateAnnualLeaveYearView(
     const canEverUsePeriod = compareDates(eligibleFrom, end) <= 0;
     const usableFrom = canEverUsePeriod ? maxDate(start, eligibleFrom) : null;
     const usedDays = annualLeaveUsedDaysInPeriod(input.usedDaysByQuarter, period.key);
-    const remainingDays = Math.max(0, allocationDays - usedDays);
+    /**
+     * LEAVE-003 R2: once a semester rule exists at all, its 6-day cap binds the whole half year,
+     * including a date still read under the three-month rule.
+     *
+     * The scheme is chosen per request from that request's own start date, so with an effective
+     * date inside a semester the two rules can meet in one half year: 6 days booked in May under
+     * the semester rule, then 3 more booked in March under the three-month rule, which only ever
+     * looked at its own quarter — 9 days in a 6-day semester, and 15 in a 12-day year. Reading the
+     * containing semester here closes that without constraining which date the owner may name.
+     *
+     * It never restricts a year that is wholly under the three-month rule: 3 + 3 is the semester
+     * cap already.
+     */
+    const semesterRemainingDays =
+      scheme === "QUARTER" && semesterEffectiveFrom !== null
+        ? Math.max(
+            0,
+            ANNUAL_LEAVE_SEMESTER_LIMIT_DAYS -
+              annualLeaveUsedDaysInPeriod(
+                input.usedDaysByQuarter,
+                SEMESTER_OF_QUARTER[period.key as AnnualLeaveQuarterKey],
+              ),
+          )
+        : Number.POSITIVE_INFINITY;
+    const remainingDays = Math.min(
+      Math.max(0, allocationDays - usedDays),
+      semesterRemainingDays,
+    );
 
     let status: AnnualLeavePeriodStatus;
     if (!usableFrom) {

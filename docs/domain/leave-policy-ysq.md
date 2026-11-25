@@ -299,9 +299,17 @@ Juli-Desember used = Jul-Sep used + Okt-Des used
 Every working day therefore reduces exactly one quota, once, whichever rule recorded it. Requests
 with status `in_review` or `approved` count; cancelled and rejected ones do not, as before.
 
-This also keeps the year at 12 working days when the change lands mid-year. Worst case, with the
-rule starting on 1 April: 3 days are usable in January-March under the old rule, the January-June
-semester then allows 6 in total so 3 remain, and July-December allows 6 — 12 for the year.
+**The semester cap binds both rules.** Once an effective date exists, the 6-day semester limit
+applies to the whole half year, including a date still read under the three-month rule. This matters
+only when the effective date falls inside a semester, which is exactly when the two rules meet: a
+request may be submitted for May under the semester rule and afterwards one for March under the
+three-month rule, and a three-month check that looked only at its own quarter would let 3 days sit on
+top of 6 in the same half year. A year wholly under the three-month rule is never restricted by this,
+since 3 + 3 is the semester cap already.
+
+The year therefore stays at 12 working days whatever date is named, and in whatever order requests
+arrive. With the rule starting on 1 April: at most 3 days in January-March under the old rule, the
+January-June semester allowing 6 in total, and July-December allowing 6.
 
 #### One request, one period
 
@@ -478,6 +486,7 @@ ORG-004 structural resolution and oversight notification are implemented and hav
 - LEAVE-003-P: from the effective date, annual usage is limited to 6 working days per Jan-Jun and Jul-Dec period, and the annual right stays 12 working days.
 - LEAVE-003-Q: the scheme follows the leave start date, so a request already submitted — including one still awaiting a decision — keeps the rule its dates were read under, and a range containing the effective date is read under one scheme.
 - LEAVE-003-R: a semester's usage is the sum of the two three-month periods the previous rule recorded; no stored request is rewritten, and no working day reduces a quota twice.
+- LEAVE-003-R2: while an effective date exists, the 6-day semester limit binds the whole half year including dates still read under the three-month rule, so the year stays at 12 working days for any effective date and any order of submission.
 - LEAVE-003-S: one request still covers one period; after the effective date it may cross a former three-month boundary inside one semester, and is refused when it crosses 30 June-1 July or the turn of the year.
 - LEAVE-003-T: with the setting unset — the shipped and production default — every date is read under the three-month rule.
 

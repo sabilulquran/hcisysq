@@ -1,4 +1,8 @@
 import { AdminApiError } from "@/lib/adminEmployees";
+import type {
+  AnnualLeavePeriodKey,
+  AnnualLeaveQuotaScheme,
+} from "@/lib/employeeLeave";
 
 export type LeaveEntitlementGroup = "education" | "non_education";
 
@@ -14,7 +18,10 @@ export interface LeavePolicySummary {
   emergencyNoticeAllowed: boolean;
   annualEntitlementDays?: number;
   eligibilityMonths?: number;
-  periodLimitDays?: number;
+  /**
+   * LEAVE-003 R2: no `periodLimitDays` here. The limit depends on the leave date, so it comes from
+   * `annualQuota` on the same response.
+   */
   carryForwardEnabled?: boolean;
   notes: string[];
 }
@@ -97,12 +104,15 @@ export interface LeaveApprovalPreviewResponse {
     referenceDate: string;
     year: number;
     availableNowDays: number;
-    currentPeriodKey: "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+    /** LEAVE-003 R2: this endpoint reads the same year view, so it also reports semesters. */
+    quotaScheme: AnnualLeaveQuotaScheme;
+    semesterEffectiveFrom: string | null;
+    currentPeriodKey: AnnualLeavePeriodKey;
     currentPeriodLimitDays: number;
     eligiblePeriodAllocationDaysInYear: number;
     carryForwardEnabled: false;
     periods: Array<{
-      key: "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+      key: AnnualLeavePeriodKey;
       label: string;
       allocationDays: number;
       usedDays: number;

@@ -21,22 +21,11 @@ import {
   updateLeaveEntitlementGroup,
   updateUnitLeaveApprover,
 } from "@/lib/adminLeave";
+import { formatQuotaDate } from "@/lib/employeeLeave";
 
 function percent(done: number, total: number) {
   if (!total) return 0;
   return Math.round((done / total) * 100);
-}
-
-/** LEAVE-003 R2: an ISO date as a reader expects it; the raw value if it is not one. */
-function formatQuotaDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
 }
 
 export function AdminLeaveConfigurationPage() {

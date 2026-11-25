@@ -63,6 +63,8 @@ describe.skipIf(!allowed)("LEAVE-003 R2 semester quota on a real schema", () => 
   let app: ReturnType<typeof Fastify>;
   /** The rule production runs today: three-month periods, no effective date at all. */
   let legacyApp: ReturnType<typeof Fastify>;
+  /** An effective date inside a semester, where the two rules meet in one half year. */
+  let midSemesterApp: ReturnType<typeof Fastify>;
   let unitId: string;
   const people = {} as Record<Person, { employeeId: string; accountId: string; cookie: string }>;
 
@@ -185,12 +187,18 @@ describe.skipIf(!allowed)("LEAVE-003 R2 semester quota on a real schema", () => 
     });
     legacyApp = Fastify({ logger: false });
     await registerEmployeeLeaveRoutes(legacyApp, transactionPool, baseConfig);
+    midSemesterApp = Fastify({ logger: false });
+    await registerEmployeeLeaveRoutes(midSemesterApp, transactionPool, {
+      ...baseConfig,
+      ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM: "2099-04-01",
+    });
   });
 
   afterEach(async () => {
     try {
       await app?.close();
       await legacyApp?.close();
+      await midSemesterApp?.close();
     } finally {
       if (client) {
         await client.query("ROLLBACK");
@@ -298,6 +306,49 @@ describe.skipIf(!allowed)("LEAVE-003 R2 semester quota on a real schema", () => 
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("CROSS_PERIOD_REQUEST_UNSUPPORTED");
     expect(response.json().message).toContain("30 Juni-1 Juli");
+  });
+
+  it("holds the semester to six days when the effective date falls inside it", async () => {
+    // Effective 1 April 2099. Booked first, for May, under the semester rule: all six days.
+    const may = await submit(midSemesterApp, "2099-05-04", "2099-05-11");
+    expect(may.statusCode, may.body).toBe(201);
+    expect(may.json()).toMatchObject({ quotaScheme: "SEMESTER", periodKey: "JAN_JUN", workingDays: 6 });
+
+    // Booked second, for March, under the three-month rule. Its own quarter is empty, but the
+    // half year is spent — without the semester cap this would add 3 more days, 9 in one semester.
+    const march = await submit(midSemesterApp, "2099-03-23", "2099-03-25");
+    expect(march.statusCode).toBe(409);
+    expect(march.json().code).toBe("PERIOD_LIMIT_EXCEEDED");
+
+    const summary = await call(midSemesterApp, "GET", "/leave/me/summary");
+    expect(summary.json().annualLeave).toMatchObject({
+      quotaScheme: "QUARTER",
+      currentPeriodKey: "JAN_MAR",
+      availableNowDays: 0,
+    });
+  });
+
+  it("counts a December request against Juli-Desember", async () => {
+    const october = await submit(app, "2099-10-05", "2099-10-07");
+    expect(october.statusCode, october.body).toBe(201);
+    expect(october.json()).toMatchObject({ periodKey: "JUL_DEC", workingDays: 3 });
+
+    // December is the last month of the period: its usage must land in the same bucket.
+    const december = await call(app, "POST", "/leave/me/annual/preview", {
+      startOn: "2099-12-07",
+      endOn: "2099-12-09",
+    });
+    expect(december.statusCode, december.body).toBe(200);
+    expect(december.json()).toMatchObject({
+      periodKey: "JUL_DEC",
+      periodLimitDays: 6,
+      availableDaysBeforeRequest: 3,
+      availableDaysAfterRequest: 0,
+    });
+
+    const tooMany = await submit(app, "2099-12-07", "2099-12-10");
+    expect(tooMany.statusCode).toBe(409);
+    expect(tooMany.json().code).toBe("PERIOD_LIMIT_EXCEEDED");
   });
 
   it("shows the employee two six-day semesters instead of four three-day periods", async () => {

@@ -36,8 +36,11 @@ export interface EmployeeLeaveSummary {
     key: "annual";
     name: string;
     annualEntitlementDays?: number;
-    periodLimitDays?: number;
     minimumNoticeDays: number | null;
+    /**
+     * LEAVE-003 R2: no `periodLimitDays` here. The limit depends on the leave date, so it comes
+     * from `annualLeave` (`currentPeriodLimitDays`, and `allocationDays` per period).
+     */
   };
   annualLeave: {
     annualEntitlementDays: number;
@@ -53,6 +56,51 @@ export interface EmployeeLeaveSummary {
   } | null;
   pendingApprovalCount: number;
   requests: LeaveRequestSummary[];
+}
+
+/** An ISO date as a reader expects it; the raw value if it is not one. */
+export function formatQuotaDate(value: string): string {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.valueOf())) return value;
+  return parsed.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * LEAVE-003 R2: what the employee is told about the quota period and the boundary one request may
+ * not cross.
+ *
+ * `quotaScheme` and `periodLimitDays` must describe the dates being talked about — today's rule in
+ * the entitlement box, the preview's rule once dates are chosen. Enforcement follows the **leave**
+ * date, so a box that always spoke for today would promise the old rule to someone picking dates
+ * after the change. While the change is still ahead, the hint says so instead of pretending the
+ * rule in force today is the only one.
+ */
+export function annualQuotaHint(input: {
+  quotaScheme: AnnualLeaveQuotaScheme;
+  periodLimitDays: number;
+  semesterEffectiveFrom?: string | null;
+  /** The date `quotaScheme` was derived from. */
+  referenceDate?: string;
+}): string {
+  const current =
+    input.quotaScheme === "SEMESTER"
+      ? `${input.periodLimitDays} hari kerja per semester. Satu pengajuan harus berada dalam satu semester: tanggal yang melewati 30 Juni-1 Juli atau pergantian tahun diajukan terpisah.`
+      : `${input.periodLimitDays} hari kerja per periode tiga bulan. Satu pengajuan harus berada dalam satu periode: tanggal setelah batas periode diajukan terpisah.`;
+
+  const changesLater =
+    input.quotaScheme === "QUARTER" &&
+    Boolean(input.semesterEffectiveFrom) &&
+    Boolean(input.referenceDate) &&
+    input.semesterEffectiveFrom! > input.referenceDate!;
+
+  return changesLater
+    ? `${current} Untuk tanggal cuti mulai ${formatQuotaDate(input.semesterEffectiveFrom!)}, batasnya berpindah ke per semester (Januari-Juni dan Juli-Desember); yang berlaku adalah aturan pada tanggal cuti, bukan tanggal pengajuan.`
+    : current;
 }
 
 /** LEAVE-008 adds `postponement_proposed` (awaiting my answer) and `postponed` (replaced). */

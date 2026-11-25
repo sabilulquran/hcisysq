@@ -5,6 +5,7 @@ import {
   AnnualLeavePolicyError,
   annualLeavePeriodForDate,
   annualLeavePeriodLimitDays,
+  annualLeavePeriodMonthRange,
   annualLeaveQuotaScheme,
   assertAnnualLeaveEntitlementGroup,
   calculateAnnualLeaveYearView,
@@ -193,6 +194,17 @@ describe("LEAVE-003 R2 semester quota", () => {
     expect(annualLeavePeriodForDate("2027-07-01", "SEMESTER")).toBe("JUL_DEC");
     expect(annualLeavePeriodLimitDays("QUARTER")).toBe(3);
     expect(annualLeavePeriodLimitDays("SEMESTER")).toBe(6);
+  });
+
+  it("gives every period its month range, which is what the usage queries bound on", () => {
+    // `annualUsageInPeriod` turns these into `start_on >= make_date(y, startMonth, 1)` and
+    // `start_on < make_date(y, endMonth, 1) + interval '1 month'`, so December must read as 12.
+    expect(annualLeavePeriodMonthRange("JAN_MAR")).toEqual({ startMonth: 1, endMonth: 3 });
+    expect(annualLeavePeriodMonthRange("APR_JUN")).toEqual({ startMonth: 4, endMonth: 6 });
+    expect(annualLeavePeriodMonthRange("JUL_SEP")).toEqual({ startMonth: 7, endMonth: 9 });
+    expect(annualLeavePeriodMonthRange("OCT_DEC")).toEqual({ startMonth: 10, endMonth: 12 });
+    expect(annualLeavePeriodMonthRange("JAN_JUN")).toEqual({ startMonth: 1, endMonth: 6 });
+    expect(annualLeavePeriodMonthRange("JUL_DEC")).toEqual({ startMonth: 7, endMonth: 12 });
   });
 
   it("shows four 3-day periods before the effective date and two 6-day periods after it", () => {
@@ -446,6 +458,70 @@ describe("LEAVE-003 R2 semester quota", () => {
     expect(secondSemester.availableDaysAfterRequest).toBe(0);
 
     expect(3 + 3 + 6).toBe(ANNUAL_LEAVE_ENTITLEMENT_DAYS);
+  });
+
+  /**
+   * The order above is the safe one. Requests may be submitted in any order, and booking a
+   * later-dated leave before an earlier-dated one is ordinary: the three-month rule must not be
+   * blind to semester-rule days already sitting in the other half of the same semester.
+   */
+  it("caps the semester at 6 even when the three-month rule is applied after it, in any order", () => {
+    const employee = {
+      entitlementGroup: "non_education" as const,
+      employmentStartedOn: "2024-01-01",
+      semesterEffectiveFrom: "2027-04-01",
+    };
+
+    // Booked first, for May: the semester rule gives all 6 days of Januari-Juni.
+    const may = validateAnnualLeaveRequest({
+      ...employee,
+      submittedOn: "2027-02-01",
+      leaveStartOn: "2027-05-10",
+      leaveEndOn: "2027-05-17",
+      requestedWorkingDays: 6,
+    });
+    expect(may.quotaScheme).toBe("SEMESTER");
+    expect(may.periodKey).toBe("JAN_JUN");
+
+    // Booked second, for March: read under the three-month rule, but the semester is spent.
+    expect(() =>
+      validateAnnualLeaveRequest({
+        ...employee,
+        submittedOn: "2027-02-10",
+        leaveStartOn: "2027-03-22",
+        leaveEndOn: "2027-03-24",
+        requestedWorkingDays: 1,
+        usedDaysByQuarter: { APR_JUN: 6 },
+      }),
+    ).toThrowError(AnnualLeaveRequestPolicyError);
+
+    // Four of those six sitting in May still leave only two for March, never the full quarter of 3.
+    const march = validateAnnualLeaveRequest({
+      ...employee,
+      submittedOn: "2027-02-10",
+      leaveStartOn: "2027-03-22",
+      leaveEndOn: "2027-03-23",
+      requestedWorkingDays: 2,
+      usedDaysByQuarter: { APR_JUN: 4 },
+    });
+    expect(march.quotaScheme).toBe("QUARTER");
+    expect(march.periodKey).toBe("JAN_MAR");
+    expect(march.availableDaysBeforeRequest).toBe(2);
+    expect(march.availableDaysAfterRequest).toBe(0);
+  });
+
+  it("does not restrict a year that is wholly under the three-month rule", () => {
+    // The extra semester cap is 3 + 3, so each quarter keeps its own full 3 days.
+    const view = calculateAnnualLeaveYearView({
+      employmentStartedOn: "2024-01-01",
+      referenceDate: "2027-05-10",
+      semesterEffectiveFrom: "2027-07-01",
+      usedDaysByQuarter: { JAN_MAR: 3 },
+    });
+
+    expect(view.quotaScheme).toBe("QUARTER");
+    expect(view.availableNowDays).toBe(3);
+    expect(view.periods.find((period) => period.key === "APR_JUN")?.remainingDays).toBe(3);
   });
 
   it("does not give a mid-year eligible employee a semester they cannot reach", () => {

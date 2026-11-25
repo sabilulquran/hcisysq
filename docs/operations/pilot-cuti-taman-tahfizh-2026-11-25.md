@@ -8,6 +8,7 @@
 kunci pada `final.env`. Tidak ada satu pun nilai `final.env`, alamat email, NIP, atau nomor
 telepon yang disalin ke dokumen ini.
 **Rilis yang berjalan saat diukur:** `hcis-f6edebd4-20261125`.
+**Rilis yang berjalan sejak 2026-11-25 12:17 WIB:** `hcis-27f10ccd-20261125` — membawa perubahan §6 (panel Mode persetujuan per unit dan dialog Tolak di halaman) ke production, tanpa satu migrasi pun dan tanpa mengubah satu pun angka di §4. Bukti `docs/development/production-release-verification-2026-11-25-27f10ccd.md`.
 
 ---
 
@@ -213,7 +214,7 @@ rantai pada pengajuan yang sudah terkirim tidak disentuh.
 | 3 | Kirim aktivasi untuk Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali | HC, lalu orangnya | **Ya** |
 | 4 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` | HCM | **Ya** |
 | 5 | Tambahkan tiga NIP ke daftar izin WhatsApp | Operator | Tidak |
-| 6 | Rilis perubahan ini ke production | Operator | **Ya** untuk langkah 4 |
+| ~~6~~ | ~~Rilis perubahan ini ke production~~ | Operator | **Selesai 2026-11-25 12:17 WIB** — `hcis-27f10ccd-20261125`, tanpa migrasi, verify lulus percobaan pertama; bukti `docs/development/production-release-verification-2026-11-25-27f10ccd.md`. Panel **Mode persetujuan per unit** dan dialog **Tolak** sudah ada di production |
 
 ## 6. Yang ditambahkan perubahan ini
 

@@ -216,11 +216,14 @@ export interface OrganizationResolutionPreview {
 }
 
 export interface OrganizationRolloutSetting {
+  /** ORG-004 D-R7: the row's own id, which `POST .../rollout/:id/end` needs. */
+  id?: string;
   workflowKey: string;
   organizationalNodeKey: string | null;
   mode: "LEGACY" | "SHADOW" | "STRUCTURE";
   effectiveFrom: string;
   effectiveTo: string | null;
+  reason?: string;
 }
 
 export interface OrganizationRolloutConfiguration {
@@ -535,4 +538,21 @@ export async function updateOrganizationRollout(
     body: JSON.stringify(input),
   });
   return readJson<OrganizationRolloutConfiguration>(response);
+}
+
+/**
+ * ORG-004 D-R4: the only way back. A setting is ended, never edited or deleted, and the earliest
+ * last day is today, because a setting in force today already explained the chains resolved today.
+ */
+export async function endOrganizationRollout(
+  id: string,
+  input: { reason: string; lastDay?: string },
+): Promise<OrganizationRolloutSetting> {
+  const response = await fetch(`/api/admin/organization/rollout/${encodeURIComponent(id)}/end`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<OrganizationRolloutSetting>(response);
 }

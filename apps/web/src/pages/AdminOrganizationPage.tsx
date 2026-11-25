@@ -25,7 +25,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   OrganizationChart,
@@ -77,6 +77,7 @@ import {
   OrganizationReadinessTab,
 } from "@/components/organization/OrganizationReadOnlyTabs";
 import { OrganizationManagerBulkTab } from "@/components/organization/OrganizationManagerBulkTab";
+import { OrganizationRolloutPanel } from "@/components/organization/OrganizationRolloutPanel";
 import {
   getOrganizationExplanation,
   getOrganizationPeople,
@@ -469,6 +470,7 @@ export function OrganizationDesignerWorkspace({
   onDraftIdChange,
   onReload,
   onRetryEmployees,
+  onRolloutChanged,
   showOpenChanges = false,
 }: {
   session: AuthSession | null;
@@ -490,6 +492,8 @@ export function OrganizationDesignerWorkspace({
   onDraftIdChange: (value: string | null) => void;
   onReload: () => Promise<void>;
   onRetryEmployees: () => void;
+  /** ORG-004 D-R7: re-read the rollout configuration after the panel wrote or ended a setting. */
+  onRolloutChanged?: () => void | Promise<void>;
   /** ORG-008 follow-up: the Perubahan tab lists every open change set (O-7) with Buka / Buang. */
   showOpenChanges?: boolean;
 }) {
@@ -1130,6 +1134,14 @@ export function OrganizationDesignerWorkspace({
           <span className="mt-0.5 block leading-5">{banner.detail}</span>
         </span>
       </div>
+
+      <OrganizationRolloutPanel
+        rollout={rollout}
+        nodes={data?.nodes ?? []}
+        today={today}
+        canManage={canPublish}
+        onChanged={async () => { await onRolloutChanged?.(); }}
+      />
 
       {error ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div> : null}
       {notice ? <div className="mb-4 flex items-start gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>{notice}</span></div> : null}
@@ -1845,6 +1857,17 @@ export function AdminOrganizationPage() {
   const classificationRequest = useRef(0);
   const [rollout, setRollout] = useState<OrganizationRolloutConfiguration | null>(null);
   const [rolloutFailed, setRolloutFailed] = useState(false);
+  // ORG-004 D-R7: the rollout panel writes, so the page needs to read the configuration again
+  // rather than only once on mount.
+  const loadRollout = useCallback(async () => {
+    try {
+      setRollout(await getOrganizationRollout());
+      setRolloutFailed(false);
+    } catch {
+      setRollout(null);
+      setRolloutFailed(true);
+    }
+  }, []);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1956,9 +1979,7 @@ export function AdminOrganizationPage() {
   useEffect(() => {
     let mounted = true;
     void getCurrentSession().then((current) => { if (mounted) setSession(current); });
-    void getOrganizationRollout()
-      .then((value) => { if (mounted) setRollout(value); })
-      .catch(() => { if (mounted) { setRollout(null); setRolloutFailed(true); } });
+    void loadRollout();
     loadEmployees();
     return () => { mounted = false; };
   }, []);
@@ -2059,6 +2080,7 @@ export function AdminOrganizationPage() {
           onDraftIdChange={setDraftId}
           onReload={reload}
           onRetryEmployees={loadEmployees}
+          onRolloutChanged={loadRollout}
           showOpenChanges={tab === "perubahan"}
         />
       ) : null}

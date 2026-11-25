@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ArrangementApprovalsSection } from "@/components/arrangements/ArrangementApprovalsSection";
 import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
+import { RejectLeaveApproval } from "@/components/leave/RejectLeaveApproval";
 import { ReimbursementApprovalsSection } from "@/components/reimbursements/ReimbursementApprovalsSection";
 import { TripAdvanceApprovalsSection } from "@/components/tripAdvances/TripAdvanceApprovalsSection";
 import { PaginationBar } from "@/components/PaginationBar";
@@ -166,26 +167,30 @@ export function EmployeeApprovalsPage() {
     };
   }, [summary]);
 
-  const decide = async (item: LeaveApprovalInboxItem, decision: "approve" | "reject") => {
-    const note =
-      decision === "reject"
-        ? window.prompt("Alasan penolakan (opsional):")
-        : null;
+  /**
+   * Returns null when the decision was saved, otherwise the message to show. "Tolak" collects its
+   * reason in a dialog on the page (RejectLeaveApproval) and keeps the message inside that dialog;
+   * "Setujui" has nothing to collect and reports through the page banner.
+   */
+  const decide = async (
+    item: LeaveApprovalInboxItem,
+    decision: "approve" | "reject",
+    note: string | null = null,
+  ): Promise<string | null> => {
     setActing(item.stepId);
     setError(null);
     setNotice(null);
     try {
-      await decideLeaveApproval(item.stepId, {
-        decision,
-        note: note?.trim() || null,
-      });
+      await decideLeaveApproval(item.stepId, { decision, note: note?.trim() || null });
       await load();
+      return null;
     } catch (cause) {
-      setError(
+      const message =
         cause instanceof EmployeeLeaveApiError
           ? cause.message
-          : "Keputusan approval tidak dapat disimpan.",
-      );
+          : "Keputusan approval tidak dapat disimpan.";
+      if (decision === "approve") setError(message);
+      return message;
     } finally {
       setActing(null);
     }
@@ -267,14 +272,13 @@ export function EmployeeApprovalsPage() {
                         void load();
                       }}
                     />
-                    <button
-                      type="button"
+                    <RejectLeaveApproval
+                      stepId={item.stepId}
+                      requesterName={item.requesterName}
+                      range={`${formatDate(item.startOn)} – ${formatDate(item.endOn)}`}
                       disabled={acting === item.stepId}
-                      onClick={() => void decide(item, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-4 text-sm font-semibold text-danger-ink hover:bg-danger-soft disabled:opacity-60"
-                    >
-                      <XCircle className="h-4 w-4" aria-hidden="true" /> Tolak
-                    </button>
+                      onConfirm={(note) => decide(item, "reject", note)}
+                    />
                     <button
                       type="button"
                       disabled={acting === item.stepId}

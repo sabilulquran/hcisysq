@@ -11,6 +11,8 @@
 
 **Pembaruan 2026-11-25 (rilis perbaikan audit).** `hcis-f6edebd4-20261125` dirilis ke production atas permintaan owner, **tanpa satu pun migrasi** (`0184` sudah masuk pada `b3adc898`), backup pra-rilis tetap diambil, gerbang kandidat lulus 7/7, verifikasi lulus pada percobaan pertama. Ketiga perbaikan audit di bawah — dan dua yang menyertainya — kini **ada di production**; bukti `docs/development/production-release-verification-2026-11-25-f6edebd4.md`. Yang **tidak** berubah: tidak ada akun yang diaktifkan, tidak ada undangan yang dikirim, tidak ada pilot yang dinyalakan, `organization_rollout_settings` tetap 0 baris (`LEGACY`), dan uang saku dinas tetap terkunci (`trip_per_diem_activation` 0 baris). Perbaikan 1–3 baru terasa setelah akun pegawai diaktifkan.
 
+**Pembaruan 2026-11-25 (owner memilih pilot; satu penghambat baru terukur).** Owner memutuskan membuka bertahap lewat pilot **Cuti Tahunan di Taman Tahfizh**, dan meminta pengaturan khusus unit itu disiapkan agar data atasan cukup dipelihara di bagan. Aktivasi massal menunggu hasil pilot. Pengukuran baca-saja yang menyertainya menemukan penghambat yang daftar ini belum pernah catat: **kelompok hak cuti (`employees.leave_entitlement_group`) kosong untuk 91 dari 97 pegawai aktif** — 4 `education`, 2 `non_education`, dan **nol** yang terisi di unit pilot. Cuti Tahunan individual hanya berlaku untuk `non_education` (`docs/domain/leave-policy-ysq.md`), sehingga pengajuan dari pegawai yang kelompoknya kosong dijawab `409 UNSUPPORTED_ENTITLEMENT_GROUP` **sebelum rantai penyetuju disentuh**. Dicatat sebagai **W16** di §5. Kesiapan unit pilot, prasyaratnya, dan pemisahan "diperlukan untuk pilot" dari "sisa pekerjaan sebelum pembukaan penuh" ada di `docs/operations/pilot-cuti-taman-tahfizh-2026-11-25.md` (OPS-PILOT-TT-001); panduan pesertanya di `docs/operations/panduan-pilot-cuti-taman-tahfizh.md`. Yang **tidak** berubah: tidak ada akun yang diaktifkan, dan **belum pernah ada satu undangan aktivasi pun sepanjang umur sistem** (`account_activation_invitations` nol baris, diukur 2026-11-25).
+
 **Pembaruan 2026-11-24 (audit kesiapan pembukaan, dan perbaikan yang lahir darinya).** Audit menjalankan 82 skenario sintetis lewat HTTP dan layar, membaca production baca-saja, dan menemukan **dua cacat yang menghalangi pembukaan** serta satu ketidakcocokan label. Ketiganya sudah diperbaiki, dibuktikan uji otomatis, dan **dirilis ke production 25 November** (lihat pembaruan di atas):
 
 1. **Penyetuju unit tidak dapat mengajukan cutinya sendiri** (ORG-004 D-R6). Rung penyetuju unit yang jatuh kepada pemohon memang dibuang — itu yang APR-001 dan LEAVE-004-G minta — tetapi dibuang tanpa jejak, sehingga pemeriksaan di hilir membacanya sebagai "approver unit belum dikonfigurasi" dan menolak `409 UNIT_APPROVER_MISSING`. Di production ini mengenai **delapan dari sembilan** pegawai yang menjadi penyetuju unit, karena mereka penyetuju bagi unitnya sendiri. Kini rantainya berjalan dengan atasan langsung saja; `UNIT_ONLY` yang tidak punya rung lain ditolak sebagai `UNIT_APPROVER_SELF` pada kedua mode. Uji: `apps/api/test/org004-unit-approver-self-leave.postgres.test.ts`.
@@ -296,7 +298,8 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 1. **W3 lalu W2 — kesiapan akun penyetuju.** 95 dari 96 pegawai aktif yang layak diproses berada di unit yang penyetuju cutinya belum berakun aktif (7 unit `invited`, 1 unit tanpa akun; §3). Selama ini benar, setiap pengajuan berhenti di `409 APPROVER_ACCOUNT_NOT_READY`, apa pun isi kolom atasan.
 2. **W1 — sumber data atasan tersambung.** Tetap wajib: tanpa atasan, pengajuan tidak sampai ke tahap penyetuju unit. Datanya sebagian besar sudah ada di bagan organisasi, tetapi jalur yang berjalan belum membacanya.
 3. ~~**W15 — rilis `main`**~~ **tertutup 2026-11-25**: tiga rilis beruntun (`734be5ca`, `b3adc898`, `f6edebd4`) membawa seluruh `main` ke production, perbaikan audit kesiapan termasuk. Tidak ada lagi perilaku yang tertahan di `main`.
-4. Sisanya (W4–W14) menyusul, sesuai ketergantungan yang ditulis di tiap baris.
+4. **W16 — kelompok hak cuti** (baru 2026-11-25). Mendahului W4 untuk Cuti Tahunan, dan mendahului W3 maupun W2 dalam arti yang berbeda: ia menolak pengajuan lebih awal daripada keduanya, sebelum rantai penyetuju dibaca sama sekali. Mengerjakan W2 dan W3 lebih dulu tanpa W16 menghasilkan unit berisi orang yang dapat masuk, penyetuju yang siap, dan nol pengajuan yang dapat dibuat.
+5. Sisanya (W4–W14) menyusul, sesuai ketergantungan yang ditulis di tiap baris.
 
 | # | Butir | Status |
 |---|---|---|
@@ -315,6 +318,7 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 | W13 | Keamanan dan matriks izin | Belum terverifikasi |
 | W14 | Kepemilikan operasional, insiden, stop, rollback | Belum selesai |
 | W15 | Merilis `main` ke production | **Tertutup 2026-11-25.** `734be5ca` dan `b3adc898` (24 Nov) lalu `f6edebd4` (25 Nov); sesudahnya tidak ada perubahan `main` yang menunggu rilis (§4) |
+| W16 | Kelompok hak cuti pegawai (`education` / `non_education`) | **Belum selesai** (baru 2026-11-25) |
 
 ### W1 — Sumber data atasan tersambung ke rantai persetujuan
 
@@ -470,6 +474,18 @@ Butir di bagian ini adalah yang harus benar sebelum ~97 pegawai diberi akses. Bu
 | **Penghambat** | Dua di antaranya menyentuh perilaku yang relevan untuk pembukaan: #386 (jendela pengingat 04.00–23.00, masa kritis cuti tanpa tinjauan HC) dan #389 (tarif uang saku). Empat migrasi dari rantai LOAN-002/PERF-001 membawa tabel baru yang belum pernah ada di production. #383 menambah jalur baca data gaji per orang — rilisnya aman karena `GOVERNANCE_PAYROLL_READ_ENABLED` mati, tetapi **penyalaannya** adalah keputusan owner tersendiri dan bukan bagian dari rilis ini. Penghambat yang sempat menunggu di depan — gerbang rilis TRIP-002 yang akan menghentikan rilis selama katalog klasifikasi masih nol — **sudah hilang** sejak keputusan owner 2026-11-24 (TRIP-002 D-22, §4): pemeriksaan itu kini syarat **menyalakan** fitur uang saku, bukan syarat merilis, dan production menerimanya dalam keadaan uang saku terkunci. |
 | **Langkah berikutnya** | Rilis `main` lewat OPS-MI8-REL-001 dengan pengaman teknis yang biasa: dry-run bersih, backup sebelum migrasi, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC, laporan sesudahnya. Kesembilan migrasi diterapkan dalam satu rilis. |
 | **Kriteria selesai** | Catatan `production-release-verification-<tanggal>-<sha>.md` baru dengan `verify OK` dan migrasi tertinggi `0182` (angka ini mengikuti daftar migrasi di §4, bukan cacah PR). |
+
+### W16 — Kelompok hak cuti pegawai
+
+| | |
+|---|---|
+| **Status** | **Belum selesai.** Kolom, layar, dan jalur auditnya ada dan berjalan; yang kosong adalah datanya. |
+| **Bukti bertanggal** | Pengukuran baca-saja 2026-11-25 atas `employees` berstatus `active`: **kosong 91**, `education` 4, `non_education` 2. Keenam yang terisi adalah sisa pengujian, bukan hasil klasifikasi yang sistematis. Di unit pilot Taman Tahfizh, **kesembilan** pegawainya kosong, demikian pula penyetuju unitnya. |
+| **Mengapa ini penghambat, bukan kerapian data** | `assertAnnualLeaveEntitlementGroup` (`apps/api/src/modules/leave/domain/annual-leave-policy.ts`) menolak setiap pengajuan Cuti Tahunan dari pegawai yang kelompoknya bukan `non_education`, dengan `409 UNSUPPORTED_ENTITLEMENT_GROUP`. Penolakan itu terjadi di dalam `validateAnnualLeaveRequest`, **sebelum** `resolveLeaveAuthorities` dipanggil — jadi ia mendahului W1, W2, dan W3, dan menyembunyikan apakah ketiganya sudah benar. |
+| **Yang masih belum diketahui** | Siapa yang `education` dan siapa yang `non_education` untuk 91 orang itu. Spesifikasi melarang HCIS menebaknya: *"it must not infer the classification solely from unit or job-title strings"* (`docs/domain/leave-policy-ysq.md`). Jadi tidak ada migrasi, skrip, atau default yang sah untuk menutup butir ini. |
+| **Penghambat** | Keputusan HC per pegawai. Jalurnya sudah ada di layar: **Admin → Konfigurasi Cuti**, izin `leave.configuration.manage`, `PATCH /admin/leave/employees/:employeeId/entitlement-group`, teraudit sebagai `leave.entitlement_group.changed`. Pegawai berstatus `OUTSIDE_HCIS` ditolak 409 di jalur yang sama. |
+| **Langkah berikutnya** | (1) Untuk pilot: klasifikasikan peserta pilot lebih dulu — usul dan dasarnya di OPS-PILOT-TT-001 §5.1. (2) Untuk pembukaan penuh: klasifikasikan 91 pegawai aktif, dan putuskan secara eksplisit bagaimana kepala unit pendidikan dihitung, karena tidak ada aturan tertulis yang menentukannya. |
+| **Kriteria selesai** | Setiap pegawai aktif dalam cakupan pembukaan punya kelompok hak cuti yang terisi, **dan** satu pengajuan Cuti Tahunan nyata dari pegawai `non_education` lolos validasi kelompok. Indikator di layar Konfigurasi Cuti (`entitlementGroupConfigured`) mencacah kolomnya, jadi ia menutup bagian pertama saja. |
 
 ## 6. Saklar fitur: apa yang mati dan apa yang menunggu di baliknya
 

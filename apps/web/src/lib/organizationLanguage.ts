@@ -257,11 +257,34 @@ export type OrganizationModeBanner = {
   detail: string;
 };
 
-const ROLLOUT_MODE_WORDING: Record<string, string> = {
+export const ROLLOUT_MODE_WORDING: Record<string, string> = {
   LEGACY: "data atasan lama",
   SHADOW: "uji banding (data lama tetap dipakai)",
   STRUCTURE: "struktur ini",
 };
+
+/**
+ * ORG-004: the closed set of workflow keys the runtime looks up (`workflow-keys.ts` and migration
+ * 0182), in the words the screen uses for them. A key missing here would be shown raw rather than
+ * silently dropped, so adding a workflow never hides a setting.
+ */
+export const ROLLOUT_WORKFLOW_WORDING: Record<string, string> = {
+  "leave.annual": "Cuti Tahunan",
+  "leave.employee_marriage": "Cuti Menikah",
+  "leave.child_marriage": "Cuti Menikahkan Anak",
+  "leave.child_circumcision": "Cuti Khitan Anak",
+  "leave.hajj": "Cuti Haji",
+  "leave.unpaid": "Cuti Tanpa Gaji",
+  LOAN: "Pinjaman",
+  OVERTIME: "Lembur",
+  PERF: "Kinerja",
+  REIMBURSEMENT: "Reimbursement",
+  TRAINING: "Pelatihan",
+  TRIP: "Perjalanan Dinas",
+  WORK_ARRANGEMENT: "Pengaturan Kerja",
+};
+
+export const ROLLOUT_WORKFLOW_KEYS = Object.keys(ROLLOUT_WORKFLOW_WORDING);
 
 /**
  * ORG-008-1 §4.1 banner. `GET /admin/organization/rollout` returns only the newest row regardless of

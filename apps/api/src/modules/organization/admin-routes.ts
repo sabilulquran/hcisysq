@@ -1877,9 +1877,13 @@ export async function registerOrganizationAdminRoutes(
     // and the count lets a screen state LEGACY as a fact exactly when there is no configuration at
     // all. The top-level fields are unchanged for clients already reading them.
     const today = jakartaBusinessDate();
+    // ORG-004 (D-R7, 2026-11-25): `id` and `reason` travel with each effective row. Without the id
+    // no client can call `POST /admin/organization/rollout/:id/end`, so the documented rollback
+    // path (OPS-OPEN-001 §7.8) existed as a route nobody could address; the reason is what tells an
+    // operator which unit a row was written for before they end it.
     const effective = await pool.query(
-      `SELECT workflow_key AS "workflowKey", node_key AS "organizationalNodeKey", mode,
-        effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
+      `SELECT id, workflow_key AS "workflowKey", node_key AS "organizationalNodeKey", mode,
+        effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason
        FROM organization_rollout_settings
        WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)
        ORDER BY workflow_key, node_key NULLS FIRST, effective_from DESC`,

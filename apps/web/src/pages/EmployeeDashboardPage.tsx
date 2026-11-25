@@ -287,7 +287,9 @@ export function EmployeeDashboardPage() {
               <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
                 {quickTiles.map(([label, href, TileIcon, category]) => {
                   return (
-                    <a key={label} href={href} className="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border/70 bg-surface-raised px-1.5 py-2.5 text-center shadow-[var(--shadow-soft)] sm:min-h-24 sm:gap-2 sm:px-2 sm:py-3">
+                    // px-1 on a phone: four tiles across 375px leave ~68px of label, and the
+                    // 11px floor needs all of it for "Clock In/Out" to stay on one line.
+                    <a key={label} href={href} className="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border/70 bg-surface-raised px-1 py-2.5 text-center shadow-[var(--shadow-soft)] sm:min-h-24 sm:gap-2 sm:px-2 sm:py-3">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${categoryTileClass[category]}`}>
                         <TileIcon className="h-5 w-5" aria-hidden="true" />
                       </span>

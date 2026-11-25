@@ -5,6 +5,26 @@ const controlClass =
   "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border bg-surface-raised px-2.5 font-medium text-brand-heading transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
+ * What the pager shows for one (page, pageSize, total). Pure, so the arithmetic that
+ * decides "Menampilkan 51–68 dari 68" and which page is reachable can be tested on its own.
+ */
+export function paginationView(page: number, pageSize: number, total: number) {
+  const size = Math.max(1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / size));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  return {
+    totalPages,
+    safePage,
+    /** The page prop points outside the result set, so the list should move. */
+    outOfRange: page !== safePage,
+    start: total === 0 ? 0 : (safePage - 1) * size + 1,
+    end: Math.min(total, safePage * size),
+    atFirst: safePage <= 1,
+    atLast: safePage >= totalPages,
+  };
+}
+
+/**
  * ENG-LIST-001-I: the one pager for every paginated list. Inline pagers are not allowed.
  *
  * ENG-LIST-001-M: the bar stays reachable at 375px (it wraps, and every control is 40px tall),
@@ -25,14 +45,12 @@ export function PaginationBar({
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(Math.max(page, 1), totalPages);
-  const start = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const end = Math.min(total, safePage * pageSize);
+  const { totalPages, safePage, outOfRange, start, end, atFirst, atLast } =
+    paginationView(page, pageSize, total);
 
   useEffect(() => {
-    if (page !== safePage) onPageChange(safePage);
-  }, [page, safePage, onPageChange]);
+    if (outOfRange) onPageChange(safePage);
+  }, [outOfRange, safePage, onPageChange]);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">
@@ -58,7 +76,7 @@ export function PaginationBar({
         <button
           type="button"
           aria-label="Halaman pertama"
-          disabled={safePage <= 1}
+          disabled={atFirst}
           onClick={() => onPageChange(1)}
           className={controlClass}
         >
@@ -66,7 +84,7 @@ export function PaginationBar({
         </button>
         <button
           type="button"
-          disabled={safePage <= 1}
+          disabled={atFirst}
           onClick={() => onPageChange(safePage - 1)}
           className={controlClass}
         >
@@ -77,7 +95,7 @@ export function PaginationBar({
         </span>
         <button
           type="button"
-          disabled={safePage >= totalPages}
+          disabled={atLast}
           onClick={() => onPageChange(safePage + 1)}
           className={controlClass}
         >
@@ -86,7 +104,7 @@ export function PaginationBar({
         <button
           type="button"
           aria-label="Halaman terakhir"
-          disabled={safePage >= totalPages}
+          disabled={atLast}
           onClick={() => onPageChange(totalPages)}
           className={controlClass}
         >

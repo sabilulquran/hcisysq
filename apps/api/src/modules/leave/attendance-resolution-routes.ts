@@ -5,7 +5,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import {
+  annualLeaveSemesterQuotaEffectiveFrom,
+  type ApiConfig,
+} from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
   OUTSIDE_HCIS_CODE,
@@ -19,7 +22,7 @@ import {
 } from "../auth/service.js";
 import {
   ANNUAL_LEAVE_ENTITLEMENT_DAYS,
-  ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+  annualLeavePeriodMonthRange,
   type AnnualLeavePeriodKey,
   type LeaveEntitlementGroup,
 } from "./domain/annual-leave-policy.js";
@@ -264,22 +267,28 @@ async function enqueueNotification(
   );
 }
 
+/**
+ * LEAVE-003 R2: days already used inside a quota period, matched by the **start date** rather than
+ * by the stored `annual_period_key`. A semester window covers the two quarters the previous rule
+ * recorded, so requests decided under either rule are counted once and only once.
+ */
 async function annualUsageInPeriod(
   db: Pool | PoolClient,
   employeeId: string,
   periodKey: AnnualLeavePeriodKey,
   year: number,
 ) {
+  const { startMonth, endMonth } = annualLeavePeriodMonthRange(periodKey);
   const result = await db.query<{ days: number }>(
     `SELECT coalesce(sum(working_days), 0)::int AS days
      FROM leave_requests
      WHERE employee_id = $1
        AND policy_key = 'annual'
        AND status IN ('in_review', 'approved')
-       AND annual_period_key = $2
-       AND start_on >= make_date($3, 1, 1)
-       AND start_on < make_date($3 + 1, 1, 1)`,
-    [employeeId, periodKey, year],
+       AND annual_period_key IS NOT NULL
+       AND start_on >= make_date($2, $3, 1)
+       AND start_on < (make_date($2, $4, 1) + interval '1 month')`,
+    [employeeId, year, startMonth, endMonth],
   );
   return result.rows[0]?.days ?? 0;
 }
@@ -290,11 +299,12 @@ async function annualOfferForCase(
     ResolutionCaseRow,
     "employeeId" | "entitlementGroup" | "startedOn" | "unresolvedDates"
   >,
+  semesterEffectiveFrom: string | null,
 ): Promise<AnnualConversionOffer> {
   const firstDate = item.unresolvedDates[0];
   let usedDays = 0;
   if (firstDate && item.entitlementGroup === "non_education") {
-    const periodKey = annualPeriodKeyForDate(firstDate);
+    const periodKey = annualPeriodKeyForDate(firstDate, semesterEffectiveFrom);
     usedDays = await annualUsageInPeriod(
       db,
       item.employeeId,
@@ -307,6 +317,7 @@ async function annualOfferForCase(
     employmentStartedOn: item.startedOn,
     unresolvedDates: item.unresolvedDates,
     usedDaysInPeriod: usedDays,
+    semesterEffectiveFrom,
   });
 }
 
@@ -335,6 +346,8 @@ export async function registerAttendanceResolutionRoutes(
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required for attendance resolution routes");
   }
+  /** LEAVE-003 R2: `null` until the owner sets a date, which keeps the quarter rule in force. */
+  const semesterEffectiveFrom = annualLeaveSemesterQuotaEffectiveFrom(config);
   const auth = new AuthService(
     pool,
     config.AUTH_ENCRYPTION_KEY,
@@ -710,7 +723,7 @@ export async function registerAttendanceResolutionRoutes(
         result.rows.map(async (item) => ({
           ...item,
           policyName: getLeavePolicy(item.policyKey).name,
-          annualConversion: await annualOfferForCase(pool, item),
+          annualConversion: await annualOfferForCase(pool, item, semesterEffectiveFrom),
           createdAt: item.createdAt.toISOString(),
           updatedAt: item.updatedAt.toISOString(),
         })),
@@ -771,7 +784,7 @@ export async function registerAttendanceResolutionRoutes(
       }
 
       if (body.data.action === "propose_annual_conversion") {
-        const offer = await annualOfferForCase(client, item);
+        const offer = await annualOfferForCase(client, item, semesterEffectiveFrom);
         if (!offer.available) {
           throw new AttendanceResolutionRouteError(
             409,
@@ -872,7 +885,7 @@ export async function registerAttendanceResolutionRoutes(
         result.rows.map(async (item) => ({
           ...item,
           policyName: getLeavePolicy(item.policyKey).name,
-          annualConversion: await annualOfferForCase(pool, item),
+          annualConversion: await annualOfferForCase(pool, item, semesterEffectiveFrom),
           createdAt: item.createdAt.toISOString(),
           updatedAt: item.updatedAt.toISOString(),
         })),
@@ -951,7 +964,7 @@ export async function registerAttendanceResolutionRoutes(
         throw new AttendanceResolutionRouteError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_SELF_SERVICE_MESSAGE);
       }
 
-      const offer = await annualOfferForCase(client, item);
+      const offer = await annualOfferForCase(client, item, semesterEffectiveFrom);
       if (!offer.available || !offer.periodKey) {
         throw new AttendanceResolutionRouteError(
           409,
@@ -985,7 +998,8 @@ export async function registerAttendanceResolutionRoutes(
           "Konversi administratif untuk penyelesaian ketidakhadiran.",
           offer.periodKey,
           ANNUAL_LEAVE_ENTITLEMENT_DAYS,
-          ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+          // LEAVE-003 R2: the limit the converted dates were actually read against, not a constant.
+          offer.periodLimitDays,
           offer.remainingDays,
           `attendance-resolution:${item.caseId}`,
           JSON.stringify({

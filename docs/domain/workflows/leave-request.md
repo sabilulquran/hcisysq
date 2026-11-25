@@ -100,8 +100,12 @@ For non-education employees:
 
 1. Load active employee, entitlement group, start date, and 12-month eligibility date.
 2. Keep the policy display right as `12 working days / year`.
-3. Determine the usage period: Jan-Mar, Apr-Jun, Jul-Sep, or Oct-Dec.
-4. Calculate the period's remaining 3-day usage limit.
+3. Determine the quota scheme from the leave start date and the LEAVE-003 R2 effective date, then
+   the usage period: Jan-Mar, Apr-Jun, Jul-Sep, or Oct-Dec under the three-month rule; Jan-Jun or
+   Jul-Dec under the semester rule.
+4. Calculate the period's remaining usage limit — 3 working days for a three-month period, 6 for a
+   semester — reading a semester's usage as the sum of the two three-month periods inside it, so a
+   request recorded under either rule counts exactly once.
 5. Validate minimum notice and requested working days.
 6. Resolve `Direct Manager -> Unit Approver` and deduplicate.
 7. Persist request + calculation snapshot + approval snapshot transactionally.
@@ -242,7 +246,8 @@ At submit, persist enough normalized facts to explain the decision later, for ex
 - entitlement group;
 - eligibility date;
 - annual entitlement display value when applicable;
-- current period key and period limit;
+- current period key and period limit — which, for Cuti Tahunan, also record which quota scheme
+  read the dates (LEAVE-003 R2), so a decision stays explainable after the rule changes;
 - used/remaining amount before submission;
 - requested working days;
 - notice-rule result;

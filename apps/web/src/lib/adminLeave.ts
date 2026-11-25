@@ -47,8 +47,24 @@ export interface LeaveEmployeeConfiguration {
   approvalSource?: "LEGACY" | "SHADOW" | "STRUCTURE";
 }
 
+/**
+ * LEAVE-003 R2: the Cuti Tahunan quota rule as the API reports it, so the screen states what
+ * submission actually enforces instead of a figure written into the page.
+ */
+export interface AnnualQuotaConfiguration {
+  entitlementDays: number;
+  quarterLimitDays: number;
+  semesterLimitDays: number;
+  /** The day the semester rule starts applying, by leave date; null while it never does. */
+  semesterEffectiveFrom: string | null;
+  /** The rule in force today. */
+  scheme: "QUARTER" | "SEMESTER";
+  periodLimitDays: number;
+}
+
 export interface LeaveConfigurationResponse {
   policies: LeavePolicySummary[];
+  annualQuota?: AnnualQuotaConfiguration;
   units: LeaveUnitConfiguration[];
   employees: LeaveEmployeeConfiguration[];
   summary: {

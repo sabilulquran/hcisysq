@@ -47,6 +47,21 @@ const envSchema = z
     // LOAN-001 Package 2 DRAFT: PAY-003 proposes LOAN-001 instalments as period deductions.
     // Stays off until the owner makes PAY-003 the official payslip path (employee-loans.md §9).
     LOAN_PAYROLL_DEDUCTION_ENABLED: z.enum(["0", "1"]).default("0"),
+    /**
+     * LEAVE-003 R2 DRAFT: the day the Cuti Tahunan usage limit moves from 3 working days per
+     * three-month period to 6 working days per calendar semester, read against the **leave** date.
+     * Unset — the shipped default, production included — keeps the three-month rule in force for
+     * every date, so the new rule cannot start without the owner naming a date
+     * (`docs/domain/leave-policy-ysq.md` §"LEAVE-003 R2"). The proposal on record is 2027-01-01.
+     */
+    ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .trim()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM must be YYYY-MM-DD")
+        .optional(),
+    ),
     ORG_DIRECTORY_TOKEN_ISSUER: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().url().optional(),
@@ -517,6 +532,24 @@ export function isGovernancePayrollReadEnabled(
   config: { GOVERNANCE_PAYROLL_READ_ENABLED?: string | undefined },
 ): boolean {
   return config.GOVERNANCE_PAYROLL_READ_ENABLED === "true" || config.GOVERNANCE_PAYROLL_READ_ENABLED === "1";
+}
+
+/**
+ * LEAVE-003 R2: the day the semester quota scheme starts applying to Cuti Tahunan, by leave date.
+ * `null` means it never does, which is the state production stays in until the owner sets a date.
+ */
+export function annualLeaveSemesterQuotaEffectiveFrom(
+  config: { ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM?: string | undefined },
+): string | null {
+  const value = config.ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM;
+  if (!value) return null;
+  // The schema checks the shape; this checks that the day exists (2027-02-30 is not a date).
+  if (new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value) {
+    throw new Error(
+      `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM is not a calendar date: ${value}`,
+    );
+  }
+  return value;
 }
 
 export interface OidcRuntimeConfig {

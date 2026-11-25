@@ -8,7 +8,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import {
+  annualLeaveSemesterQuotaEffectiveFrom,
+  type ApiConfig,
+} from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
   AUTH_COOKIE_NAME,
@@ -222,6 +225,8 @@ async function evaluateProposal(
   db: Pool | PoolClient,
   step: StepRow,
   dates: { startOn: string; endOn: string },
+  /** LEAVE-003 R2: proposed dates are read under the quota rule in force on those dates. */
+  semesterEffectiveFrom: string | null,
 ) {
   assertPostponementDates({
     currentStartOn: step.startOn,
@@ -242,7 +247,10 @@ async function evaluateProposal(
     endOn: dates.endOn,
   });
   if (step.policyKey === "annual") {
-    const preview = await buildAnnualPreview(db, requester, dates, step.submittedOn, step.requestId);
+    const preview = await buildAnnualPreview(db, requester, dates, step.submittedOn, {
+      excludeRequestId: step.requestId,
+      semesterEffectiveFrom,
+    });
     return {
       workingDays: preview.validation.requestedWorkingDays,
       workingDates: preview.calculation.workingDates,
@@ -276,6 +284,8 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
     throw new Error("AUTH_ENCRYPTION_KEY is required for leave postponement routes");
   }
   const encryptionKey = config.AUTH_ENCRYPTION_KEY;
+  /** LEAVE-003 R2: `null` until the owner sets a date, which keeps the quarter rule in force. */
+  const semesterEffectiveFrom = annualLeaveSemesterQuotaEffectiveFrom(config);
   const auth = new AuthService(pool, encryptionKey, config.AUTH_SESSION_TTL_HOURS, config.NODE_ENV === "production");
 
   async function authenticateEmployee(request: FastifyRequest, reply: FastifyReply): Promise<AuthPrincipal | null> {
@@ -370,7 +380,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
     if (!params.success || !body.success) return reply.status(400).send(INVALID);
     try {
       const { step } = await loadOwnedStep(pool, principal, params.data.stepId, false);
-      const evaluation = await evaluateProposal(pool, step, body.data);
+      const evaluation = await evaluateProposal(pool, step, body.data, semesterEffectiveFrom);
       reply.header("Cache-Control", "no-store");
       return reply.send({
         stepId: step.id,
@@ -399,7 +409,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
       await client.query("BEGIN");
       const { actor, step, plan } = await loadOwnedStep(client, principal, params.data.stepId, true);
       const dates = { startOn: body.data.startOn, endOn: body.data.endOn };
-      const evaluation = await evaluateProposal(client, step, dates);
+      const evaluation = await evaluateProposal(client, step, dates, semesterEffectiveFrom);
       const proposalId = randomUUID();
 
       await client.query(
@@ -605,7 +615,7 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         criticalPeriods: CriticalPeriodSnapshotItem[];
       };
       if (proposal.policyKey === "annual") {
-        const result = await insertAnnualRequest(client, common);
+        const result = await insertAnnualRequest(client, { ...common, semesterEffectiveFrom });
         created = { ...result, criticalPeriods: result.preview.criticalPeriods };
       } else if (isPlannedKey(proposal.policyKey)) {
         const result = await insertPlannedRequest(client, {

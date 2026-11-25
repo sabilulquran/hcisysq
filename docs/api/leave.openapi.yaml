@@ -41,7 +41,13 @@ paths:
                       leaveEntitlementGroup: { type: [string, 'null'] }
                       startedOn: { type: [string, 'null'], format: date }
                   annualPolicy: { type: object, description: Annual leave policy catalog entry }
-                  annualLeave: { type: object, description: Year view with entitlement, periods and used/available days }
+                  annualLeave:
+                    type: object
+                    description: >-
+                      Year view with entitlement, periods and used/available days. LEAVE-003 R2 adds
+                      quotaScheme and semesterEffectiveFrom; periods holds four three-month buckets
+                      under QUARTER and two semesters under SEMESTER, each with its own
+                      allocationDays. Clients read the limit from the period, never from a constant.
                   pendingApprovalCount: { type: integer, minimum: 0 }
                   requests:
                     type: array
@@ -67,8 +73,11 @@ paths:
                 type: object
                 properties:
                   annualEntitlementDays: { type: integer }
-                  periodKey: { type: string }
-                  periodLimitDays: { type: integer }
+                  quotaScheme: { $ref: '#/components/schemas/AnnualLeaveQuotaScheme' }
+                  periodKey: { $ref: '#/components/schemas/AnnualLeavePeriodKey' }
+                  periodLimitDays:
+                    type: integer
+                    description: 3 under QUARTER, 6 under SEMESTER (LEAVE-003 R2).
                   availableDaysBeforeRequest: { type: integer }
                   requestedWorkingDays: { type: integer }
                   availableDaysAfterRequest: { type: integer }
@@ -130,7 +139,9 @@ paths:
                   id: { type: string, format: uuid }
                   status: { const: in_review }
                   workingDays: { type: integer }
-                  periodKey: { type: string }
+                  quotaScheme: { $ref: '#/components/schemas/AnnualLeaveQuotaScheme' }
+                  periodKey: { $ref: '#/components/schemas/AnnualLeavePeriodKey' }
+                  periodLimitDays: { type: integer }
                   annualEntitlementDays: { type: integer }
                   approvalChain:
                     type: array
@@ -501,6 +512,19 @@ paths:
 
 components:
   schemas:
+    AnnualLeaveQuotaScheme:
+      type: string
+      enum: [QUARTER, SEMESTER]
+      description: >-
+        LEAVE-003 R2. Which Cuti Tahunan quota rule read the dates: QUARTER is 3 working days per
+        three-month period, SEMESTER is 6 per calendar semester. Decided by the leave start date
+        against the effective date, so a request already submitted keeps its rule.
+    AnnualLeavePeriodKey:
+      type: string
+      enum: [JAN_MAR, APR_JUN, JUL_SEP, OCT_DEC, JAN_JUN, JUL_DEC]
+      description: >-
+        The quota period. The first four belong to QUARTER and stay readable forever; JAN_JUN and
+        JUL_DEC are written under SEMESTER (LEAVE-003 R2).
     Problem:
       type: object
       required: [code, message]

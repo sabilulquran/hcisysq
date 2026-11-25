@@ -170,9 +170,20 @@ export function EmployeeAnnualLeavePage() {
           ) : (
             <>
               {summary?.annualLeave ? (
-                <div className="flex items-center justify-between rounded-2xl bg-brand-primary-pale/45 px-4 py-3">
-                  <p className="text-xs font-semibold text-muted-foreground">Tersedia pada periode saat ini</p>
-                  <p className="text-lg font-bold text-brand-heading">{summary.annualLeave.availableNowDays} hari</p>
+                <div className="rounded-2xl bg-brand-primary-pale/45 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground">Tersedia pada periode saat ini</p>
+                    <p className="text-lg font-bold text-brand-heading">{summary.annualLeave.availableNowDays} hari</p>
+                  </div>
+                  {/*
+                    LEAVE-003 R2: the employee is told the boundary before picking dates, because a
+                    request that crosses one is refused rather than split.
+                  */}
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {summary.annualLeave.quotaScheme === "SEMESTER"
+                      ? `${summary.annualLeave.currentPeriodLimitDays} hari kerja per semester. Satu pengajuan harus berada dalam satu semester: tanggal yang melewati 30 Juni-1 Juli atau pergantian tahun diajukan terpisah.`
+                      : `${summary.annualLeave.currentPeriodLimitDays} hari kerja per periode tiga bulan. Satu pengajuan harus berada dalam satu periode: tanggal setelah batas periode diajukan terpisah.`}
+                  </p>
                 </div>
               ) : null}
               <p className="mt-4 text-xs leading-5 text-muted-foreground">

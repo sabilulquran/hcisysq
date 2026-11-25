@@ -231,9 +231,12 @@ Before the eligibility date:
 - available-to-use days are `0`;
 - the UI shows the future eligibility date.
 
-### Four usage periods
+### Usage periods
 
-The 12-day annual entitlement is administered through four 3-day usage periods:
+The 12-day annual entitlement is administered through usage periods. Which periods apply depends
+on the **leave date**; see "LEAVE-003 R2" below for the change and its effective date.
+
+Until the semester rule starts — the state production is in — there are four 3-day periods:
 
 | Period | Usage limit |
 | --- | ---: |
@@ -242,7 +245,79 @@ The 12-day annual entitlement is administered through four 3-day usage periods:
 | July-September | 3 working days |
 | October-December | 3 working days |
 
-The initial implementation does **not** carry unused days from one period into the next unless YSQ later approves an explicit carry-forward rule.
+From the effective date onwards there are two 6-day periods:
+
+| Period | Usage limit |
+| --- | ---: |
+| January-June | 6 working days |
+| July-December | 6 working days |
+
+Either way the year totals 12 working days, and the implementation does **not** carry unused days
+from one period into the next unless YSQ later approves an explicit carry-forward rule.
+
+### LEAVE-003 R2 — six working days per semester (`DRAFT` effective date)
+
+Owner instruction, 25 November 2026: replace the 3-working-day limit per three-month period with
+**6 working days per calendar semester** — January-June and July-December. The annual right stays
+**12 working days**, and the rules for entitlement group, length of service, H-7 notice, the working
+calendar, and unused quota not carrying forward are unchanged.
+
+**What is `DRAFT`.** Only the effective date. The proposal on record is **1 January 2027**, which is
+what the design and the tests use. Nothing changes in production until the owner names a date: the
+setting `ANNUAL_LEAVE_SEMESTER_QUOTA_EFFECTIVE_FROM` is unset in the shipped default and in
+production, and while it is unset the three-month rule governs every date, as it does today.
+Admin → Konfigurasi Cuti states which rule is in force and the date the semester rule starts.
+
+#### The rule follows the leave date
+
+The scheme is decided by the **start date of the leave**, never by the submission date:
+
+```text
+leave start date  <  effective date   ->  3 working days per three-month period
+leave start date  >= effective date   ->  6 working days per calendar semester
+```
+
+Two consequences, both deliberate:
+
+- a request that has already been submitted keeps the rule its dates were read under, including
+  one that is still waiting for a decision;
+- a range that contains the effective date is read under **one** scheme, the start date's, rather
+  than being split between two rules inside a single request.
+
+#### Reconciling the records the old rule wrote
+
+Nothing in the database is rewritten. A request recorded under the old rule keeps its quarter key
+(`JAN_MAR`/`APR_JUN`/`JUL_SEP`/`OCT_DEC`) and its own stored limit; new requests carry `JAN_JUN` or
+`JUL_DEC`. Usage is accumulated from each request's **start date** rather than from the stored key,
+and since a three-month period never straddles a semester:
+
+```text
+Januari-Juni  used = Jan-Mar used + Apr-Jun used
+Juli-Desember used = Jul-Sep used + Okt-Des used
+```
+
+Every working day therefore reduces exactly one quota, once, whichever rule recorded it. Requests
+with status `in_review` or `approved` count; cancelled and rejected ones do not, as before.
+
+This also keeps the year at 12 working days when the change lands mid-year. Worst case, with the
+rule starting on 1 April: 3 days are usable in January-March under the old rule, the January-June
+semester then allows 6 in total so 3 remain, and July-December allows 6 — 12 for the year.
+
+#### One request, one period
+
+The existing "one period per request" rule is unchanged in shape and only its boundary moves. Once
+the semester rule applies, dates that cross a **former three-month boundary** but stay inside one
+semester may be submitted together; dates that cross **30 June-1 July** or the turn of the year are
+submitted separately. The refusal is `CROSS_PERIOD_REQUEST_UNSUPPORTED` and its message names the
+boundary to split on. The employee sees the same boundary on the Cuti Tahunan screen before
+choosing dates.
+
+#### Surfaces that follow the rule
+
+The quota period and its limit are read from the API by every surface — the employee leave screen
+and dashboard, the Cuti Tahunan form, the proposal of other dates (LEAVE-008), the conversion of
+unresolved attendance dates (ATT-004), and Admin → Konfigurasi Cuti. None of them keeps its own
+copy of the figure.
 
 ### Employee becomes eligible mid-year
 
@@ -271,7 +346,8 @@ Annual entitlement: 12 days / year
 Available in current period: 3 days
 ```
 
-In the following full eligible year, each of the four periods has a 3-day usage limit.
+In the following full eligible year, every period carries its own usage limit: 3 working days for
+each of the four three-month periods, or 6 for each semester once LEAVE-003 R2 applies.
 
 ### Notice period
 
@@ -295,7 +371,8 @@ System validation includes at minimum:
 - employee belongs to the non-education entitlement group;
 - 12-month eligibility has been reached by the leave start date;
 - minimum notice is satisfied;
-- requested working days fit the current period's remaining 3-day limit;
+- requested working days fit the current period's remaining limit (3 per three-month period, or 6
+  per semester from the LEAVE-003 R2 effective date);
 - request does not cross an unsupported period boundary without being split;
 - no prohibited overlap exists.
 
@@ -387,7 +464,7 @@ ORG-004 structural resolution and oversight notification are implemented and hav
 ### Verified policy/MVP behavior
 
 - LEAVE-003-A: Annual Leave always exposes the policy right as 12 days/year while separately showing current-period availability.
-- LEAVE-003-B: annual usage is limited to 3 working days per Jan-Mar, Apr-Jun, Jul-Sep, and Oct-Dec period.
+- LEAVE-003-B: annual usage is limited to 3 working days per Jan-Mar, Apr-Jun, Jul-Sep, and Oct-Dec period for leave dates before the LEAVE-003 R2 effective date.
 - LEAVE-003-C: an employee reaching 12 months during a year only becomes usable from the period containing the eligibility date; earlier periods are not retroactively available.
 - LEAVE-003-D: unused period quota does not automatically carry forward in the initial implementation.
 - LEAVE-003-E: Annual Leave uses system validation plus line approval; HC is notified, not a routine approver/validator.
@@ -395,6 +472,14 @@ ORG-004 structural resolution and oversight notification are implemented and hav
 - LEAVE-003-G: Unpaid Leave requires actual HC approval.
 - LEAVE-003-H: organization-event leave and attendance dispensation are not modeled as ordinary individual leave requests.
 - LEAVE-003-I: education/non-education classification is explicit and never inferred from title text.
+
+### LEAVE-003 R2 — implemented; effective date pending the owner
+
+- LEAVE-003-P: from the effective date, annual usage is limited to 6 working days per Jan-Jun and Jul-Dec period, and the annual right stays 12 working days.
+- LEAVE-003-Q: the scheme follows the leave start date, so a request already submitted — including one still awaiting a decision — keeps the rule its dates were read under, and a range containing the effective date is read under one scheme.
+- LEAVE-003-R: a semester's usage is the sum of the two three-month periods the previous rule recorded; no stored request is rewritten, and no working day reduces a quota twice.
+- LEAVE-003-S: one request still covers one period; after the effective date it may cross a former three-month boundary inside one semester, and is refused when it crosses 30 June-1 July or the turn of the year.
+- LEAVE-003-T: with the setting unset — the shipped and production default — every date is read under the three-month rule.
 
 ### ORG-004 extension — implemented; operational activation pending
 

@@ -1,6 +1,15 @@
 import type { CriticalPeriodMatch } from "@/lib/leaveCriticalPeriods";
 
-export type AnnualLeavePeriodKey = "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+/** LEAVE-003 R2: which quota rule read a set of dates — 3 days a quarter, or 6 days a semester. */
+export type AnnualLeaveQuotaScheme = "QUARTER" | "SEMESTER";
+
+export type AnnualLeavePeriodKey =
+  | "JAN_MAR"
+  | "APR_JUN"
+  | "JUL_SEP"
+  | "OCT_DEC"
+  | "JAN_JUN"
+  | "JUL_DEC";
 
 export interface AnnualLeavePeriodView {
   key: AnnualLeavePeriodKey;
@@ -35,6 +44,9 @@ export interface EmployeeLeaveSummary {
     eligibleFrom: string;
     eligible: boolean;
     availableNowDays: number;
+    quotaScheme: AnnualLeaveQuotaScheme;
+    /** The day the semester rule starts applying, by leave date; null while it never does. */
+    semesterEffectiveFrom: string | null;
     currentPeriodKey: AnnualLeavePeriodKey;
     currentPeriodLimitDays: number;
     periods: AnnualLeavePeriodView[];
@@ -91,6 +103,7 @@ export interface LeaveRequestSummary extends LeavePostponementFields {
 
 export interface AnnualLeavePreview {
   annualEntitlementDays: number;
+  quotaScheme: AnnualLeaveQuotaScheme;
   periodKey: AnnualLeavePeriodKey;
   periodLimitDays: number;
   availableDaysBeforeRequest: number;
@@ -184,7 +197,9 @@ export async function submitAnnualLeave(input: {
   id: string;
   status: "in_review";
   workingDays: number;
+  quotaScheme: AnnualLeaveQuotaScheme;
   periodKey: AnnualLeavePeriodKey;
+  periodLimitDays: number;
   annualEntitlementDays: number;
 }> {
   return readJson(

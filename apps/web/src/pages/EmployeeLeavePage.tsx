@@ -125,7 +125,7 @@ export function EmployeeLeavePage() {
             <div>
               <p className="text-sm font-bold text-brand-heading">Cuti Tahunan</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Untuk tenaga non-pendidikan. Hak tetap ditampilkan 12 hari/tahun dengan batas pemakaian 3 hari per periode.
+                Untuk tenaga non-pendidikan. Hak tetap ditampilkan 12 hari/tahun dengan batas pemakaian per periode kuota.
               </p>
               <p className="mt-2 text-xs font-bold text-brand-primary-deep">Ajukan cuti tahunan →</p>
             </div>
@@ -214,12 +214,18 @@ export function EmployeeLeavePage() {
                 <p className="mt-1 text-sm font-bold text-brand-heading">{formatDate(annual.eligibleFrom)}</p>
                 <p className="mt-3 text-xs text-muted-foreground">Tersedia pada periode saat ini</p>
                 <p className="mt-1 text-2xl font-bold text-brand-heading">{annual.availableNowDays} hari</p>
+                {/* LEAVE-003 R2: the rule in force reads off the API, never off a number typed here. */}
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                  {annual.quotaScheme === "SEMESTER"
+                    ? `Batas pemakaian ${annual.currentPeriodLimitDays} hari kerja per semester (Januari-Juni dan Juli-Desember). Satu pengajuan tidak boleh melewati 30 Juni-1 Juli atau pergantian tahun.`
+                    : `Batas pemakaian ${annual.currentPeriodLimitDays} hari kerja per periode tiga bulan. Satu pengajuan tidak boleh melewati batas periode.`}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {annual.periods.map((period) => (
                   <div key={period.key} className="rounded-2xl border border-border/70 p-3">
                     <p className="text-xs font-semibold text-brand-heading">{period.label}</p>
-                    <p className="mt-1 text-lg font-bold">{period.remainingDays}<span className="ml-1 text-xs font-medium text-muted-foreground">/ 3</span></p>
+                    <p className="mt-1 text-lg font-bold">{period.remainingDays}<span className="ml-1 text-xs font-medium text-muted-foreground">/ {period.allocationDays}</span></p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       {period.status === "not_eligible"
                         ? "Belum dapat digunakan"

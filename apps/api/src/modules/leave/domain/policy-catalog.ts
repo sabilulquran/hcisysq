@@ -82,7 +82,9 @@ export const LEAVE_POLICY_CATALOG: readonly LeavePolicyDefinition[] = [
     carryForwardEnabled: false,
     notes: [
       "Hak tahunan tetap ditampilkan sebagai 12 hari/tahun.",
-      "Pemakaian dibatasi 3 hari per periode Jan-Mar, Apr-Jun, Jul-Sep, Okt-Des.",
+      // LEAVE-003 R2: the quota period depends on the leave date, so the live figure comes from the
+      // year view (`annualLeave`), not from this static catalogue entry.
+      "Pemakaian dibatasi per periode kuota yang berlaku pada tanggal cuti.",
       "Periode sebelum tanggal genap 12 bulan tidak tersedia retroaktif.",
     ],
   },

@@ -1,7 +1,10 @@
 import {
-  ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
   annualLeaveEligibilityDate,
+  annualLeavePeriodForDate,
+  annualLeavePeriodLimitDays,
+  annualLeaveQuotaScheme,
   type AnnualLeavePeriodKey,
+  type AnnualLeaveQuotaScheme,
   type LeaveEntitlementGroup,
 } from "./annual-leave-policy.js";
 
@@ -18,6 +21,8 @@ export interface AdministrationDayResult {
 
 export interface AnnualConversionOffer {
   available: boolean;
+  /** LEAVE-003 R2: the scheme governing the dates being converted. */
+  quotaScheme: AnnualLeaveQuotaScheme;
   periodKey: AnnualLeavePeriodKey | null;
   periodLimitDays: number;
   usedDays: number;
@@ -109,13 +114,20 @@ export function classifyAdministrationDays(input: {
   };
 }
 
-export function annualPeriodKeyForDate(value: string): AnnualLeavePeriodKey {
+/**
+ * The quota period a date to be converted falls in, read under the scheme in force on that date
+ * (LEAVE-003 R2). Before the semester scheme starts this is the three-month bucket, exactly as
+ * before.
+ */
+export function annualPeriodKeyForDate(
+  value: string,
+  semesterEffectiveFrom: string | null = null,
+): AnnualLeavePeriodKey {
   assertIsoDate(value);
-  const month = Number(value.slice(5, 7));
-  if (month <= 3) return "JAN_MAR";
-  if (month <= 6) return "APR_JUN";
-  if (month <= 9) return "JUL_SEP";
-  return "OCT_DEC";
+  return annualLeavePeriodForDate(
+    value,
+    annualLeaveQuotaScheme(value, semesterEffectiveFrom),
+  );
 }
 
 export function evaluateAnnualConversionOffer(input: {
@@ -123,26 +135,37 @@ export function evaluateAnnualConversionOffer(input: {
   employmentStartedOn: string | null;
   unresolvedDates: readonly string[];
   usedDaysInPeriod: number;
+  /** LEAVE-003 R2: ISO date the semester scheme starts applying, by leave date. */
+  semesterEffectiveFrom?: string | null;
 }): AnnualConversionOffer {
   const unresolvedDates = uniqueSorted(input.unresolvedDates);
   const requestedDays = unresolvedDates.length;
+  const semesterEffectiveFrom = input.semesterEffectiveFrom ?? null;
+  const firstDate = unresolvedDates[0];
+  // The earliest date decides the scheme, the same way a request's start date does.
+  const quotaScheme = firstDate
+    ? annualLeaveQuotaScheme(firstDate, semesterEffectiveFrom)
+    : "QUARTER";
+  const periodLimitDays = annualLeavePeriodLimitDays(quotaScheme);
 
   if (input.entitlementGroup !== "non_education") {
     return {
       available: false,
+      quotaScheme,
       periodKey: null,
-      periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+      periodLimitDays,
       usedDays: input.usedDaysInPeriod,
       remainingDays: 0,
       requestedDays,
       reason: "Konversi Cuti Tahunan hanya tersedia untuk tenaga non-pendidikan.",
     };
   }
-  if (!input.employmentStartedOn || requestedDays === 0) {
+  if (!input.employmentStartedOn || !firstDate) {
     return {
       available: false,
+      quotaScheme,
       periodKey: null,
-      periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+      periodLimitDays,
       usedDays: input.usedDaysInPeriod,
       remainingDays: 0,
       requestedDays,
@@ -150,13 +173,16 @@ export function evaluateAnnualConversionOffer(input: {
     };
   }
 
-  const periodKeys = new Set(unresolvedDates.map(annualPeriodKeyForDate));
+  const periodKeys = new Set(
+    unresolvedDates.map((date) => annualLeavePeriodForDate(date, quotaScheme)),
+  );
   const years = new Set(unresolvedDates.map((date) => date.slice(0, 4)));
   if (periodKeys.size !== 1 || years.size !== 1) {
     return {
       available: false,
+      quotaScheme,
       periodKey: null,
-      periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+      periodLimitDays,
       usedDays: input.usedDaysInPeriod,
       remainingDays: 0,
       requestedDays,
@@ -164,29 +190,28 @@ export function evaluateAnnualConversionOffer(input: {
     };
   }
 
-  const periodKey = annualPeriodKeyForDate(unresolvedDates[0]!);
+  const periodKey = annualLeavePeriodForDate(firstDate, quotaScheme);
+  const remainingDays = Math.max(0, periodLimitDays - input.usedDaysInPeriod);
   const eligibleFrom = annualLeaveEligibilityDate(input.employmentStartedOn);
   if (unresolvedDates.some((date) => date < eligibleFrom)) {
     return {
       available: false,
+      quotaScheme,
       periodKey,
-      periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+      periodLimitDays,
       usedDays: input.usedDaysInPeriod,
-      remainingDays: Math.max(0, ANNUAL_LEAVE_PERIOD_LIMIT_DAYS - input.usedDaysInPeriod),
+      remainingDays,
       requestedDays,
       reason: "Pada tanggal tersebut pegawai belum genap 12 bulan bekerja.",
     };
   }
 
-  const remainingDays = Math.max(
-    0,
-    ANNUAL_LEAVE_PERIOD_LIMIT_DAYS - input.usedDaysInPeriod,
-  );
   if (requestedDays > remainingDays) {
     return {
       available: false,
+      quotaScheme,
       periodKey,
-      periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+      periodLimitDays,
       usedDays: input.usedDaysInPeriod,
       remainingDays,
       requestedDays,
@@ -196,8 +221,9 @@ export function evaluateAnnualConversionOffer(input: {
 
   return {
     available: true,
+    quotaScheme,
     periodKey,
-    periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+    periodLimitDays,
     usedDays: input.usedDaysInPeriod,
     remainingDays,
     requestedDays,

@@ -14,6 +14,7 @@ import { WizardSteps } from "@/components/wizard/WizardSteps";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
+  annualQuotaHint,
   getEmployeeLeaveSummary,
   previewAnnualLeave,
   submitAnnualLeave,
@@ -170,9 +171,30 @@ export function EmployeeAnnualLeavePage() {
           ) : (
             <>
               {summary?.annualLeave ? (
-                <div className="flex items-center justify-between rounded-2xl bg-brand-primary-pale/45 px-4 py-3">
-                  <p className="text-xs font-semibold text-muted-foreground">Tersedia pada periode saat ini</p>
-                  <p className="text-lg font-bold text-brand-heading">{summary.annualLeave.availableNowDays} hari</p>
+                <div className="rounded-2xl bg-brand-primary-pale/45 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground">Tersedia pada periode saat ini</p>
+                    <p className="text-lg font-bold text-brand-heading">{summary.annualLeave.availableNowDays} hari</p>
+                  </div>
+                  {/*
+                    LEAVE-003 R2: the employee is told the boundary before picking dates, because a
+                    request that crosses one is refused rather than split. Once dates are chosen the
+                    preview speaks for those dates; before that the box speaks for today and names
+                    the day the rule changes, since enforcement follows the leave date.
+                  */}
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {preview
+                      ? annualQuotaHint({
+                          quotaScheme: preview.quotaScheme,
+                          periodLimitDays: preview.periodLimitDays,
+                        })
+                      : annualQuotaHint({
+                          quotaScheme: summary.annualLeave.quotaScheme,
+                          periodLimitDays: summary.annualLeave.currentPeriodLimitDays,
+                          semesterEffectiveFrom: summary.annualLeave.semesterEffectiveFrom,
+                          referenceDate: summary.referenceDate,
+                        })}
+                  </p>
                 </div>
               ) : null}
               <p className="mt-4 text-xs leading-5 text-muted-foreground">

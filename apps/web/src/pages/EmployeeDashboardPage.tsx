@@ -329,7 +329,8 @@ export function EmployeeDashboardPage() {
                     <>
                       <p className="mt-2 text-3xl font-bold text-brand-heading">{annualView?.availableNowDays ?? 0} <span className="text-sm font-semibold text-muted-foreground">hari tersedia</span></p>
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        {currentPeriod ? `${currentPeriod.label} · ${currentPeriod.remainingDays} dari 3 hari belum digunakan` : "Belum masuk periode yang dapat digunakan."}
+                        {/* LEAVE-003 R2: the allocation is the period's own, not a constant 3. */}
+                        {currentPeriod ? `${currentPeriod.label} · ${currentPeriod.remainingDays} dari ${currentPeriod.allocationDays} hari belum digunakan` : "Belum masuk periode yang dapat digunakan."}
                       </p>
                     </>
                   ) : employee?.leaveEntitlementGroup === "education" ? (

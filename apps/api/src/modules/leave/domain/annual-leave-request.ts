@@ -1,9 +1,12 @@
 import {
   ANNUAL_LEAVE_ENTITLEMENT_DAYS,
   ANNUAL_LEAVE_MINIMUM_NOTICE_DAYS,
+  annualLeaveQuotaScheme,
   assertAnnualLeaveEntitlementGroup,
   calculateAnnualLeaveYearView,
   type AnnualLeavePeriodKey,
+  type AnnualLeaveQuarterKey,
+  type AnnualLeaveQuotaScheme,
   type LeaveEntitlementGroup,
 } from "./annual-leave-policy.js";
 
@@ -14,12 +17,16 @@ export interface AnnualLeaveRequestValidationInput {
   leaveStartOn: string;
   leaveEndOn: string;
   requestedWorkingDays: number;
-  usedDaysByPeriod?: Partial<Record<AnnualLeavePeriodKey, number>>;
+  usedDaysByQuarter?: Partial<Record<AnnualLeaveQuarterKey, number>>;
+  /** LEAVE-003 R2: ISO date the semester scheme starts applying, by leave date. */
+  semesterEffectiveFrom?: string | null;
 }
 
 export interface AnnualLeaveRequestValidationResult {
   annualEntitlementDays: number;
   eligibleFrom: string;
+  /** The scheme the leave **start** date falls under; it governs the whole request. */
+  quotaScheme: AnnualLeaveQuotaScheme;
   periodKey: AnnualLeavePeriodKey;
   periodLimitDays: number;
   usedDaysBeforeRequest: number;
@@ -70,6 +77,13 @@ function calendarDaysBetween(from: string, to: string): number {
   return Math.floor((dateValue(to) - dateValue(from)) / millisecondsPerDay);
 }
 
+/** What the employee is told when one request would straddle two quota periods. */
+function crossPeriodMessage(scheme: AnnualLeaveQuotaScheme): string {
+  return scheme === "SEMESTER"
+    ? "Satu pengajuan Cuti Tahunan harus berada dalam satu semester. Tanggal yang melewati 30 Juni-1 Juli atau pergantian tahun diajukan terpisah."
+    : "Satu pengajuan Cuti Tahunan harus berada dalam satu periode tiga bulan (Jan-Mar, Apr-Jun, Jul-Sep, Okt-Des). Tanggal setelah batas periode diajukan terpisah.";
+}
+
 export function validateAnnualLeaveRequest(
   input: AnnualLeaveRequestValidationInput,
 ): AnnualLeaveRequestValidationResult {
@@ -98,14 +112,26 @@ export function validateAnnualLeaveRequest(
     );
   }
 
+  /**
+   * LEAVE-003 R2: the start date picks the scheme, and that one scheme reads both ends of the
+   * range. Deriving it per date would split a request whose range contains the effective date into
+   * two different rules and refuse it as cross-period for a boundary nobody crossed.
+   */
+  const quotaScheme = annualLeaveQuotaScheme(
+    input.leaveStartOn,
+    input.semesterEffectiveFrom ?? null,
+  );
+
   const usage =
-    input.usedDaysByPeriod === undefined
+    input.usedDaysByQuarter === undefined
       ? {}
-      : { usedDaysByPeriod: input.usedDaysByPeriod };
+      : { usedDaysByQuarter: input.usedDaysByQuarter };
 
   const startView = calculateAnnualLeaveYearView({
     employmentStartedOn: input.employmentStartedOn,
     referenceDate: input.leaveStartOn,
+    quotaScheme,
+    semesterEffectiveFrom: input.semesterEffectiveFrom ?? null,
     ...usage,
   });
   if (!startView.eligible) {
@@ -118,6 +144,8 @@ export function validateAnnualLeaveRequest(
   const endView = calculateAnnualLeaveYearView({
     employmentStartedOn: input.employmentStartedOn,
     referenceDate: input.leaveEndOn,
+    quotaScheme,
+    semesterEffectiveFrom: input.semesterEffectiveFrom ?? null,
     ...usage,
   });
   if (
@@ -126,7 +154,7 @@ export function validateAnnualLeaveRequest(
   ) {
     throw new AnnualLeaveRequestPolicyError(
       "CROSS_PERIOD_REQUEST_UNSUPPORTED",
-      "Pengajuan Cuti Tahunan tidak boleh melintasi dua periode kuota dalam satu request.",
+      crossPeriodMessage(quotaScheme),
     );
   }
 
@@ -150,6 +178,7 @@ export function validateAnnualLeaveRequest(
   return {
     annualEntitlementDays: ANNUAL_LEAVE_ENTITLEMENT_DAYS,
     eligibleFrom: startView.eligibleFrom,
+    quotaScheme,
     periodKey: startView.currentPeriodKey,
     periodLimitDays: startView.currentPeriodLimitDays,
     usedDaysBeforeRequest: period.usedDays,

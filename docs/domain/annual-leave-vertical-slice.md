@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Implement the first real employee leave transaction as Annual Leave for non-education employees while preserving the YSQ rule that the employee-facing annual right remains **12 working days per year** and usage is limited to **3 working days per quarter-period**.
+Implement the first real employee leave transaction as Annual Leave for non-education employees while preserving the YSQ rule that the employee-facing annual right remains **12 working days per year** and usage is limited to one quota period at a time: **3 working days per three-month period**, or **6 working days per calendar semester** for leave dates from the LEAVE-003 R2 effective date (`docs/domain/leave-policy-ysq.md` §"LEAVE-003 R2"). The quota period follows the leave date, so this slice's behaviour is unchanged for every date before that day.
 
 The verified MVP uses the simple organization model already agreed for approvals:
 
@@ -29,11 +29,12 @@ Deployment does not equal activation. Codex Local evidence reports no `organizat
 
 ## Annual right versus current availability
 
-HCIS must never describe a late-year employee as having only a 3-day annual right.
+HCIS must never describe a late-year employee as having only a one-period annual right.
 
 ```text
 Annual right:          12 working days / year
-Period usage limit:     3 working days
+Period usage limit:     3 working days (three-month period)
+                        6 working days (semester, from the LEAVE-003 R2 effective date)
 Current availability:  depends on eligibility, period and previous usage
 ```
 
@@ -47,6 +48,9 @@ Eligible from:       15 October 2026
 Oct-Dec 2026:        up to 3 working days available
 Jan-Sep 2026:        not retroactively available
 ```
+
+Under the semester rule the same example reads `Jul-Dec: up to 6 working days available` and
+`Jan-Jun: not retroactively available`.
 
 ## Work calendar
 
@@ -69,10 +73,12 @@ Before submission the API validates:
 - employment start date is present;
 - 12-month eligibility has been reached by the leave start date;
 - request respects the minimum H-7 notice;
-- the date range does not cross two period buckets;
+- the date range does not cross two period buckets of the scheme that governs its start date;
 - backend-calculated working days are greater than zero;
-- existing `in_review` and `approved` requests are counted as reserved/used period quota;
-- requested working days do not exceed the remaining 3-day period availability;
+- existing `in_review` and `approved` requests are counted as reserved/used period quota, matched
+  by their start date so that a request recorded under either scheme counts exactly once;
+- requested working days do not exceed the remaining availability of that period (3 working days
+  for a three-month period, 6 for a semester);
 - Direct Manager and Unit Approver are configured;
 - each concrete approver is an active employee with an active employee account.
 
@@ -169,8 +175,9 @@ The employee leave surface shows:
 
 - annual right as 12 days/year;
 - eligibility date;
-- four period buckets;
-- current period availability;
+- the period buckets of the scheme in force for the reference date — four three-month periods, or
+  two semesters — each with its own allocation;
+- current period availability, and the boundary one request may not cross;
 - preview of backend-calculated working dates;
 - snapshotted approval chain preview before submit;
 - recent request history and current approver;
@@ -211,7 +218,7 @@ Decision notes and leave reasons are authorized leave-domain data and must not b
 ### Verified MVP
 
 - LEAVE-004-A: annual right is always represented as 12 days/year while current availability is calculated separately.
-- LEAVE-004-B: employee becoming eligible in October can use at most the Oct-Dec 3-day bucket; earlier buckets are not retroactive.
+- LEAVE-004-B: employee becoming eligible in October can use at most the bucket containing that date (Oct-Dec under the three-month rule, Jul-Dec under the semester rule); earlier buckets are not retroactive.
 - LEAVE-004-C: backend working-day calculation requires an explicitly configured calendar.
 - LEAVE-004-D: in-review requests reserve period quota and concurrent submission cannot overspend it.
 - LEAVE-004-E: submission snapshots concrete Direct Manager and Unit Approver steps and rejects unavailable approver accounts.

@@ -21,6 +21,7 @@ import {
   updateLeaveEntitlementGroup,
   updateUnitLeaveApprover,
 } from "@/lib/adminLeave";
+import { formatQuotaDate } from "@/lib/employeeLeave";
 
 function percent(done: number, total: number) {
   if (!total) return 0;
@@ -175,6 +176,8 @@ export function AdminLeaveConfigurationPage() {
 
   const activeUnits = data?.units.filter((unit) => unit.activeEmployeeCount > 0) ?? [];
   const summary = data?.summary;
+  /** LEAVE-003 R2: the Cuti Tahunan quota rule as the API reports it. */
+  const annualQuota = data?.annualQuota ?? null;
   const unitCoverage = percent(
     activeUnits.filter((unit) => unit.approverEmployeeId).length,
     activeUnits.length,
@@ -247,16 +250,43 @@ export function AdminLeaveConfigurationPage() {
           <CalendarDays className="mt-0.5 h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <div>
             <h2 className="text-base font-bold text-brand-heading">Cuti Tahunan YSQ</h2>
+            {/*
+              LEAVE-003 R2: the rule is read from the API, never written into this page, so the
+              screen cannot say one thing while submission enforces another.
+            */}
             <p className="mt-1 text-sm text-muted-foreground">
-              Hak tetap ditampilkan 12 hari per tahun. Pemakaian dibatasi 3 hari per periode Jan-Mar, Apr-Jun, Jul-Sep, dan Okt-Des setelah genap 12 bulan kerja.
+              Hak tetap ditampilkan {annualQuota?.entitlementDays ?? 12} hari per tahun. Pemakaian dibatasi{" "}
+              {annualQuota
+                ? annualQuota.scheme === "SEMESTER"
+                  ? `${annualQuota.semesterLimitDays} hari per semester Jan-Jun dan Jul-Des`
+                  : `${annualQuota.quarterLimitDays} hari per periode Jan-Mar, Apr-Jun, Jul-Sep, dan Okt-Des`
+                : "per periode kuota yang berlaku"}{" "}
+              setelah genap 12 bulan kerja.
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-              <span className="rounded-full bg-brand-primary-pale px-3 py-1.5 text-brand-primary-deep">12 hari / tahun</span>
-              <span className="rounded-full bg-muted px-3 py-1.5">3 hari / periode</span>
+              <span className="rounded-full bg-brand-primary-pale px-3 py-1.5 text-brand-primary-deep">
+                {annualQuota?.entitlementDays ?? 12} hari / tahun
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1.5">
+                {annualQuota
+                  ? annualQuota.scheme === "SEMESTER"
+                    ? `${annualQuota.semesterLimitDays} hari / semester`
+                    : `${annualQuota.quarterLimitDays} hari / periode`
+                  : "Kuota per periode"}
+              </span>
               <span className="rounded-full bg-muted px-3 py-1.5">H-7</span>
               <span className="rounded-full bg-muted px-3 py-1.5">HC notified</span>
               <span className="rounded-full bg-muted px-3 py-1.5">Tanpa carry-forward otomatis</span>
             </div>
+            {annualQuota ? (
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                {annualQuota.semesterEffectiveFrom === null
+                  ? `Aturan semester (${annualQuota.semesterLimitDays} hari per Januari-Juni dan Juli-Desember) sudah tersedia tetapi belum punya tanggal berlaku, jadi belum dipakai. Tanggalnya ditetapkan pemilik yayasan.`
+                  : annualQuota.scheme === "SEMESTER"
+                    ? `Aturan semester berlaku untuk tanggal cuti sejak ${formatQuotaDate(annualQuota.semesterEffectiveFrom)}. Pengajuan yang tanggal cutinya lebih awal tetap memakai aturan tiga bulan.`
+                    : `Aturan semester mulai berlaku untuk tanggal cuti sejak ${formatQuotaDate(annualQuota.semesterEffectiveFrom)}. Sampai saat itu aturan tiga bulan yang dipakai.`}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>

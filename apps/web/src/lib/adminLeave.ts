@@ -1,4 +1,8 @@
 import { AdminApiError } from "@/lib/adminEmployees";
+import type {
+  AnnualLeavePeriodKey,
+  AnnualLeaveQuotaScheme,
+} from "@/lib/employeeLeave";
 
 export type LeaveEntitlementGroup = "education" | "non_education";
 
@@ -14,7 +18,10 @@ export interface LeavePolicySummary {
   emergencyNoticeAllowed: boolean;
   annualEntitlementDays?: number;
   eligibilityMonths?: number;
-  periodLimitDays?: number;
+  /**
+   * LEAVE-003 R2: no `periodLimitDays` here. The limit depends on the leave date, so it comes from
+   * `annualQuota` on the same response.
+   */
   carryForwardEnabled?: boolean;
   notes: string[];
 }
@@ -47,8 +54,24 @@ export interface LeaveEmployeeConfiguration {
   approvalSource?: "LEGACY" | "SHADOW" | "STRUCTURE";
 }
 
+/**
+ * LEAVE-003 R2: the Cuti Tahunan quota rule as the API reports it, so the screen states what
+ * submission actually enforces instead of a figure written into the page.
+ */
+export interface AnnualQuotaConfiguration {
+  entitlementDays: number;
+  quarterLimitDays: number;
+  semesterLimitDays: number;
+  /** The day the semester rule starts applying, by leave date; null while it never does. */
+  semesterEffectiveFrom: string | null;
+  /** The rule in force today. */
+  scheme: "QUARTER" | "SEMESTER";
+  periodLimitDays: number;
+}
+
 export interface LeaveConfigurationResponse {
   policies: LeavePolicySummary[];
+  annualQuota?: AnnualQuotaConfiguration;
   units: LeaveUnitConfiguration[];
   employees: LeaveEmployeeConfiguration[];
   summary: {
@@ -81,12 +104,15 @@ export interface LeaveApprovalPreviewResponse {
     referenceDate: string;
     year: number;
     availableNowDays: number;
-    currentPeriodKey: "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+    /** LEAVE-003 R2: this endpoint reads the same year view, so it also reports semesters. */
+    quotaScheme: AnnualLeaveQuotaScheme;
+    semesterEffectiveFrom: string | null;
+    currentPeriodKey: AnnualLeavePeriodKey;
     currentPeriodLimitDays: number;
     eligiblePeriodAllocationDaysInYear: number;
     carryForwardEnabled: false;
     periods: Array<{
-      key: "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+      key: AnnualLeavePeriodKey;
       label: string;
       allocationDays: number;
       usedDays: number;

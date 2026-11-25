@@ -10,7 +10,10 @@ import {
   OUTSIDE_HCIS_SELF_SERVICE_MESSAGE,
   isOutsideHcis,
 } from "../employees/management-scope.js";
-import type { ApiConfig } from "../../config/env.js";
+import {
+  annualLeaveSemesterQuotaEffectiveFrom,
+  type ApiConfig,
+} from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
   AUTH_COOKIE_NAME,
@@ -22,6 +25,7 @@ import {
 import {
   calculateAnnualLeaveYearView,
   type AnnualLeavePeriodKey,
+  type AnnualLeaveQuarterKey,
   type LeaveEntitlementGroup,
 } from "./domain/annual-leave-policy.js";
 import {
@@ -245,10 +249,23 @@ async function loadAnnualUsage(
   employeeId: string,
   year: number,
   excludeRequestId: string | null = null,
-): Promise<Partial<Record<AnnualLeavePeriodKey, number>>> {
-  const result = await db.query<{ key: AnnualLeavePeriodKey; days: number }>(
+): Promise<Partial<Record<AnnualLeaveQuarterKey, number>>> {
+  /**
+   * LEAVE-003 R2: usage is bucketed by the **start date**, not by the stored `annual_period_key`.
+   * Rows recorded under the old rule carry a quarter key and land in that same quarter, so nothing
+   * about them changes; rows recorded under the semester rule carry `JAN_JUN`/`JUL_DEC` and still
+   * land in exactly one quarter. A semester's usage is then the sum of its two quarters, which is
+   * how a request decided under one rule is reconciled against the other without being rewritten,
+   * and why no working day is ever counted twice.
+   */
+  const result = await db.query<{ key: AnnualLeaveQuarterKey; days: number }>(
     `SELECT
-      annual_period_key AS key,
+      CASE
+        WHEN extract(month FROM start_on) <= 3 THEN 'JAN_MAR'
+        WHEN extract(month FROM start_on) <= 6 THEN 'APR_JUN'
+        WHEN extract(month FROM start_on) <= 9 THEN 'JUL_SEP'
+        ELSE 'OCT_DEC'
+      END AS key,
       coalesce(sum(working_days), 0)::int AS days
     FROM leave_requests
     WHERE employee_id = $1
@@ -258,12 +275,12 @@ async function loadAnnualUsage(
       AND start_on < make_date($2 + 1, 1, 1)
       AND annual_period_key IS NOT NULL
       AND ($3::uuid IS NULL OR id <> $3::uuid)
-    GROUP BY annual_period_key`,
+    GROUP BY 1`,
     [employeeId, year, excludeRequestId],
   );
 
   return Object.fromEntries(result.rows.map((row) => [row.key, row.days])) as Partial<
-    Record<AnnualLeavePeriodKey, number>
+    Record<AnnualLeaveQuarterKey, number>
   >;
 }
 
@@ -390,9 +407,18 @@ export async function buildAnnualPreview(
   employee: EmployeeContextRow,
   input: { startOn: string; endOn: string },
   submittedOn: string,
-  excludeRequestId: string | null = null,
-  authorityDate: string = jakartaToday(),
+  options: {
+    excludeRequestId?: string | null;
+    authorityDate?: string;
+    /**
+     * LEAVE-003 R2. No default: every caller states which quota rule it is reading under, so a new
+     * entry point cannot silently fall back to the old one.
+     */
+    semesterEffectiveFrom: string | null;
+  },
 ) {
+  const excludeRequestId = options.excludeRequestId ?? null;
+  const authorityDate = options.authorityDate ?? jakartaToday();
   if (!employee.startedOn) {
     throw new EmployeeLeaveError(
       409,
@@ -403,7 +429,7 @@ export async function buildAnnualPreview(
 
   const calendar = await loadWorkingCalendar(db, input.startOn, input.endOn);
   const calculation = calculateWorkingDays(input.startOn, input.endOn, calendar);
-  const usedDaysByPeriod = await loadAnnualUsage(db, employee.id, yearOf(input.startOn), excludeRequestId);
+  const usedDaysByQuarter = await loadAnnualUsage(db, employee.id, yearOf(input.startOn), excludeRequestId);
   const validation = validateAnnualLeaveRequest({
     entitlementGroup: employee.leaveEntitlementGroup,
     employmentStartedOn: employee.startedOn,
@@ -411,7 +437,8 @@ export async function buildAnnualPreview(
     leaveStartOn: input.startOn,
     leaveEndOn: input.endOn,
     requestedWorkingDays: calculation.workingDays,
-    usedDaysByPeriod,
+    usedDaysByQuarter,
+    semesterEffectiveFrom: options.semesterEffectiveFrom,
   });
   const authorityResolution = await resolveLeaveAuthorities(db, {
     workflowKey: leaveWorkflowKey("annual"),
@@ -543,6 +570,8 @@ export async function insertAnnualRequest(
     idempotencyKey: string;
     noticeReferenceOn: string;
     replacement?: LeaveReplacementLink | null;
+    /** LEAVE-003 R2: the quota rule this request is read under. */
+    semesterEffectiveFrom: string | null;
   },
 ) {
   const replacement = input.replacement ?? null;
@@ -551,6 +580,7 @@ export async function insertAnnualRequest(
     input.employee,
     { startOn: input.startOn, endOn: input.endOn },
     input.noticeReferenceOn,
+    { semesterEffectiveFrom: input.semesterEffectiveFrom },
   );
   const requestId = randomUUID();
   const annualPolicy = getLeavePolicy("annual");
@@ -625,7 +655,10 @@ export async function insertAnnualRequest(
   await addEvent(client, requestId, input.actorAccountId, "leave.request.submitted", {
     policyKey: "annual",
     workingDays: preview.validation.requestedWorkingDays,
+    /** LEAVE-003 R2: which quota rule read these dates, so the decision stays explainable later. */
+    quotaScheme: preview.validation.quotaScheme,
     periodKey: preview.validation.periodKey,
+    periodLimitDays: preview.validation.periodLimitDays,
     authorityResolution: preview.authorityResolution,
     ...(replacement ? { ...replacement } : {}),
   });
@@ -683,6 +716,9 @@ export async function registerEmployeeLeaveRoutes(
     throw new Error("AUTH_ENCRYPTION_KEY is required for employee leave routes");
   }
 
+  /** LEAVE-003 R2: `null` until the owner sets a date, which keeps the quarter rule in force. */
+  const semesterEffectiveFrom = annualLeaveSemesterQuotaEffectiveFrom(config);
+
   const auth = new AuthService(
     pool,
     config.AUTH_ENCRYPTION_KEY,
@@ -732,13 +768,14 @@ export async function registerEmployeeLeaveRoutes(
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
       const referenceDate = jakartaToday();
-      const usedDaysByPeriod = await loadAnnualUsage(pool, employee.id, yearOf(referenceDate));
+      const usedDaysByQuarter = await loadAnnualUsage(pool, employee.id, yearOf(referenceDate));
       const annualLeave =
         employee.startedOn && employee.leaveEntitlementGroup === "non_education"
           ? calculateAnnualLeaveYearView({
               employmentStartedOn: employee.startedOn,
               referenceDate,
-              usedDaysByPeriod,
+              usedDaysByQuarter,
+              semesterEffectiveFrom,
             })
           : null;
       const [requests, approvals] = await Promise.all([
@@ -821,10 +858,13 @@ export async function registerEmployeeLeaveRoutes(
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
       await refuseOutsideHcisToRequester(pool, employee.id);
-      const preview = await buildAnnualPreview(pool, employee, parsed.data, jakartaToday());
+      const preview = await buildAnnualPreview(pool, employee, parsed.data, jakartaToday(), {
+        semesterEffectiveFrom,
+      });
       reply.header("Cache-Control", "no-store");
       return reply.send({
         annualEntitlementDays: preview.validation.annualEntitlementDays,
+        quotaScheme: preview.validation.quotaScheme,
         periodKey: preview.validation.periodKey,
         periodLimitDays: preview.validation.periodLimitDays,
         availableDaysBeforeRequest: preview.validation.availableDaysBeforeRequest,
@@ -883,6 +923,7 @@ export async function registerEmployeeLeaveRoutes(
         reason: parsed.data.reason ?? null,
         idempotencyKey: parsed.data.idempotencyKey,
         noticeReferenceOn: jakartaToday(),
+        semesterEffectiveFrom,
       });
 
       await client.query("COMMIT");
@@ -890,7 +931,9 @@ export async function registerEmployeeLeaveRoutes(
         id: requestId,
         status: "in_review",
         workingDays: preview.validation.requestedWorkingDays,
+        quotaScheme: preview.validation.quotaScheme,
         periodKey: preview.validation.periodKey,
+        periodLimitDays: preview.validation.periodLimitDays,
         annualEntitlementDays: preview.validation.annualEntitlementDays,
         approvalChain: insertedSteps,
         idempotentReplay: false,

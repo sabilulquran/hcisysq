@@ -5,7 +5,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import {
+  annualLeaveSemesterQuotaEffectiveFrom,
+  type ApiConfig,
+} from "../../config/env.js";
 import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
@@ -14,6 +17,11 @@ import {
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
+  ANNUAL_LEAVE_ENTITLEMENT_DAYS,
+  ANNUAL_LEAVE_QUARTER_LIMIT_DAYS,
+  ANNUAL_LEAVE_SEMESTER_LIMIT_DAYS,
+  annualLeavePeriodLimitDays,
+  annualLeaveQuotaScheme,
   calculateAnnualLeaveYearView,
   type LeaveEntitlementGroup,
 } from "./domain/annual-leave-policy.js";
@@ -98,6 +106,9 @@ export async function registerLeaveAdminRoutes(
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required for leave admin routes");
   }
+
+  /** LEAVE-003 R2: `null` until the owner sets a date, which keeps the quarter rule in force. */
+  const semesterEffectiveFrom = annualLeaveSemesterQuotaEffectiveFrom(config);
 
   const auth = new AuthService(
     pool,
@@ -214,9 +225,27 @@ export async function registerLeaveAdminRoutes(
       (employee) => employee.approvalSource === "STRUCTURE" || employee.directManagerEmployeeId !== null,
     ).length;
 
+    /**
+     * LEAVE-003 R2: which Cuti Tahunan quota rule is in force today, and the day the semester rule
+     * starts. HC reads the rule from this screen instead of from a figure written into the page, so
+     * the screen cannot drift away from what submission actually enforces.
+     */
+    const today = jakartaBusinessDate();
+    const annualQuota = {
+      entitlementDays: ANNUAL_LEAVE_ENTITLEMENT_DAYS,
+      quarterLimitDays: ANNUAL_LEAVE_QUARTER_LIMIT_DAYS,
+      semesterLimitDays: ANNUAL_LEAVE_SEMESTER_LIMIT_DAYS,
+      semesterEffectiveFrom,
+      scheme: annualLeaveQuotaScheme(today, semesterEffectiveFrom),
+      periodLimitDays: annualLeavePeriodLimitDays(
+        annualLeaveQuotaScheme(today, semesterEffectiveFrom),
+      ),
+    };
+
     reply.header("Cache-Control", "no-store");
     return reply.send({
       policies: LEAVE_POLICY_CATALOG,
+      annualQuota,
       units: units.rows,
       employees: employeeRows,
       summary: {
@@ -413,6 +442,7 @@ export async function registerLeaveAdminRoutes(
       ? calculateAnnualLeaveYearView({
           employmentStartedOn: employee.startedOn,
           referenceDate,
+          semesterEffectiveFrom,
         })
       : null;
 

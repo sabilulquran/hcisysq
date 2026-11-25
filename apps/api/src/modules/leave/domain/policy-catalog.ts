@@ -2,7 +2,6 @@ import {
   ANNUAL_LEAVE_ELIGIBILITY_MONTHS,
   ANNUAL_LEAVE_ENTITLEMENT_DAYS,
   ANNUAL_LEAVE_MINIMUM_NOTICE_DAYS,
-  ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
   type LeaveEntitlementGroup,
 } from "./annual-leave-policy.js";
 
@@ -45,7 +44,8 @@ export interface LeavePolicyDefinition {
   emergencyNoticeAllowed: boolean;
   annualEntitlementDays?: number;
   eligibilityMonths?: number;
-  periodLimitDays?: number;
+  // LEAVE-003 R2 removed `periodLimitDays`: a quota limit that depends on the leave date cannot be
+  // stated once in a static catalogue. It lives in the year view and in `annualQuota` instead.
   carryForwardEnabled?: boolean;
   notes: string[];
 }
@@ -78,11 +78,16 @@ export const LEAVE_POLICY_CATALOG: readonly LeavePolicyDefinition[] = [
     emergencyNoticeAllowed: false,
     annualEntitlementDays: ANNUAL_LEAVE_ENTITLEMENT_DAYS,
     eligibilityMonths: ANNUAL_LEAVE_ELIGIBILITY_MONTHS,
-    periodLimitDays: ANNUAL_LEAVE_PERIOD_LIMIT_DAYS,
+    // LEAVE-003 R2: no `periodLimitDays` here. The limit depends on the leave date (3 per
+    // three-month period, 6 per semester), so a constant in this static catalogue would publish a
+    // rule the submission route does not enforce. The live figure is `annualLeave`
+    // (`currentPeriodLimitDays`, and `allocationDays` per period) and, for HC, `annualQuota`.
     carryForwardEnabled: false,
     notes: [
       "Hak tahunan tetap ditampilkan sebagai 12 hari/tahun.",
-      "Pemakaian dibatasi 3 hari per periode Jan-Mar, Apr-Jun, Jul-Sep, Okt-Des.",
+      // LEAVE-003 R2: the quota period depends on the leave date, so the live figure comes from the
+      // year view (`annualLeave`), not from this static catalogue entry.
+      "Pemakaian dibatasi per periode kuota yang berlaku pada tanggal cuti.",
       "Periode sebelum tanggal genap 12 bulan tidak tersedia retroaktif.",
     ],
   },

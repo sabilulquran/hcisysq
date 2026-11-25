@@ -1,3 +1,8 @@
+import type {
+  AnnualLeavePeriodKey,
+  AnnualLeaveQuotaScheme,
+} from "@/lib/employeeLeave";
+
 export interface AdministrationQueueItem {
   taskId: string;
   taskStatus: "pending" | "needs_correction";
@@ -40,7 +45,9 @@ export interface HcAdministrationQueue {
 
 export interface AnnualConversionOffer {
   available: boolean;
-  periodKey: "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC" | null;
+  /** LEAVE-003 R2: which quota rule read these dates. */
+  quotaScheme: AnnualLeaveQuotaScheme;
+  periodKey: AnnualLeavePeriodKey | null;
   periodLimitDays: number;
   usedDays: number;
   remainingDays: number;

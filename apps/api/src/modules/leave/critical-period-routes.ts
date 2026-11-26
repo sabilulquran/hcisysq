@@ -16,8 +16,9 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { assertCriticalPeriodRange, CriticalPeriodError } from "./domain/critical-period.js";
+import { isoCalendarDate } from "./iso-date.js";
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = isoCalendarDate;
 const periodBodySchema = z.object({
   label: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500).nullable().optional(),

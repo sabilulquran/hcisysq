@@ -17,6 +17,7 @@ import {
   encodeWorkingWeekdays,
   type IsoWeekday,
 } from "./domain/working-calendar.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const weekdaySchema = z.number().int().min(1).max(7);
 const workweekSchema = z.object({
@@ -26,7 +27,7 @@ const yearQuerySchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100).optional(),
 });
 const dateParamSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  date: isoCalendarDate,
 });
 const exceptionSchema = z.object({
   isWorkingDay: z.boolean(),

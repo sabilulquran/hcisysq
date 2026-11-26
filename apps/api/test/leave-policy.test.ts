@@ -97,6 +97,26 @@ describe("YSQ annual leave policy", () => {
     );
     expect(() => assertAnnualLeaveEntitlementGroup("non_education")).not.toThrow();
   });
+
+  // OPS-PILOT-TT-001: the request validator raises a request-policy error, which every route maps
+  // to 409; the policy module's own error class reached the client as a 500.
+  it("refuses an unclassified or education group as a request-policy error that names who can fix it", () => {
+    const base = {
+      employmentStartedOn: "2020-01-01", submittedOn: "2026-11-26",
+      leaveStartOn: "2026-12-07", leaveEndOn: "2026-12-08", requestedWorkingDays: 2,
+    };
+    for (const [group, message] of [
+      [null, /belum ditetapkan oleh Human Capital/],
+      [undefined, /belum ditetapkan oleh Human Capital/],
+      ["education", /non-pendidikan/],
+    ] as const) {
+      let caught: unknown;
+      try { validateAnnualLeaveRequest({ ...base, entitlementGroup: group }); } catch (error) { caught = error; }
+      expect(caught).toBeInstanceOf(AnnualLeaveRequestPolicyError);
+      expect(caught).toMatchObject({ code: "UNSUPPORTED_ENTITLEMENT_GROUP" });
+      expect((caught as Error).message).toMatch(message);
+    }
+  });
 });
 
 describe("YSQ annual leave request validation", () => {

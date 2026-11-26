@@ -29,12 +29,13 @@ import {
   type IsoWeekday,
   type LeaveCalendarException,
 } from "./domain/working-calendar.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const specialKeySchema = z.enum(SUPPORTED_SPECIAL_LEAVE_KEYS);
 const previewSchema = z.object({
   policyKey: specialKeySchema,
-  startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startOn: isoCalendarDate,
+  endOn: isoCalendarDate,
   hasEvidence: z.boolean().default(false),
 });
 const evidenceSchema = z.object({

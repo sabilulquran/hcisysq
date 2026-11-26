@@ -66,10 +66,11 @@ import {
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
 import { leaveWorkflowKey } from "../organization/workflow-keys.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const annualRequestSchema = z.object({
-  startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startOn: isoCalendarDate,
+  endOn: isoCalendarDate,
   reason: z.string().trim().max(1000).nullable().optional(),
 });
 const annualSubmitSchema = annualRequestSchema.extend({

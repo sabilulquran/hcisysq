@@ -52,8 +52,9 @@ import {
 } from "./employee-routes.js";
 import { LeaveOrganizationAuthorityError, governanceActorIsRequester } from "./organization-authority.js";
 import { buildPlannedPreview, insertPlannedRequest, PlannedLeaveRouteError } from "./planned-leave-routes.js";
+import { isoCalendarDate } from "./iso-date.js";
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = isoCalendarDate;
 const stepParamSchema = z.object({ stepId: z.string().uuid() });
 const proposalParamSchema = z.object({ proposalId: z.string().uuid() });
 const datesSchema = z.object({ startOn: isoDate, endOn: isoDate });

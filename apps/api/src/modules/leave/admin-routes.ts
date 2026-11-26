@@ -35,6 +35,7 @@ import { notifyApprovalRequested } from "./approver-notifications.js";
 import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import { PostgresOrganizationRepository } from "../organization/index.js";
 import { leaveWorkflowKey } from "../organization/workflow-keys.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const unitIdSchema = z.object({ unitId: z.string().uuid() });
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
@@ -43,7 +44,7 @@ const entitlementGroupSchema = z.object({
   group: z.enum(["education", "non_education"]).nullable(),
 });
 const previewQuerySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: isoCalendarDate.optional(),
 });
 
 interface LeaveUnitRow {

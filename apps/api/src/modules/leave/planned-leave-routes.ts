@@ -42,12 +42,13 @@ import {
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
 import { leaveWorkflowKey } from "../organization/workflow-keys.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const plannedKeySchema = z.enum(SUPPORTED_PLANNED_LEAVE_KEYS);
 const previewSchema = z.object({
   policyKey: plannedKeySchema,
-  startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startOn: isoCalendarDate,
+  endOn: isoCalendarDate,
   hasEvidence: z.boolean().default(false),
 });
 const evidenceSchema = z.object({

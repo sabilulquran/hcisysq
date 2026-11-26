@@ -71,6 +71,28 @@ function inDays(days: number): string {
   return base.toISOString().slice(0, 10);
 }
 
+/**
+ * The Monday on or after `inDays(days)`. A leave range counted from the real date can land on a
+ * weekend (it did on 2026-11-26: +30/+31 was Saturday–Sunday, 0 working days, and the submission
+ * was refused with INVALID_WORKING_DAYS). Starting on a Monday keeps a two-day range on working
+ * days whatever day the suite runs.
+ */
+function mondayFrom(days: number): string {
+  const base = new Date(`${inDays(days)}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + ((8 - base.getUTCDay()) % 7));
+  // A Monday that is the last day of a quarter would put Tuesday in the next annual-leave period.
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + 1);
+  if (next.getUTCDate() === 1 && next.getUTCMonth() % 3 === 0) base.setUTCDate(base.getUTCDate() + 7);
+  return base.toISOString().slice(0, 10);
+}
+
+function plusDays(date: string, days: number): string {
+  const base = new Date(`${date}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 interface Finding { severity: string; kind: string; detail: string }
 
 describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (PostgreSQL)", () => {
@@ -540,7 +562,7 @@ describe.skipIf(!allowed)("TRIP-002 D-22: saklar uang saku perjalanan dinas (Pos
       method: "POST", url: "/leave/me/annual/submit",
       headers: { cookie: employeeCookie },
       payload: {
-        startOn: inDays(30), endOn: inDays(31),
+        startOn: mondayFrom(30), endOn: plusDays(mondayFrom(30), 1),
         reason: "Acara keluarga sintetis", idempotencyKey: randomUUID(),
       },
     });

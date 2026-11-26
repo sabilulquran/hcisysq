@@ -112,6 +112,10 @@ For non-education employees:
 8. Start the first line-approval step.
 9. After final line approval, mark approved and notify HC.
 
+An unclassified (`NULL`) or `education` entitlement group is refused at step 1 with
+`409 UNSUPPORTED_ENTITLEMENT_GROUP` before any approver is resolved; the message for an empty group
+tells the employee to contact Human Capital (OPS-PILOT-TT-001, 2026-11-26 — previously a `500`).
+
 An employee becoming eligible mid-year does not receive earlier period quotas retroactively. The UI still shows the annual policy right as 12 days/year while separately showing what is usable now.
 
 ## Notice / HC-validation flow
@@ -298,7 +302,7 @@ leave.unit_approver.changed
 - LEAVE-001-A: active employee can preview working-day impact before submit.
 - LEAVE-001-B: idempotent submit creates one request and one approval/validation snapshot.
 - LEAVE-001-C: invalid date ranges and prohibited overlap are rejected.
-- LEAVE-001-D: Cuti Tahunan applies LEAVE-003 annual entitlement and 3-day period rules server-side.
+- LEAVE-001-D: Cuti Tahunan applies LEAVE-003 annual entitlement and period rules (3 working days per three-month period, or 6 per semester from the LEAVE-003 R2 effective date) server-side.
 - LEAVE-001-E: line approval uses ORG-002 Direct Manager + Unit Approver resolution.
 - LEAVE-001-F: HC notification, validation, and approval are distinct task semantics.
 - LEAVE-001-G: missing mandatory configuration fails closed without guessing an approver.

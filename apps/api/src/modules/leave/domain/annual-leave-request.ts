@@ -2,7 +2,6 @@ import {
   ANNUAL_LEAVE_ENTITLEMENT_DAYS,
   ANNUAL_LEAVE_MINIMUM_NOTICE_DAYS,
   annualLeaveQuotaScheme,
-  assertAnnualLeaveEntitlementGroup,
   calculateAnnualLeaveYearView,
   type AnnualLeavePeriodKey,
   type AnnualLeaveQuarterKey,
@@ -46,12 +45,30 @@ export class AnnualLeaveRequestPolicyError extends Error {
       | "MINIMUM_NOTICE_NOT_MET"
       | "NOT_YET_ELIGIBLE"
       | "CROSS_PERIOD_REQUEST_UNSUPPORTED"
-      | "PERIOD_LIMIT_EXCEEDED",
+      | "PERIOD_LIMIT_EXCEEDED"
+      | "UNSUPPORTED_ENTITLEMENT_GROUP",
     message: string,
   ) {
     super(message);
     this.name = "AnnualLeaveRequestPolicyError";
   }
+}
+
+/**
+ * OPS-PILOT-TT-001 (2026-11-26): the entitlement-group check used to surface as the policy
+ * module's own `AnnualLeavePolicyError`, which no route maps, so the very first refusal a pilot
+ * employee meets — an unclassified entitlement group — answered `500` instead of `409`. It is
+ * raised here as a request-policy error, which every annual-leave route already maps to `409`,
+ * and the empty group is told apart from the education group because only HC can fix the first.
+ */
+function assertRequesterEntitlementGroup(group: LeaveEntitlementGroup | null | undefined): void {
+  if (group === "non_education") return;
+  throw new AnnualLeaveRequestPolicyError(
+    "UNSUPPORTED_ENTITLEMENT_GROUP",
+    group
+      ? "Cuti Tahunan individual hanya berlaku untuk kelompok tenaga non-pendidikan."
+      : "Kelompok hak cuti Anda belum ditetapkan oleh Human Capital, sehingga Cuti Tahunan belum dapat diajukan. Hubungi Human Capital.",
+  );
 }
 
 function dateValue(value: string): number {
@@ -87,7 +104,7 @@ function crossPeriodMessage(scheme: AnnualLeaveQuotaScheme): string {
 export function validateAnnualLeaveRequest(
   input: AnnualLeaveRequestValidationInput,
 ): AnnualLeaveRequestValidationResult {
-  assertAnnualLeaveEntitlementGroup(input.entitlementGroup);
+  assertRequesterEntitlementGroup(input.entitlementGroup);
 
   if (!Number.isFinite(input.requestedWorkingDays) || input.requestedWorkingDays <= 0) {
     throw new AnnualLeaveRequestPolicyError(

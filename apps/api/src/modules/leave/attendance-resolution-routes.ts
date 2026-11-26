@@ -42,6 +42,7 @@ import {
   type IsoWeekday,
   type LeaveCalendarException,
 } from "./domain/working-calendar.js";
+import { isoCalendarDate } from "./iso-date.js";
 
 const taskParamSchema = z.object({ taskId: z.string().uuid() });
 const caseParamSchema = z.object({ caseId: z.string().uuid() });
@@ -53,7 +54,7 @@ const administrationDecisionSchema = z.object({
     "not_validated",
   ]),
   note: z.string().trim().max(1000).nullable().optional(),
-  validatedDates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(120).optional(),
+  validatedDates: z.array(isoCalendarDate).max(120).optional(),
 });
 const hcResolutionDecisionSchema = z.object({
   action: z.enum([

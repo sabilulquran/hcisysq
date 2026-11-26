@@ -205,6 +205,12 @@ Pindahkan unit**.
 hari ini, teraudit sebagai `organization.rollout.ended`. Unit kembali ke data atasan lama, dan
 rantai pada pengajuan yang sudah terkirim tidak disentuh.
 
+**Pembacaan 2026-11-26.** Uji kering di production yang selalu di-ROLLBACK membuktikan baris
+pada §5.5 cukup: dengan baris itu dan ketiga akun aktif, pengajuan Rosaliana membaca bagan terbit
+dan rantainya **Pipit Fithriyah → Muchsalmina**; pegawai unit lain tetap LEGACY. Ditemukan juga
+bahwa §5.1 di production menjawab **500**, bukan 409, untuk kelompok yang kosong; perbaikannya
+menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026-11-26.md`.
+
 ### 5.6 Ringkasan §5
 
 | # | Yang diperlukan | Pemilik | Menghalangi? |
@@ -214,6 +220,8 @@ rantai pada pengajuan yang sudah terkirim tidak disentuh.
 | 3 | Kirim aktivasi untuk Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali | HC, lalu orangnya | **Ya** |
 | 4 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` | HCM | **Ya** |
 | 5 | Tambahkan tiga NIP ke daftar izin WhatsApp | Operator | Tidak |
+| 7 | Isi hari libur dan cuti bersama sampai akhir pilot (production hanya mencatat 2026-08-25) | HC | Disarankan |
+| 8 | Rilis perbaikan 409 untuk kelompok hak cuti kosong (sebelumnya 500) | Operator | Disarankan sebelum pengajuan pertama |
 | ~~6~~ | ~~Rilis perubahan ini ke production~~ | Operator | **Selesai 2026-11-25 12:17 WIB** — `hcis-27f10ccd-20261125`, tanpa migrasi, verify lulus percobaan pertama; bukti `docs/development/production-release-verification-2026-11-25-27f10ccd.md`. Panel **Mode persetujuan per unit** dan dialog **Tolak** sudah ada di production |
 
 ## 6. Yang ditambahkan perubahan ini

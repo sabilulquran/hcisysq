@@ -193,3 +193,62 @@ export function biometricCapabilityReason(reason: string | null) {
   if (reason === "retention_policy_pending") return "Kebijakan retensi/destruction belum disetujui";
   return reason.replaceAll("_", " ");
 }
+
+/**
+ * What the machine itself reports about one template. The operator comes to the device page for
+ * this fact: whether the fingerprint is really on the machine, not whether HCIS has a copy.
+ */
+export function biometricReplicaLabel(value: BiometricReplicaItem["state"]) {
+  if (value === "present" || value === "succeeded") return "Ada di mesin";
+  if (value === "pending") return "Sedang disinkronkan";
+  if (value === "failed") return "Sinkronisasi gagal";
+  if (value === "conflict") return "Berbeda dengan HCIS";
+  if (value === "missing") return "Belum ada di mesin";
+  if (value === "stale") return "Perlu diperbarui";
+  return "Belum diketahui";
+}
+
+export interface BiometricTemplateRow {
+  key: string;
+  label: string;
+  slot: number | null;
+  /** What HCIS holds. */
+  vault: string;
+  /** What the machine reports, or null when the machine has said nothing about it. */
+  machine: BiometricReplicaItem["state"] | null;
+}
+
+/**
+ * One row per template, pairing the HCIS side with the machine side. Both are shown because a
+ * credential HCIS stores can still be missing from the machine — reading only the vault side
+ * reported every template as stored, which is how a failed sync stayed invisible.
+ */
+export function biometricTemplateRows(
+  credentials: BiometricCredentialItem[],
+  replicas: BiometricReplicaItem[],
+): BiometricTemplateRow[] {
+  const byCredential = new Map(replicas.map((replica) => [replica.credentialId, replica]));
+  const rows: BiometricTemplateRow[] = credentials.map((credential) => ({
+    key: credential.id,
+    label: biometricModalityLabel(credential.modality),
+    slot: credential.slotIndex,
+    vault: credential.lifecycle === "active" ? "Tersimpan di HCIS" : "Tidak aktif di HCIS",
+    machine: byCredential.get(credential.id)?.state ?? null,
+  }));
+  for (const replica of replicas) {
+    if (credentials.some((credential) => credential.id === replica.credentialId)) continue;
+    rows.push({
+      key: `${replica.credentialId}:${replica.state}`,
+      label: biometricModalityLabel(replica.modality),
+      slot: replica.slotIndex,
+      vault: "Tidak ada di HCIS",
+      machine: replica.state,
+    });
+  }
+  return rows;
+}
+
+/** Templates the machine does not hold as HCIS expects: the count an operator acts on. */
+export function biometricAttentionCount(replicas: BiometricReplicaItem[]) {
+  return replicas.filter((replica) => replica.state !== "present" && replica.state !== "succeeded").length;
+}

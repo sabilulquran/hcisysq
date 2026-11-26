@@ -133,7 +133,7 @@ Semua dijalankan di worktree ini pada 25 November 2026.
 |---|---|
 | `npm run typecheck:web` | lulus |
 | `npm run lint:web` | lulus (0 error, 64 warning `react-refresh/only-export-components` yang sudah ada polanya) |
-| `npm run test:web` | **775 test lulus**, 104 berkas (10 test pager baru) |
+| `npm run test:web` | **785 test lulus**, 106 berkas (10 test pager, 5 test biometrik) |
 | `npm run build:web` | lulus |
 | `npm run typecheck:api` / `lint:api` / `build:api` | lulus |
 
@@ -215,10 +215,9 @@ Arti status:
 - **Diperbarui** — berkas halamannya ikut berubah pada branch ini, lalu dibuka dan diperiksa.
 - **Diperiksa, sesuai** — hanya menerima perubahan lapisan bersama (skala tipografi, shell, pager);
   dibuka dan diperiksa pada 1440px dan 375px, tidak ada temuan.
-- **Sebagian** — dibuka, tetapi ada keadaan layar yang belum bisa diperiksa; alasannya ditulis.
-
-Ringkasan: **78 diperbarui, 28 diperiksa dan sudah sesuai, 4 sebagian**. Tidak ada rute yang tidak
-dibuka.
+Ringkasan setelah penutupan 26 November: **82 diperbarui, 28 diperiksa dan sudah sesuai, 0
+sebagian**. Tidak ada rute yang tidak dibuka, dan tidak ada rute yang tersisa dengan keadaan layar
+yang belum diperiksa.
 
 | Rute | Status | Catatan |
 |---|---|---|
@@ -240,7 +239,7 @@ dibuka.
 | `/admin/attendance/daily` | Diperiksa, sesuai |  |
 | `/admin/attendance/devices` | Diperbarui |  |
 | `/admin/attendance/devices/$deviceId` | Diperiksa, sesuai |  |
-| `/admin/attendance/devices/$deviceId/biometrics` | Sebagian | Dibuka; menampilkan status terkunci karena `BIOMETRIC_COLLECTION_ENABLED=0` di lingkungan uji. Layar isinya belum diperiksa. |
+| `/admin/attendance/devices/$deviceId/biometrics` | Diperbarui | 26 Nov: diperiksa dengan fitur aktif dan 18 template uji (§8.2). 30 tombol tanpa handler dihapus; keadaan mesin per template kini ditampilkan. |
 | `/admin/attendance/devices/$deviceId/commands` | Diperiksa, sesuai |  |
 | `/admin/attendance/devices/$deviceId/data` | Diperiksa, sesuai |  |
 | `/admin/attendance/devices/$deviceId/diagnostics` | Diperiksa, sesuai |  |
@@ -251,7 +250,7 @@ dibuka.
 | `/admin/attendance/devices/$deviceId/users` | Diperiksa, sesuai |  |
 | `/admin/attendance/overtime` | Diperiksa, sesuai |  |
 | `/admin/attendance/reports` | Diperbarui |  |
-| `/admin/attendance/reports/print` | Sebagian | Dibuka; halaman cetak kosong tanpa parameter laporan. Tata letak cetaknya belum diperiksa dengan laporan nyata. |
+| `/admin/attendance/reports/print` | Diperbarui | 26 Nov: diperiksa dengan laporan berisi data, 7 grup unit, 66 baris (§8.3). Bilah petunjuknya tidak terbaca di tema gelap; diperbaiki. |
 | `/admin/attendance/schedules` | Diperbarui |  |
 | `/admin/attendance/schedules/calendar` | Diperbarui |  |
 | `/admin/attendance/schedules/dates` | Diperbarui |  |
@@ -330,8 +329,8 @@ dibuka.
 | `/app/trip-advances` | Diperbarui |  |
 | `/app/trips` | Diperbarui |  |
 | `/board` | Diperbarui | Diperiksa dengan akun uji ber-role `foundation_board_viewer`. |
-| `/cek/$code` | Sebagian | Diperiksa pada keadaan kode tidak dikenal. Keadaan kartu sah belum diperiksa (butuh data kartu + foto). |
-| `/verifikasi/penghargaan/$code` | Sebagian | Diperiksa pada keadaan kode tidak dikenal. Keadaan sertifikat sah belum diperiksa (butuh data penghargaan). |
+| `/cek/$code` | Diperbarui | 26 Nov: diperiksa dengan kartu sah terbitan aplikasi (§8.4), terang dan gelap, 375px. Vonis dinaikkan ke 24px dan warna status mentah diganti token HCIS. |
+| `/verifikasi/penghargaan/$code` | Diperbarui | 26 Nov: diperiksa dengan sertifikat sah terbitan aplikasi (§8.4). Sertifikat sah kini mendapat warna status; sebelumnya hanya yang dicabut yang berwarna. |
 
 ### Pengalihan lama (14) — semuanya terverifikasi
 
@@ -369,9 +368,109 @@ Diuji di browser; setiap pengalihan mendarat di tujuan yang didokumentasikan di
 
 ## 7. Yang belum diperiksa
 
+Keempat butir yang terbuka pada 25 November sudah ditutup pada 26 November; buktinya di §8.
+
 | Hal | Alasan |
 |---|---|
-| `/admin/attendance/devices/$deviceId/biometrics` | Fitur biometrik mati (`BIOMETRIC_COLLECTION_ENABLED=0`) di lingkungan uji, sehingga yang tampil hanya layar terkunci. |
-| Tata letak cetak `/admin/attendance/reports/print` | Perlu parameter laporan nyata; tanpa itu halaman cetaknya kosong. |
-| `/cek/$code` dan `/verifikasi/penghargaan/$code` pada kode yang sah | Perlu data kartu pegawai beserta fotonya dan data penghargaan; keduanya rantai data yang belum dibuat di basis data uji. Keadaan "kode tidak dikenal" sudah diperiksa. |
-| Tampilan cetak slip gaji dan SK pada kertas | Hanya diperiksa di layar; aturan `@media print` tidak disentuh pada perubahan ini. |
+| Hasil cetak di atas kertas sungguhan | Semuanya diperiksa sebagai dokumen di layar dan lewat aturan `@page`/`break-*` yang berlaku, bukan dari printer fisik. Catatan di `reportPrintCss.ts` mencatat uji cetak PDF Chrome 155 pada 26 Oktober 2026. |
+| Lebar kolom cetak pada data ekstrem | Angka uji masih 1–3 digit; kolom dengan nilai sangat panjang belum diuji. |
+
+## 8. Penutupan empat pemeriksaan terbuka (26 November 2026)
+
+Keempat butir §7 yang lama ditutup dengan data sintetis di lingkungan uji yang sama. Angka di
+bawah dibaca dengan `getComputedStyle` di browser, bukan dari screenshot: pane browser sesi ini
+tersembunyi dan merender tangkapan layarnya dengan warna yang tidak setia, jadi warna dan ukuran
+diukur, tidak dilihat.
+
+### 8.1 Data uji yang ditambahkan
+
+Semua lewat API dan alur aplikasi yang sebenarnya, bukan tulis langsung ke tabel, kecuali data
+mesin yang memang tidak punya alur masuk:
+
+| Data | Cara |
+|---|---|
+| 1 kartu pegawai, kode `F7GRS6H9HR` | `PUT …/photo` lalu `POST …/cards` sebagai HC |
+| 3 penghargaan terbit, 1 kode diperiksa | impor CSV papan skor, putuskan, lalu publikasikan putaran |
+| 1 surat keterangan kerja `001/SKK/YSQ/XI/2026` | `POST /admin/documents/issue` |
+| 18 template biometrik + 18 keadaan mesin | INSERT langsung (tidak ada alur masuk di HCIS) |
+| 1 jadwal kerja Senin–Jumat untuk 30 pegawai | INSERT langsung, lalu Kalkulasi dijalankan dari layar |
+| 45 slip gaji dipublikasikan, barisnya dibentuk ulang | UPDATE; bentuk seed lama salah (`amount`, bukan `value`) |
+
+Dua aturan domain muncul saat menyiapkan data dan **tidak** diakali: pengimpor snapshot
+penghargaan tidak boleh memutuskan kandidatnya sendiri (dibuat akun HC kedua), dan slip gaji yang
+sudah dipublikasikan tidak dapat diubah (trigger dimatikan sementara di basis data uji saja).
+
+### 8.2 Layar biometrik saat fitur aktif
+
+`BIOMETRIC_COLLECTION_ENABLED=1` di `.env.local` lingkungan uji dan saklar per mesin dinyalakan di
+basis data uji. **Konfigurasi production tidak disentuh**: produksi tetap mati, dan izin
+`attendance.devices.biometrics` tetap tidak dipegang peran mana pun di sana — di basis data uji
+izin itu diberikan ke "Admin Modul HCIS" supaya layarnya bisa dibuka.
+
+Dua cacat ditemukan saat fitur aktif:
+
+1. **Tombol yang tidak pernah bekerja.** Layar menampilkan 30 tombol: 24 permanen nonaktif
+   (Cadangkan, Pulihkan, Sinkronkan ke mesin lain, Hapus biometrik terpilih — empat per pegawai)
+   dan 6 "Daftarkan sidik jari" yang tampak aktif. **Tidak satu pun punya handler.** "Hapus
+   biometrik terpilih" juga menjanjikan pilihan yang tidak ada di layar. Kelima tindakan itu ada di
+   capability matrix dengan bukti fisik `not_verified`, jadi memang belum boleh dijalankan.
+2. **Keadaan mesin dibuang.** Tiap template dilaporkan "Tersimpan" selama HCIS punya salinannya,
+   padahal API mengembalikan keadaan mesin per template. Dari 18 template uji (4 `missing`,
+   4 `failed`, 4 `pending`, 3 `present`, 3 `stale`), layar lama menampilkan **18× "Tersimpan"**.
+   Operator tidak punya apa pun untuk ditindaklanjuti.
+
+Perbaikan: 30 tombol mati dihapus, diganti satu kalimat yang menyebut kelima tindakan itu belum
+dapat dijalankan dari HCIS dan pendaftaran masih di mesin. Tiap template kini menyebut dua sisi —
+"Tersimpan di HCIS" dan "Di mesin: …" — dengan `failed`/`conflict` berwarna danger dan
+`missing`/`stale` warning. Di kepala halaman ada hitungan "18 template tercatat di mesin ini ·
+15 perlu diperiksa". Logikanya pindah ke `lib/admsBiometrics.ts` dan diuji (5 test).
+
+Sesudah perbaikan, terukur di layar: 0 tombol mati, dan kelima keadaan terbaca tepat sesuai data
+(`Belum ada di mesin` 4, `Sinkronisasi gagal` 4, `Sedang disinkronkan` 4, `Ada di mesin` 3,
+`Perlu diperbarui` 3).
+
+### 8.3 Pratinjau dan hasil cetak
+
+| Dokumen | Hasil |
+|---|---|
+| `/admin/attendance/reports/print`, model Rekapitulasi Pegawai, 12–25 Nov | Kop, judul, periode, identitas, meta hitung, 7 grup unit, 66 baris, subtotal per unit, blok tanda tangan. Lebar tabel 688px di dalam lebar kertas. |
+| Aturan pemisahan halaman | `@page` A4 potret/lanskap dengan margin; `thead { display: table-header-group }` (judul kolom berulang); `tbody tr { break-inside: avoid }`; `.report-group + .report-group { break-before: page }` (satu unit satu halaman); blok tanda tangan tidak terbelah. |
+| Slip gaji `/app/payslips` | Kertas putih `rgb(255,255,255)` dengan tinta gelap, kop berlogo, ringkasan 3 ubin, kolom Penghasilan dan Potongan, blok tanda tangan. `@media print` menyembunyikan seluruh shell, A4 potret, blok "Ditanggung yayasan" tidak terbelah. |
+| SK `/admin/documents` | Kertas putih, judul 18px, nomor surat, tubuh 14px, tanggal dan blok penanda tangan. |
+
+Satu cacat ditemukan: **kalimat petunjuk pada bilah layar halaman cetak tidak terbaca di tema
+gelap**. Bilahnya memakai `bg-surface` (gelap saat tema gelap) sementara teksnya mewarisi tinta
+gelap dari dokumen putih di bawahnya — terukur latar `rgb(15,20,24)` dengan teks `rgb(20,19,15)`,
+kontras ±1:1. Bilah itu sekarang menyebut warnanya sendiri (`bg-slate-100` + `text-slate-900`,
+terukur kontras ±15:1), karena ia memang menempel pada dokumen putih, bukan pada tema aplikasi.
+
+Angka cetak tetap rata tengah. Itu bukan cacat: kolom rekap kehadiran sempit, nilainya 1–3 digit,
+dan tata letaknya sudah lolos uji cetak PDF pada 26 Oktober 2026.
+
+### 8.4 Dua halaman verifikasi publik dengan kode sah
+
+Keduanya mengerjakan satu tugas — menjawab "apakah ini asli?" — tetapi dirancang berbeda, dan
+jawabannya justru yang paling lemah di layar.
+
+| Temuan | Kartu `/cek/F7GRS6H9HR` | Penghargaan `/verifikasi/penghargaan/7GNP…` |
+|---|---|---|
+| Ukuran vonis sebelum | 18px, nama pemegang 16px | setara teks biasa, nama penerima 14px |
+| Warna status sebelum | `emerald-50`/`orange-50` mentah | sah tidak diberi warna sama sekali; hanya dicabut yang berwarna |
+| Akibat di tema gelap | panel 98% terang di atas halaman 8% terang | jawaban "sah" tanpa penegasan apa pun |
+
+Perbaikan: satu perlakuan vonis untuk kedua halaman — jawaban 24px, kalimat pendukung 14px, nama
+20px — memakai token status HCIS (`success-soft`/`success-ink`, `warning-*`, `danger-*`) sehingga
+panelnya ikut tema. Logo, aset identitas, Inter, dan palet tidak berubah; yang berubah justru
+membuat kedua halaman **mulai** memakai warna status HCIS yang sebelumnya mereka abaikan.
+
+Terukur sesudah perbaikan:
+
+| Pemeriksaan | Terang | Gelap |
+|---|---|---|
+| Panel vonis kartu | teks `rgb(20,83,47)` di atas `rgb(230,244,236)` | teks `rgb(127,211,163)` di atas `rgb(18,48,31)` |
+| Ukuran vonis / nama | 24px / 20px | 24px / 20px |
+| 375px | `scrollWidth` 375 = viewport, vonis satu baris, foto tampil | sama |
+
+Halaman penghargaan tidak menampilkan waktu pemeriksaan seperti halaman kartu, karena API-nya
+tidak mengembalikan `checkedAt`. Menambahkannya adalah perubahan kontrak API, di luar lingkup
+perubahan desain ini.

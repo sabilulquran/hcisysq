@@ -7,19 +7,35 @@ import { useEffect, useState } from "react";
 import ysqMark from "@/assets/brand/ysq-mark.png";
 import { checkCertificate, RewardApiError, type CertificateCheck } from "@/lib/rewards";
 
+/**
+ * Same shape as the employee-card check (EMP-012 D-11): the answer leads, in the HCIS status
+ * colours, and the certificate's facts sit under it. A certificate that still stands used to
+ * look like an ordinary card while only a revoked one was coloured, so the common answer — yes,
+ * this is real — carried no confirmation at all.
+ */
 export function CertificateCheckView({ result }: { result: CertificateCheck }) {
   const valid = result.status === "VALID";
+  const skin = valid
+    ? "border-success-line bg-success-soft text-success-ink"
+    : "border-danger-line bg-danger-soft text-danger-ink";
   return (
-    <div className={`rounded-3xl border p-5 ${valid ? "border-border bg-surface-raised" : "border-danger-line bg-danger-soft"}`}>
-      <p className={`flex items-center gap-2 font-bold ${valid ? "text-brand-heading" : "text-danger-ink"}`}>
-        {valid ? <CheckCircle2 className="h-5 w-5" aria-hidden="true" /> : <XCircle className="h-5 w-5" aria-hidden="true" />}
-        {valid ? "Sertifikat sah" : "Penghargaan ini sudah dicabut"}
-      </p>
-      <dl className="mt-4 grid gap-3">
-        <div><dt className="text-xs text-muted-foreground">Penerima</dt><dd className="text-sm font-bold text-brand-heading">{result.recipientName}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Kategori</dt><dd className="text-sm font-bold text-brand-heading">{result.categoryLabel}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Bulan</dt><dd className="text-sm font-bold text-brand-heading">{result.monthLabel}</dd></div>
-      </dl>
+    <div className="grid gap-4">
+      <div className={`flex items-start gap-3 rounded-2xl border p-4 ${skin}`} role={valid ? undefined : "alert"}>
+        {valid
+          ? <CheckCircle2 className="mt-0.5 h-7 w-7 shrink-0" aria-hidden="true" />
+          : <XCircle className="mt-0.5 h-7 w-7 shrink-0" aria-hidden="true" />}
+        <div>
+          <p className="text-2xl font-semibold leading-tight">{valid ? "Sertifikat sah" : "Penghargaan dicabut"}</p>
+          <p className="mt-1 text-sm leading-6">
+            {valid ? "Penghargaan ini diterbitkan Yayasan Sabilul Qur'an." : "Penghargaan ini sudah dicabut dan tidak lagi berlaku."}
+          </p>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-surface-raised p-4">
+        <p className="text-xl font-semibold leading-tight text-brand-heading">{result.recipientName}</p>
+        <p className="mt-1 text-sm font-medium text-brand-primary-deep">{result.categoryLabel}</p>
+        <p className="text-sm text-muted-foreground">{result.monthLabel}</p>
+      </div>
     </div>
   );
 }
@@ -44,7 +60,7 @@ export function PublicRewardVerifyPage({ code }: { code: string }) {
       <header className="flex items-center gap-3 border-b border-border bg-surface-raised px-5 py-4">
         <img src={ysqMark} alt="" className="h-9 w-9" aria-hidden="true" />
         <div>
-          <h1 className="text-base font-extrabold text-brand-heading">Cek Sertifikat Penghargaan</h1>
+          <h1 className="text-base font-semibold text-brand-heading">Cek Sertifikat Penghargaan</h1>
           <p className="text-xs text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
         </div>
       </header>

@@ -83,9 +83,12 @@ export function AdminAttendanceReportPrintPage() {
 
   return (
     <main className="bg-white">
-      <div className="report-screen-only mx-auto my-4 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-xl border bg-surface p-3 text-sm">
+      {/* The sheet below is a white document, so this bar cannot take its colours from the theme:
+          on a dark theme `bg-surface` is near-black while the text inherits the document's dark
+          ink, which left the sentence unreadable. The bar names both sides itself. */}
+      <div className="report-screen-only mx-auto my-4 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-100 p-3 text-sm text-slate-900">
         <span>Dokumen cetak. Pilih "Simpan sebagai PDF" di dialog cetak untuk berkas PDF. Nomor halaman tampil di Chrome dan Edge.</span>
-        <button type="button" onClick={() => window.print()} className="rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-bold text-brand-foreground">Cetak</button>
+        <button type="button" onClick={() => window.print()} className="min-h-10 rounded-lg bg-brand-primary px-4 text-xs font-semibold text-brand-foreground">Cetak</button>
       </div>
       <ReportPrintSheet table={table} />
     </main>

@@ -132,8 +132,8 @@ Route cuti hanya memeriksa bentuk `YYYY-MM-DD`, sehingga `2026-02-30` sampai ke 
 `isoCalendarDate` (`apps/api/src/modules/leave/iso-date.ts`) dan tanggal seperti itu ditolak
 sebagai `400` biasa untuk isian yang tidak sah.
 
-Kedua perbaikan ini belum di production sampai rilis berikutnya. Ia tidak menghalangi pilot, karena
-HC mengisi kelompok peserta sebelum pengajuan pertama, tetapi rilisnya sebaiknya mendahului pilot.
+Kedua perbaikan ini **dirilis 26 November 2026 16:16 WIB** sebagai `hcis-7fd89146-20261126`,
+tanpa migrasi; bukti `docs/development/production-release-verification-2026-11-26-7fd89146.md`.
 
 ### Bukti uji perubahan ini (2026-11-26)
 
@@ -166,7 +166,7 @@ dibutuhkan (`leave.configuration.manage`, `access.manage`, `approvals.policy.man
 | P1 | Tetapkan kelompok hak cuti peserta (usul `DRAFT`: Rosaliana `non_education`; Pipit keputusan HC; tujuh Guru `education`) | HC, Admin → Konfigurasi Cuti | Audit `leave.entitlement_group.changed` per pegawai | **Menunggu HC** |
 | P2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | Keputusan tertulis | **Menunggu HCM** |
 | P3 | Isi hari libur dan cuti bersama sampai akhir pilot (dan 2027) | HC | Baris kalender; pratinjau yang melewati tanggal libur menghitung benar | **Menunggu HC** (disarankan, tidak mutlak) |
-| P4 | Rilis perbaikan 409 dan tanggal mustahil (§7) | Operator (agen) | Catatan verifikasi rilis | **Dapat dikerjakan** setelah perubahan ini di-merge |
+| P4 | Rilis perbaikan 409 dan tanggal mustahil (§7) | Operator (agen) | Catatan verifikasi rilis | **Selesai 2026-11-26 16:16 WIB** — `hcis-7fd89146-20261126` |
 | P5 | Kirim aktivasi: Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali dan mengisi kata sandinya sendiri | HC, lalu orangnya | Baris `account_activation_invitations` `issued` lalu selesai; akun `active`; audit `auth.activation.invitation_completed` | **Menunggu penetapan penerima (P2) dan HC** |
 | P6 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` dari layar | HCM, Admin → Struktur Organisasi → Mode persetujuan per unit | Audit `organization.rollout.changed`; pratinjau pemohon menunjukkan Pipit → Muchsalmina | **Siap secara teknis** (§4), menunggu P1–P5 |
 | P7 | Satu pengajuan nyata, Setujui, satu pengajuan nyata, Tolak | Pegawai pilot, Pipit, Muchsalmina | Baris `leave_requests` + langkah tersimpan + `in_app_notifications` `leave.request.decided.*` | **Belum** |

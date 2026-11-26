@@ -221,7 +221,7 @@ menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026
 | 4 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` | HCM | **Ya** |
 | 5 | Tambahkan tiga NIP ke daftar izin WhatsApp | Operator | Tidak |
 | 7 | Isi hari libur dan cuti bersama sampai akhir pilot (production hanya mencatat 2026-08-25) | HC | Disarankan |
-| 8 | Rilis perbaikan 409 untuk kelompok hak cuti kosong (sebelumnya 500) | Operator | Disarankan sebelum pengajuan pertama |
+| ~~8~~ | ~~Rilis perbaikan 409 untuk kelompok hak cuti kosong (sebelumnya 500)~~ | Operator | **Selesai 2026-11-26 16:16 WIB** — `hcis-7fd89146-20261126`; bukti `docs/development/production-release-verification-2026-11-26-7fd89146.md` |
 | ~~6~~ | ~~Rilis perubahan ini ke production~~ | Operator | **Selesai 2026-11-25 12:17 WIB** — `hcis-27f10ccd-20261125`, tanpa migrasi, verify lulus percobaan pertama; bukti `docs/development/production-release-verification-2026-11-25-27f10ccd.md`. Panel **Mode persetujuan per unit** dan dialog **Tolak** sudah ada di production |
 
 ## 6. Yang ditambahkan perubahan ini

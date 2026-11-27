@@ -164,13 +164,13 @@ dibutuhkan (`leave.configuration.manage`, `access.manage`, `approvals.policy.man
 | # | Langkah | Siapa | Bukti yang diperlukan | Status |
 | --- | --- | --- | --- | --- |
 | P1 | Tetapkan kelompok hak cuti peserta (usul `DRAFT`: Rosaliana `non_education`; Pipit keputusan HC; tujuh Guru `education`) | HC, Admin → Konfigurasi Cuti | Audit `leave.entitlement_group.changed` per pegawai | **Menunggu HC** |
-| P2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | Keputusan tertulis | **Menunggu HCM** |
+| P2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | Keputusan tertulis | **Peserta pertama: Rosaliana (HCM, 2026-11-26).** Peserta kedua menunggu HCM menyatakannya berhak |
 | P3 | Isi hari libur dan cuti bersama sampai akhir pilot (dan 2027) | HC | Baris kalender; pratinjau yang melewati tanggal libur menghitung benar | **Menunggu HC** (disarankan, tidak mutlak) |
 | P4 | Rilis perbaikan 409 dan tanggal mustahil (§7) | Operator (agen) | Catatan verifikasi rilis | **Selesai 2026-11-26 16:16 WIB** — `hcis-7fd89146-20261126` |
 | P5 | Kirim aktivasi: Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali dan mengisi kata sandinya sendiri | HC, lalu orangnya | Baris `account_activation_invitations` `issued` lalu selesai; akun `active`; audit `auth.activation.invitation_completed` | **Menunggu penetapan penerima (P2) dan HC** |
 | P6 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` dari layar | HCM, Admin → Struktur Organisasi → Mode persetujuan per unit | Audit `organization.rollout.changed`; pratinjau pemohon menunjukkan Pipit → Muchsalmina | **Siap secara teknis** (§4), menunggu P1–P5 |
 | P7 | Satu pengajuan nyata, Setujui, satu pengajuan nyata, Tolak | Pegawai pilot, Pipit, Muchsalmina | Baris `leave_requests` + langkah tersimpan + `in_app_notifications` `leave.request.decided.*` | **Belum** |
-| P8 | Putuskan ukuran keberhasilan (OPS-PILOT-TT-001 §8: A/B/C) | Owner | Keputusan tertulis | **Menunggu owner** |
+| P8 | Putuskan ukuran keberhasilan (OPS-PILOT-TT-001 §8: A/B/C) | Owner | Keputusan tertulis | **Diputuskan 2026-11-26: jalan A** — dua pengajuan selesai diputuskan, dari dua peserta |
 | P9 | Daftar izin WhatsApp untuk peserta | Operator | Baris env, restart API | Opsional |
 
 ## 10. Kesiapan pembukaan umum — yang masih harus dilakukan
@@ -194,3 +194,4 @@ Terpisah dari §9; daftar lengkapnya OPS-PILOT-TT-001 §9 dan OPS-CLOSE-001.
 - `docs/operations/pilot-cuti-taman-tahfizh-2026-11-25.md` (OPS-PILOT-TT-001) — rencana pilot.
 - `docs/development/hcis-closure-list.md` (OPS-CLOSE-001) — posisi butir penutupan.
 - `docs/development/leave-003-r2-semester-quota-2026-11-25.md` (LEAVE-003 R2) — aturan kuota.
+- `docs/operations/pilot-tt-runbook-2026-11-26.md` — runbook pelaksanaan pilot.

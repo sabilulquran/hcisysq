@@ -29,6 +29,18 @@ Dan empat sasaran yang harus dibuktikan pilot:
 3. keputusan **Setujui** dan **Tolak** berjalan dari layar;
 4. pemohon menerima pemberitahuan hasilnya.
 
+### 1.1 Keputusan 2026-11-26
+
+| Keputusan | Oleh | Isinya |
+| --- | --- | --- |
+| Peserta pertama | HCM | **Rosaliana** (Tata Usaha) |
+| Ukuran keberhasilan (§8) | Owner | **Jalan A**: dua pengajuan selesai diputuskan, dari dua peserta. Peserta kedua dihitung hanya setelah HCM menyatakannya berhak mengajukan Cuti Tahunan |
+
+Masih menunggu penetapan HCM/HC: **kelompok hak cuti Rosaliana** (di production masih kosong;
+persetujuan sebagai peserta bukan penetapan kelompok) dan **peserta kedua**. Selama baru satu
+peserta terverifikasi, pilot dilaporkan sebagai "1 peserta, 2 skenario". Urutan pelaksanaan:
+`docs/operations/pilot-tt-runbook-2026-11-26.md`.
+
 **Aktivasi massal menunggu hasil pilot.** Dokumen ini memisahkan dua daftar yang sering
 tercampur: §5 — yang diperlukan untuk menjalankan pilot, dan §9 — sisa pekerjaan sebelum akses
 dibuka untuk seluruh pegawai.
@@ -216,7 +228,7 @@ menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026
 | # | Yang diperlukan | Pemilik | Menghalangi? |
 | --- | --- | --- | --- |
 | 1 | Isi kelompok hak cuti peserta | HC | **Ya, mutlak** |
-| 2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | **Ya** |
+| 2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | **Peserta pertama ditetapkan 2026-11-26: Rosaliana.** Peserta kedua menunggu HCM menyatakannya berhak |
 | 3 | Kirim aktivasi untuk Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali | HC, lalu orangnya | **Ya** |
 | 4 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` | HCM | **Ya** |
 | 5 | Tambahkan tiga NIP ke daftar izin WhatsApp | Operator | Tidak |
@@ -253,6 +265,9 @@ orang**. Di Taman Tahfizh, Cuti Tahunan paling banyak dapat diajukan **dua** ora
 itu pun bila Pipit ditetapkan `non_education`. Butir itu **tidak dapat dipenuhi** dengan Cuti
 Tahunan di unit ini.
 
+**Diputuskan 2026-11-26: jalan A** — dua pengajuan selesai diputuskan, dari dua peserta, dengan
+peserta kedua dihitung setelah HCM menyatakannya berhak (§1.1).
+
 Tiga jalan, dan ini keputusan owner:
 
 | Jalan | Akibatnya |
@@ -288,6 +303,8 @@ Terpisah dari §5, dan **tidak** diperlukan untuk menjalankan pilot:
   go/no-go dan rencana pilot. Dokumen ini mengisi §7.1 dengan pengukuran, menutup syarat §7.1a
   butir 2, dan mengajukan satu perubahan pada §7.6 (lihat §8).
 - `docs/operations/panduan-pilot-cuti-taman-tahfizh.md` — panduan peserta.
+- `docs/operations/pilot-tt-runbook-2026-11-26.md` — urutan pelaksanaan dari undangan sampai
+  pemberitahuan hasil, dua skenario Setujui/Tolak, dan pembacaan bukti per langkah.
 - `docs/development/hcis-closure-list.md` (OPS-CLOSE-001) — posisi tiap butir, dengan bukti.
 - `docs/development/hcis-opening-readiness-evidence-2026-11-24.md` (OPS-EVID-001) — S1 dan S2.
 - `docs/domain/leave-policy-ysq.md` — aturan kelompok hak cuti yang §5.1 kutip.

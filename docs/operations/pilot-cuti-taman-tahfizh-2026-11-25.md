@@ -1,10 +1,13 @@
 # Pilot Cuti Tahunan Taman Tahfizh — kesiapan terukur dan yang masih diperlukan
 
 **Spec ID:** OPS-PILOT-TT-001
-**Status:** ACTIVE — mencatat keputusan owner 2026-11-25 dan pengukuran yang menyertainya.
+**Status:** SUPERSEDED 2026-11-27 — HCM memindahkan unit pilot Cuti Tahunan ke **General Affair**.
+Rencana aktif:
+`docs/operations/pilot-cuti-general-affair-2026-11-27.md` (OPS-PILOT-GA-001). Dokumen ini tetap
+sebagai riwayat dan bukti mekanisme (bagan terbit, undangan, Setujui/Tolak, pemberitahuan).
 **Tanggal:** 2026-11-25
 **Sumber angka production:** pembacaan baca-saja `ssh mi8vps-root` pada 2026-11-25 terhadap
-`sqcore_hcis`, bagan terbit `Kursi Staf Kasir untuk peran kasbon` (berlaku 2026-11-10), dan nama
+`sqcore_hcis`, bagan terbit yang berlaku sejak 2026-11-10, dan nama
 kunci pada `final.env`. Tidak ada satu pun nilai `final.env`, alamat email, NIP, atau nomor
 telepon yang disalin ke dokumen ini.
 **Rilis yang berjalan saat diukur:** `hcis-f6edebd4-20261125`.
@@ -33,13 +36,11 @@ Dan empat sasaran yang harus dibuktikan pilot:
 
 | Keputusan | Oleh | Isinya |
 | --- | --- | --- |
-| Peserta pertama | HCM | **Rosaliana** (Tata Usaha) |
-| Ukuran keberhasilan (§8) | Owner | **Jalan A**: dua pengajuan selesai diputuskan, dari dua peserta. Peserta kedua dihitung hanya setelah HCM menyatakannya berhak mengajukan Cuti Tahunan |
+| Peserta pertama | HCM | Ditetapkan; tidak dijalankan karena unit pilot dipindahkan pada 2026-11-27 |
+| Ukuran keberhasilan (§8) | Owner | **Jalan A**: dua pengajuan selesai diputuskan, dari dua peserta. Peserta dihitung hanya setelah HCM menyatakannya berhak mengajukan Cuti Tahunan |
 
-Masih menunggu penetapan HCM/HC: **kelompok hak cuti Rosaliana** (di production masih kosong;
-persetujuan sebagai peserta bukan penetapan kelompok) dan **peserta kedua**. Selama baru satu
-peserta terverifikasi, pilot dilaporkan sebagai "1 peserta, 2 skenario". Urutan pelaksanaan:
-`docs/operations/pilot-tt-runbook-2026-11-26.md`.
+Urutan pelaksanaan yang disiapkan: `docs/operations/pilot-tt-runbook-2026-11-26.md`. Keduanya kini
+riwayat; jalan A tetap berlaku untuk pilot General Affair.
 
 **Aktivasi massal menunggu hasil pilot.** Dokumen ini memisahkan dua daftar yang sering
 tercampur: §5 — yang diperlukan untuk menjalankan pilot, dan §9 — sisa pekerjaan sebelum akses
@@ -58,8 +59,8 @@ Node unit: **Taman Tahfizh Sabilul Qur'an**, di bawah Bidang Pendidikan, dengan 
 
 | Ikatan pada node unit | Kursi sasaran | Pejabat | Kebijakan kekosongan |
 | --- | --- | --- | --- |
-| `LEADER` | Kepala (node Taman Tahfizh) | **Pipit Fithriyah** | `CLIMB_TO_PARENT` |
-| `UNIT_APPROVER` | Kepala (node Bidang Pendidikan) | **Muchsalmina** | `CLIMB_TO_PARENT` |
+| `LEADER` | Kepala (node Taman Tahfizh) | kepala unit (berpejabat) | `CLIMB_TO_PARENT` |
+| `UNIT_APPROVER` | Kepala (node Bidang Pendidikan) | penyetuju unit (berpejabat) | `CLIMB_TO_PARENT` |
 
 Kedua anak node **tidak punya ikatan sendiri**, jadi orangnya mendaki ke node unit. Inilah yang
 membuat **satu baris pengaturan pada node unit cukup** untuk kesembilan orang — perilaku yang
@@ -70,36 +71,27 @@ sebelum baris rollout ditulis, dan dengan ini terpenuhi: keduanya `CLIMB_TO_PARE
 ORG-004 D-R5 (sudah di production) kursi yang pejabatnya ada tetapi akunnya belum aktif **tidak
 lagi dilewati diam-diam**; keadaan itu menolak dengan `409 APPROVER_ACCOUNT_NOT_READY`.
 
-**Rantai pilot, di bawah mode `STRUCTURE`:** pemohon → **Pipit Fithriyah** (kepala unit) →
-**Muchsalmina** (penyetuju unit). Dua orang berbeda, dua langkah, sehingga kegagalan routing
-terbaca sebagai satu sebab. Bila **Pipit** yang mengajukan, langkah dirinya sendiri dibuang
-(ORG-002) dan pengajuannya pergi langsung ke Muchsalmina.
+**Rantai pilot, di bawah mode `STRUCTURE`:** pemohon → **kepala unit** → **penyetuju unit**. Dua
+orang berbeda, dua langkah, sehingga kegagalan routing terbaca sebagai satu sebab. Bila kepala unit
+yang mengajukan, langkah dirinya sendiri dibuang (ORG-002) dan pengajuannya pergi langsung ke
+penyetuju unit.
 
 ## 4. Kesiapan yang terukur, 2026-11-25
 
 ### 4.1 Sembilan pegawai unit pilot
 
-| Node | Pegawai | Email | Akun | Kelompok hak cuti | Mulai kerja |
-| --- | --- | --- | --- | --- | --- |
-| Taman Tahfizh | **Pipit Fithriyah** (kepala unit) | ada | `invited` | **kosong** | 2017-07-01 |
-| Tata Usaha | **Rosaliana** | ada | `invited` | **kosong** | 2021-07-01 |
-| Guru | Azzahra Nurfauziyyah Hanum | ada | `invited` | **kosong** | 2025-04-10 |
-| Guru | Ida Parida | ada | `invited` | **kosong** | 2020-07-01 |
-| Guru | Laeli Nurhayati | ada | `invited` | **kosong** | 2021-10-01 |
-| Guru | Mega Silviyati | ada | `invited` | **kosong** | 2026-07-01 |
-| Guru | Neneng Sri Sumiati | ada | `invited` | **kosong** | 2019-07-01 |
-| Guru | Nurul Bulqis | ada | `invited` | **kosong** | 2023-01-09 |
-| Guru | Siska Malika N. | **kosong** | **tidak ada akun** | **kosong** | 2024-07-01 |
+Ringkasan (rincian per orang tidak dicatat di repository):
 
-Penyetuju unit **Muchsalmina** (di Bidang Pendidikan): email ada, akun `invited`, kelompok hak
-cuti kosong, NIP ada.
+| Yang diukur | Hasil |
+| --- | --- |
+| Pegawai aktif di tiga node unit | 9: kepala unit, satu pegawai Tata Usaha, tujuh guru |
+| Punya email dan akun `invited` | 8 |
+| Kelompok hak cuti tercatat | 0 dari 9 |
+| Tanggal mulai kerja terisi | 9 dari 9 |
+| Penyetuju unit (di Bidang Pendidikan) | berpejabat, email ada, akun `invited` |
 
-Dua catatan data:
-
-- **Siska Malika N. punya dua baris pegawai** — satu `resigned` dan satu `active`, dengan NIP
-  berbeda dan keduanya tanpa email. Mana yang benar adalah keputusan data milik HC (OPS-OPEN-001
-  D12). Selama belum diputuskan, ia tidak dapat diundang.
-- Delapan dari sembilan punya email dan akun `invited`, jadi delapan **dapat diundang hari ini**.
+Satu pegawai unit memiliki dua baris pegawai dan tanpa email; mana yang benar adalah keputusan
+data milik HC (OPS-OPEN-001 D12), dan selama belum diputuskan ia tidak dapat diundang.
 
 ### 4.2 Keadaan sistem yang menyentuh pilot
 
@@ -146,35 +138,24 @@ keputusan orang, bukan migrasi.
 Jalannya ada di layar: **Admin → Konfigurasi Cuti**, per pegawai, izin
 `leave.configuration.manage`, teraudit sebagai `leave.entitlement_group.changed`.
 
-**Rekomendasi penulis, `DRAFT`, menunggu penegasan HC:**
-
-| Pegawai | Usul kelompok | Dasarnya |
-| --- | --- | --- |
-| **Rosaliana** (Tata Usaha) | `non_education` | Tenaga administrasi, bukan pengajar |
-| Tujuh Guru | `education` | Pengajar; haknya adalah Cuti Akhir Semester, bukan Cuti Tahunan individual |
-| **Pipit Fithriyah** (Kepala Taman Tahfizh) | **keputusan HC** | Kepala unit pendidikan; tidak ada aturan tertulis yang menentukannya |
-| **Muchsalmina** | tidak menghalangi pilot | Kelompok hanya dibutuhkan untuk **mengajukan**, bukan untuk **menyetujui** |
+Klasifikasi per pegawai adalah keputusan HC; usul dan keputusan per orang tidak dicatat di
+repository. Kelompok hanya dibutuhkan untuk **mengajukan**, bukan untuk **menyetujui**.
 
 ### 5.2 Penghambat 2 — akibat dari 5.1: siapa pegawai pilotnya
 
 Taman Tahfizh adalah unit sekolah: **tujuh dari sembilan orangnya pengajar**, dan pengajar memang
-tidak berhak atas Cuti Tahunan individual. Setelah klasifikasi, yang benar-benar dapat
-mengajukan Cuti Tahunan di unit ini **paling banyak dua orang** — Rosaliana, dan Pipit bila HC
-menetapkannya `non_education`.
-
-**Rekomendasi penulis: pegawai pilotnya Rosaliana.** Ia satu-satunya orang di node **Tata Usaha**,
-sehingga pengajuannya sekaligus membuktikan pendakian dari anak node yang tidak punya ikatan
-sendiri — persis perilaku yang baris rollout tunggal andalkan — dan rantainya melewati **dua**
-orang yang berbeda.
+tidak berhak atas Cuti Tahunan individual. Jumlah orang yang dapat mengajukan Cuti Tahunan di unit
+ini karena itu sangat kecil, dan bergantung sepenuhnya pada penetapan HC. Pada 2026-11-27 HCM
+memindahkan pilot ke General Affair.
 
 ### 5.3 Penghambat 3 — tiga akun belum aktif (HC)
 
 Akun menjadi `active` pada **masuk pertama** memakai Akun SQ, bukan karena HC menandainya. Jadi
 tiga orang harus benar-benar masuk sebelum pengajuan pertama, **penyetuju lebih dulu**:
 
-1. **Muchsalmina** (penyetuju unit),
-2. **Pipit Fithriyah** (kepala unit),
-3. **Rosaliana** (pegawai pilot).
+1. penyetuju unit,
+2. kepala unit,
+3. pegawai pilot.
 
 Selama penyetuju belum aktif, pengajuan berhenti di `409 APPROVER_ACCOUNT_NOT_READY` — kode yang
 sama pada `LEGACY` maupun `STRUCTURE` sejak ORG-004 D-R5.
@@ -218,8 +199,8 @@ hari ini, teraudit sebagai `organization.rollout.ended`. Unit kembali ke data at
 rantai pada pengajuan yang sudah terkirim tidak disentuh.
 
 **Pembacaan 2026-11-26.** Uji kering di production yang selalu di-ROLLBACK membuktikan baris
-pada §5.5 cukup: dengan baris itu dan ketiga akun aktif, pengajuan Rosaliana membaca bagan terbit
-dan rantainya **Pipit Fithriyah → Muchsalmina**; pegawai unit lain tetap LEGACY. Ditemukan juga
+pada §5.5 cukup: dengan baris itu dan ketiga akun aktif, pengajuan pegawai Tata Usaha membaca
+bagan terbit dan rantainya **kepala unit → penyetuju unit**; pegawai unit lain tetap LEGACY. Ditemukan juga
 bahwa §5.1 di production menjawab **500**, bukan 409, untuk kelompok yang kosong; perbaikannya
 menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026-11-26.md`.
 
@@ -228,8 +209,8 @@ menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026
 | # | Yang diperlukan | Pemilik | Menghalangi? |
 | --- | --- | --- | --- |
 | 1 | Isi kelompok hak cuti peserta | HC | **Ya, mutlak** |
-| 2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | **Peserta pertama ditetapkan 2026-11-26: Rosaliana.** Peserta kedua menunggu HCM menyatakannya berhak |
-| 3 | Kirim aktivasi untuk Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali | HC, lalu orangnya | **Ya** |
+| 2 | Tetapkan pegawai pilot | HCM | Peserta pertama ditetapkan 2026-11-26; unit pilot dipindahkan 2026-11-27 |
+| 3 | Kirim aktivasi untuk penyetuju unit, kepala unit, lalu pegawai pilot; ketiganya masuk sekali | HC, lalu orangnya | **Ya** |
 | 4 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` | HCM | **Ya** |
 | 5 | Tambahkan tiga NIP ke daftar izin WhatsApp | Operator | Tidak |
 | 7 | Isi hari libur dan cuti bersama sampai akhir pilot (production hanya mencatat 2026-08-25) | HC | Disarankan |
@@ -261,9 +242,8 @@ menunggu rilis. Bukti lengkap: `docs/operations/pilot-tt-readiness-evidence-2026
 ## 8. Satu pertentangan dengan OPS-OPEN-001 yang harus diputuskan
 
 OPS-OPEN-001 §7.6 butir 3 menuntut **minimal lima pengajuan cuti nyata dari lebih dari satu
-orang**. Di Taman Tahfizh, Cuti Tahunan paling banyak dapat diajukan **dua** orang (§5.2), dan
-itu pun bila Pipit ditetapkan `non_education`. Butir itu **tidak dapat dipenuhi** dengan Cuti
-Tahunan di unit ini.
+orang**. Di Taman Tahfizh, Cuti Tahunan hanya dapat diajukan segelintir orang (§5.2). Butir itu
+**tidak dapat dipenuhi** dengan Cuti Tahunan di unit ini.
 
 **Diputuskan 2026-11-26: jalan A** — dua pengajuan selesai diputuskan, dari dua peserta, dengan
 peserta kedua dihitung setelah HCM menyatakannya berhak (§1.1).

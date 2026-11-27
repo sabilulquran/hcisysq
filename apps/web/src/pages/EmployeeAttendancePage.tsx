@@ -33,6 +33,17 @@ import {
 /** ENG-LIST-001-L: the 30-day history is a bounded set, so it pages in the browser. */
 export const HISTORY_PAGE_SIZE = 7;
 
+/**
+ * The accessible name of a history row's detail button. It names the date the button opens —
+ * the visible label is short because the row is read beside it, but out of that context the
+ * label alone would not say which day. "Lihat rincian" stays in the name so the spoken name
+ * still contains the visible label (WCAG 2.5.3).
+ */
+export function historyDetailLabel(workDate: string, scanCount: number | null) {
+  const scans = scanCount ? `, ${scanCount} scan` : "";
+  return `Lihat rincian ${formatDate(workDate)}${scans}`;
+}
+
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
@@ -355,7 +366,10 @@ export function EmployeeAttendancePage() {
                 <td className="sq-nums px-4 py-2.5">{cells.checkIn}</td>
                 <td className="sq-nums px-4 py-2.5">{cells.checkOut}</td>
                 <td className="sq-nums px-4 py-2.5">{cells.worked}</td>
-                <td className="px-4 py-2.5 text-right"><button type="button" onClick={()=>showTransactions(item.workDate)} className="rounded-lg border px-2.5 py-1.5 text-2xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Lihat hari ini{cells.scanCount?` (${cells.scanCount})`:""}</button></td>
+                {/* The row already carries its date, so the visible label stays short; the
+                    accessible name names the date, because out of the row a bare "Lihat rincian"
+                    says nothing about which day it opens. */}
+                <td className="px-4 py-2.5 text-right"><button type="button" onClick={()=>showTransactions(item.workDate)} aria-label={historyDetailLabel(item.workDate, cells.scanCount)} className="rounded-lg border px-2.5 py-1.5 text-2xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Lihat rincian{cells.scanCount?` (${cells.scanCount})`:""}</button></td>
               </tr>;})}</tbody></table></div>
               {/* One row, one action: date, status and the two scan times, then the day's detail. */}
               <ul className="divide-y md:hidden">{pageRows.map(item=>{const cells=historyCells(item,dayFor(item.workDate));return <li key={item.workDate}>

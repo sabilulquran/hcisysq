@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { AttendancePanel, AttendanceTabList, hashForTab, tabForHash } from "@/components/attendance/AttendanceTabs";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
-import { HISTORY_PAGE_SIZE } from "@/pages/EmployeeAttendancePage";
+import { HISTORY_PAGE_SIZE, historyDetailLabel } from "@/pages/EmployeeAttendancePage";
 import { paginationView } from "@/components/PaginationBar";
 
 describe("bagian kehadiran: tab dari alamat", () => {
@@ -62,6 +62,26 @@ describe("riwayat 30 hari: daftar ringkas berhalaman", () => {
     const last = paginationView(5, HISTORY_PAGE_SIZE, 30);
     expect([last.start, last.end]).toEqual([29, 30]);
     expect(last.atLast).toBe(true);
+  });
+});
+
+describe("tombol rincian pada baris riwayat", () => {
+  // Tombolnya sempat berbunyi "Lihat hari ini" pada setiap baris, termasuk tanggal lampau,
+  // sehingga namanya menjanjikan hari ini padahal membuka tanggal baris itu.
+  it("menyebut tanggal baris, bukan hari ini", () => {
+    const label = historyDetailLabel("2026-11-25", 2);
+    expect(label).toContain("25 Nov 2026");
+    expect(label).not.toContain("hari ini");
+  });
+
+  it("menyertakan jumlah scan hanya bila ada", () => {
+    expect(historyDetailLabel("2026-11-25", 2)).toContain("2 scan");
+    expect(historyDetailLabel("2026-11-22", 0)).not.toContain("scan");
+    expect(historyDetailLabel("2026-11-22", null)).not.toContain("scan");
+  });
+
+  it("memuat label yang terlihat di dalam nama yang terbaca (WCAG 2.5.3)", () => {
+    expect(historyDetailLabel("2026-11-25", 2).startsWith("Lihat rincian")).toBe(true);
   });
 });
 

@@ -81,6 +81,47 @@ lulus; langkah yang gagal menghentikan skenario, jadi tidak ada klaim tanpa bukt
 
 Tidak ada `page-error` pada seluruh skenario.
 
+### 4b. Tangkapan layar, 27 November 2026
+
+Chromium 158, viewport sesungguhnya, data fixture terisi:
+
+| Ukuran | Berkas |
+|---|---|
+| 375 | [`kehadiran-2026-11-26/sesudah-375.png`](kehadiran-2026-11-26/sesudah-375.png) |
+| 768 | [`kehadiran-2026-11-26/sesudah-768.png`](kehadiran-2026-11-26/sesudah-768.png) |
+| 1440 | [`kehadiran-2026-11-26/sesudah-1440.png`](kehadiran-2026-11-26/sesudah-1440.png) |
+
+Pada 375 terlihat tanpa menggulir: judul, satu tombol **Clock In/Out**, **Tukar Shift**, blok
+Hari Ini, ketiga tab dengan Riwayat terpilih, dan baris riwayat pertama.
+
+### 4c. Verifikasi manual Codex, 27 November 2026
+
+Diperiksa terpisah di browser pada fixture lokal yang sama, dan **menemukan satu cacat label
+yang tidak tertangkap uji otomatis** (lihat §4d):
+
+- Rincian hari membuka tanggal yang benar dan menulis query transaksi.
+- `#overtime` membuka panel Pengajuan beserta formulirnya; `#clarifications` membuka bagian
+  Klarifikasi.
+- ArrowRight mengaktifkan tab Jadwal; Enter pada pager memindahkan 1–7 ke 8–14 pada lebar 375,
+  tanpa overflow halaman.
+
+### 4d. Cacat label yang diperbaiki
+
+Tombol rincian pada riwayat desktop berbunyi **"Lihat hari ini"** untuk **setiap** baris,
+termasuk tanggal lampau — janji yang salah: tombol itu membuka tanggal pada barisnya, bukan hari
+ini. Label itu tulisan saya sendiri pada perubahan ini, dan uji otomatis tidak menangkapnya
+karena yang diuji perilakunya, bukan maknanya.
+
+Perbaikan: label tampak menjadi **"Lihat rincian"** (jumlah scan tetap, mis. "Lihat rincian (2)"),
+dan nama aksesibelnya menyebut tanggalnya — `historyDetailLabel()`, mis.
+*"Lihat rincian Rab, 25 Nov 2026, 2 scan"*. Nama itu tetap memuat label yang terlihat
+(WCAG 2.5.3). Dialog dan hitungan scan tidak diubah.
+
+Terbukti di browser pada 1440: tidak ada lagi tombol `Lihat hari ini`; menekan
+*"Lihat rincian Rab, 25 Nov 2026, 2 scan"* mengubah alamat menjadi `?transaksi=2026-11-25` dan
+membuka dialog berjudul **Rab, 25 Nov 2026** — bukan 27 Nov, tanggal hari itu. Tiga test baru
+mengunci maknanya di `EmployeeAttendanceLayout.test.tsx`.
+
 Satu hal yang **bukan** cacat dan sengaja dipertahankan: hari berstatus "Hadir" tidak menawarkan
 "Ajukan klarifikasi". Itu aturan `canClarifyDate` — hanya hari terlambat, belum lengkap, atau
 tidak hadir, dan paling lama 7 hari ke belakang.
@@ -96,7 +137,7 @@ halaman terakhir 29–30). `AttendanceDiscovery.test.tsx` diperbarui: baris laya
 
 | Belum ada | Alasan |
 |---|---|
-| Tangkapan layar gambar | Bukti browser diambil sebagai pohon aksesibilitas dan hasil langkah, bukan piksel. Yang dibuktikan adalah isi, peran, keadaan, dan alamat — bukan rupa. |
+| Tangkapan "sebelum" | Yang dibandingkan adalah sumber rilis `6694a49e` (§1), bukan gambar layar lama. |
 | Uji dengan basis data sungguhan | Basis data uji berada di luar direktori kerja sesi ini. Fixture memakai kontrak API yang sama, tetapi tidak membuktikan perilaku server. |
 | Pembacaan oleh pembaca layar sungguhan | Peran dan nama diperiksa dari pohon aksesibilitas, bukan dari NVDA/VoiceOver. |
 

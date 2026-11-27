@@ -269,7 +269,9 @@ export function AppShell({
       mobileItems={mobileItems}
       previewMode={previewMode}
     >
-      {attendanceActive ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
+      {/* /app/attendance carries these destinations itself — its own primary button, Tukar Shift
+          beside it, and tabs for Riwayat, Jadwal and Pengajuan — so the row is not repeated there. */}
+      {attendanceActive && currentPath !== "/app/attendance" ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
       {children}
     </CoreShell>
   );

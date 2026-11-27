@@ -19,7 +19,7 @@ const session = (permissions: string[]): AuthSession => ({
 });
 
 describe("employee attendance discoverability", () => {
-  it.each(["Kehadiran", "Clock In/Out", "Tukar Shift"])("shows the attendance actions from %s while retaining five mobile destinations", (activeItem) => {
+  it.each(["Clock In/Out", "Tukar Shift"])("shows the attendance actions from %s while retaining five mobile destinations", (activeItem) => {
     const html = renderToStaticMarkup(<AppShell user={employee} activeItem={activeItem}><p>Synthetic content</p></AppShell>);
     expect(html).toContain('aria-label="Layanan kehadiran pegawai"');
     expect(html).toContain('href="/app/attendance/clock"');
@@ -27,6 +27,18 @@ describe("employee attendance discoverability", () => {
     const mobile = html.split('aria-label="Navigasi mobile pegawai"')[1]?.split("</nav>")[0] ?? "";
     expect(mobile.match(/href=/g)).toHaveLength(4);
     expect(mobile).toContain(">Lainnya<");
+  });
+
+  // The attendance page carries these destinations itself (one primary Clock In/Out, Tukar Shift
+  // beside it, and tabs for Riwayat, Jadwal and Pengajuan), so repeating the service row above its
+  // heading put a second Clock In/Out on the screen and crowded out the summary.
+  it("drops the service row on /app/attendance without losing the destinations", () => {
+    const html = renderToStaticMarkup(<AppShell user={employee} activeItem="Kehadiran"><p>Synthetic content</p></AppShell>);
+    expect(html).not.toContain('aria-label="Layanan kehadiran pegawai"');
+    expect(html).toContain('href="/app/attendance/clock"');
+    expect(html).toContain('href="/app/attendance/shift-swap"');
+    const mobile = html.split('aria-label="Navigasi mobile pegawai"')[1]?.split("</nav>")[0] ?? "";
+    expect(mobile.match(/href=/g)).toHaveLength(4);
   });
   it("does not hide attendance actions beyond a horizontal scroll strip", () => {
     const html = renderToStaticMarkup(<EmployeeAttendanceNavigation currentPath="/app/attendance/shift-swap" />);

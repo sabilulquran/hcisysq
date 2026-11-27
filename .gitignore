@@ -53,3 +53,6 @@ Thumbs.db
 # AI/editor local state
 .codex/
 .lovable/
+
+# Marker that switches the dev server to the synthetic attendance fixture (local only).
+apps/web/uji/aktif

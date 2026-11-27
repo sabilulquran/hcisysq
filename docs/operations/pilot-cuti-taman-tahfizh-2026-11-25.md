@@ -1,7 +1,10 @@
 # Pilot Cuti Tahunan Taman Tahfizh — kesiapan terukur dan yang masih diperlukan
 
 **Spec ID:** OPS-PILOT-TT-001
-**Status:** ACTIVE — mencatat keputusan owner 2026-11-25 dan pengukuran yang menyertainya.
+**Status:** SUPERSEDED 2026-11-27 — keputusan HCM: Rosaliana kelompok Pendidikan, dan unit pilot
+Cuti Tahunan berpindah ke **General Affair**. Rencana aktif:
+`docs/operations/pilot-cuti-general-affair-2026-11-27.md` (OPS-PILOT-GA-001). Dokumen ini tetap
+sebagai riwayat dan bukti mekanisme (bagan terbit, undangan, Setujui/Tolak, pemberitahuan).
 **Tanggal:** 2026-11-25
 **Sumber angka production:** pembacaan baca-saja `ssh mi8vps-root` pada 2026-11-25 terhadap
 `sqcore_hcis`, bagan terbit `Kursi Staf Kasir untuk peran kasbon` (berlaku 2026-11-10), dan nama

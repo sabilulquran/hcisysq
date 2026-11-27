@@ -2,6 +2,10 @@
 
 **Spec ID:** OPS-PILOT-TT-001 (catatan bukti), melengkapi OPS-CLOSE-001 dan OPS-OPEN-001
 **Tanggal:** 2026-11-26
+**Catatan 2026-11-27:** unit pilot berpindah ke General Affair (OPS-PILOT-GA-001,
+`docs/operations/pilot-cuti-general-affair-2026-11-27.md`). Bukti aturan kuota (§3), perbaikan
+409/400 (§7), dan uji otomatis (§6) tetap berlaku; §4, §9, dan langkah khusus Taman Tahfizh menjadi
+riwayat.
 **Sumber:** pembacaan baca-saja `ssh mi8vps-root` terhadap `sqcore_hcis`; satu uji kering di
 production yang **selalu di-ROLLBACK** (§4); uji otomatis di repository (§6).
 **Batas yang dijaga:** tidak ada baris rollout yang ditulis, tidak ada kelompok hak cuti yang

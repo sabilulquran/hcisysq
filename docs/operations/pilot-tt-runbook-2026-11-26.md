@@ -2,7 +2,9 @@
 
 **Spec ID:** OPS-PILOT-TT-001 (runbook pelaksanaan)
 **Tanggal:** 2026-11-26
-**Status:** SIAP DIJALANKAN setelah langkah HC/HCM di §2.
+**Status:** SUPERSEDED 2026-11-27 — tidak dijalankan. HCM menetapkan Rosaliana kelompok Pendidikan
+dan memindahkan pilot ke General Affair (`docs/operations/pilot-cuti-general-affair-2026-11-27.md`).
+Tabel kalender §4, kueri bukti §5, dan jalan mundur §6 tetap berlaku untuk pilot General Affair.
 **Rilis production terakhir yang tercatat:** `hcis-6694a49e-20261126` (cutover 26 Nov 16:29 WIB,
 tanpa migrasi, hanya tampilan web; `docs/development/production-release-verification-2026-11-26-6694a49e.md`).
 Perbaikan 409 dari `7fd89146` termasuk di dalamnya. Runbook ini disusun tanpa membaca production

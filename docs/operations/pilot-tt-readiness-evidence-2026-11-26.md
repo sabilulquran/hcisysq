@@ -2,6 +2,10 @@
 
 **Spec ID:** OPS-PILOT-TT-001 (catatan bukti), melengkapi OPS-CLOSE-001 dan OPS-OPEN-001
 **Tanggal:** 2026-11-26
+**Catatan 2026-11-27:** unit pilot berpindah ke General Affair (OPS-PILOT-GA-001,
+`docs/operations/pilot-cuti-general-affair-2026-11-27.md`). Bukti aturan kuota (§3), perbaikan
+409/400 (§7), dan uji otomatis (§6) tetap berlaku; §4, §9, dan langkah khusus Taman Tahfizh menjadi
+riwayat.
 **Sumber:** pembacaan baca-saja `ssh mi8vps-root` terhadap `sqcore_hcis`; satu uji kering di
 production yang **selalu di-ROLLBACK** (§4); uji otomatis di repository (§6).
 **Batas yang dijaga:** tidak ada baris rollout yang ditulis, tidak ada kelompok hak cuti yang
@@ -66,15 +70,15 @@ dibaca dari sesi basis data terpisah (pid sesi pengamat berbeda dari sesi uji ke
 
 | # | Keadaan | Hasil |
 | --- | --- | --- |
-| B1 | Rosaliana, tanpa baris rollout (hari ini) | Ditolak `DIRECT_MANAGER_MISSING` — data atasan lama kosong, jadi LEGACY tidak dapat dipakai |
-| — | Node yang dipakai | **Taman Tahfizh Sabilul Qur'an**, dari bagan terbit "Kursi Staf Kasir untuk peran kasbon" (berlaku 2026-11-10) |
-| B2 | STRUCTURE, akun penyetuju masih `invited` | Ditolak `APPROVER_ACCOUNT_NOT_READY`: "Akun Pipit Fithriyah pada kursi Kepala belum aktif … bagan organisasi tidak perlu diubah" |
-| B3 | Rosaliana (Tata Usaha), STRUCTURE, akun aktif | Sumber `STRUCTURE`, rantai **Pipit Fithriyah → Muchsalmina** |
-| B4 | Pipit sebagai pemohon | Rantai **Muchsalmina** (langkah dirinya sendiri dibuang) |
-| B5 | Ida Parida (Guru) | Rantai **Pipit Fithriyah → Muchsalmina**, mendaki dari node Guru |
+| B1 | Pegawai Tata Usaha, tanpa baris rollout (hari ini) | Ditolak `DIRECT_MANAGER_MISSING` — data atasan lama kosong, jadi LEGACY tidak dapat dipakai |
+| — | Node yang dipakai | **Taman Tahfizh**, dari bagan terbit yang berlaku sejak 2026-11-10 |
+| B2 | STRUCTURE, akun penyetuju masih `invited` | Ditolak `APPROVER_ACCOUNT_NOT_READY` di kursi Kepala (kepala unit): "… belum aktif … bagan organisasi tidak perlu diubah" |
+| B3 | Pegawai Tata Usaha, STRUCTURE, akun aktif | Sumber `STRUCTURE`, rantai **kepala unit → penyetuju unit** |
+| B4 | Kepala unit sebagai pemohon | Rantai **penyetuju unit** (langkah dirinya sendiri dibuang) |
+| B5 | Seorang guru | Rantai **kepala unit → penyetuju unit**, mendaki dari node Guru |
 | B6 | Pegawai unit lain | Tetap LEGACY (`DIRECT_MANAGER_MISSING`): baris pilot tidak meluas |
-| C1 | Pratinjau lengkap Rosaliana 7–9 Des 2026 | 3 hari kerja, triwulan Okt–Des batas 3, rantai Pipit → Muchsalmina |
-| C2 | Pratinjau lengkap Rosaliana 4–11 Jan 2027 | 6 hari kerja, semester Jan–Jun batas 6, rantai Pipit → Muchsalmina |
+| C1 | Pratinjau lengkap pegawai Tata Usaha 7–9 Des 2026 | 3 hari kerja, triwulan Okt–Des batas 3, rantai kepala unit → penyetuju unit |
+| C2 | Pratinjau lengkap pegawai Tata Usaha 4–11 Jan 2027 | 6 hari kerja, semester Jan–Jun batas 6, rantai kepala unit → penyetuju unit |
 
 Satu sumber data atasan tetap di bagan: kolom atasan lama tidak diisi dan tidak dibaca di bawah
 STRUCTURE. **Tidak ada perubahan bagan yang diperlukan.**
@@ -103,7 +107,7 @@ Tolak dengan alasan → pemberitahuan "ditolak" tanpa alasan → **Akhiri** dan 
 | Sasaran | Bukti otomatis | Bukti production | Yang tersisa |
 | --- | --- | --- | --- |
 | 1. Undangan Akun SQ berfungsi | `activation-invitation.postgres` (14), uji rangkai di atas, dan uji baru `sq-hub-staff-activation-client` (16) untuk permintaan HTTP yang sungguh dikirim HCIS | Route SQ Hub ada (§5) | Satu undangan nyata dan masuk pertama penerimanya |
-| 2. Pengajuan ke penyetuju yang benar | Uji rangkai, `org004-structure-leave-flow`, `org004-rollout-switch` | Uji kering §4: Pipit → Muchsalmina dari bagan terbit | Satu pengajuan nyata setelah baris rollout ditulis |
+| 2. Pengajuan ke penyetuju yang benar | Uji rangkai, `org004-structure-leave-flow`, `org004-rollout-switch` | Uji kering §4: kepala unit → penyetuju unit dari bagan terbit | Satu pengajuan nyata setelah baris rollout ditulis |
 | 3. Setujui dan Tolak dari layar | Uji rangkai (route keputusan), `org004-structure-leave-flow` | Dialog Tolak sudah di production sejak `27f10ccd` | Satu Setujui dan satu Tolak oleh penyetuju sungguhan |
 | 4. Pemohon menerima hasil | Uji rangkai (STRUCTURE), `leave010-requester-decision-notification` (LEGACY) | — | Pemohon melihat pemberitahuan di lonceng HCIS |
 
@@ -157,19 +161,18 @@ bersama mana yang diikuti yayasan adalah keputusan HC, dan agen tidak mengisinya
 
 ## 9. Kesiapan pilot — yang masih harus dilakukan
 
-Urutannya mengikuti OPS-PILOT-TT-001 §5. Satu-satunya akun staf aktif yang memegang izin yang
-dibutuhkan (`leave.configuration.manage`, `access.manage`, `approvals.policy.manage`) adalah akun HC
-**M. Imadduddin Muqoyim**.
+Urutannya mengikuti OPS-PILOT-TT-001 §5. Hanya satu akun staf aktif, akun HC, yang memegang izin
+yang dibutuhkan (`leave.configuration.manage`, `access.manage`, `approvals.policy.manage`).
 
 | # | Langkah | Siapa | Bukti yang diperlukan | Status |
 | --- | --- | --- | --- | --- |
-| P1 | Tetapkan kelompok hak cuti peserta (usul `DRAFT`: Rosaliana `non_education`; Pipit keputusan HC; tujuh Guru `education`) | HC, Admin → Konfigurasi Cuti | Audit `leave.entitlement_group.changed` per pegawai | **Menunggu HC** |
-| P2 | Tetapkan pegawai pilot (usul: Rosaliana) | HCM | Keputusan tertulis | **Peserta pertama: Rosaliana (HCM, 2026-11-26).** Peserta kedua menunggu HCM menyatakannya berhak |
+| P1 | Tetapkan kelompok hak cuti peserta | HC, Admin → Konfigurasi Cuti | Audit `leave.entitlement_group.changed` per pegawai | Riwayat — unit pilot dipindahkan 2026-11-27 |
+| P2 | Tetapkan pegawai pilot | HCM | Keputusan HCM | Peserta pertama ditetapkan 2026-11-26; unit pilot dipindahkan 2026-11-27 |
 | P3 | Isi hari libur dan cuti bersama sampai akhir pilot (dan 2027) | HC | Baris kalender; pratinjau yang melewati tanggal libur menghitung benar | **Menunggu HC** (disarankan, tidak mutlak) |
 | P4 | Rilis perbaikan 409 dan tanggal mustahil (§7) | Operator (agen) | Catatan verifikasi rilis | **Selesai 2026-11-26 16:16 WIB** — `hcis-7fd89146-20261126` |
-| P5 | Kirim aktivasi: Muchsalmina, Pipit, lalu pegawai pilot; ketiganya masuk sekali dan mengisi kata sandinya sendiri | HC, lalu orangnya | Baris `account_activation_invitations` `issued` lalu selesai; akun `active`; audit `auth.activation.invitation_completed` | **Menunggu penetapan penerima (P2) dan HC** |
-| P6 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` dari layar | HCM, Admin → Struktur Organisasi → Mode persetujuan per unit | Audit `organization.rollout.changed`; pratinjau pemohon menunjukkan Pipit → Muchsalmina | **Siap secara teknis** (§4), menunggu P1–P5 |
-| P7 | Satu pengajuan nyata, Setujui, satu pengajuan nyata, Tolak | Pegawai pilot, Pipit, Muchsalmina | Baris `leave_requests` + langkah tersimpan + `in_app_notifications` `leave.request.decided.*` | **Belum** |
+| P5 | Kirim aktivasi: penyetuju unit, kepala unit, lalu pegawai pilot; ketiganya masuk sekali dan mengisi kata sandinya sendiri | HC, lalu orangnya | Baris `account_activation_invitations` `issued` lalu selesai; akun `active`; audit `auth.activation.invitation_completed` | **Menunggu penetapan penerima (P2) dan HC** |
+| P6 | Tulis baris rollout Taman Tahfizh · Cuti Tahunan · `STRUCTURE` dari layar | HCM, Admin → Struktur Organisasi → Mode persetujuan per unit | Audit `organization.rollout.changed`; pratinjau pemohon menunjukkan kepala unit → penyetuju unit | **Siap secara teknis** (§4), menunggu P1–P5 |
+| P7 | Satu pengajuan nyata, Setujui, satu pengajuan nyata, Tolak | Pegawai pilot, kepala unit, penyetuju unit | Baris `leave_requests` + langkah tersimpan + `in_app_notifications` `leave.request.decided.*` | **Belum** |
 | P8 | Putuskan ukuran keberhasilan (OPS-PILOT-TT-001 §8: A/B/C) | Owner | Keputusan tertulis | **Diputuskan 2026-11-26: jalan A** — dua pengajuan selesai diputuskan, dari dua peserta |
 | P9 | Daftar izin WhatsApp untuk peserta | Operator | Baris env, restart API | Opsional |
 

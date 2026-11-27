@@ -3,7 +3,7 @@
 **Spec ID:** UI-TYPE-001 (lanjutan), ATT-014 §6.5c
 **Tanggal:** 26 November 2026
 **Basis:** rilis `6694a49e` — kode yang dilaporkan pengguna masih bertumpuk di produksi.
-**Status kode:** belum di-commit. Lihat §5.
+**Status kode:** cabang `feat/kehadiran-ringkas`, PR sabilulquran/hcisysq#426.
 
 ## 1. Yang ditemukan di rilis 6694a49e
 
